@@ -1,0 +1,59 @@
+---
+discussion_id: DISC-20260219-234009-meta-review-20260219
+started: 2026-02-19T23:40:47.504731+00:00
+ended: 2026-02-19T23:44:15.355115+00:00
+agents: [architecture-consultant, facilitator, independent-perspective]
+total_turns: 4
+---
+
+# Discussion: DISC-20260219-234009-meta-review-20260219
+
+## Turn 1 — facilitator (proposal)
+*2026-02-19T23:40:47.504731+00:00 | confidence: 0.85*
+*tags: meta-review, draft*
+
+DRAFT META-REVIEW: META-REVIEW-20260219. Period: 2026-02-18 to 2026-02-19 (project inception). 15 discussions, 76 agent turns, 8 agents, 11 ADRs, 0 education results, 0 reflections.
+
+EXECUTIVE SUMMARY: Framework is structurally sound after a high-velocity inception sprint. All 11 ADRs align with implemented code (0% drift on 9/10 checkpoints, 1 intentional deferral). The feedback loop was closed this session (ADR-0011). Two entire subsystems (reflections, education) remain unused. Agent deployment is over-heavy for low-risk work.
+
+AGENT EFFECTIVENESS: (1) architecture-consultant: 12 turns, conf 0.851, highest activity. Found blocking issues in spec review (domain model) and build checkpoint review (stale ADR). High signal, zero over-flagging. CALIBRATION: CORRECT. (2) qa-specialist: 11 turns, conf 0.844. Found extension filter gap in today's review. Well-calibrated — high-severity findings were genuinely high. CALIBRATION: CORRECT. (3) docs-knowledge: 10 turns, conf 0.857. Found stale references, CLAUDE.md gaps, ADR-0011 errors. Strong documentation drift detection. CALIBRATION: CORRECT. (4) independent-perspective: 9 turns, conf 0.800 (lowest). Reframed retro findings, challenged education gate interpretation, surfaced meta-finding about retro itself. Most contrarian, most valuable. CALIBRATION: CORRECT — low confidence is appropriate for contrarian role. (5) security-specialist: 9 turns, conf 0.867 (highest). Unique domain findings: android:allowBackup=true, .sqlite gitignore gap. No other agent found these. CALIBRATION: CORRECT. (6) project-analyst: 6 turns, conf 0.875. Exclusively in /analyze-project. Effective delegated orchestrator. CALIBRATION: CORRECT. (7) performance-analyst: 2 turns, conf 0.815. Severely underutilized — only activated in framework readiness review and walking skeleton review. Not triggered for database schema or state management work despite those being in the trigger table. CALIBRATION: UNDER-ACTIVATED — trigger criteria may not match discussion-level risk assessment. (8) facilitator: 17 turns, conf 0.863. Working as designed.
+
+ARCHITECTURAL DRIFT: 9/10 ADR checkpoints fully conformant. One intentional gap: ADR-0006 (Three-Layer Agent Design) — only Layer A implemented, no abstract interface for layer selection. This is correct for Phase 1 but becomes medium-risk at Phase 3 if no interface is introduced before adding Layer B. ADR-0002 has 3 deferred dependencies (workmanager, flutter_secure_storage, connectivity_plus) not yet in pubspec — correct for Phase 1 scope. ADR-0009 has minor write_event.py syntax inconsistency (positional vs named args across commands).
+
+DECISION CHURN: 0/11 superseded (0%). 2 amendments to ADR-0009 (by ADR-0010, ADR-0011). Very stable decisions — no flip-flopping.
+
+RULE EVOLUTION: (1) PROPOSED NEW: coding_standards.md and testing_requirements.md reference Python/pytest but the project is Flutter/Dart. These rules need rewriting for Dart conventions. (2) PROPOSED CHANGE: review_gates.md should specify mandatory agents per risk tier, not just 'appropriate' count. (3) PROPOSED DEPRECATION: security_baseline.md references Pydantic, CORS, requirements.txt — all Python-specific. Needs full rewrite for Flutter/Dart/Supabase security patterns. (4) No rules ready for promotion from memory/ — all 18 PENDING adoptions need empirical validation first.
+
+EDUCATION ASSESSMENT: Zero data. education_results table is empty. No walkthroughs or quizzes have been run. This is the framework's most underexercised subsystem. Phase 2 code should trigger the first education gate.
+
+FRAMEWORK ADJUSTMENTS: (1) Rewrite coding_standards.md for Dart. (2) Rewrite testing_requirements.md for Flutter test. (3) Rewrite security_baseline.md for Flutter/Dart/Supabase. (4) Fix performance-analyst activation — add explicit triggers for database schema and state management in review_gates.md. (5) Reduce default agent count for low-risk from 5-6 to 3-4 with mandatory specialist selection. (6) Introduce abstract ConversationAgent interface before Phase 3 (ADR-0006 prep). (7) Run first education gate during Phase 2 review.
+
+DOUBLE-LOOP FINDINGS: (1) The quality gate measures formatting, linting, tests, coverage, ADR completeness, and review existence — but NOT security scanning or dependency vulnerabilities. As the app gains network connectivity (Phase 3+), static security analysis should be considered. (2) The reflection system (reflections table, reflection template) has never been exercised. No command triggers reflection writing. Either remove the subsystem or add reflection triggers to /retro and /review. (3) All 18 PENDING adopted patterns have never been evaluated — the adoption audit loop was just closed. The next /retro should evaluate at least the 5 highest-impact adoptions: CRITICAL BEHAVIORAL RULES, activation triggers, anti-patterns, pre-flight checks, quality gate. (4) Low-risk discussions averaged 5.4 agents (higher than the 1 high-risk discussion at 6.0). The risk-to-agent-count correlation is inverted — this suggests the ensemble/structured-dialogue mode selection is driving agent count more than risk level.
+
+EXTERNAL LEARNING ASSESSMENT: Adoption rate 34% (20/59) — healthy and not over-aggressive. Rule of Three validated 2 patterns at 3+ sightings, both high-quality. Score calibration at 20/25 appears correct — no false positives observed. 2 patterns REVERTED due to tech-stack pivot (expected, not a scoring failure). 16 DEFERRED patterns — none have reached 3 sightings for re-evaluation. No deferred pattern changes recommended.
+
+---
+
+## Turn 2 — architecture-consultant (critique)
+*2026-02-19T23:42:35.951523+00:00 | confidence: 0.82*
+*tags: meta-review, specialist-review*
+
+Confidence: 0.82. FINDINGS: (1) HIGH: 3 stale rule files (coding_standards.md, security_baseline.md, testing_requirements.md) reference Python/ruff/pytest/Pydantic. Agents inherit these rules on every invocation — they currently receive incorrect guidance. Same class of stale reference that ADR-0011 fixed in commit_protocol.md. Should be treated as a single coordinated rewrite, not deferred. (2) MEDIUM: ADR-0006 gap is 'implementation gap on schedule' not 'drift' — ADR explicitly anticipates Layer B/C at Phase 3/5. The real risk is that agent_repository.dart has no forcing function for layer-switching interface. Design interface at Phase 2 planning, not Phase 3 — cheaper before Layer A code proliferates. (3) LOW: ADR-0009 amendment formatting (inline strikethrough + blockquotes) creates readability risk. Consolidate into a labeled Amendments section. (4) LOW: ADR-0011 sonnet tier override for architecture-consultant needs explicit cost rationale matching build_review_protocol.md pattern. STRENGTHS: Drift detection methodology sound. 9/10 conformance credible. Self-correcting feedback loop demonstrated by ADR-0011 stale reference fix. Inverted agent-count correlation is a legitimate structural signal.
+
+---
+
+## Turn 3 — independent-perspective (critique)
+*2026-02-19T23:42:43.400042+00:00 | confidence: 0.82*
+*tags: meta-review, specialist-review*
+
+Confidence: 0.82. HIDDEN ASSUMPTIONS: (1) Framework assumes developer will voluntarily trigger all learning loops — no automated cadence. (2) Metrics from incomplete dataset (0/5 tables populated) can produce confident-sounding but misleading conclusions. (3) 15 discussions may be 100% of formal sessions but a small fraction of total reasoning. (4) Structural completeness (ADR conformance, decision churn) is treated as proxy for behavioral correctness. (5) 'Lowest confidence = highest contrarian value' conflates calibration with quality. PRE-MORTEM SCENARIOS: (A) Framework becomes the product — process overhead exceeds product output. No minimum viable application criterion exists. Mitigation: track framework-vs-product time split at retro. (B) 3 stale rule files never get rewritten — no blocking mechanism forces correction. Mitigation: quality_gate.py tech-stack alignment check. (C) 18 PENDING adoptions sit forever — no sprint cadence enforced. Mitigation: time-based warning for stale PENDING patterns. (D) Inverted risk-to-agents correlation persists — facilitator risk assessment is unvalidated. MOST IMPORTANT FINDING: This framework was designed for a team and is being run by one person. Principles 4 (independence), 6 (education gates), 7 (human approval for Layer 3) presuppose multiple humans. Running solo means developer is code author, human approver, and quiz-taker simultaneously. Not an execution gap — may be a design assumption mismatch. ALTERNATIVE FRAMING: 0 reflections and 0 education results may be honest signals that these subsystems are not yet justified at project scale, not gaps to fix. BLIND SPOT: Meta-review never asks 'Should we have fewer ADRs, not more complete ones?' Framework overhead proportionality is the unasked question.
+
+---
+
+## Turn 4 — facilitator (synthesis)
+*2026-02-19T23:44:15.355115+00:00 | confidence: 0.85*
+*tags: meta-review, synthesis*
+
+SYNTHESIS: Meta-review covering 2026-02-18 to 2026-02-19 (15 discussions, 76 turns, 11 ADRs). Two specialists reviewed the draft. Key revisions: (1) Stale rule files upgraded from proposal to URGENT — agents receive incorrect Python guidance every invocation (architecture-consultant). (2) ADR-0006 reframed from drift to implementation-gap-on-schedule — design interface at Phase 2 not Phase 3 (architecture-consultant). (3) Most important finding: framework designed for team, run by one person — Principles 4, 6, 7 presuppose multiple humans (independent-perspective). (4) Unused subsystems reframed as not-yet-justified rather than gaps (independent-perspective). (5) Framework overhead proportionality added as double-loop finding. 3 immediate actions: rewrite 3 stale rule files, fix performance-analyst triggers, reduce low-risk agent count. 3 Phase 2 prep items: design ConversationAgent interface, run first education gate, track framework-vs-product time. Final document: docs/sprints/META-REVIEW-20260219.md
+
+---
