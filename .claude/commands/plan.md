@@ -8,6 +8,15 @@ argument-hint: "[feature or goal description]"
 
 You are acting as the Facilitator. Every significant change begins with an executable specification.
 
+## CRITICAL BEHAVIORAL RULES
+
+These rules are pass/fail. Violating any of them is a workflow failure.
+
+1. **NEVER skip capture**: Every specialist turn MUST be recorded via `scripts/write_event.py`. No findings exist unless captured.
+2. **NEVER continue on failure**: If any step fails (script error, agent dispatch failure), HALT immediately. Present the error and ask the user how to proceed. Do NOT silently continue.
+3. **NEVER synthesize before all specialists report**: Wait for ALL dispatched specialists to return before writing the synthesis. Premature synthesis misses findings.
+4. **ALWAYS close the discussion**: Every planning session MUST end with `scripts/close_discussion.py`, even if abandoned. Unclosed discussions corrupt the capture stack.
+
 ## Pre-Flight Checks
 
 Before starting planning, verify prerequisites:
@@ -21,6 +30,9 @@ for d in ['docs/sprints', 'docs/adr']:
         errors.append(f'Missing required directory: {d}')
 if not pathlib.Path('CLAUDE.md').exists():
     errors.append('Missing project constitution: CLAUDE.md')
+for script in ['scripts/create_discussion.py', 'scripts/write_event.py', 'scripts/close_discussion.py']:
+    if not pathlib.Path(script).exists():
+        errors.append(f'Missing required script: {script}')
 if errors:
     print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
 else:
@@ -40,7 +52,7 @@ Read the developer's feature description. Ask clarifying questions if needed:
 
 ## Step 2: Produce Structured Spec
 
-Write a spec document with:
+Write a spec document to `docs/sprints/SPEC-YYYYMMDD-HHMMSS-slug.md` with status `draft`:
 
 ```markdown
 ---
@@ -79,25 +91,63 @@ risk_level: [low/medium/high/critical]
 - [What depends on this]
 ```
 
-## Step 3: Specialist Review of Spec
+## Step 3: Create Discussion
+
+Create a discussion to capture the specialist review:
+
+```
+python scripts/create_discussion.py "<spec-slug>-spec-review" --risk <level> --mode structured-dialogue
+```
+
+Store the returned discussion ID — it is needed for all subsequent capture steps.
+
+## Step 4: Dispatch Specialists and Capture
 
 Dispatch relevant specialists to review the spec (not code — the spec itself):
 - architecture-consultant: Are the boundaries correct? Does this align with ADRs?
 - security-specialist: Are there security implications not addressed?
-- qa-specialist: Are the acceptance criteria testable?
+- qa-specialist: Are the acceptance criteria testable and the test strategy sufficient?
 
-Capture their feedback.
+For each specialist, use the Task tool:
+```
+Task(subagent_type="<agent-name>", prompt="Spec Review: <discussion_id>\nRisk Level: <level>\n\nReview the following spec from your specialist perspective:\n\n<spec content>\n\nProvide structured analysis with findings (blocking vs advisory) and a verdict.")
+```
 
-## Step 4: Revise and Present
+Run independent specialists in parallel.
 
-Incorporate specialist feedback into the spec. Present the final spec to the developer for approval.
+**Capture each specialist's response immediately**:
+```
+python scripts/write_event.py "<discussion_id>" "<agent-name>" "critique" "<findings>" --confidence <score> --tags "<tags>"
+```
 
-## Step 5: Developer Approval
+## Step 5: Synthesize and Revise
+
+Write the facilitator synthesis event:
+```
+python scripts/write_event.py "<discussion_id>" "facilitator" "synthesis" "<synthesis of all findings and spec changes made>" --confidence <score>
+```
+
+Incorporate specialist feedback into the spec. Update the spec's:
+- `status` field to `reviewed`
+- Add `reviewed_by` field with list of specialists
+- Add `discussion_id` field linking to the capture
+
+## Step 6: Close Discussion
+
+```
+python scripts/close_discussion.py "<discussion_id>"
+```
+
+## Step 7: Present to Developer
+
+Present the final spec to the developer for approval, including:
+1. Summary of specialist findings (blocking vs advisory)
+2. Changes made to address blocking findings
+3. Advisory items noted but deferred
+4. Link to the discussion transcript
+
+## Step 8: Developer Approval
 
 Wait for explicit developer approval of the spec before proceeding to implementation.
-
-## Step 6: Save Spec
-
-Save the approved spec to `docs/sprints/SPEC-YYYYMMDD-HHMMSS-slug.md`.
 
 Tell the developer they can now use `/build_module` to implement against this spec.

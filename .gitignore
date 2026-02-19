@@ -1,3 +1,43 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+*.dart.js
+*.dart.js.map
+*.js.deps
+*.js.map
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# Platform builds
+/android/app/debug/
+/android/app/profile/
+/android/app/release/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+.claude/settings.local.json
+*.db
+*.sqlite
+*.sqlite3
+nul
+coverage/
+
+# Python (framework scripts)
 __pycache__/
 *.pyc
 *.pyo
@@ -5,12 +45,7 @@ __pycache__/
 venv/
 *.egg-info/
 dist/
-build/
-.claude/settings.local.json
-*.db
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
-*.sqlite3
 .coverage
-nul
