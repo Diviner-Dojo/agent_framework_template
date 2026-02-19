@@ -1,10 +1,10 @@
 ---
-description: "Analyze an external project to discover patterns worth adopting. Dispatches the project-analyst as scout, then runs all core specialists in a round-robin evaluation. Produces a scored recommendation report."
+description: "Analyze an external project to discover patterns worth adopting. Dispatches the project-analyst to scout the territory and orchestrate a multi-specialist co-review of applicability. Produces a scored recommendation report."
 allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Task"]
 argument-hint: "[local path, GitHub owner/repo, or GitHub URL]"
 ---
 
-# External Project Analysis (Round-Robin Review)
+# External Project Analysis (Co-Review)
 
 You are acting as the Facilitator. This command points your specialist team outward — at an external project — to evaluate whether it contains patterns that would improve our project.
 
@@ -40,126 +40,43 @@ python scripts/create_discussion.py "analyze-<slug>" --risk low --mode structure
 
 Record the discussion_id for all subsequent capture steps.
 
-## Step 3: Scout Phase (Project Analyst)
+## Step 3: Dispatch the Project Analyst
 
-Dispatch the project-analyst to survey the target:
+The project-analyst serves as both scout and orchestrator. It surveys the target project, then dispatches the relevant specialist agents for a co-review of applicability to our current effort.
+
+Dispatch the project-analyst with full context:
 
 ```
-Task(subagent_type="project-analyst", prompt="Survey this project at <target-path>.
-  Produce a complete project profile: directory structure, tech stack, dependencies,
-  LOC estimate, maturity signals, AI integration artifacts, key files for specialist
-  review, and initial pattern inventory.
+Task(subagent_type="project-analyst", prompt="Analyze this external project for applicability to our current effort.
 
-  Be thorough but skeptical. Only flag patterns that are genuinely notable —
-  not just 'different from ours.' Default assumption: this project's patterns
-  are context-specific and not worth generalizing.
+Target project path: <target-path>
+Our project path: <path to our project root>
+Our project: <brief description of our project's tech stack, purpose, and current state>
 
-  Our project: [brief description of our project's tech stack and purpose]
-  Our project path: [path to our project root]")
+Phase 1 — Survey the target project. Produce a complete project profile: directory structure, tech stack, dependencies, LOC estimate, maturity signals, AI integration artifacts, key files, and initial pattern inventory.
+
+Phase 2 — If notable patterns exist, orchestrate a multi-specialist co-review. Dispatch the relevant specialists (architecture-consultant, security-specialist, qa-specialist, performance-analyst, docs-knowledge, independent-perspective) to evaluate the project from their respective domains. Only dispatch specialists whose domain intersects with what you found. Run them in parallel.
+
+After collecting all specialist perspectives, produce a unified applicability assessment: convergence map, points of dissent, blind spots, and an applicability verdict for each pattern.
+
+Be thorough but skeptical. Only recommend patterns that are genuinely applicable to our current effort — not just interesting in the abstract. Default assumption: this project's patterns are context-specific and not worth generalizing.")
 ```
 
-Capture the scout findings:
+Capture the full findings (scout report + co-review synthesis):
 ```bash
-python scripts/write_event.py "<discussion_id>" "project-analyst" "proposal" "<scout findings>" --confidence <score>
+python scripts/write_event.py "<discussion_id>" "project-analyst" "proposal" "<scout findings + co-review synthesis>" --confidence <score>
 ```
 
-Read the scout's output. If the scout says "No specialist review recommended," skip to Step 6 with a short report.
-
-## Step 4: Round-Robin Specialist Review
-
-Using the project profile and key files from Step 3, dispatch each core specialist to evaluate the external project from their perspective. **Run all specialists in parallel.**
-
-For each specialist, provide:
-1. The project profile from the scout
-2. The key files the scout identified as relevant to that specialist
-3. A reminder to be critical and compare against what our project already does
-
-### Specialists to dispatch:
-
-**architecture-consultant:**
-```
-Task(subagent_type="architecture-consultant", prompt="External Project Analysis: <discussion_id>
-
-Project Profile:
-<paste scout's project profile>
-
-Key files to examine:
-<paste relevant key files from scout>
-
-Evaluate this external project's architectural patterns. Compare against our project's
-architecture. What patterns does this project use that could genuinely improve ours?
-What patterns should we actively avoid?
-
-Be critical. Most projects won't have architectural innovations worth importing.
-If nothing stands out, say so clearly.")
-```
-
-**security-specialist:**
-```
-Task(subagent_type="security-specialist", prompt="External Project Analysis: <discussion_id>
-
-Project Profile:
-<paste scout's project profile>
-
-Evaluate this project's security patterns. Is there anything here that would strengthen
-our project's security posture? Check: auth patterns, input validation, secret management,
-CORS, dependency security. Most projects won't — say so if that's the case.")
-```
-
-**qa-specialist:**
-```
-Task(subagent_type="qa-specialist", prompt="External Project Analysis: <discussion_id>
-
-Project Profile:
-<paste scout's project profile>
-
-Evaluate this project's testing strategy. Are there testing patterns, fixture approaches,
-coverage strategies, or test infrastructure that would improve our test suite?
-Be specific about what's better and why.")
-```
-
-**performance-analyst:**
-```
-Task(subagent_type="performance-analyst", prompt="External Project Analysis: <discussion_id>
-
-Project Profile:
-<paste scout's project profile>
-
-Evaluate this project's performance patterns. Any caching, concurrency, connection pooling,
-or optimization approaches worth adopting? Skip with 'nothing notable' if nothing stands out.")
-```
-
-**docs-knowledge:**
-```
-Task(subagent_type="docs-knowledge", prompt="External Project Analysis: <discussion_id>
-
-Project Profile:
-<paste scout's project profile>
-
-Evaluate this project's documentation approach. ADRs, API docs, README quality, onboarding
-experience, inline documentation — anything we should learn from?")
-```
-
-**independent-perspective:**
-```
-Task(subagent_type="independent-perspective", prompt="External Project Analysis: <discussion_id>
-
-Project Profile:
-<paste scout's project profile>
-
-Look at this project with completely fresh eyes. What's the most surprising or unconventional
-thing about it? What would everyone else miss? Is there a hidden risk in adopting anything
-from this project? What's the 'pre-mortem' — if we adopt a pattern from here, what goes wrong?")
-```
-
-Capture each specialist's findings:
+Also capture each specialist's perspective referenced in the synthesis:
 ```bash
-python scripts/write_event.py "<discussion_id>" "<agent-name>" "proposal" "<findings>" --confidence <score>
+python scripts/write_event.py "<discussion_id>" "<agent-name>" "proposal" "<specialist findings>" --confidence <score>
 ```
 
-## Step 5: Scoring Round
+If the project-analyst says "No specialist review recommended" or "No further review recommended," skip to Step 5 with a short report.
 
-Collect all patterns recommended by any specialist. For each pattern, score using this rubric:
+## Step 4: Scoring Round
+
+Collect all patterns recommended by any specialist or identified in the co-review synthesis. For each pattern, score using this rubric:
 
 | Dimension | Question | 1 (low) | 5 (high) |
 |-----------|----------|---------|----------|
@@ -176,7 +93,9 @@ Collect all patterns recommended by any specialist. For each pattern, score usin
 
 Check `memory/lessons/adoption-log.md` — if we've seen this pattern in previous analyses, note the cumulative sighting count. Patterns with 3+ sightings get +2 bonus to their score (Rule of Three).
 
-## Step 6: Synthesis & Report
+Where specialists disagreed (points of dissent from the co-review), note the disagreement in the scoring rationale. Dissent doesn't lower the score automatically — but unresolved dissent caps confidence.
+
+## Step 5: Synthesis & Report
 
 Write the facilitator synthesis event:
 ```bash
@@ -193,20 +112,22 @@ Create the analysis report following `docs/templates/project-analysis-template.m
 docs/reviews/ANALYSIS-YYYYMMDD-HHMMSS-<slug>.md
 ```
 
-## Step 7: Present to Developer
+## Step 6: Present to Developer
 
 Present the findings:
 
 1. **Project Profile** — Quick summary of what we reviewed
-2. **Recommended Adoptions** (≥ 20/25) — What to import, where it goes, why it scored high
-3. **Deferred Patterns** (15–19) — What's interesting but not ready, what would change our mind
-4. **Rejected Patterns** (< 15) — Brief note on what was considered and why it was dropped
-5. **Anti-Patterns** — What this project does that we should actively avoid
-6. **Specialist consensus** — Did agents agree or disagree? Any surprising dissent?
+2. **Specialist Team** — Who reviewed and what they focused on
+3. **Recommended Adoptions** (≥ 20/25) — What to import, where it goes, why it scored high
+4. **Points of Dissent** — Where the team disagreed and why that matters
+5. **Deferred Patterns** (15–19) — What's interesting but not ready, what would change our mind
+6. **Rejected Patterns** (< 15) — Brief note on what was considered and why it was dropped
+7. **Anti-Patterns** — What this project does that we should actively avoid
+8. **Specialist Consensus Summary** — Did agents agree or disagree? Any surprising dissent?
 
 **Wait for developer approval before making any changes to our project.**
 
-## Step 8: Execute Approved Adoptions
+## Step 7: Execute Approved Adoptions
 
 For each pattern the developer approves:
 
@@ -240,7 +161,7 @@ For patterns that were deferred or rejected, also log them:
    - **Revisit if**: <what would change the decision>
    ```
 
-## Step 9: Close Discussion + Cleanup
+## Step 8: Close Discussion + Cleanup
 
 ```bash
 python scripts/close_discussion.py "<discussion_id>"

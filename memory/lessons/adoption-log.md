@@ -1,10 +1,10 @@
 ---
-last_updated: "2026-02-18"
-total_analyses: 0
-patterns_evaluated: 0
-patterns_adopted: 0
-patterns_deferred: 0
-patterns_rejected: 0
+last_updated: "2026-02-19"
+total_analyses: 1
+patterns_evaluated: 8
+patterns_adopted: 2
+patterns_deferred: 3
+patterns_rejected: 3
 ---
 
 # Adoption Log (Learning Ledger)
@@ -34,15 +34,68 @@ Each entry records:
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
 
-<!-- Example entry format:
+### Pattern: Custom Exception Hierarchy with HTTP Status Mapping
+- **First seen**: ContractorVerification (2026-02-19)
+- **Analysis**: ANALYSIS-20260219-010900-contractor-verification
+- **Sightings**: 1
+- **Score**: 23/25 (prevalence:5, elegance:4, evidence:5, fit:5, maintenance:4)
+- **Status**: RECOMMENDED
+- **Location**: Pending developer approval — target: `src/exceptions.py` + `src/error_handlers.py`
+- **Decision**: Fills a concrete gap. Our routes use bare HTTPException with no error_code, no structured details, no centralized logging. Three specialists converged on this recommendation.
 
-### Pattern: [Name]
-- **First seen**: [project name/url] (YYYY-MM-DD)
-- **Also seen in**: [project2], [project3]
-- **Sightings**: N
-- **Score**: XX/25 (prevalence:X, elegance:X, evidence:X, fit:X, maintenance:X)
-- **Status**: ADOPTED / DEFERRED / REJECTED
-- **Location**: [where in our project, if adopted]
-- **Decision**: [reasoning for the status]
+### Pattern: Quality Gate Script
+- **First seen**: ContractorVerification (2026-02-19)
+- **Analysis**: ANALYSIS-20260219-010900-contractor-verification
+- **Sightings**: 1
+- **Score**: 22/25 (prevalence:5, elegance:4, evidence:4, fit:5, maintenance:4)
+- **Status**: RECOMMENDED
+- **Location**: Pending developer approval — target: `scripts/quality_gate.py`
+- **Decision**: Our framework documents quality standards in 3 rules files but has no automated enforcement. This converts documented-but-unenforced standards into executable validation.
 
--->
+### Pattern: Session Initialization Protocol
+- **First seen**: ContractorVerification (2026-02-19)
+- **Analysis**: ANALYSIS-20260219-010900-contractor-verification
+- **Sightings**: 1
+- **Score**: 18/25 (prevalence:3, elegance:4, evidence:3, fit:5, maintenance:3)
+- **Status**: DEFERRED
+- **Decision**: Fills a genuine gap (no session initialization in our framework) but the target's own stale PLAN.md demonstrates the maintenance failure mode. Adopt the principle using existing directories (sprints/, memory/, discussions/) rather than creating new manually-maintained files. Revisit when implementing modified version.
+
+### Pattern: Four-Phase Implementation Protocol with Self-Grading
+- **First seen**: ContractorVerification (2026-02-19)
+- **Analysis**: ANALYSIS-20260219-010900-contractor-verification
+- **Sightings**: 1
+- **Score**: 17/25 (prevalence:3, elegance:4, evidence:3, fit:3, maintenance:4)
+- **Status**: DEFERRED
+- **Decision**: Overlaps with existing education gates. Self-grading conflicts with Principle #4. Could be reframed as pre-review self-check. Revisit if agents demonstrate premature completion patterns.
+
+### Pattern: Config-Driven Pydantic SelectorSpec
+- **First seen**: ContractorVerification (2026-02-19)
+- **Analysis**: ANALYSIS-20260219-010900-contractor-verification
+- **Sightings**: 1
+- **Score**: 16/25 (prevalence:3, elegance:5, evidence:5, fit:1, maintenance:2)
+- **Status**: REJECTED
+- **Decision**: Elegant design but deeply domain-specific. No resource location problem in our framework. Revisit if framework grows to need resilient resource location.
+
+### Pattern: AI-Powered Config Auto-Repair
+- **First seen**: ContractorVerification (2026-02-19)
+- **Analysis**: ANALYSIS-20260219-010900-contractor-verification
+- **Sightings**: 1
+- **Score**: 15/25 (prevalence:2, elegance:4, evidence:3, fit:3, maintenance:3)
+- **Status**: REJECTED
+- **Decision**: Architecturally interesting (local LLM for self-healing) but no configs to degrade and no health monitoring to detect degradation.
+
+### Pattern: Stuck Record Recovery at Startup
+- **First seen**: ContractorVerification (2026-02-19)
+- **Analysis**: ANALYSIS-20260219-010900-contractor-verification
+- **Sightings**: 1
+- **Score**: 16/25 (prevalence:4, elegance:3, evidence:4, fit:2, maintenance:3)
+- **Status**: REJECTED
+- **Decision**: Standard for stateful processing systems but our Todo API has no long-running operations.
+
+### Pattern: Version Bump Discipline
+- **First seen**: ContractorVerification (2026-02-19)
+- **Analysis**: ANALYSIS-20260219-010900-contractor-verification
+- **Sightings**: 1
+- **Score**: 13/25 (prevalence:4, elegance:2, evidence:3, fit:1, maintenance:3)
+- **Status**: REJECTED
+- **Decision**: Unnecessary ceremony for a framework template that is not a deployed service.
