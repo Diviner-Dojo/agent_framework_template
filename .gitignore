@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.claude/settings.local.json
+*.db
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+*.sqlite3
