@@ -1,7 +1,7 @@
 """SQLite database layer for the Todo API."""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_DB_PATH = Path(__file__).parent.parent / "todo.db"
@@ -44,7 +44,7 @@ class TodoDatabase:
 
     def create_todo(self, title: str, description: str | None = None) -> dict:
         """Create a new todo and return it."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.execute(
             "INSERT INTO todos (title, description, completed, created_at) VALUES (?, ?, 0, ?)",
             (title, description, now),
@@ -54,9 +54,7 @@ class TodoDatabase:
 
     def get_todo(self, todo_id: int) -> dict | None:
         """Get a single todo by ID."""
-        row = self.conn.execute(
-            "SELECT * FROM todos WHERE id = ?", (todo_id,)
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM todos WHERE id = ?", (todo_id,)).fetchone()
         if row is None:
             return None
         return dict(row)
@@ -69,14 +67,15 @@ class TodoDatabase:
                 (int(completed),),
             ).fetchall()
         else:
-            rows = self.conn.execute(
-                "SELECT * FROM todos ORDER BY id"
-            ).fetchall()
+            rows = self.conn.execute("SELECT * FROM todos ORDER BY id").fetchall()
         return [dict(row) for row in rows]
 
     def update_todo(
-        self, todo_id: int, title: str | None = None,
-        description: str | None = None, completed: bool | None = None,
+        self,
+        todo_id: int,
+        title: str | None = None,
+        description: str | None = None,
+        completed: bool | None = None,
     ) -> dict | None:
         """Update a todo. Only provided fields are changed."""
         existing = self.get_todo(todo_id)

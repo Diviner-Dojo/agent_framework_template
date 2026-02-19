@@ -82,7 +82,7 @@ discussions/    — Layer 1: Immutable discussion capture
 memory/         — Layer 3: Curated promoted knowledge
   lessons/      — Adoption log tracking patterns from external project reviews
 metrics/        — Layer 2: SQLite relational index
-scripts/        — Capture pipeline utilities
+scripts/        — Capture pipeline utilities + quality gate
 src/            — Application source code
 tests/          — Test suite
 ```
@@ -92,6 +92,18 @@ tests/          — Test suite
 The `/analyze-project` command points the specialist team outward — at any external project (local or GitHub) — to evaluate patterns worth adopting. The `/discover-projects` command finds candidates via GitHub search.
 
 Analysis results are scored on a 5-dimension rubric (prevalence, elegance, evidence, fit, maintenance) out of 25. Only patterns scoring >= 20/25 are recommended. The adoption log at `memory/lessons/adoption-log.md` tracks all evaluated patterns across analyses and enforces the Rule of Three: patterns seen in 3+ independent projects get priority consideration.
+
+## Quality Gate
+
+Before declaring work complete, run the quality gate to verify all documented standards:
+```
+python scripts/quality_gate.py
+```
+This checks: formatting (ruff format), linting (ruff check), tests (pytest), and coverage (>= 80%). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks.
+
+## Error Handling
+
+The application uses a structured exception hierarchy (`src/exceptions.py`) with centralized error handling (`src/error_handlers.py`). All application errors inherit from `AppError` and carry `(message, error_code, details, status_code)`. New projects extend the hierarchy with domain-specific subclasses. Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the centralized handler converts them to consistent JSON responses.
 
 ## Capture Pipeline
 

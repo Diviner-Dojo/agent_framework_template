@@ -1,7 +1,5 @@
 """Pydantic models for the Todo API."""
 
-from datetime import datetime
-
 from pydantic import BaseModel, Field
 
 

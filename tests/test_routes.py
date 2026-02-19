@@ -1,7 +1,5 @@
 """Tests for the Todo API endpoints."""
 
-import pytest
-
 
 class TestCreateTodo:
     """Tests for POST /todos."""
@@ -86,6 +84,9 @@ class TestGetTodo:
     async def test_get_nonexistent_todo_returns_404(self, client):
         response = await client.get("/todos/99999")
         assert response.status_code == 404
+        data = response.json()
+        assert data["error_code"] == "NOT_FOUND"
+        assert data["resource"] == "todo"
 
 
 class TestUpdateTodo:
@@ -101,15 +102,16 @@ class TestUpdateTodo:
         assert data["description"] == sample_todo["description"]
 
     async def test_mark_completed(self, client, sample_todo):
-        response = await client.patch(
-            f"/todos/{sample_todo['id']}", json={"completed": True}
-        )
+        response = await client.patch(f"/todos/{sample_todo['id']}", json={"completed": True})
         assert response.status_code == 200
         assert response.json()["completed"] is True
 
     async def test_update_nonexistent_todo_returns_404(self, client):
         response = await client.patch("/todos/99999", json={"title": "New"})
         assert response.status_code == 404
+        data = response.json()
+        assert data["error_code"] == "NOT_FOUND"
+        assert data["resource"] == "todo"
 
 
 class TestDeleteTodo:
@@ -122,7 +124,11 @@ class TestDeleteTodo:
         # Verify it's gone
         get_response = await client.get(f"/todos/{sample_todo['id']}")
         assert get_response.status_code == 404
+        assert get_response.json()["error_code"] == "NOT_FOUND"
 
     async def test_delete_nonexistent_todo_returns_404(self, client):
         response = await client.delete("/todos/99999")
         assert response.status_code == 404
+        data = response.json()
+        assert data["error_code"] == "NOT_FOUND"
+        assert data["resource"] == "todo"
