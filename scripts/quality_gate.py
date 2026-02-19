@@ -1,17 +1,22 @@
-"""Run all quality checks defined in the framework's rules files.
+"""Run all quality checks for the Flutter/Dart project.
 
-Converts the documented standards from .claude/rules/ (coding_standards.md,
-testing_requirements.md, review_gates.md) into executable validation.
+Validates formatting (dart format), linting (dart analyze), tests (flutter test),
+coverage (>= 80%), ADR completeness, and review existence for code changes.
 
 Usage:
     python scripts/quality_gate.py            # run all checks
     python scripts/quality_gate.py --fix      # auto-fix then check
     python scripts/quality_gate.py --skip-tests --skip-coverage
+    python scripts/quality_gate.py --skip-reviews  # bypass review check
 
 Exit code 0 if all checks pass, 1 if any fail.
+
+Note: Requires Flutter SDK on PATH. If running from Git Bash on Windows,
+ensure 'flutter' and 'dart' are accessible (e.g., C:\\src\\flutter\\bin on PATH).
 """
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -19,9 +24,10 @@ from pathlib import Path
 import yaml
 
 PROJECT_ROOT = Path(__file__).parent.parent
-SRC_DIR = PROJECT_ROOT / "src"
-TESTS_DIR = PROJECT_ROOT / "tests"
+SRC_DIR = PROJECT_ROOT / "lib"
+TESTS_DIR = PROJECT_ROOT / "test"
 ADR_DIR = PROJECT_ROOT / "docs" / "adr"
+REVIEWS_DIR = PROJECT_ROOT / "docs" / "reviews"
 
 # ANSI color codes (no-op on terminals that don't support them)
 GREEN = "\033[92m"
@@ -31,27 +37,87 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 
+def _find_flutter() -> str:
+    """Find the flutter executable, checking PATH and common install locations."""
+    # Check if flutter is already on PATH
+    for cmd in ["flutter", "flutter.bat"]:
+        try:
+            result = subprocess.run(
+                [cmd, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                return cmd
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+
+    # Check common install location on Windows
+    common_path = Path("C:/src/flutter/bin")
+    if common_path.exists():
+        flutter_bat = common_path / "flutter.bat"
+        if flutter_bat.exists():
+            return str(flutter_bat)
+
+    print(f"  {RED}ERROR{RESET}  Flutter SDK not found on PATH.")
+    print('         Add Flutter to PATH: export PATH="$PATH:/c/src/flutter/bin"')
+    sys.exit(1)
+
+
+def _find_dart(flutter_cmd: str) -> str:
+    """Derive the dart command from the flutter command location."""
+    flutter_path = Path(flutter_cmd).resolve()
+    # Check the same directory as flutter
+    for candidate_dir in [flutter_path.parent, Path("C:/src/flutter/bin")]:
+        for name in ["dart.bat", "dart", "dart.exe"]:
+            dart_path = candidate_dir / name
+            if dart_path.exists():
+                return str(dart_path)
+    # Fallback: try running dart directly (might be on PATH)
+    try:
+        result = subprocess.run(["dart", "--version"], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            return "dart"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    print(f"  {RED}ERROR{RESET}  Dart SDK not found.")
+    sys.exit(1)
+
+
+# Resolve Flutter and Dart commands once at module level
+FLUTTER_CMD = _find_flutter()
+DART_CMD = _find_dart(FLUTTER_CMD)
+
+
 def validate_directories() -> list[str]:
-    """Validate that SRC_DIR and TESTS_DIR exist and contain Python files.
+    """Validate that SRC_DIR and TESTS_DIR exist and contain Dart files.
 
     Returns a list of error messages (empty if all valid).
     """
     errors: list[str] = []
-    for label, directory in [("Source", SRC_DIR), ("Tests", TESTS_DIR)]:
+    for label, directory in [("Source (lib/)", SRC_DIR), ("Tests (test/)", TESTS_DIR)]:
         if not directory.is_dir():
             errors.append(f"{label} directory does not exist: {directory}")
-        elif not list(directory.glob("*.py")):
-            errors.append(f"{label} directory contains no .py files: {directory}")
+        elif not list(directory.rglob("*.dart")):
+            errors.append(f"{label} directory contains no .dart files: {directory}")
     return errors
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run a command and return the result without raising on failure."""
+    # Ensure Flutter SDK is on PATH for subprocesses
+    env = os.environ.copy()
+    flutter_bin = str(Path(FLUTTER_CMD).parent)
+    if flutter_bin not in env.get("PATH", ""):
+        env["PATH"] = flutter_bin + os.pathsep + env.get("PATH", "")
+
     return subprocess.run(
         cmd,
         cwd=cwd or PROJECT_ROOT,
         capture_output=True,
         text=True,
+        env=env,
     )
 
 
@@ -71,28 +137,41 @@ def _skip(name: str) -> None:
 
 
 def check_formatting(fix: bool = False) -> bool:
-    """Check 1: ruff format compliance."""
+    """Check 1: dart format compliance."""
     if fix:
-        _run(["python", "-m", "ruff", "format", str(SRC_DIR), str(TESTS_DIR)])
-    result = _run(["python", "-m", "ruff", "format", "--check", str(SRC_DIR), str(TESTS_DIR)])
+        _run([DART_CMD, "format", str(SRC_DIR), str(TESTS_DIR)])
+        _run([DART_CMD, "fix", "--apply"])
+
+    result = _run([DART_CMD, "format", "--set-exit-if-changed", str(SRC_DIR), str(TESTS_DIR)])
     if result.returncode == 0:
-        _pass("Formatting (ruff format)")
+        _pass("Formatting (dart format)")
         return True
-    _fail("Formatting (ruff format)", "run: python -m ruff format src/ tests/")
+    _fail("Formatting (dart format)", "run: dart format lib/ test/")
+    if result.stdout:
+        lines = result.stdout.strip().split("\n")
+        for line in lines[:5]:
+            print(f"         {line}")
+        if len(lines) > 5:
+            print(f"         ... and {len(lines) - 5} more")
     return False
 
 
 def check_linting(fix: bool = False) -> bool:
-    """Check 2: ruff lint compliance."""
+    """Check 2: dart analyze compliance."""
     if fix:
-        _run(["python", "-m", "ruff", "check", "--fix", str(SRC_DIR), str(TESTS_DIR)])
-    result = _run(["python", "-m", "ruff", "check", str(SRC_DIR), str(TESTS_DIR)])
+        _run([DART_CMD, "fix", "--apply"])
+
+    result = _run([DART_CMD, "analyze", str(SRC_DIR), str(TESTS_DIR)])
     if result.returncode == 0:
-        _pass("Linting (ruff check)")
+        # dart analyze returns 0 even with infos — check output for errors
+        output = result.stdout + result.stderr
+        if "error" in output.lower() and "0 errors" not in output.lower():
+            _fail("Linting (dart analyze)")
+            return False
+        _pass("Linting (dart analyze)")
         return True
-    _fail("Linting (ruff check)", "run: python -m ruff check src/ tests/")
+    _fail("Linting (dart analyze)", "run: dart analyze lib/ test/")
     if result.stdout:
-        # Show first few lines of lint output for context
         lines = result.stdout.strip().split("\n")
         for line in lines[:5]:
             print(f"         {line}")
@@ -102,16 +181,64 @@ def check_linting(fix: bool = False) -> bool:
 
 
 def check_tests() -> bool:
-    """Check 3: pytest passes."""
-    result = _run(["python", "-m", "pytest", str(TESTS_DIR), "-x", "-q"])
+    """Check 3: flutter test passes."""
+    result = _run([FLUTTER_CMD, "test"])
     if result.returncode == 0:
-        _pass("Tests (pytest)")
+        _pass("Tests (flutter test)")
         return True
-    _fail("Tests (pytest)")
-    if result.stdout:
-        lines = result.stdout.strip().split("\n")
+    _fail("Tests (flutter test)")
+    output = result.stdout or result.stderr
+    if output:
+        lines = output.strip().split("\n")
         for line in lines[-10:]:
             print(f"         {line}")
+    return False
+
+
+def check_coverage() -> bool:
+    """Check 4: coverage meets >= 80% threshold.
+
+    Runs flutter test --coverage, then parses coverage/lcov.info
+    to compute the overall line coverage percentage.
+    """
+    result = _run([FLUTTER_CMD, "test", "--coverage"])
+    if result.returncode != 0:
+        _fail("Coverage (tests failed — cannot compute coverage)")
+        return False
+
+    lcov_path = PROJECT_ROOT / "coverage" / "lcov.info"
+    if not lcov_path.exists():
+        _fail("Coverage (no lcov.info generated)")
+        return False
+
+    # Parse lcov.info to compute coverage.
+    # Exclude generated files (*.g.dart, *.freezed.dart) which inflate
+    # the denominator without reflecting hand-written code quality.
+    total_lines = 0
+    hit_lines = 0
+    current_file = ""
+    skip_file = False
+    text = lcov_path.read_text(encoding="utf-8")
+    for line in text.split("\n"):
+        if line.startswith("SF:"):
+            current_file = line[3:]
+            skip_file = current_file.endswith(".g.dart") or current_file.endswith(".freezed.dart")
+        elif skip_file:
+            continue
+        elif line.startswith("LF:"):
+            total_lines += int(line[3:])
+        elif line.startswith("LH:"):
+            hit_lines += int(line[3:])
+
+    if total_lines == 0:
+        _fail("Coverage (no lines found in lcov.info)")
+        return False
+
+    percentage = (hit_lines / total_lines) * 100
+    if percentage >= 80:
+        _pass(f"Coverage ({percentage:.1f}% >= 80%)")
+        return True
+    _fail(f"Coverage ({percentage:.1f}% < 80%)", "target: >= 80%")
     return False
 
 
@@ -177,30 +304,95 @@ def check_adrs() -> bool:
     return True
 
 
-def check_coverage() -> bool:
-    """Check 4: coverage meets threshold (configured in pyproject.toml)."""
-    result = _run(
-        [
-            "python",
-            "-m",
-            "pytest",
-            str(TESTS_DIR),
-            f"--cov={SRC_DIR}",
-            "--cov-report=term-missing:skip-covered",
-            "--cov-fail-under=80",
-            "-q",
-        ]
-    )
-    if result.returncode == 0:
-        _pass("Coverage (>= 80%)")
+# --- Review existence helpers ---
+
+# Directories whose files count as "code changes" requiring review
+_CODE_PREFIXES = ("lib/", "test/", "scripts/")
+_CODE_EXTENSIONS = (".dart", ".py")
+_GENERATED_SUFFIXES = (".g.dart", ".freezed.dart")
+
+# Framework infrastructure directories — .md files here are reviewable
+_FRAMEWORK_PREFIXES = (".claude/agents/", ".claude/commands/", ".claude/rules/")
+_FRAMEWORK_EXTENSIONS = (".md", ".py")
+
+
+def _get_staged_code_files() -> list[str]:
+    """Return staged files that count as reviewable code changes.
+
+    Runs ``git diff --cached --name-only`` and filters for code files
+    under known source directories, excluding generated files.
+    Returns an empty list if git is unavailable (fails safe).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+
+    files: list[str] = []
+    for line in result.stdout.strip().split("\n"):
+        f = line.strip()
+        if not f:
+            continue
+        # Check code directories (lib/, test/, scripts/)
+        is_code = (
+            any(f.startswith(p) for p in _CODE_PREFIXES)
+            and any(f.endswith(ext) for ext in _CODE_EXTENSIONS)
+            and not any(f.endswith(s) for s in _GENERATED_SUFFIXES)
+        )
+        # Check framework directories (.claude/agents/, commands/, rules/)
+        is_framework = any(f.startswith(p) for p in _FRAMEWORK_PREFIXES) and any(
+            f.endswith(ext) for ext in _FRAMEWORK_EXTENSIONS
+        )
+        if is_code or is_framework:
+            files.append(f)
+    return files
+
+
+def _find_todays_reviews() -> list[Path]:
+    """Find review reports created today (matching REV-YYYYMMDD pattern)."""
+    import datetime
+
+    today = datetime.date.today().strftime("%Y%m%d")
+    if not REVIEWS_DIR.is_dir():
+        return []
+    return sorted(REVIEWS_DIR.glob(f"REV-{today}*.md"))
+
+
+def check_review_existence() -> bool:
+    """Check 6: verify a review report exists when code changes are staged.
+
+    Logic:
+    - No staged code files → PASS (nothing to review)
+    - Staged code files + review report from today → PASS
+    - Staged code files + no review today → FAIL
+    """
+    staged = _get_staged_code_files()
+    if not staged:
+        _pass("Review existence (no code changes staged)")
         return True
-    _fail("Coverage (>= 80%)", "run: pytest --cov=src --cov-fail-under=80")
-    if result.stdout:
-        lines = result.stdout.strip().split("\n")
-        # Show coverage summary lines
-        for line in lines:
-            if "TOTAL" in line or "FAIL" in line or "%" in line:
-                print(f"         {line}")
+
+    reviews = _find_todays_reviews()
+    if reviews:
+        names = ", ".join(r.stem for r in reviews)
+        _pass(f"Review existence ({names})")
+        return True
+
+    _fail(
+        "Review existence",
+        "code changes staged but no review report found today. "
+        "Run /review before committing, or use --skip-reviews to bypass.",
+    )
+    print(f"         Staged code files: {', '.join(staged[:5])}")
+    if len(staged) > 5:
+        print(f"         ... and {len(staged) - 5} more")
     return False
 
 
@@ -217,6 +409,11 @@ def main() -> int:
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--skip-coverage", action="store_true")
     parser.add_argument("--skip-adrs", action="store_true")
+    parser.add_argument(
+        "--skip-reviews",
+        action="store_true",
+        help="Skip review existence check",
+    )
     args = parser.parse_args()
 
     print(f"\n{BOLD}Quality Gate{RESET}")
@@ -238,21 +435,21 @@ def main() -> int:
 
     # Check 1: Formatting
     if args.skip_format:
-        _skip("Formatting (ruff format)")
+        _skip("Formatting (dart format)")
     else:
         total += 1
         results.append(check_formatting(fix=args.fix))
 
     # Check 2: Linting
     if args.skip_lint:
-        _skip("Linting (ruff check)")
+        _skip("Linting (dart analyze)")
     else:
         total += 1
         results.append(check_linting(fix=args.fix))
 
     # Check 3: Tests
     if args.skip_tests:
-        _skip("Tests (pytest)")
+        _skip("Tests (flutter test)")
     else:
         total += 1
         results.append(check_tests())
@@ -270,6 +467,13 @@ def main() -> int:
     else:
         total += 1
         results.append(check_adrs())
+
+    # Check 6: Review existence
+    if args.skip_reviews:
+        _skip("Review existence")
+    else:
+        total += 1
+        results.append(check_review_existence())
 
     # Summary
     passed = sum(results)

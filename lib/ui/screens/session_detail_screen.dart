@@ -1,0 +1,119 @@
+// ===========================================================================
+// file: lib/ui/screens/session_detail_screen.dart
+// purpose: Read-only view of a past session's full transcript.
+//
+// Shows all messages as chat bubbles (same as the active session screen)
+// but without the text input field — this is a view-only screen.
+//
+// Accessed by tapping a SessionCard in the session list screen.
+// The session ID is passed as a route argument.
+// ===========================================================================
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../database/app_database.dart';
+import '../../database/daos/message_dao.dart';
+import '../../database/daos/session_dao.dart';
+import '../../providers/database_provider.dart';
+import '../../utils/timestamp_utils.dart';
+import '../widgets/chat_bubble.dart';
+
+/// Read-only transcript view for a past session.
+class SessionDetailScreen extends ConsumerStatefulWidget {
+  final String sessionId;
+
+  const SessionDetailScreen({super.key, required this.sessionId});
+
+  @override
+  ConsumerState<SessionDetailScreen> createState() =>
+      _SessionDetailScreenState();
+}
+
+class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
+  JournalSession? _session;
+  List<JournalMessage>? _messages;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  /// Load the session and its messages from the database.
+  Future<void> _loadData() async {
+    final sessionDao = SessionDao(ref.read(databaseProvider));
+    final messageDao = MessageDao(ref.read(databaseProvider));
+
+    final session = await sessionDao.getSessionById(widget.sessionId);
+    final messages = await messageDao.getMessagesForSession(widget.sessionId);
+
+    if (mounted) {
+      setState(() {
+        _session = session;
+        _messages = messages;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Session')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_session == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Session')),
+        body: const Center(child: Text('Session not found.')),
+      );
+    }
+
+    final session = _session!;
+    final messages = _messages ?? [];
+
+    return Scaffold(
+      appBar: AppBar(title: Text(formatShortDate(session.startTime))),
+      body: Column(
+        children: [
+          // Session summary header (if available).
+          if (session.summary != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: Text(
+                session.summary!,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+              ),
+            ),
+
+          // Message list — the full conversation transcript.
+          Expanded(
+            child: messages.isEmpty
+                ? const Center(child: Text('No messages in this session.'))
+                : ListView.builder(
+                    padding: const EdgeInsets.only(top: 8, bottom: 16),
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = messages[index];
+                      return ChatBubble(
+                        content: msg.content,
+                        role: msg.role,
+                        timestamp: msg.timestamp,
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}

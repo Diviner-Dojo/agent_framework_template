@@ -1,0 +1,91 @@
+// ===========================================================================
+// file: lib/database/app_database.dart
+// purpose: drift database class — single entry point for all local DB access.
+//          Uses lazy initialization and includes migration strategy.
+//
+// Why drift? It provides type-safe SQL that feels familiar to SQL developers.
+// Generated code (*.g.dart) is created by build_runner — run:
+//   dart run build_runner build --delete-conflicting-outputs
+//
+// This file defines the database schema (which tables exist) and how to
+// open/create the SQLite file on disk. The actual table definitions are
+// in tables.dart.
+// ===========================================================================
+
+import 'dart:io';
+
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
+import 'tables.dart';
+
+// The "part" directive tells Dart that app_database.g.dart is part of this file.
+// build_runner will generate that file with the _$AppDatabase base class.
+part 'app_database.g.dart';
+
+/// The main database class for the app.
+///
+/// This class is annotated with @DriftDatabase to tell the code generator
+/// which tables to include. The generated _$AppDatabase base class provides
+/// typed accessors for each table (e.g., this.journalSessions, this.journalMessages).
+///
+/// Usage:
+///   final db = AppDatabase();          // production (file-based)
+///   final db = AppDatabase.forTesting(NativeDatabase.memory());  // tests
+@DriftDatabase(tables: [JournalSessions, JournalMessages])
+class AppDatabase extends _$AppDatabase {
+  /// Default constructor — uses a file-based SQLite database.
+  /// The database file is created in the app's documents directory.
+  AppDatabase() : super(_openConnection());
+
+  /// Named constructor for testing — accepts any query executor.
+  /// Pass NativeDatabase.memory() for an in-memory database that
+  /// doesn't touch the filesystem.
+  AppDatabase.forTesting(super.executor);
+
+  /// Schema version — increment this whenever you change table definitions.
+  /// When the version changes, the onUpgrade callback in MigrationStrategy
+  /// handles migrating existing data to the new schema.
+  @override
+  int get schemaVersion => 1;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    // onCreate runs when the database file is first created.
+    // It creates all tables defined in the @DriftDatabase annotation.
+    onCreate: (Migrator m) async {
+      await m.createAll();
+    },
+    // onUpgrade handles schema changes between versions.
+    // For Phase 1, we only have version 1 — no migrations needed yet.
+    // Future example:
+    //   if (from < 2) {
+    //     await m.addColumn(journalSessions, journalSessions.newColumn);
+    //   }
+    onUpgrade: (Migrator m, int from, int to) async {
+      // Migrations will be added here as the schema evolves.
+    },
+  );
+}
+
+/// Creates a lazily-opened connection to the SQLite database file.
+///
+/// LazyDatabase delays the actual file creation until the first query,
+/// which avoids blocking app startup with I/O.
+///
+/// The database file is stored in the app's documents directory:
+///   - Android: /data/data/com.divinerdojo.agentic_journal/files/
+///   - iOS: NSDocumentDirectory
+///
+/// Note: This file is NOT encrypted in Phase 1. The AndroidManifest.xml
+/// has android:allowBackup="false" to prevent extraction via backup.
+/// SQLCipher encryption is planned for Phase 4 (see product brief).
+LazyDatabase _openConnection() {
+  return LazyDatabase(() async {
+    final dbFolder = await getApplicationDocumentsDirectory();
+    final file = File(p.join(dbFolder.path, 'agentic_journal.sqlite'));
+    return NativeDatabase.createInBackground(file);
+  });
+}

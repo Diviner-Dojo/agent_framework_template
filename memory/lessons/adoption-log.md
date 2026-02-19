@@ -83,10 +83,11 @@ Each entry records:
 - **Score**: 24/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING
-- **Location**: `tests/conftest.py` (pytest_addoption + pytest_collection_modifyitems) + `pyproject.toml` (marker registration). Adds `--run-llm` and `--run-slow` CLI flags to gate expensive/flaky tests.
+- **Adoption Status**: REVERTED
+- **Location**: ~~`tests/conftest.py` (pytest_addoption + pytest_collection_modifyitems) + `pyproject.toml`~~ (deleted)
 - **Decision**: Quality gate runs deterministic tests by default. LLM-dependent and slow tests require explicit opt-in flags. Prevents API outages from blocking all commits. All 3 specialists converged (architecture, QA, independent).
 - **Date**: 2026-02-19
+- **Reverted**: 2026-02-19. Tech-stack pivot from Python/FastAPI to Flutter/Dart (ADR-0002) deleted `tests/conftest.py` and `pyproject.toml`. Pytest markers are inapplicable to Flutter test. The underlying principle (gating expensive tests behind opt-in flags) should be re-evaluated using Flutter/Dart test tagging when LLM-dependent tests are introduced.
 
 ### Pattern: Intervention Complexity Hierarchy
 - **First seen**: MaximeRobeyns/self_improving_coding_agent (2026-02-19)
@@ -471,7 +472,7 @@ Each entry records:
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
 - **Location**: `.claude/hooks/auto-format.sh` + `.claude/settings.json`
-- **Decision**: Automates ruff formatting after every file edit. Zero cognitive overhead, set-and-forget. We already use ruff; this makes it automatic.
+- **Decision**: Automates formatting after every file edit. Zero cognitive overhead, set-and-forget. Currently formats Python files (scripts/) with ruff. Dart files are formatted by `dart format` in the quality gate but NOT by this hook — hook should be extended to handle `*.dart` files with `dart format` alongside `*.py` with ruff.
 - **Date**: 2026-02-19
 
 ### Pattern: Model-Tier Agent Assignment
@@ -547,10 +548,11 @@ Each entry records:
 - **Sightings**: 1
 - **Score**: 23/25 (prevalence:5, elegance:4, evidence:5, fit:5, maintenance:4)
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING
-- **Location**: `src/exceptions.py` + `src/error_handlers.py`
+- **Adoption Status**: REVERTED
+- **Location**: ~~`src/exceptions.py` + `src/error_handlers.py`~~ (deleted)
 - **Decision**: Fills a concrete gap. Routes used bare HTTPException with no error_code, no structured details, no centralized logging. Three specialists converged on this recommendation.
 - **Date**: 2026-02-19
+- **Reverted**: 2026-02-19. Tech-stack pivot from Python/FastAPI to Flutter/Dart (ADR-0002) deleted `src/exceptions.py` and `src/error_handlers.py`. The Python exception hierarchy is inapplicable to Dart. The underlying principle (typed exception hierarchy with structured error details) should be re-evaluated during Dart error handling design.
 
 ### Pattern: Quality Gate Script
 - **First seen**: ContractorVerification (2026-02-19)

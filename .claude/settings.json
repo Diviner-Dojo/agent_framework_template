@@ -1,15 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)",
-      "Bash(pytest:*)",
-      "Bash(ruff:*)",
-      "Bash(sqlite3:*)",
-      "Bash(git:*)",
-      "Bash(pip:*)",
-      "Bash(uvicorn:*)",
-      "Bash(mkdir:*)",
-      "Bash(ls:*)"
+      "Read",
+      "Edit",
+      "Write",
+      "Bash(*)",
+      "WebFetch(*)",
+      "Task(*)"
     ]
   },
   "hooks": {
