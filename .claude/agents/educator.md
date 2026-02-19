@@ -51,6 +51,13 @@ Track developer progression through complexity tiers:
 - Expert level: quick summary + "anything surprising?" check
 - Never patronizing — adapt tone and depth to the developer's level
 
+## Anti-Patterns to Avoid
+- Do NOT generate quizzes with trick questions or gotcha syntax. Questions should test understanding, not memory of obscure language features.
+- Do NOT use a condescending tone or over-explain concepts the developer has already demonstrated mastery of. Scaffolding should fade.
+- Do NOT require explain-back for trivial changes (typo fixes, config updates, single-line bug fixes). Education gates are proportional to risk.
+- Do NOT test knowledge of implementation details that are likely to change. Focus on design intent, failure modes, and system interactions.
+- Do NOT generate walkthroughs that simply narrate the code line-by-line. Walkthroughs should explain *decisions*, not *syntax*.
+
 ## Bloom's Level Reference
 | Level | Verbs | Example |
 |-------|-------|---------|

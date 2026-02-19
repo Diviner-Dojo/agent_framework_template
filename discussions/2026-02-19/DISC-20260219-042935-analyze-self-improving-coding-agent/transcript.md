@@ -1,0 +1,44 @@
+---
+discussion_id: DISC-20260219-042935-analyze-self-improving-coding-agent
+started: 2026-02-19T04:36:27.151333+00:00
+ended: 2026-02-19T04:37:35.607242+00:00
+agents: [architecture-consultant, facilitator, independent-perspective, project-analyst, qa-specialist]
+total_turns: 5
+---
+
+# Discussion: DISC-20260219-042935-analyze-self-improving-coding-agent
+
+## Turn 1 — project-analyst (proposal)
+*2026-02-19T04:36:27.151333+00:00 | confidence: 0.88*
+
+Scout report: Self-Improving Coding Agent (SICA) by MaximeRobeyns. Python 3.11+ async agent framework, ~31200 LOC, 100 source files. Research-stage project with Docker sandbox, async event bus, LLM overseer, and multi-provider support. 9 patterns identified, 4 recommended for adoption (LLM-gated test markers, embedded anti-patterns in agent specializations, intervention complexity hierarchy, adoption audit feedback loop), 1 for adaptation (capture pipeline roundtrip tests), 4 structurally inapplicable (async overseer, InheritanceFlags, dynamic tool injection, compositional agent IDs). Key anti-patterns: committed credential template, unpinned deps, global mutable state, no CI/CD.
+
+---
+
+## Turn 2 — architecture-consultant (proposal)
+*2026-02-19T04:36:39.652125+00:00 | confidence: 0.84*
+
+Evaluated 7 patterns from SICA. Most are structurally inapplicable — they require an async runtime with in-process agent tasks (event bus, callgraph, overseer, InheritanceFlags, dynamic tool injection). Our synchronous Claude Code session architecture is a hard constraint. The review committee pattern already exists in our /review command. Token metering is novel but we don't make direct LLM API calls. Two patterns converge with other specialists: LLM-gated test markers (prevents quality gate breakage), and embedded anti-patterns in agent specializations (their 'pragmatist' reviewer enforces a complexity hierarchy that is more actionable than our generic role descriptions).
+
+---
+
+## Turn 3 — qa-specialist (proposal)
+*2026-02-19T04:36:45.244978+00:00 | confidence: 0.87*
+
+Three applicable QA patterns found: (1) LLM-gated test markers (--run-llm, --run-slow) — highest value, lowest friction. Custom pytest flags in conftest.py gate expensive tests. Prevents quality gate from breaking when LLM-dependent tests are added. (2) Capture pipeline roundtrip tests — events.jsonl is our most critical data layer but we have no serialization fidelity tests. Their test_event_encoder + test_save_and_load_state pattern tests encode/decode/persist/reload roundtrip. (3) Performance benchmarks with statistics via @pytest.mark.performance — interesting but premature for our project size.
+
+---
+
+## Turn 4 — independent-perspective (proposal)
+*2026-02-19T04:36:52.155060+00:00 | confidence: 0.82*
+
+Three transferable insights, most valuable being operational discipline not code: (1) Reviewer specializations embed explicit domain-specific prohibitions — their 'taste_maker' warns against cache-based optimizations and benchmark gaming, their 'pragmatist' enforces complexity hierarchy. This is qualitatively better than our generic agent role descriptions. Prohibitions are more actionable than permissions. (2) Intervention complexity hierarchy (prompts > tools > reasoning structures > agents > framework) — documentable as a CLAUDE.md principle. Self-limiting guidance that prevents over-engineering. (3) Adoption audit feedback loop — their agent_change_log.md uses pending/confirmed status creating hypothesis-evidence pairs. Our adoption-log.md lacks empirical feedback. Anti-pattern flagged: committed credential template (sandbox/GOOGLE_APPLICATION_CREDENTIALS.json).
+
+---
+
+## Turn 5 — facilitator (synthesis)
+*2026-02-19T04:37:35.607242+00:00 | confidence: 0.85*
+
+Analysis of MaximeRobeyns/self_improving_coding_agent (SICA). 11 patterns evaluated, 4 recommended for adoption (scoring >=20/25): LLM-gated test markers (24/25), intervention complexity hierarchy (22/25), embedded anti-patterns in agent specializations (20/25), adoption audit feedback loop (20/25). 3 deferred (15-19): capture pipeline roundtrip tests (19/25), tool self-documentation (15/25), model failover map (15/25). 4 rejected (<15): compositional agent IDs (10/25), dynamic tool injection (12/25), async overseer (12/25), InheritanceFlags (12/25). Key convergence: all 3 specialists agreed on LLM-gated markers and embedded anti-patterns. Key dissent: async overseer (architecture says structurally impossible, independent says conceptually interesting for future). Anti-patterns: committed credential template, unpinned deps, global mutable state, no CI/CD, test pyramid inversion.
+
+---

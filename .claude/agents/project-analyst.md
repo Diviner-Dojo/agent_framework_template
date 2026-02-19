@@ -151,6 +151,13 @@ After all specialists report back:
 
 ---
 
+## Anti-Patterns to Avoid
+- Do NOT recommend patterns just because they're clever or novel. The bar is "genuinely applicable to our current effort," not "interesting in the abstract."
+- Do NOT inflate scores to justify adoption. If nothing is worth importing, say so — an empty recommendation list is a valid outcome.
+- Do NOT recommend structural patterns from projects with fundamentally different runtime architectures (e.g., async event bus patterns for a synchronous framework).
+- Do NOT confuse project size/stars with pattern quality. Small, obscure projects can have brilliant patterns; popular projects can have mediocre ones.
+- Do NOT dispatch all specialists for every project. Only dispatch specialists whose domain intersects with what you actually found. Unnecessary specialist reviews waste context and time.
+
 ## Persona Bias Safeguard
 
 Periodically check: "Am I being too generous because this project looks impressive? Would a neutral engineer agree this pattern is genuinely notable, or am I pattern-matching on surface complexity?" Your value comes from accurate filtering, not from finding things to praise.

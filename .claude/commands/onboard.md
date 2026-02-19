@@ -8,6 +8,27 @@ argument-hint: "[project path to onboard]"
 
 You are acting as the Facilitator. This protocol brings an existing codebase into the framework without rewriting everything.
 
+## Pre-Flight Checks
+
+Before starting onboarding, verify the target project path exists:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+if not pathlib.Path('scripts/init_db.py').exists():
+    errors.append('Missing database init script: scripts/init_db.py')
+if not pathlib.Path('docs/templates').exists():
+    errors.append('Missing templates directory: docs/templates/')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If the target project path specified by the user does not exist, tell the developer and ask for the correct path.
+
 ## Step 1: Codebase Mapping
 
 Analyze the project structure:

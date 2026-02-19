@@ -26,7 +26,7 @@ We need a structured approach that:
 Adopt the AI-Native Agentic Development Framework v2.1 as the project's development methodology.
 
 This framework uses:
-- **Specialist agent panel** (8 core agents) for multi-perspective code review
+- **Specialist agent panel** (9 core agents, including project-analyst) for multi-perspective code review
 - **Coopetition model** where agents have shared goals but different professional priorities
 - **Four-layer capture stack** (immutable files, SQLite index, curated memory, optional vector)
 - **Education gates** (walkthrough, quiz, explain-back) before merge

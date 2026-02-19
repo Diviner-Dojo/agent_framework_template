@@ -8,6 +8,31 @@ argument-hint: "[path to artifact to promote]"
 
 Promote a reflection, pattern, or lesson from discussion artifacts to the curated memory layer.
 
+## Pre-Flight Checks
+
+Before promoting, verify prerequisites:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+if not pathlib.Path('memory').exists():
+    errors.append('Missing memory directory: memory/')
+if not pathlib.Path('metrics/evaluation.db').exists():
+    errors.append('Missing metrics database: metrics/evaluation.db')
+for subdir in ['decisions', 'patterns', 'reflections', 'lessons', 'rules']:
+    d = pathlib.Path('memory') / subdir
+    if not d.exists():
+        errors.append(f'Missing memory subdirectory: memory/{subdir}/')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If pre-flight fails, tell the developer what's missing and suggest running `/onboard` to set up the framework structure.
+
 ## Promotion Criteria
 
 Before promoting, verify ALL of the following:

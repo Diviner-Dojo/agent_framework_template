@@ -1,0 +1,4 @@
+# Hook runtime directories (session-specific, not committed)
+.state/
+.locks/
+.backups/

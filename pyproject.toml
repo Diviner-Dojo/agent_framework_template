@@ -19,6 +19,10 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "uses_llm: test calls a real LLM API (skipped unless --run-llm is passed)",
+    "slow: test is slow to execute (skipped unless --run-slow is passed)",
+]
 
 [tool.coverage.run]
 source = ["src"]

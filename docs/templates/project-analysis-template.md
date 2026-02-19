@@ -4,6 +4,8 @@ discussion_id: "<linked discussion ID>"
 target_project: "<path or github url>"
 target_language: "<primary language>"
 target_stars: "<star count if github, N/A if local>"
+target_license: "<SPDX identifier, 'NONE', or 'Custom'>"
+license_risk: "<low / medium / high>"
 agents_consulted: []
 patterns_evaluated: 0
 patterns_recommended: 0
@@ -28,6 +30,15 @@ analysis_date: "YYYY-MM-DD"
 | File | Significance |
 |------|-------------|
 | `path/to/file` | [Why this file was examined] |
+
+### License
+
+- **License**: [SPDX identifier or "No license"]
+- **Risk level**: [Low / Medium / High]
+- **Attribution required**: [Yes / No / N/A]
+- **Adoption constraint**: [None — permissive / Code adoption may impose copyleft obligations / Ideas only — no code adoption without license grant / N/A — own project]
+
+*If no license: All recommendations in this report are scoped to architectural ideas and design patterns. No code should be directly adapted from this project without obtaining a license grant from the copyright holder.*
 
 ---
 

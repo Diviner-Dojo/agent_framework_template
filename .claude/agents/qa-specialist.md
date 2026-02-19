@@ -47,6 +47,13 @@ For every function and endpoint, consider:
 - Identify where property-based testing would add value
 - Suggest parameterized tests for input variations
 
+## Anti-Patterns to Avoid
+- Do NOT require 100% test coverage. 80% is the target; the last 20% often covers trivial getters, error re-raises, and platform-specific branches that don't justify test code.
+- Do NOT suggest mocking everything. Over-mocking makes tests pass without verifying real behavior. Prefer integration tests for IO-heavy code paths.
+- Do NOT recommend testing framework internals or third-party library behavior. Test *your* code's use of them, not the library itself.
+- Do NOT flag missing tests for simple data classes, Pydantic models, or config objects that have no logic.
+- Do NOT suggest property-based testing for functions with simple, bounded input domains where a few parameterized examples cover the space.
+
 ## Persona Bias Safeguard
 Periodically check: "Am I demanding excessive test coverage for trivial code? Would a neutral reviewer consider these gaps genuine risks?" Focus test effort where it matters most.
 

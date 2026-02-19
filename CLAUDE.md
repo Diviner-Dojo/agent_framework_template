@@ -18,6 +18,7 @@
 5. **ADRs are never deleted.** Only superseded with references to the replacing decision. This creates an immutable decision history.
 6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk.
 7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
+8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
 
 ## Architectural Boundaries
 
@@ -28,8 +29,8 @@
 - **Layer 4 — Optional Vector**: Only when corpus grows large enough
 
 ### Agent Architecture
-- Subagents CANNOT spawn other subagents
-- The facilitator (main agent) orchestrates all multi-agent workflows
+- Subagents CANNOT spawn other subagents, except the **project-analyst** which serves as a delegated orchestrator for `/analyze-project` (it scouts the target project, then dispatches domain specialists to evaluate applicability)
+- The facilitator (main agent) orchestrates all other multi-agent workflows
 - Multiple subagents can run concurrently with true parallelism
 - Each subagent gets its own isolated context window
 - Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
@@ -75,7 +76,7 @@ Content here.
 .claude/
   agents/       — Specialist agent definitions (9 core, including project-analyst)
   commands/     — Slash command workflows (12 commands)
-  hooks/        — Automated lifecycle hooks (auto-format, session persistence)
+  hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
   rules/        — Auto-loaded standards (all agents inherit)
   skills/       — Reference knowledge (playbooks, checklists)
 docs/
@@ -85,7 +86,12 @@ docs/
   templates/    — Reusable artifact templates
 discussions/    — Layer 1: Immutable discussion capture
 memory/         — Layer 3: Curated promoted knowledge
+  archive/      — Superseded or deprecated knowledge
+  decisions/    — Promoted decision summaries
   lessons/      — Adoption log tracking patterns from external project reviews
+  patterns/     — Promoted code and process patterns
+  reflections/  — Promoted agent reflections
+  rules/        — Promoted rules (graduated to .claude/rules/)
 metrics/        — Layer 2: SQLite relational index
 scripts/        — Capture pipeline utilities + quality gate
 src/            — Application source code
@@ -115,8 +121,17 @@ The application uses a structured exception hierarchy (`src/exceptions.py`) with
 
 The project uses Claude Code hooks (configured in `.claude/settings.json`) for automated lifecycle actions:
 
-- **PostToolUse — auto-format** (`.claude/hooks/auto-format.sh`): Runs `ruff format` + `ruff check --fix` on any Python file after every Edit or Write tool call. Ensures code is always formatted without manual intervention. Requires `bash` (Git Bash or WSL on Windows).
-- **PreCompact** (`.claude/hooks/pre-compact.ps1`): Before context compaction, prompts the agent to update `BUILD_STATUS.md` with current task state, modified files, and resume instructions.
+### PreToolUse Hooks
+- **File Locking + Secret Detection + Protected Files** (`.claude/hooks/pre-tool-use-validator.sh` → `validate_tool_use.py`): On Write/Edit — acquires atomic file locks (prevents concurrent agent edits, 120s auto-expiry), blocks edits to protected files (.env, .git/, evaluation.db, .claude/settings.json), scans content for 12 secret patterns (API keys, AWS keys, JWT, GitHub PATs, private keys, exported secrets, Slack tokens, Bearer tokens, Anthropic keys, OpenAI keys, GCP API keys, GCP OAuth tokens). Test files are exempt from secret scanning.
+- **Pre-Commit Quality Gate** (`.claude/hooks/pre-commit-gate.sh`): On `git commit` — injects reminder to run `python scripts/quality_gate.py` before committing. Uses 5-minute verification cache to avoid repetition.
+- **Pre-Push Main Blocker** (`.claude/hooks/pre-push-main-blocker.sh`): On `git push` — blocks direct pushes to main/master branch with remediation instructions for branch-based workflow.
+
+### PostToolUse Hooks
+- **Auto-Format** (`.claude/hooks/auto-format.sh`): Runs `ruff format` + `ruff check --fix` on any Python file after every Edit or Write.
+- **Lock Release** (`.claude/hooks/post-tool-use-unlock.sh` → `release_lock.py`): Releases file locks after Write/Edit completes.
+
+### Session Hooks
+- **PreCompact** (`.claude/hooks/pre-compact.ps1`): Before context compaction, prompts the agent to update `BUILD_STATUS.md` with current task state.
 - **SessionStart** (`.claude/hooks/session-start.ps1`): On session resume or post-compaction, prompts the agent to read `BUILD_STATUS.md` to restore working context.
 
 `BUILD_STATUS.md` is session-scoped working state at the project root. It is ephemeral and distinct from the four-layer capture stack — it preserves in-flight context across sessions rather than capturing completed decisions.
@@ -133,9 +148,13 @@ For low-risk changes (config, docs, simple fixes), the quality gate alone may su
 ## Capture Pipeline
 
 When a `/review`, `/deliberate`, or `/analyze-project` command runs:
-1. `scripts/create_discussion.py` creates the discussion directory
+1. `scripts/create_discussion.py` creates the discussion directory and registers it in SQLite
 2. Each agent turn is captured via `scripts/write_event.py` to events.jsonl
-3. `scripts/close_discussion.py` seals the discussion (transcript, SQLite ingestion, read-only)
+3. `scripts/close_discussion.py` seals the discussion:
+   - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
+   - `scripts/ingest_events.py` inserts events into SQLite (Layer 2)
+   - Updates discussion status to `closed` in SQLite
+   - Sets discussion directory to read-only
 
 ## Agent Invocation Pattern
 

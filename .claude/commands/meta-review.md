@@ -7,6 +7,32 @@ allowed-tools: ["Read", "Write", "Bash", "Glob", "Grep"]
 
 You are acting as the Facilitator running the quarterly macro loop. This is the double-loop learning check: we question whether our review criteria themselves are correct.
 
+## Pre-Flight Checks
+
+Before running the meta-review, verify prerequisites:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+if not pathlib.Path('metrics/evaluation.db').exists():
+    errors.append('Missing metrics database: metrics/evaluation.db — run scripts/init_db.py first')
+for d in ['discussions', 'docs/adr', 'docs/sprints', 'memory', '.claude/rules']:
+    if not pathlib.Path(d).exists():
+        errors.append(f'Missing required directory: {d}')
+if not pathlib.Path('memory/lessons/adoption-log.md').exists():
+    errors.append('Missing adoption log: memory/lessons/adoption-log.md')
+if not pathlib.Path('CLAUDE.md').exists():
+    errors.append('Missing project constitution: CLAUDE.md')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If pre-flight fails, tell the developer what's missing. The metrics database and CLAUDE.md are essential for this analysis.
+
 ## Step 1: Gather Comprehensive Data
 
 Query SQLite for the full period:

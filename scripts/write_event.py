@@ -63,8 +63,15 @@ def write_event(
     Returns:
         The turn_id assigned to this event.
     """
-    valid_intents = {"proposal", "critique", "question", "evidence",
-                     "synthesis", "decision", "reflection"}
+    valid_intents = {
+        "proposal",
+        "critique",
+        "question",
+        "evidence",
+        "synthesis",
+        "decision",
+        "reflection",
+    }
     if intent not in valid_intents:
         raise ValueError(f"Invalid intent '{intent}'. Must be one of: {valid_intents}")
 
@@ -95,9 +102,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Write an event to a discussion")
     parser.add_argument("discussion_id", help="Discussion ID")
     parser.add_argument("agent", help="Agent name")
-    parser.add_argument("intent", choices=["proposal", "critique", "question",
-                                           "evidence", "synthesis", "decision",
-                                           "reflection"])
+    parser.add_argument(
+        "intent",
+        choices=[
+            "proposal",
+            "critique",
+            "question",
+            "evidence",
+            "synthesis",
+            "decision",
+            "reflection",
+        ],
+    )
     parser.add_argument("content", help="Event content")
     parser.add_argument("--reply-to", type=int, default=None)
     parser.add_argument("--confidence", type=float, default=0.8)
@@ -106,12 +122,19 @@ def main() -> None:
     args = parser.parse_args()
 
     tags = [t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else []
-    risk_flags = [r.strip() for r in args.risk_flags.split(",") if r.strip()] if args.risk_flags else []
+    risk_flags = (
+        [r.strip() for r in args.risk_flags.split(",") if r.strip()] if args.risk_flags else []
+    )
 
     turn_id = write_event(
-        args.discussion_id, args.agent, args.intent, args.content,
-        reply_to=args.reply_to, confidence=args.confidence,
-        tags=tags, risk_flags=risk_flags,
+        args.discussion_id,
+        args.agent,
+        args.intent,
+        args.content,
+        reply_to=args.reply_to,
+        confidence=args.confidence,
+        tags=tags,
+        risk_flags=risk_flags,
     )
     print(f"Turn {turn_id} written to {args.discussion_id}")
 

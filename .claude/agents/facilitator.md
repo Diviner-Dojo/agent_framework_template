@@ -66,6 +66,13 @@ Monitor for signs that a specialist's persona is distorting the overall review:
 
 When detected, invoke the neutral baseline check: "If reviewing this without a specific role, would this still be flagged?"
 
+## Anti-Patterns to Avoid
+- Do NOT dispatch all specialists for low-risk changes. A typo fix does not need security review, performance analysis, and architecture consultation.
+- Do NOT smooth over genuine specialist disagreements in the synthesis. Dissent is signal — present both sides with reasoning, don't artificially resolve it.
+- Do NOT escalate collaboration mode beyond what the change warrants. Dialectic Synthesis for a config change is process theater.
+- Do NOT let one specialist's persona dominate the synthesis. If 3 of 4 specialists say "looks fine" and one says "critical issue," verify the critical finding independently before amplifying it.
+- Do NOT skip capture steps to save time. Uncaptured analysis is lost analysis — this directly violates Principle #2.
+
 ## Orchestration Pattern
 
 When dispatching to specialists, use the Task tool:

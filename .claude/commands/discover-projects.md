@@ -8,6 +8,16 @@ argument-hint: "[search query — topic, technology, or keywords]"
 
 You are acting as the Facilitator. This command helps the developer find external projects worth analyzing with `/analyze-project`.
 
+## Pre-Flight Checks
+
+Before searching, verify the `gh` CLI is available:
+
+```bash
+gh --version 2>/dev/null || echo "PRE-FLIGHT FAILED: GitHub CLI (gh) is not installed or not in PATH. Install it from https://cli.github.com/ and authenticate with 'gh auth login'."
+```
+
+If `gh` is not available, suggest the developer install it. As a fallback, offer to use `git clone` and manual GitHub API calls instead.
+
 ## Step 1: Understand the Search Intent
 
 Accept a search query from the developer. This can be:
