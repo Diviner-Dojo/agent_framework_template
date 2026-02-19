@@ -23,6 +23,13 @@
 - Use `pytest.mark.parametrize` for testing multiple input variations
 
 ## Running Tests
-- `pytest tests/` runs the full suite
+- `pytest tests/` runs the full suite (deterministic tests only)
 - `pytest tests/ -v` for verbose output
 - `pytest tests/ --cov=src` for coverage report
+- `pytest tests/ --run-llm` includes tests that call real LLM APIs
+- `pytest tests/ --run-slow` includes slow-running tests
+
+## Test Markers
+- `@pytest.mark.uses_llm` — marks tests that call real LLM APIs (skipped by default, requires `--run-llm`)
+- `@pytest.mark.slow` — marks slow tests (skipped by default, requires `--run-slow`)
+- The quality gate runs deterministic tests only. LLM-dependent and slow tests are opt-in.

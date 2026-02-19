@@ -64,19 +64,26 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Record education gate results")
     parser.add_argument("session_id", help="Education session ID")
     parser.add_argument("discussion_id", help="Discussion ID that triggered the gate")
-    parser.add_argument("bloom_level",
-                        choices=["remember", "understand", "apply",
-                                 "analyze", "evaluate", "create"])
-    parser.add_argument("question_type",
-                        choices=["recall", "walkthrough", "debug-scenario",
-                                 "change-impact", "explain-back"])
+    parser.add_argument(
+        "bloom_level", choices=["remember", "understand", "apply", "analyze", "evaluate", "create"]
+    )
+    parser.add_argument(
+        "question_type",
+        choices=["recall", "walkthrough", "debug-scenario", "change-impact", "explain-back"],
+    )
     parser.add_argument("score", type=float, help="Score 0-1")
     parser.add_argument("passed", help="true or false")
     args = parser.parse_args()
 
     passed = args.passed.lower() in ("true", "1", "yes")
-    record_education(args.session_id, args.discussion_id, args.bloom_level,
-                     args.question_type, args.score, passed)
+    record_education(
+        args.session_id,
+        args.discussion_id,
+        args.bloom_level,
+        args.question_type,
+        args.score,
+        passed,
+    )
 
 
 if __name__ == "__main__":

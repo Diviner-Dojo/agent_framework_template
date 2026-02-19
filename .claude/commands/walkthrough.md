@@ -8,6 +8,25 @@ argument-hint: "[file or directory to walk through]"
 
 Delegate to the educator agent to produce a guided reading path.
 
+## Pre-Flight Checks
+
+Before starting the walkthrough, verify the target file(s) exist and the educator agent is available:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+if not pathlib.Path('.claude/agents/educator.md').exists():
+    errors.append('Missing educator agent definition: .claude/agents/educator.md')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If the target file or directory specified by the user does not exist, tell the developer and ask for the correct path.
+
 ## Workflow
 
 1. Read the specified file(s) or directory

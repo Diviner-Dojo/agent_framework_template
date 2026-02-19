@@ -16,9 +16,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 TESTS_DIR = PROJECT_ROOT / "tests"
+ADR_DIR = PROJECT_ROOT / "docs" / "adr"
 
 # ANSI color codes (no-op on terminals that don't support them)
 GREEN = "\033[92m"
@@ -26,6 +29,20 @@ RED = "\033[91m"
 YELLOW = "\033[93m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
+
+
+def validate_directories() -> list[str]:
+    """Validate that SRC_DIR and TESTS_DIR exist and contain Python files.
+
+    Returns a list of error messages (empty if all valid).
+    """
+    errors: list[str] = []
+    for label, directory in [("Source", SRC_DIR), ("Tests", TESTS_DIR)]:
+        if not directory.is_dir():
+            errors.append(f"{label} directory does not exist: {directory}")
+        elif not list(directory.glob("*.py")):
+            errors.append(f"{label} directory contains no .py files: {directory}")
+    return errors
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
@@ -57,9 +74,7 @@ def check_formatting(fix: bool = False) -> bool:
     """Check 1: ruff format compliance."""
     if fix:
         _run(["python", "-m", "ruff", "format", str(SRC_DIR), str(TESTS_DIR)])
-    result = _run(
-        ["python", "-m", "ruff", "format", "--check", str(SRC_DIR), str(TESTS_DIR)]
-    )
+    result = _run(["python", "-m", "ruff", "format", "--check", str(SRC_DIR), str(TESTS_DIR)])
     if result.returncode == 0:
         _pass("Formatting (ruff format)")
         return True
@@ -71,9 +86,7 @@ def check_linting(fix: bool = False) -> bool:
     """Check 2: ruff lint compliance."""
     if fix:
         _run(["python", "-m", "ruff", "check", "--fix", str(SRC_DIR), str(TESTS_DIR)])
-    result = _run(
-        ["python", "-m", "ruff", "check", str(SRC_DIR), str(TESTS_DIR)]
-    )
+    result = _run(["python", "-m", "ruff", "check", str(SRC_DIR), str(TESTS_DIR)])
     if result.returncode == 0:
         _pass("Linting (ruff check)")
         return True
@@ -102,15 +115,82 @@ def check_tests() -> bool:
     return False
 
 
+def check_adrs() -> bool:
+    """Check 5: ADR completeness — required frontmatter fields and markdown sections."""
+    required_fields = {"adr_id", "title", "status", "date", "decision_makers", "discussion_id"}
+    required_sections = {
+        "## Context",
+        "## Decision",
+        "## Alternatives Considered",
+        "## Consequences",
+    }
+
+    adr_files = sorted(ADR_DIR.glob("ADR-*.md"))
+    if not adr_files:
+        _pass("ADR completeness (no ADRs to check)")
+        return True
+
+    errors: list[str] = []
+    for adr_path in adr_files:
+        text = adr_path.read_text(encoding="utf-8")
+
+        # Parse YAML frontmatter (between --- delimiters)
+        if not text.startswith("---"):
+            errors.append(f"{adr_path.name}: missing YAML frontmatter")
+            continue
+
+        parts = text.split("---", 2)
+        if len(parts) < 3:
+            errors.append(f"{adr_path.name}: malformed YAML frontmatter")
+            continue
+
+        try:
+            frontmatter = yaml.safe_load(parts[1])
+        except yaml.YAMLError as e:
+            errors.append(f"{adr_path.name}: invalid YAML — {e}")
+            continue
+
+        if not isinstance(frontmatter, dict):
+            errors.append(f"{adr_path.name}: frontmatter is not a mapping")
+            continue
+
+        missing_fields = required_fields - set(frontmatter.keys())
+        if missing_fields:
+            errors.append(f"{adr_path.name}: missing fields: {', '.join(sorted(missing_fields))}")
+
+        body = parts[2]
+        missing_sections = {s for s in required_sections if s not in body}
+        if missing_sections:
+            errors.append(
+                f"{adr_path.name}: missing sections: {', '.join(sorted(missing_sections))}"
+            )
+
+    if errors:
+        _fail(f"ADR completeness ({len(errors)} issue(s) in {len(adr_files)} ADR(s))")
+        for err in errors[:5]:
+            print(f"         {err}")
+        if len(errors) > 5:
+            print(f"         ... and {len(errors) - 5} more")
+        return False
+
+    _pass(f"ADR completeness ({len(adr_files)} ADR(s))")
+    return True
+
+
 def check_coverage() -> bool:
     """Check 4: coverage meets threshold (configured in pyproject.toml)."""
-    result = _run([
-        "python", "-m", "pytest", str(TESTS_DIR),
-        f"--cov={SRC_DIR}",
-        "--cov-report=term-missing:skip-covered",
-        "--cov-fail-under=80",
-        "-q",
-    ])
+    result = _run(
+        [
+            "python",
+            "-m",
+            "pytest",
+            str(TESTS_DIR),
+            f"--cov={SRC_DIR}",
+            "--cov-report=term-missing:skip-covered",
+            "--cov-fail-under=80",
+            "-q",
+        ]
+    )
     if result.returncode == 0:
         _pass("Coverage (>= 80%)")
         return True
@@ -126,21 +206,32 @@ def check_coverage() -> bool:
 
 def main() -> int:
     """Run all quality checks and return exit code."""
-    parser = argparse.ArgumentParser(
-        description="Quality gate — validate all framework standards"
-    )
+    parser = argparse.ArgumentParser(description="Quality gate — validate all framework standards")
     parser.add_argument(
-        "--fix", action="store_true",
+        "--fix",
+        action="store_true",
         help="Auto-fix formatting and lint issues before checking",
     )
     parser.add_argument("--skip-format", action="store_true")
     parser.add_argument("--skip-lint", action="store_true")
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--skip-coverage", action="store_true")
+    parser.add_argument("--skip-adrs", action="store_true")
     args = parser.parse_args()
 
     print(f"\n{BOLD}Quality Gate{RESET}")
     print("=" * 40)
+
+    # Validate directories before running any checks
+    dir_errors = validate_directories()
+    if dir_errors:
+        for err in dir_errors:
+            _fail(f"Directory validation ({err})")
+        print("=" * 40)
+        print(
+            f"{RED}{BOLD}Quality Gate: FAILED — source or test directories missing or empty{RESET}\n"
+        )
+        return 1
 
     results: list[bool] = []
     total = 0
@@ -172,6 +263,13 @@ def main() -> int:
     else:
         total += 1
         results.append(check_coverage())
+
+    # Check 5: ADR completeness
+    if args.skip_adrs:
+        _skip("ADR completeness")
+    else:
+        total += 1
+        results.append(check_adrs())
 
     # Summary
     passed = sum(results)

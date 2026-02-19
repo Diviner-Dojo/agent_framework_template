@@ -59,9 +59,7 @@ def ingest_events(discussion_id: str, db_path: Path = DB_PATH) -> int:
     conn.execute("PRAGMA foreign_keys=ON")
 
     for event in events:
-        content_hash = hashlib.sha256(
-            event["content"].encode("utf-8")
-        ).hexdigest()
+        content_hash = hashlib.sha256(event["content"].encode("utf-8")).hexdigest()
 
         conn.execute(
             """INSERT OR IGNORE INTO turns

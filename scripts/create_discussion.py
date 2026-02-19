@@ -56,8 +56,13 @@ def create_discussion(
                (discussion_id, created_at, risk_level, collaboration_mode,
                 exploration_intensity, status, agent_count)
                VALUES (?, ?, ?, ?, ?, 'open', 0)""",
-            (discussion_id, now.isoformat(), risk_level,
-             collaboration_mode, exploration_intensity),
+            (
+                discussion_id,
+                now.isoformat(),
+                risk_level,
+                collaboration_mode,
+                exploration_intensity,
+            ),
         )
         conn.commit()
         conn.close()
@@ -69,13 +74,13 @@ def create_discussion(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create a new discussion directory")
     parser.add_argument("slug", help="Short descriptive slug (e.g., 'auth-refactor')")
-    parser.add_argument("--risk", default="medium",
-                        choices=["low", "medium", "high", "critical"])
-    parser.add_argument("--mode", default="structured-dialogue",
-                        choices=["ensemble", "yes-and", "structured-dialogue",
-                                 "dialectic", "adversarial"])
-    parser.add_argument("--intensity", default="medium",
-                        choices=["low", "medium", "high"])
+    parser.add_argument("--risk", default="medium", choices=["low", "medium", "high", "critical"])
+    parser.add_argument(
+        "--mode",
+        default="structured-dialogue",
+        choices=["ensemble", "yes-and", "structured-dialogue", "dialectic", "adversarial"],
+    )
+    parser.add_argument("--intensity", default="medium", choices=["low", "medium", "high"])
     args = parser.parse_args()
 
     create_discussion(args.slug, args.risk, args.mode, args.intensity)

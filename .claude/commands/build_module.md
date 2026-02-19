@@ -8,6 +8,39 @@ argument-hint: "[spec file path or module description]"
 
 You are acting as the Facilitator. Build code against an approved spec with integrated quality controls.
 
+## CRITICAL BEHAVIORAL RULES
+
+These rules are pass/fail. Violating any of them is a workflow failure.
+
+1. **NEVER skip tests**: Every module MUST have tests before declaring completion. No untested code passes this gate.
+2. **NEVER skip the linter**: Ruff check and format MUST run and pass before triggering review.
+3. **NEVER declare completion with failing tests**: If tests fail, fix the implementation and re-run. Do NOT move to the review step with failing tests.
+4. **ALWAYS follow the spec**: Implementation must satisfy all acceptance criteria in the spec. If the spec is ambiguous, ask the developer — do not guess.
+5. **ALWAYS recommend the education gate**: Every build MUST end with an education gate recommendation.
+
+## Pre-Flight Checks
+
+Before starting the build, verify prerequisites:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+for d in ['src', 'tests']:
+    if not pathlib.Path(d).exists():
+        errors.append(f'Missing required directory: {d}')
+for rule in ['.claude/rules/coding_standards.md', '.claude/rules/security_baseline.md', '.claude/rules/testing_requirements.md']:
+    if not pathlib.Path(rule).exists():
+        errors.append(f'Missing required rule file: {rule}')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If pre-flight fails, tell the developer what's missing and suggest running `/onboard` to set up the framework structure.
+
 ## Step 1: Read the Spec
 
 If a spec file path is provided, read it. If not, check `docs/sprints/` for the most recent approved spec, or ask the developer what to build.

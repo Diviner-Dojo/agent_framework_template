@@ -8,6 +8,60 @@ argument-hint: "[topic to discuss]"
 
 You are acting as the Facilitator. Run the following workflow step by step.
 
+## CRITICAL BEHAVIORAL RULES
+
+These rules are pass/fail. Violating any of them is a workflow failure.
+
+1. **NEVER skip capture**: Every specialist turn MUST be recorded via `scripts/write_event.py`. Uncaptured reasoning is lost reasoning.
+2. **NEVER continue on failure**: If any step fails, HALT immediately. Present the error and ask the user how to proceed. Do NOT silently continue.
+3. **ALWAYS include at least 2 specialists**: Single-perspective discussions violate the independence principle (Non-Negotiable Principle #4).
+4. **ALWAYS close the discussion**: Every deliberation MUST end with `scripts/close_discussion.py`, even if abandoned.
+5. **NEVER resolve dissent artificially**: If specialists disagree, present both sides. Do NOT smooth over genuine disagreements in the synthesis.
+
+## Pre-Flight Checks
+
+Before starting the deliberation, verify prerequisites:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+for script in ['scripts/create_discussion.py', 'scripts/write_event.py', 'scripts/close_discussion.py']:
+    if not pathlib.Path(script).exists():
+        errors.append(f'Missing required script: {script}')
+for d in ['discussions', 'docs/adr']:
+    if not pathlib.Path(d).exists():
+        errors.append(f'Missing required directory: {d}')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If pre-flight fails, tell the developer what's missing and suggest running `/onboard` to set up the framework structure.
+
+## Session Resumption Check
+
+Before creating a new discussion, check for an in-progress deliberation:
+
+```bash
+python -c "
+import pathlib, json
+for d in sorted(pathlib.Path('discussions').glob('*/*/state.json'), reverse=True):
+    state = json.loads(d.read_text())
+    if state.get('command') == 'deliberate' and state.get('status') == 'in_progress':
+        print(f'FOUND IN-PROGRESS DELIBERATION: {state[\"discussion_id\"]} (phase: {state.get(\"current_phase\", \"unknown\")})')
+        print(f'  Topic: {state.get(\"topic\", \"unknown\")}')
+        print(f'  Path: {d.parent}')
+        break
+else:
+    print('No in-progress deliberation sessions found.')
+"
+```
+
+If an in-progress session is found, ask the developer: **Resume the previous session or start fresh?** If resuming, read phase output files from the discussion directory to restore context.
+
 ## Step 1: Create Discussion
 
 Run: `python scripts/create_discussion.py "<slug>" --risk <level> --mode <mode>`
@@ -24,6 +78,27 @@ Choose collaboration mode:
 - Dialectic: Genuine competing approaches to evaluate
 
 Record the discussion_id from the output.
+
+Initialize the workflow state file:
+
+```bash
+python -c "
+import json, pathlib
+from datetime import datetime, timezone
+state = {
+    'command': 'deliberate',
+    'discussion_id': '<discussion_id>',
+    'status': 'in_progress',
+    'started_at': datetime.now(timezone.utc).isoformat(),
+    'current_phase': 'specialist_dispatch',
+    'completed_phases': ['discussion_created'],
+    'topic': '<topic>'
+}
+state_path = pathlib.Path('discussions') / '<date>' / '<discussion_id>' / 'state.json'
+state_path.write_text(json.dumps(state, indent=2))
+print(f'State initialized: {state_path}')
+"
+```
 
 ## Step 2: Assess and Select Specialists
 
@@ -71,6 +146,19 @@ python scripts/write_event.py "<discussion_id>" "facilitator" "decision" "<decis
 ```
 
 ## Step 6: Close Discussion
+
+Update the workflow state:
+```bash
+python -c "
+import json, pathlib
+state_path = pathlib.Path('discussions') / '<date>' / '<discussion_id>' / 'state.json'
+state = json.loads(state_path.read_text())
+state['current_phase'] = 'complete'
+state['completed_phases'].append('synthesis')
+state['status'] = 'complete'
+state_path.write_text(json.dumps(state, indent=2))
+"
+```
 
 Run: `python scripts/close_discussion.py "<discussion_id>"`
 

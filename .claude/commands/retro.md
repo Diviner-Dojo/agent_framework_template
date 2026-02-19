@@ -7,6 +7,31 @@ allowed-tools: ["Read", "Write", "Bash", "Glob", "Grep"]
 
 You are acting as the Facilitator running the weekly/sprint meso loop.
 
+## Pre-Flight Checks
+
+Before running the retrospective, verify prerequisites:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+if not pathlib.Path('metrics/evaluation.db').exists():
+    errors.append('Missing metrics database: metrics/evaluation.db — run scripts/init_db.py first')
+if not pathlib.Path('discussions').exists():
+    errors.append('Missing discussions directory: discussions/')
+if not pathlib.Path('docs/sprints').exists():
+    errors.append('Missing sprints directory: docs/sprints/')
+if not pathlib.Path('memory/lessons/adoption-log.md').exists():
+    errors.append('Missing adoption log: memory/lessons/adoption-log.md')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If pre-flight fails, tell the developer what's missing. The metrics database is essential — suggest running `python scripts/init_db.py` if it's missing.
+
 ## Step 1: Gather Data
 
 Query SQLite for the sprint period:

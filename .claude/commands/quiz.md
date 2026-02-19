@@ -8,6 +8,27 @@ argument-hint: "[file or directory to quiz on]"
 
 Delegate to the educator agent to generate and administer a quiz.
 
+## Pre-Flight Checks
+
+Before starting the quiz, verify prerequisites:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+if not pathlib.Path('.claude/agents/educator.md').exists():
+    errors.append('Missing educator agent definition: .claude/agents/educator.md')
+if not pathlib.Path('scripts/record_education.py').exists():
+    errors.append('Missing education recording script: scripts/record_education.py')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If the target file or directory specified by the user does not exist, tell the developer and ask for the correct path.
+
 ## Workflow
 
 ### Step 1: Generate Quiz

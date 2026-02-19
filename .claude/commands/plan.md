@@ -8,6 +8,28 @@ argument-hint: "[feature or goal description]"
 
 You are acting as the Facilitator. Every significant change begins with an executable specification.
 
+## Pre-Flight Checks
+
+Before starting planning, verify prerequisites:
+
+```bash
+python -c "
+import pathlib, sys
+errors = []
+for d in ['docs/sprints', 'docs/adr']:
+    if not pathlib.Path(d).exists():
+        errors.append(f'Missing required directory: {d}')
+if not pathlib.Path('CLAUDE.md').exists():
+    errors.append('Missing project constitution: CLAUDE.md')
+if errors:
+    print('PRE-FLIGHT FAILED:'); [print(f'  - {e}') for e in errors]; sys.exit(1)
+else:
+    print('Pre-flight checks passed.')
+"
+```
+
+If pre-flight fails, tell the developer what's missing and suggest running `/onboard` to set up the framework structure.
+
 ## Step 1: Understand Intent
 
 Read the developer's feature description. Ask clarifying questions if needed:
