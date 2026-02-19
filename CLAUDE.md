@@ -32,6 +32,10 @@
 - The facilitator (main agent) orchestrates all multi-agent workflows
 - Multiple subagents can run concurrently with true parallelism
 - Each subagent gets its own isolated context window
+- Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
+  - **opus**: Complex generation and architectural reasoning (facilitator, architecture-consultant)
+  - **sonnet**: Analysis, review, and evaluation (security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst)
+  - **haiku**: Mechanical verification and lightweight tasks (educator)
 
 ### Collaboration Mode Spectrum (facilitator selects per change)
 1. **Ensemble** — independent contribution, no inter-agent exchange (lightest)
@@ -71,6 +75,7 @@ Content here.
 .claude/
   agents/       — Specialist agent definitions (9 core, including project-analyst)
   commands/     — Slash command workflows (12 commands)
+  hooks/        — Automated lifecycle hooks (auto-format, session persistence)
   rules/        — Auto-loaded standards (all agents inherit)
   skills/       — Reference knowledge (playbooks, checklists)
 docs/
@@ -85,6 +90,7 @@ metrics/        — Layer 2: SQLite relational index
 scripts/        — Capture pipeline utilities + quality gate
 src/            — Application source code
 tests/          — Test suite
+BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
 
 ## External Project Analysis
@@ -104,6 +110,25 @@ This checks: formatting (ruff format), linting (ruff check), tests (pytest), and
 ## Error Handling
 
 The application uses a structured exception hierarchy (`src/exceptions.py`) with centralized error handling (`src/error_handlers.py`). All application errors inherit from `AppError` and carry `(message, error_code, details, status_code)`. New projects extend the hierarchy with domain-specific subclasses. Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the centralized handler converts them to consistent JSON responses.
+
+## Hooks
+
+The project uses Claude Code hooks (configured in `.claude/settings.json`) for automated lifecycle actions:
+
+- **PostToolUse — auto-format** (`.claude/hooks/auto-format.sh`): Runs `ruff format` + `ruff check --fix` on any Python file after every Edit or Write tool call. Ensures code is always formatted without manual intervention. Requires `bash` (Git Bash or WSL on Windows).
+- **PreCompact** (`.claude/hooks/pre-compact.ps1`): Before context compaction, prompts the agent to update `BUILD_STATUS.md` with current task state, modified files, and resume instructions.
+- **SessionStart** (`.claude/hooks/session-start.ps1`): On session resume or post-compaction, prompts the agent to read `BUILD_STATUS.md` to restore working context.
+
+`BUILD_STATUS.md` is session-scoped working state at the project root. It is ephemeral and distinct from the four-layer capture stack — it preserves in-flight context across sessions rather than capturing completed decisions.
+
+## Commit Protocol
+
+Every commit must pass two gates:
+
+1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting, linting, tests, or coverage fail, the commit is blocked.
+2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`.
+
+For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first.
 
 ## Capture Pipeline
 

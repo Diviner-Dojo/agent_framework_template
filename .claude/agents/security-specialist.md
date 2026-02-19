@@ -1,5 +1,6 @@
 ---
 name: security-specialist
+model: sonnet
 description: "Reviews code for security vulnerabilities, auth patterns, and threat modeling. Activate for auth changes, API surface changes, data handling, dependency updates, or any user input processing."
 tools: ["Read", "Glob", "Grep", "Bash"]
 ---

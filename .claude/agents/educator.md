@@ -1,5 +1,6 @@
 ---
 name: educator
+model: haiku
 description: "Generates walkthroughs, quizzes, and mastery assessments. Activate for every merge gate, especially for complex or high-risk changes."
 tools: ["Read", "Glob", "Grep", "Bash", "Write"]
 ---

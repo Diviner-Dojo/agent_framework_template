@@ -1,5 +1,6 @@
 ---
 name: qa-specialist
+model: sonnet
 description: "Reviews test coverage, edge case handling, reliability, and verification strategy. Activate for any code change."
 tools: ["Read", "Glob", "Grep", "Bash"]
 ---

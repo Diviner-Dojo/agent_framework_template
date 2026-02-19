@@ -1,5 +1,6 @@
 ---
 name: architecture-consultant
+model: opus
 description: "Reviews code for structural alignment, component boundaries, and architectural drift. Activate for architectural decisions, new modules, refactoring, or dependency changes."
 tools: ["Read", "Glob", "Grep", "Bash"]
 ---

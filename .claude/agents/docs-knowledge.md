@@ -1,5 +1,6 @@
 ---
 name: docs-knowledge
+model: sonnet
 description: "Reviews documentation completeness, ADR quality, and knowledge persistence. Activate for every review (light weight) and fully for architectural changes, new modules, or public API changes."
 tools: ["Read", "Glob", "Grep", "Bash", "Write"]
 ---

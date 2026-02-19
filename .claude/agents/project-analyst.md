@@ -1,5 +1,6 @@
 ---
 name: project-analyst
+model: sonnet
 description: "Surveys external projects (local or GitHub) to build a project profile and identify patterns worth evaluating, then orchestrates a multi-specialist co-review to assess applicability to our current effort. Use this agent as the scout phase of /analyze-project — it goes first, maps the territory, dispatches the team, and produces a unified applicability assessment."
 tools: ["Read", "Glob", "Grep", "Bash", "Task"]
 ---

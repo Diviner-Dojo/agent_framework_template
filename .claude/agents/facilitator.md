@@ -1,5 +1,6 @@
 ---
 name: facilitator
+model: opus
 description: "Orchestrates multi-agent review workflows. Use when running /review, /deliberate, or any multi-agent collaboration command."
 tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Task"]
 ---

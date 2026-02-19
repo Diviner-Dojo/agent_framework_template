@@ -1,5 +1,6 @@
 ---
 name: independent-perspective
+model: sonnet
 description: "Provides anti-groupthink analysis, surfaces unconsidered alternatives and hidden assumptions. Activate for medium and high risk changes, and periodic spot-checks on low-risk changes."
 tools: ["Read", "Glob", "Grep", "Bash"]
 ---

@@ -1,5 +1,6 @@
 ---
 name: performance-analyst
+model: sonnet
 description: "Reviews code for latency, resource efficiency, scalability, and cost implications. Activate for data processing, API endpoints, database operations, algorithmic changes, or infrastructure config."
 tools: ["Read", "Glob", "Grep", "Bash"]
 ---
