@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from .database import TodoDatabase
+from .error_handlers import setup_error_handlers
 from .routes import router, set_database
 
 db = TodoDatabase()
@@ -26,4 +27,5 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+setup_error_handlers(app)
 app.include_router(router)

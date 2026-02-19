@@ -17,12 +17,12 @@ import pytest
 TEMPLATE_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(TEMPLATE_ROOT / "scripts"))
 
-from init_db import init_db
 from create_discussion import create_discussion
-from write_event import write_event, find_discussion_dir
 from generate_transcript import generate_transcript
 from ingest_events import ingest_events
+from init_db import init_db
 from record_education import record_education
+from write_event import find_discussion_dir, write_event
 
 
 @pytest.fixture
@@ -39,10 +39,10 @@ def pipeline_env(tmp_path, monkeypatch):
 
     # Monkeypatch the module-level constants in all scripts
     import create_discussion as cd_mod
-    import write_event as we_mod
     import generate_transcript as gt_mod
     import ingest_events as ie_mod
     import record_education as re_mod
+    import write_event as we_mod
 
     monkeypatch.setattr(cd_mod, "DISCUSSIONS_DIR", discussions_dir)
     monkeypatch.setattr(cd_mod, "DB_PATH", db_path)
@@ -63,6 +63,7 @@ def pipeline_env(tmp_path, monkeypatch):
 # init_db tests
 # ============================================================
 
+
 class TestInitDb:
     """Tests for scripts/init_db.py."""
 
@@ -71,9 +72,10 @@ class TestInitDb:
         init_db(db_path)
 
         conn = sqlite3.connect(str(db_path))
-        tables = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
+        tables = {
+            row[0]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
         conn.close()
 
         expected = {"discussions", "turns", "decisions", "reflections", "education_results"}
@@ -84,16 +86,24 @@ class TestInitDb:
         init_db(db_path)
 
         conn = sqlite3.connect(str(db_path))
-        indexes = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'"
-        ).fetchall()}
+        indexes = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+        }
         conn.close()
 
         expected_indexes = {
-            "idx_turns_discussion", "idx_turns_agent", "idx_turns_timestamp",
-            "idx_decisions_discussion", "idx_reflections_discussion",
-            "idx_reflections_agent", "idx_education_session",
-            "idx_education_discussion", "idx_discussions_status",
+            "idx_turns_discussion",
+            "idx_turns_agent",
+            "idx_turns_timestamp",
+            "idx_decisions_discussion",
+            "idx_reflections_discussion",
+            "idx_reflections_agent",
+            "idx_education_session",
+            "idx_education_discussion",
+            "idx_discussions_status",
             "idx_discussions_created",
         }
         assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
@@ -105,9 +115,7 @@ class TestInitDb:
         init_db(db_path)  # Should not raise
 
         conn = sqlite3.connect(str(db_path))
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         conn.close()
         assert len(tables) >= 5
 
@@ -115,6 +123,7 @@ class TestInitDb:
 # ============================================================
 # create_discussion tests
 # ============================================================
+
 
 class TestCreateDiscussion:
     """Tests for scripts/create_discussion.py."""
@@ -162,6 +171,7 @@ class TestCreateDiscussion:
 # ============================================================
 # write_event tests
 # ============================================================
+
 
 class TestWriteEvent:
     """Tests for scripts/write_event.py."""
@@ -211,8 +221,12 @@ class TestWriteEvent:
     def test_preserves_tags_and_risk_flags(self, pipeline_env):
         disc_id = create_discussion("tags-test")
         write_event(
-            disc_id, "security-specialist", "proposal", "Finding.",
-            tags=["auth", "owasp"], risk_flags=["injection-risk"],
+            disc_id,
+            "security-specialist",
+            "proposal",
+            "Finding.",
+            tags=["auth", "owasp"],
+            risk_flags=["injection-risk"],
         )
 
         disc_dir = find_discussion_dir(disc_id)
@@ -262,6 +276,7 @@ class TestWriteEvent:
 # generate_transcript tests
 # ============================================================
 
+
 class TestGenerateTranscript:
     """Tests for scripts/generate_transcript.py."""
 
@@ -299,20 +314,24 @@ class TestGenerateTranscript:
 # ingest_events tests
 # ============================================================
 
+
 class TestIngestEvents:
     """Tests for scripts/ingest_events.py."""
 
     def test_populates_turns_table(self, pipeline_env):
         disc_id = create_discussion("ingest-test")
         write_event(disc_id, "qa-specialist", "proposal", "Finding 1.", confidence=0.85)
-        write_event(disc_id, "security-specialist", "critique", "Response.", reply_to=1, confidence=0.80)
+        write_event(
+            disc_id, "security-specialist", "critique", "Response.", reply_to=1, confidence=0.80
+        )
 
         count = ingest_events(disc_id, pipeline_env["db_path"])
         assert count == 2
 
         conn = sqlite3.connect(str(pipeline_env["db_path"]))
         rows = conn.execute(
-            "SELECT turn_id, agent, intent, confidence FROM turns WHERE discussion_id = ? ORDER BY turn_id",
+            "SELECT turn_id, agent, intent, confidence FROM turns "
+            "WHERE discussion_id = ? ORDER BY turn_id",
             (disc_id,),
         ).fetchall()
         conn.close()
@@ -376,14 +395,20 @@ class TestIngestEvents:
 # record_education tests
 # ============================================================
 
+
 class TestRecordEducation:
     """Tests for scripts/record_education.py."""
 
     def test_stores_results(self, pipeline_env):
         disc_id = create_discussion("edu-test")
         record_education(
-            "QUIZ-20260218-143000", disc_id, "understand",
-            "walkthrough", 0.85, True, pipeline_env["db_path"],
+            "QUIZ-20260218-143000",
+            disc_id,
+            "understand",
+            "walkthrough",
+            0.85,
+            True,
+            pipeline_env["db_path"],
         )
 
         conn = sqlite3.connect(str(pipeline_env["db_path"]))

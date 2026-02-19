@@ -1,8 +1,5 @@
 """Shared test fixtures for the Todo API."""
 
-import tempfile
-from pathlib import Path
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 

@@ -23,11 +23,11 @@ import pytest
 TEMPLATE_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(TEMPLATE_ROOT / "scripts"))
 
-from init_db import init_db
 from create_discussion import create_discussion
-from write_event import write_event, find_discussion_dir
 from generate_transcript import generate_transcript
 from ingest_events import ingest_events
+from init_db import init_db
+from write_event import find_discussion_dir, write_event
 
 
 @pytest.fixture
@@ -42,9 +42,9 @@ def review_env(tmp_path, monkeypatch):
     init_db(db_path)
 
     import create_discussion as cd_mod
-    import write_event as we_mod
     import generate_transcript as gt_mod
     import ingest_events as ie_mod
+    import write_event as we_mod
 
     monkeypatch.setattr(cd_mod, "DISCUSSIONS_DIR", discussions_dir)
     monkeypatch.setattr(cd_mod, "DB_PATH", db_path)
@@ -55,6 +55,7 @@ def review_env(tmp_path, monkeypatch):
 
     # Also monkeypatch close_discussion's imports (it imports siblings)
     import close_discussion as cls_mod
+
     monkeypatch.setattr(cls_mod, "DB_PATH", db_path)
 
     return {
@@ -89,7 +90,8 @@ class TestSimulatedReview:
         # Verify: discussion created with open status
         conn = sqlite3.connect(str(db_path))
         row = conn.execute(
-            "SELECT status, risk_level, collaboration_mode FROM discussions WHERE discussion_id = ?",
+            "SELECT status, risk_level, collaboration_mode "
+            "FROM discussions WHERE discussion_id = ?",
             (disc_id,),
         ).fetchone()
         assert row == ("open", "medium", "structured-dialogue")
@@ -117,17 +119,29 @@ class TestSimulatedReview:
         )
 
         t1 = write_event(
-            disc_id, "qa-specialist", "proposal", qa_content,
-            confidence=0.82, tags=["testing", "coverage", "edge-cases"],
+            disc_id,
+            "qa-specialist",
+            "proposal",
+            qa_content,
+            confidence=0.82,
+            tags=["testing", "coverage", "edge-cases"],
         )
         t2 = write_event(
-            disc_id, "security-specialist", "proposal", sec_content,
-            confidence=0.88, tags=["security", "cors", "auth"],
+            disc_id,
+            "security-specialist",
+            "proposal",
+            sec_content,
+            confidence=0.88,
+            tags=["security", "cors", "auth"],
             risk_flags=["missing-auth", "no-cors"],
         )
         t3 = write_event(
-            disc_id, "architecture-consultant", "proposal", arch_content,
-            confidence=0.85, tags=["architecture", "dependency-injection", "coupling"],
+            disc_id,
+            "architecture-consultant",
+            "proposal",
+            arch_content,
+            confidence=0.85,
+            tags=["architecture", "dependency-injection", "coupling"],
         )
 
         assert t1 == 1
@@ -149,12 +163,22 @@ class TestSimulatedReview:
         )
 
         t4 = write_event(
-            disc_id, "security-specialist", "critique", sec_critique,
-            reply_to=3, confidence=0.85, tags=["security", "architecture"],
+            disc_id,
+            "security-specialist",
+            "critique",
+            sec_critique,
+            reply_to=3,
+            confidence=0.85,
+            tags=["security", "architecture"],
         )
         t5 = write_event(
-            disc_id, "qa-specialist", "critique", qa_critique,
-            reply_to=2, confidence=0.80, tags=["testing", "auth"],
+            disc_id,
+            "qa-specialist",
+            "critique",
+            qa_critique,
+            reply_to=2,
+            confidence=0.80,
+            tags=["testing", "auth"],
         )
 
         assert t4 == 4
@@ -167,7 +191,8 @@ class TestSimulatedReview:
             "Consensus on three required changes before merge:\n"
             "1. Replace global _db module variable with FastAPI Depends() pattern\n"
             "2. Add CORS middleware with explicit allowed origins\n"
-            "3. Add authentication middleware (can be deferred with ADR documenting the decision)\n\n"
+            "3. Add authentication middleware "
+            "(can be deferred with ADR documenting the decision)\n\n"
             "Recommended improvements (non-blocking):\n"
             "- Add parameterized boundary-value tests\n"
             "- Add concurrent access tests\n\n"
@@ -176,8 +201,12 @@ class TestSimulatedReview:
         )
 
         t6 = write_event(
-            disc_id, "facilitator", "synthesis", synthesis,
-            confidence=0.84, tags=["synthesis", "verdict"],
+            disc_id,
+            "facilitator",
+            "synthesis",
+            synthesis,
+            confidence=0.84,
+            tags=["synthesis", "verdict"],
         )
 
         assert t6 == 6
@@ -193,7 +222,7 @@ class TestSimulatedReview:
         transcript_path = generate_transcript(disc_id)
 
         # 5b: Ingest events to SQLite
-        ingested_count = ingest_events(disc_id, db_path)
+        ingest_events(disc_id, db_path)
 
         # 5c: Mark closed in SQLite
         conn = sqlite3.connect(str(db_path))
@@ -229,23 +258,31 @@ class TestSimulatedReview:
         # Correct agents
         agents = [e["agent"] for e in events]
         assert agents == [
-            "qa-specialist", "security-specialist", "architecture-consultant",
-            "security-specialist", "qa-specialist", "facilitator",
+            "qa-specialist",
+            "security-specialist",
+            "architecture-consultant",
+            "security-specialist",
+            "qa-specialist",
+            "facilitator",
         ]
 
         # Correct intents
         intents = [e["intent"] for e in events]
         assert intents == [
-            "proposal", "proposal", "proposal",
-            "critique", "critique", "synthesis",
+            "proposal",
+            "proposal",
+            "proposal",
+            "critique",
+            "critique",
+            "synthesis",
         ]
 
         # Reply-to references are valid
         assert events[0]["reply_to"] is None  # first proposal
         assert events[1]["reply_to"] is None  # second proposal
         assert events[2]["reply_to"] is None  # third proposal
-        assert events[3]["reply_to"] == 3     # sec critiques arch (turn 3)
-        assert events[4]["reply_to"] == 2     # qa critiques sec (turn 2)
+        assert events[3]["reply_to"] == 3  # sec critiques arch (turn 3)
+        assert events[4]["reply_to"] == 2  # qa critiques sec (turn 2)
         assert events[5]["reply_to"] is None  # synthesis
 
         # Tags preserved in events.jsonl
@@ -304,9 +341,7 @@ class TestSimulatedReview:
                 "SELECT content_hash FROM turns WHERE discussion_id = ? AND turn_id = ?",
                 (disc_id, event["turn_id"]),
             ).fetchone()[0]
-            assert stored_hash == expected_hash, (
-                f"Hash mismatch for turn {event['turn_id']}"
-            )
+            assert stored_hash == expected_hash, f"Hash mismatch for turn {event['turn_id']}"
 
         # No duplicate ingestion
         total_turns = conn.execute(

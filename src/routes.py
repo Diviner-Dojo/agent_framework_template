@@ -1,7 +1,8 @@
 """API routes for the Todo API."""
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
+from .exceptions import NotFoundError
 from .models import TodoCreate, TodoResponse, TodoUpdate
 
 router = APIRouter()
@@ -40,7 +41,7 @@ async def get_todo(todo_id: int):
     """Get a specific todo by ID."""
     todo = get_db().get_todo(todo_id)
     if todo is None:
-        raise HTTPException(status_code=404, detail="Todo not found")
+        raise NotFoundError("todo", todo_id)
     return todo
 
 
@@ -54,7 +55,7 @@ async def update_todo(todo_id: int, update: TodoUpdate):
         completed=update.completed,
     )
     if todo is None:
-        raise HTTPException(status_code=404, detail="Todo not found")
+        raise NotFoundError("todo", todo_id)
     return todo
 
 
@@ -63,4 +64,4 @@ async def delete_todo(todo_id: int):
     """Delete a todo item."""
     deleted = get_db().delete_todo(todo_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail="Todo not found")
+        raise NotFoundError("todo", todo_id)
