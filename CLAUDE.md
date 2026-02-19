@@ -3,11 +3,11 @@
 ## Project Identity
 
 - **Framework**: AI-Native Agentic Development Framework v2.1
-- **Tech Stack**: Python 3.11+, FastAPI, SQLite, pytest
-- **Formatting**: ruff
-- **Typing**: strict (all public functions have type annotations)
-- **Testing**: pytest with >=80% coverage target
-- **Dependencies**: managed via pyproject.toml + requirements.txt
+- **Tech Stack**: Flutter 3.x + Dart, Riverpod, drift, Supabase, dio
+- **Formatting**: `dart format`
+- **Typing**: Dart's built-in type system (strict, sound null safety)
+- **Testing**: `flutter test` with >=80% coverage target
+- **Dependencies**: managed via `pubspec.yaml`
 
 ## Non-Negotiable Principles
 
@@ -79,6 +79,12 @@ Content here.
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
   rules/        — Auto-loaded standards (all agents inherit)
   skills/       — Reference knowledge (playbooks, checklists)
+android/        — Android platform code (Kotlin, manifest, assistant registration)
+ios/            — iOS platform code
+lib/            — Application source code (Flutter/Dart)
+test/           — Test suite (Flutter tests)
+integration_test/ — Integration tests
+supabase/       — Supabase migrations and Edge Functions
 docs/
   adr/          — Architecture Decision Records
   reviews/      — Structured review reports
@@ -93,9 +99,7 @@ memory/         — Layer 3: Curated promoted knowledge
   reflections/  — Promoted agent reflections
   rules/        — Promoted rules (graduated to .claude/rules/)
 metrics/        — Layer 2: SQLite relational index
-scripts/        — Capture pipeline utilities + quality gate
-src/            — Application source code
-tests/          — Test suite
+scripts/        — Capture pipeline utilities + quality gate (Python dev tools)
 BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
 
@@ -111,11 +115,11 @@ Before declaring work complete, run the quality gate to verify all documented st
 ```
 python scripts/quality_gate.py
 ```
-This checks: formatting (ruff format), linting (ruff check), tests (pytest), and coverage (>= 80%). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks.
+This checks: formatting (`dart format`), linting (`dart analyze`), tests (`flutter test`), coverage (>= 80%), ADR completeness, and review existence (for code changes). Use `--fix` to auto-fix issues via `dart fix --apply`. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass review existence).
 
 ## Error Handling
 
-The application uses a structured exception hierarchy (`src/exceptions.py`) with centralized error handling (`src/error_handlers.py`). All application errors inherit from `AppError` and carry `(message, error_code, details, status_code)`. New projects extend the hierarchy with domain-specific subclasses. Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the centralized handler converts them to consistent JSON responses.
+Error handling patterns TBD — will be defined during Phase 1 implementation. General principles: use Dart's typed exception system, catch specific exception types (never bare `catch`), and provide user-friendly error messages at the UI layer.
 
 ## Hooks
 
@@ -127,7 +131,7 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 - **Pre-Push Main Blocker** (`.claude/hooks/pre-push-main-blocker.sh`): On `git push` — blocks direct pushes to main/master branch with remediation instructions for branch-based workflow.
 
 ### PostToolUse Hooks
-- **Auto-Format** (`.claude/hooks/auto-format.sh`): Runs `ruff format` + `ruff check --fix` on any Python file after every Edit or Write.
+- **Auto-Format** (`.claude/hooks/auto-format.sh`): Runs `dart format` on any Dart file after every Edit or Write.
 - **Lock Release** (`.claude/hooks/post-tool-use-unlock.sh` → `release_lock.py`): Releases file locks after Write/Edit completes.
 
 ### Session Hooks
@@ -140,14 +144,24 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 
 Every commit must pass two gates:
 
-1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting, linting, tests, or coverage fail, the commit is blocked.
+1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting (`dart format`), linting (`dart analyze`), tests (`flutter test`), or coverage fail, the commit is blocked.
 2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`.
 
 For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first.
 
+## Build Review Protocol
+
+The `/build_module` command integrates mid-build checkpoint reviews to enforce Principle #4 (independence) during code generation, not just at commit time. After each build task, the facilitator evaluates whether a checkpoint triggers based on trigger categories defined in `.claude/rules/build_review_protocol.md`:
+
+- **Triggers**: new module, architecture choice, database schema, security-relevant code, state management wiring, external API integration
+- **Exempt**: scaffolding, dependency config, pure test writing, theme/style-only, docs, final verification
+- **Protocol**: 2 specialists dispatched per checkpoint, APPROVE or REVISE (under 200 words), max 2 rounds — build continues after Round 2 regardless of outcome
+- **Capture**: All checkpoint events go into the build's discussion via `write_event.py`
+- **Unresolved concerns**: Flagged with `risk_flags: ["unresolved-checkpoint"]` and surfaced in the build summary
+
 ## Capture Pipeline
 
-When a `/review`, `/deliberate`, or `/analyze-project` command runs:
+When a `/review`, `/deliberate`, `/analyze-project`, `/build_module`, `/retro`, or `/meta-review` command runs:
 1. `scripts/create_discussion.py` creates the discussion directory and registers it in SQLite
 2. Each agent turn is captured via `scripts/write_event.py` to events.jsonl
 3. `scripts/close_discussion.py` seals the discussion:

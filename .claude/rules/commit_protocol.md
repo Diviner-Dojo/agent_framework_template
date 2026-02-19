@@ -6,17 +6,19 @@ When the developer asks you to commit changes, or when you are about to suggest 
 
 ### Step 1: Quality Gate (Required — Automated)
 Run `python scripts/quality_gate.py` and verify all checks pass:
-- Formatting (ruff format)
-- Linting (ruff check)
-- Tests (pytest)
+- Formatting (dart format)
+- Linting (dart analyze)
+- Tests (flutter test)
 - Coverage (>= 80%)
+- ADR completeness
+- Review existence (for code changes)
 
 If any check fails, fix the issues before proceeding. Use `--fix` to auto-remediate formatting and lint issues.
 
-Note: The git pre-commit hook enforces this automatically. If the quality gate fails, git will block the commit.
+Note: The git pre-commit hook enforces this automatically. If the quality gate fails, git will block the commit. The review existence check will fail if code files are staged but no review report from today exists in `docs/reviews/`. Use `--skip-reviews` to bypass if needed.
 
 ### Step 2: Code Review (Required for code changes)
-For any change that modifies application source code (`src/`), tests (`tests/`), or framework infrastructure (`.claude/agents/`, `.claude/commands/`, `.claude/rules/`, `scripts/`):
+For any change that modifies application source code (`lib/`), tests (`test/`), or framework infrastructure (`.claude/agents/`, `.claude/commands/`, `.claude/rules/`, `scripts/`):
 - Run `/review <changed files>` to trigger multi-agent specialist review
 - Wait for the review verdict before committing
 - Address all **required changes** (blocking findings) before committing
