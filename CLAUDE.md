@@ -117,6 +117,8 @@ python scripts/quality_gate.py
 ```
 This checks: formatting (`dart format`), linting (`dart analyze`), tests (`flutter test`), coverage (>= 80%), ADR completeness, and review existence (for code changes). Use `--fix` to auto-fix issues via `dart fix --apply`. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass review existence).
 
+**Known limitation**: The review existence check verifies that a review report exists for today, not that it covers the specific files being committed.
+
 ## Error Handling
 
 Error handling patterns TBD — will be defined during Phase 1 implementation. General principles: use Dart's typed exception system, catch specific exception types (never bare `catch`), and provide user-friendly error messages at the UI layer.
@@ -158,6 +160,7 @@ The `/build_module` command integrates mid-build checkpoint reviews to enforce P
 - **Protocol**: 2 specialists dispatched per checkpoint, APPROVE or REVISE (under 200 words), max 2 rounds — build continues after Round 2 regardless of outcome
 - **Capture**: All checkpoint events go into the build's discussion via `write_event.py`
 - **Unresolved concerns**: Flagged with `risk_flags: ["unresolved-checkpoint"]` and surfaced in the build summary
+- **Plan mode boundary**: Multi-file builds executed via plan mode (3+ new files under `lib/`) must use `/build_module` — plan mode continuation does not substitute for checkpoint coverage
 
 ## Capture Pipeline
 

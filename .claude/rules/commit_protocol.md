@@ -26,8 +26,8 @@ For any change that modifies application source code (`lib/`), tests (`test/`), 
 
 For documentation-only or trivial config changes, the quality gate alone is sufficient.
 
-### Step 3: Education Gate (When recommended by review)
-If the review recommends an education gate (medium-risk or above):
+### Step 3: Education Gate (Required for medium-risk or above)
+Required when the review verdict is medium-risk or above, or when the review explicitly recommends it:
 - Run `/walkthrough <files>` for the developer
 - Run `/quiz <files>` for comprehension assessment
 - Complete the education gate before committing
