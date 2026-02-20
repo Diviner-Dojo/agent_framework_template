@@ -215,12 +215,24 @@ serve(async (req: Request) => {
     }
   }
 
-  // Fallback: proxy secret check (for unauthenticated mode)
+  // Fallback: proxy secret check (for unauthenticated mode).
+  // This path exists for users who haven't signed in yet — their requests
+  // use the anon key as Bearer token, which is a different value from the
+  // PROXY_ACCESS_KEY secret. Once JWT auth is the primary path (Phase 4+),
+  // consider removing this fallback to reduce attack surface.
   if (!isAuthorized) {
     const proxyAccessKey = Deno.env.get("PROXY_ACCESS_KEY");
     if (!proxyAccessKey) {
       console.error("PROXY_ACCESS_KEY not configured in Supabase secrets");
       return errorResponse("Service temporarily unavailable", 503);
+    }
+    // Minimum entropy check: reject weak secrets to prevent brute-force.
+    // The key must be at least 32 characters (256 bits of entropy space).
+    if (proxyAccessKey.length < 32) {
+      console.error(
+        "PROXY_ACCESS_KEY is too short — must be >= 32 characters"
+      );
+      return errorResponse("Service misconfigured", 503);
     }
     if (token !== proxyAccessKey) {
       return errorResponse("Unauthorized", 401);

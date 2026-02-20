@@ -13,6 +13,7 @@
 // ===========================================================================
 
 import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 import '../database/app_database.dart';
 import '../database/daos/message_dao.dart';
@@ -70,7 +71,7 @@ class SyncRepository {
 
     for (final session in sessionsToSync) {
       try {
-        await _uploadSession(session);
+        await uploadSession(session);
         await _sessionDao.updateSyncStatus(
           session.sessionId,
           'SYNCED',
@@ -105,7 +106,7 @@ class SyncRepository {
     if (session == null) return;
 
     try {
-      await _uploadSession(session);
+      await uploadSession(session);
       await _sessionDao.updateSyncStatus(
         sessionId,
         'SYNCED',
@@ -124,11 +125,17 @@ class SyncRepository {
   }
 
   // =========================================================================
-  // Private helpers
+  // Upload logic
   // =========================================================================
 
   /// Upload a session and its messages to Supabase via UPSERT.
-  Future<void> _uploadSession(JournalSession session) async {
+  ///
+  /// The session and messages are uploaded in two separate calls (not atomic).
+  /// If the session UPSERT succeeds but messages fail, the caller's catch
+  /// block sets syncStatus to FAILED, so a retry will re-upload both.
+  /// UPSERT idempotency (per ADR-0004) makes retries safe.
+  @visibleForTesting
+  Future<void> uploadSession(JournalSession session) async {
     final client = _supabaseService.client;
     if (client == null) return;
 
@@ -160,6 +167,7 @@ class SyncRepository {
             (m) => {
               'message_id': m.messageId,
               'session_id': m.sessionId,
+              'user_id': userId,
               'role': m.role,
               'content': m.content,
               'timestamp': m.timestamp.toUtc().toIso8601String(),

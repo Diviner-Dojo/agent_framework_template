@@ -3,6 +3,7 @@ last_updated: "2026-02-19"
 total_analyses: 7
 patterns_evaluated: 59
 patterns_adopted: 20
+patterns_confirmed: 5
 patterns_deferred: 16
 patterns_rejected: 18
 ---
@@ -46,10 +47,11 @@ Each entry records:
 - **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING
+- **Adoption Status**: CONFIRMED
 - **Location**: `scripts/quality_gate.py` — `check_adrs()` function. Validates required YAML frontmatter fields (adr_id, title, status, date, decision_makers, discussion_id) and required markdown sections (Context, Decision, Alternatives Considered, Consequences).
 - **Decision**: ADRs are the most durable artifact in the four-layer capture stack (Principle #5). No machine-checkable completeness validation existed. Inspired by AgenticAKM Pydantic-validated ADR schema. All 3 specialists endorsed.
 - **Date**: 2026-02-19
+- **Confirmed**: 2026-02-20 (RETRO-20260220b). Caught ADR-0012 missing required fields (adr_id, discussion_id) and missing Alternatives Considered section during Phase 4 commit. Blocked commit until fixed.
 
 ### Pattern: Survey Quality Gate (Generate-Verify-Regenerate for Phase 1)
 - **First seen**: sa4s-serc/AgenticAKM (2026-02-19)
@@ -262,10 +264,11 @@ Each entry records:
 - **Score**: 21/25 (prevalence:4, elegance:5, evidence:3, fit:4, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING
-- **Location**: `.claude/commands/review.md`, `.claude/commands/deliberate.md`, `.claude/commands/analyze-project.md`, `.claude/commands/build_module.md`
+- **Adoption Status**: CONFIRMED
+- **Location**: `.claude/commands/review.md`, `.claude/commands/deliberate.md`, `.claude/commands/analyze-project.md`, `.claude/commands/build_module.md`, `.claude/commands/retro.md`, `.claude/commands/meta-review.md`, `.claude/commands/quiz.md`, `.claude/commands/walkthrough.md`
 - **Decision**: Complex commands now declare explicit pass/fail behavioral rules at the top. Frames workflow adherence as correctness criteria, not preferences. Borrowed from formal verification. 3/4 specialists endorsed.
 - **Date**: 2026-02-19
+- **Confirmed**: 2026-02-20 (RETRO-20260220b). Applied across 8 commands. NEVER skip capture, NEVER continue on failure, ALWAYS close discussion rules consistently enforced across 6+ command runs. Zero orphaned discussions this sprint (contrast: 1 in prior sprint).
 
 ### Pattern: State-Persistent Multi-Phase Workflows
 - **First seen**: wshobson/agents (2026-02-19)
@@ -377,10 +380,11 @@ Each entry records:
 - **Sightings**: 2 (also seen as PostToolUse Auto-Format in CritInsight)
 - **Score**: 22/25 (prevalence:5, elegance:4, evidence:4, fit:5, maintenance:4)
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING
+- **Adoption Status**: CONFIRMED
 - **Location**: `.claude/hooks/pre-commit-gate.sh`
 - **Decision**: Intercepts git commit, injects reminder to run `python scripts/quality_gate.py`. Uses 5-minute verification cache. Bridges gap between having quality_gate.py and actually running it.
 - **Date**: 2026-02-19
+- **Confirmed**: 2026-02-20 (RETRO-20260220b). Exercised on every commit across 3 PRs. Successfully blocked commits when quality gate had not been run. No false positives observed.
 
 ### Pattern: Pre-Push Main Branch Blocker
 - **First seen**: claude-agentic-framework (2026-02-19)
@@ -470,10 +474,11 @@ Each entry records:
 - **Sightings**: 1
 - **Score**: 24/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:5)
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING
+- **Adoption Status**: CONFIRMED
 - **Location**: `.claude/hooks/auto-format.sh` + `.claude/settings.json`
-- **Decision**: Automates formatting after every file edit. Zero cognitive overhead, set-and-forget. Currently formats Python files (scripts/) with ruff. Dart files are formatted by `dart format` in the quality gate but NOT by this hook — hook should be extended to handle `*.dart` files with `dart format` alongside `*.py` with ruff.
+- **Decision**: Automates formatting after every file edit. Zero cognitive overhead, set-and-forget. Handles both `*.dart` files with `dart format` and `*.py` with ruff.
 - **Date**: 2026-02-19
+- **Confirmed**: 2026-02-20 (RETRO-20260220b). Exercised on every Write/Edit across Phases 2-4. Auto-formats Dart files immediately, eliminating formatting as a commit blocker. Extended to Dart during Phase 2 build.
 
 ### Pattern: Model-Tier Agent Assignment
 - **First seen**: CritInsight (2026-02-19)
@@ -560,10 +565,11 @@ Each entry records:
 - **Sightings**: 1
 - **Score**: 22/25 (prevalence:5, elegance:4, evidence:4, fit:5, maintenance:4)
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING
+- **Adoption Status**: CONFIRMED
 - **Location**: `scripts/quality_gate.py`
 - **Decision**: Framework documents quality standards in 3 rules files but had no automated enforcement. Quality gate converts documented-but-unenforced standards into executable validation.
 - **Date**: 2026-02-19
+- **Confirmed**: 2026-02-20 (RETRO-20260220b). Exercised on every commit across 3 PRs. Caught ADR-0012 missing YAML fields, coverage at 75.5%, and formatting issues. Blocked commits until fixed. Measurably prevented defective commits.
 
 ### Pattern: Session Initialization Protocol
 - **First seen**: ContractorVerification (2026-02-19)
