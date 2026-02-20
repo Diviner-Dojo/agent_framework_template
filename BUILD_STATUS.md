@@ -1,35 +1,36 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-20 ~19:30 UTC
+> Last updated: 2026-02-20 ~21:45 UTC
 
 ## Current Task
 
-**Status:** Phase 4 review complete — 4 blocking findings identified
+**Status:** All Phase 4 work complete (including blocking fix PR #10 merged). Retro done.
 **Branch:** `main`
 
 ### In Progress
-- Address Phase 4 review blocking findings (REV-20260220-192505)
+- (none)
 
 ### Recently Completed
-- `/review` on Phase 4: APPROVE-WITH-CHANGES (REV-20260220-192505)
-  - 4 blocking findings: (1) UPSERT path zero test execution, (2) RLS needs explicit WITH CHECK, (3) PROXY_ACCESS_KEY deprecation evaluation, (4) correlated subquery in journal_messages RLS
-  - 15 advisory findings across security, QA, architecture, performance
-  - Discussion DISC-20260220-192505-review-phase4-cloud-sync sealed (5 turns, 4 specialists)
-- Phase 4 merged (PR #9): 15 tasks, 35 files, 3222 insertions, 285 tests, 80.4% coverage
+- `/retro` RETRO-20260220c: retroactive review validated, 4 blocking findings fixed, specialist feedback incorporated
+- PR #10 merged: Phase 4 blocking finding fixes (RLS WITH CHECK, proxy entropy, UPSERT tests, user_id RLS)
+- `/review` on Phase 4: APPROVE-WITH-CHANGES (REV-20260220-192505) — 4 blocking, 15 advisory
 - `/retro` RETRO-20260220b: education gate executed (87%), 5 PENDING adoptions → CONFIRMED
+- Phase 4 merged (PR #9): 15 tasks, 35 files, 3222 insertions, 291 tests, 81.2% coverage
 - UX Friction Sprint merged (PR #8)
 - Phase 3 merged (PR #7): full pipeline execution
 
 ### Deferred
-- **Education gate for Phase 3** — `/walkthrough` and `/quiz` on Phase 3 files (Tier 2)
+- **Education gate for Phase 3** — `/walkthrough` and `/quiz` on Phase 3 files (Tier 2). 3rd retro flagging. Must complete before Phase 5. Note: independent-perspective questions whether this is risk reduction or compliance.
 - **Education gate for Phase 4** — `/walkthrough` and `/quiz` on Phase 4 files (Tier 2: auth flow, sync state machine, Edge Function security)
-- **CLAUDE.md updates from RETRO-20260220b** — plan-mode boundary, quality gate limitation note, education gate wording alignment
+- **CLAUDE.md updates from RETRO-20260220b** — plan-mode boundary, quality gate limitation note, education gate wording alignment. 3rd retro flagging — apply immediately.
+- **Add post-hoc review note to review_gates.md** — one sentence per docs-knowledge recommendation
+- **PROXY_ACCESS_KEY deprecation path** — remove fallback entirely when JWT is primary (Phase 5 cleanup)
+- **Migration drift check** — no automated check that Supabase production matches migration files
 
-### Next Up
-- Fix blocking findings from REV-20260220-192505
-- Address advisory findings (prioritized)
-- Phase 3 education gate (before Phase 5)
+### Open Advisory Findings (from REV-20260220-192505)
+- 15 advisory findings across security, QA, architecture, performance — untracked
+- Items surviving 2 sprints escalate to blocking (per RETRO-20260220b)
 
 ## Open Discussions
 
@@ -39,15 +40,14 @@
 
 ## Key Decisions (Recent)
 
-- Optional auth (ADR-0012): app works fully offline, sync activates on sign-in
-- JWT validation via Supabase getUser() in Edge Function (with PROXY_ACCESS_KEY fallback)
-- Upload-only sync with UPSERT for idempotency
-- Fire-and-forget sync after endSession()
-- SyncResult accumulation pattern (partial failure continues)
+- Retroactive review model validated as emergency fallback (not default workflow)
+- @visibleForTesting is standard Dart — no project-level documentation needed
+- Post-hoc review note goes in review_gates.md, not ADR (Principle #8)
+- Education gate debt tracked in BUILD_STATUS.md, not carried as retro signal
 
 ## Blockers
 
-- (none — blocking findings are advisory for next commit, not blockers for current work)
+- (none)
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
