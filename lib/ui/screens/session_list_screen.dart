@@ -9,6 +9,9 @@
 // Uses allSessionsProvider (a StreamProvider) for reactive updates —
 // when a new session is created or an existing one is updated,
 // the list automatically refreshes.
+//
+// The FAB shows a loading indicator while a session is being created
+// to prevent multi-tap and provide visual feedback.
 // ===========================================================================
 
 import 'package:flutter/material.dart';
@@ -20,11 +23,18 @@ import '../../providers/session_providers.dart';
 import '../widgets/session_card.dart';
 
 /// Home screen showing all past journal sessions.
-class SessionListScreen extends ConsumerWidget {
+class SessionListScreen extends ConsumerStatefulWidget {
   const SessionListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SessionListScreen> createState() => _SessionListScreenState();
+}
+
+class _SessionListScreenState extends ConsumerState<SessionListScreen> {
+  bool _isStarting = false;
+
+  @override
+  Widget build(BuildContext context) {
     // Watch the stream of all sessions for reactive updates.
     final sessionsAsync = ref.watch(allSessionsProvider);
 
@@ -56,9 +66,18 @@ class SessionListScreen extends ConsumerWidget {
       ),
       // FAB to start a new journaling session.
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _startNewSession(context, ref),
+        onPressed: _isStarting ? null : () => _startNewSession(context),
         tooltip: 'New journal entry',
-        child: const Icon(Icons.add),
+        child: _isStarting
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.add),
       ),
     );
   }
@@ -120,10 +139,17 @@ class SessionListScreen extends ConsumerWidget {
   }
 
   /// Start a new journaling session and navigate to it.
-  Future<void> _startNewSession(BuildContext context, WidgetRef ref) async {
-    await ref.read(sessionNotifierProvider.notifier).startSession();
-    if (context.mounted) {
-      Navigator.of(context).pushNamed('/session');
+  Future<void> _startNewSession(BuildContext context) async {
+    setState(() => _isStarting = true);
+    try {
+      await ref.read(sessionNotifierProvider.notifier).startSession();
+      if (context.mounted) {
+        Navigator.of(context).pushNamed('/session');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isStarting = false);
+      }
     }
   }
 }

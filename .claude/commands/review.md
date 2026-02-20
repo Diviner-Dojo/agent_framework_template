@@ -118,6 +118,7 @@ Select specialists based on what's being reviewed:
 - **Database changes**: performance-analyst, security-specialist
 - **Architecture/module boundaries**: architecture-consultant
 - **New modules or significant features**: architecture-consultant, docs-knowledge
+- **UI/screen changes**: ux-evaluator, qa-specialist
 - **High/Critical risk**: independent-perspective
 - **Security-related**: security-specialist (adversarial mode)
 

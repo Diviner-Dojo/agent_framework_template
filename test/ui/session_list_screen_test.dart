@@ -43,6 +43,23 @@ void main() {
       expect(find.byType(FloatingActionButton), findsOneWidget);
     });
 
+    testWidgets('FAB shows add icon by default', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            allSessionsProvider.overrideWith(
+              (ref) => Stream.value(<JournalSession>[]),
+            ),
+          ],
+          child: const MaterialApp(home: SessionListScreen()),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.add), findsOneWidget);
+    });
+
     testWidgets('renders session cards when sessions exist', (tester) async {
       final now = DateTime.utc(2026, 2, 19, 10, 0);
       final sessions = [

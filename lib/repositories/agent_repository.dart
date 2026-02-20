@@ -98,6 +98,9 @@ class AgentRepository {
     'bye',
     'no thanks',
     'not really',
+    'done',
+    'all good',
+    "that's everything",
   ];
 
   // =========================================================================
@@ -263,7 +266,10 @@ class AgentRepository {
     required String latestUserMessage,
   }) {
     if (followUpCount > 3) return true;
-    final trimmed = latestUserMessage.trim().toLowerCase();
+    final trimmed = latestUserMessage.trim().toLowerCase().replaceAll(
+      RegExp(r'[.!?,;:]+$'),
+      '',
+    );
     return _doneSignals.contains(trimmed);
   }
 

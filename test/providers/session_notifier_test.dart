@@ -106,14 +106,36 @@ void main() {
       expect(session.summary, isNotNull);
     });
 
-    test('clears active session state', () async {
+    test('sets isClosingComplete and keeps activeSessionId', () async {
       final notifier = container.read(sessionNotifierProvider.notifier);
       await notifier.startSession();
       await notifier.endSession();
 
       final state = container.read(sessionNotifierProvider);
+      expect(state.isClosingComplete, isTrue);
+      expect(state.isSessionEnding, isTrue);
+      expect(state.isWaitingForAgent, isFalse);
+      // activeSessionId is kept so the message stream stays live.
+      expect(state.activeSessionId, isNotNull);
+    });
+  });
+
+  group('SessionNotifier.dismissSession', () {
+    test('clears all state after user reads summary', () async {
+      final notifier = container.read(sessionNotifierProvider.notifier);
+      await notifier.startSession();
+      await notifier.endSession();
+
+      // Verify isClosingComplete is true before dismissing.
+      expect(container.read(sessionNotifierProvider).isClosingComplete, isTrue);
+
+      notifier.dismissSession();
+
+      final state = container.read(sessionNotifierProvider);
       expect(state.activeSessionId, isNull);
       expect(state.followUpCount, 0);
+      expect(state.isClosingComplete, isFalse);
+      expect(state.isSessionEnding, isFalse);
     });
   });
 
@@ -133,8 +155,9 @@ void main() {
       await notifier.sendMessage('Fifth message'); // triggers end
 
       final state = container.read(sessionNotifierProvider);
-      // Session should have ended.
-      expect(state.activeSessionId, isNull);
+      // Session should have ended with closing complete (waiting for dismiss).
+      expect(state.isClosingComplete, isTrue);
+      expect(state.activeSessionId, isNotNull);
 
       // Verify session has an end time.
       final sessionDao = container.read(sessionDaoProvider);

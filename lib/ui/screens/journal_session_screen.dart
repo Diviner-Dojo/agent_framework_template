@@ -10,7 +10,14 @@
 // The screen auto-scrolls to the latest message when new messages arrive.
 // On first load, the session has already been created by SessionNotifier
 // (the greeting message is already in the database).
+//
+// UX features:
+//   - PopScope intercepts back navigation with a confirmation dialog
+//   - Escalating thinking indicator provides progress feedback
+//   - Closing summary stays visible until user taps "Done"
 // ===========================================================================
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,93 +52,104 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     final sessionState = ref.watch(sessionNotifierProvider);
     final messagesAsync = ref.watch(activeSessionMessagesProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Journal Entry'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => _handleBack(context),
-        ),
-        actions: [
-          // End session button — shows confirmation dialog.
-          EndSessionButton(onEndSession: () => _endSession(context)),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Message list — takes all available vertical space.
-          Expanded(
-            child: messagesAsync.when(
-              data: (messages) {
-                // Auto-scroll only when message count changes, not on
-                // every stream emission — avoids fighting the keyboard.
-                if (messages.length != _lastMessageCount) {
-                  _lastMessageCount = messages.length;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _scrollToBottom();
-                  });
-                }
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.only(top: 8, bottom: 8),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    return ChatBubble(
-                      content: msg.content,
-                      role: msg.role,
-                      timestamp: msg.timestamp,
-                    );
-                  },
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(child: Text('Error: $error')),
-            ),
+    return PopScope(
+      canPop:
+          sessionState.isClosingComplete ||
+          sessionState.activeSessionId == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) {
+          // If closing is complete, dismiss state on pop.
+          if (sessionState.isClosingComplete) {
+            ref.read(sessionNotifierProvider.notifier).dismissSession();
+          }
+          return;
+        }
+        _showExitConfirmation();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Journal Entry'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              if (sessionState.isClosingComplete) {
+                _dismissAndPop();
+              } else {
+                _showExitConfirmation();
+              }
+            },
           ),
-
-          // "Session ending..." indicator when wrapping up.
-          if (sessionState.isSessionEnding)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: Text('Wrapping up your session...'),
+          actions: [
+            // End session button — hidden when session is already ending.
+            if (!sessionState.isSessionEnding)
+              EndSessionButton(onEndSession: () => _endSession(context)),
+          ],
+        ),
+        body: Column(
+          children: [
+            // Message list — takes all available vertical space.
+            Expanded(
+              child: messagesAsync.when(
+                data: (messages) {
+                  // Auto-scroll only when message count changes, not on
+                  // every stream emission — avoids fighting the keyboard.
+                  if (messages.length != _lastMessageCount) {
+                    _lastMessageCount = messages.length;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _scrollToBottom();
+                    });
+                  }
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(top: 8, bottom: 8),
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = messages[index];
+                      return ChatBubble(
+                        content: msg.content,
+                        role: msg.role,
+                        timestamp: msg.timestamp,
+                      );
+                    },
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, stack) => Center(child: Text('Error: $error')),
+              ),
             ),
 
-          // Typing indicator — shown while waiting for agent response.
-          // This appears above the input field to mimic a "typing..." bubble.
-          if (sessionState.isWaitingForAgent && !sessionState.isSessionEnding)
-            _buildTypingIndicator(context),
+            // "Session ending..." indicator when wrapping up.
+            if (sessionState.isSessionEnding && !sessionState.isClosingComplete)
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text('Wrapping up your session...'),
+              ),
 
-          // Text input field — hidden when session is ending.
-          if (!sessionState.isSessionEnding) _buildInputField(context),
-        ],
+            // "Done" button — shown after closing summary is saved.
+            if (sessionState.isClosingComplete) _buildDoneButton(context),
+
+            // Typing indicator — shown while waiting for agent response.
+            if (sessionState.isWaitingForAgent && !sessionState.isSessionEnding)
+              const _ThinkingIndicator(),
+
+            // Text input field — hidden when session is ending.
+            if (!sessionState.isSessionEnding) _buildInputField(context),
+          ],
+        ),
       ),
     );
   }
 
-  /// Build the typing indicator shown while waiting for agent response.
-  Widget _buildTypingIndicator(BuildContext context) {
+  /// Build the "Done" button shown after the closing summary is ready.
+  Widget _buildDoneButton(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Thinking...',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.all(16),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: _dismissAndPop,
+          child: const Text('Done'),
+        ),
       ),
     );
   }
@@ -182,10 +200,6 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
   }
 
   /// Send the user's message to the session notifier.
-  ///
-  /// The loading state is managed by SessionNotifier.isWaitingForAgent,
-  /// not local widget state. This ensures the loading indicator stays
-  /// consistent across the entire agent call lifecycle.
   Future<void> _sendMessage() async {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -193,32 +207,43 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     _textController.clear();
 
     await ref.read(sessionNotifierProvider.notifier).sendMessage(text);
-
-    if (mounted) {
-      // Check if the session ended (notifier cleared the active session).
-      final sessionState = ref.read(sessionNotifierProvider);
-      if (sessionState.activeSessionId == null && mounted) {
-        Navigator.of(context).pop();
-      }
-    }
   }
 
-  /// End the session and navigate back to the list.
+  /// End the session (summary will be generated; UI stays on screen).
   Future<void> _endSession(BuildContext context) async {
     await ref.read(sessionNotifierProvider.notifier).endSession();
-    if (context.mounted) {
+  }
+
+  /// Dismiss the completed session and navigate back to the list.
+  void _dismissAndPop() {
+    ref.read(sessionNotifierProvider.notifier).dismissSession();
+    if (mounted) {
       Navigator.of(context).pop();
     }
   }
 
-  /// Handle the back button — end the session if one is active.
-  Future<void> _handleBack(BuildContext context) async {
-    final sessionState = ref.read(sessionNotifierProvider);
-    if (sessionState.activeSessionId != null) {
+  /// Show a confirmation dialog before ending and leaving the session.
+  Future<void> _showExitConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('End this session?'),
+        content: const Text('Your conversation will be saved with a summary.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('End'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
       await ref.read(sessionNotifierProvider.notifier).endSession();
-    }
-    if (context.mounted) {
-      Navigator.of(context).pop();
     }
   }
 
@@ -231,5 +256,81 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
         curve: Curves.easeOut,
       );
     }
+  }
+}
+
+/// Escalating thinking indicator that updates its message over time.
+///
+/// Starts with "Thinking..." and escalates to provide reassurance
+/// during slow API calls:
+///   0s  → "Thinking..."
+///   8s  → "Still thinking..."
+///   15s → "Taking a moment..."
+class _ThinkingIndicator extends StatefulWidget {
+  const _ThinkingIndicator();
+
+  @override
+  State<_ThinkingIndicator> createState() => _ThinkingIndicatorState();
+}
+
+class _ThinkingIndicatorState extends State<_ThinkingIndicator> {
+  static const _messages = [
+    'Thinking...',
+    'Still thinking...',
+    'Taking a moment...',
+  ];
+  static const _thresholds = [
+    Duration.zero,
+    Duration(seconds: 8),
+    Duration(seconds: 15),
+  ];
+
+  int _messageIndex = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(_thresholds[1], () {
+      if (mounted) {
+        setState(() => _messageIndex = 1);
+        _timer = Timer(_thresholds[2] - _thresholds[1], () {
+          if (mounted) setState(() => _messageIndex = 2);
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _messages[_messageIndex],
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

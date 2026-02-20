@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/onboarding_providers.dart';
+import '../../providers/session_providers.dart';
 import '../../providers/settings_providers.dart';
 
 /// First-launch onboarding screen.
@@ -241,13 +242,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
-  /// Complete onboarding and navigate to the session list.
+  /// Complete onboarding and start the first journal session.
+  ///
+  /// Instead of navigating to the empty session list (where the user has to
+  /// discover the FAB), this starts a session and lands directly in a
+  /// conversation.
   Future<void> _completeAndNavigate() async {
     await ref.read(onboardingNotifierProvider.notifier).completeOnboarding();
     if (mounted) {
-      // pushReplacementNamed replaces the onboarding screen in the navigation
-      // stack so the user can't press "back" to return to onboarding.
-      Navigator.of(context).pushReplacementNamed('/');
+      await ref.read(sessionNotifierProvider.notifier).startSession();
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/session');
+      }
     }
   }
 }

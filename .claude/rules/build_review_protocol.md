@@ -17,6 +17,7 @@ After generating code for a build task, the facilitator evaluates whether the ta
 | **Security-relevant** | Auth, encryption, token handling, input validation | security-specialist, architecture-consultant |
 | **State management** | New Riverpod providers, state notifiers, dependency wiring | architecture-consultant, qa-specialist |
 | **External API** | dio clients, Supabase calls, Edge Function integrations | security-specialist, performance-analyst |
+| **UI flow / navigation** | New screens, navigation changes, state feedback, user-facing flows | ux-evaluator, qa-specialist |
 
 If a task matches multiple categories, the facilitator selects the **two most relevant specialists** — never more than two per checkpoint. Priority order when categories overlap: security-relevant always claims one slot; the other slot goes to the highest-specificity remaining category.
 
