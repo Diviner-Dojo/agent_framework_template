@@ -217,6 +217,68 @@ void main() {
         );
       },
     );
+
+    test('returns true for "No." with trailing period', () {
+      expect(
+        agent.shouldEndSession(followUpCount: 1, latestUserMessage: 'No.'),
+        isTrue,
+      );
+    });
+
+    test('returns true for "Nope!" with trailing exclamation', () {
+      expect(
+        agent.shouldEndSession(followUpCount: 1, latestUserMessage: 'Nope!'),
+        isTrue,
+      );
+    });
+
+    test('returns true for "done" signal', () {
+      expect(
+        agent.shouldEndSession(followUpCount: 1, latestUserMessage: 'done'),
+        isTrue,
+      );
+    });
+
+    test('returns true for "all good" signal', () {
+      expect(
+        agent.shouldEndSession(followUpCount: 1, latestUserMessage: 'all good'),
+        isTrue,
+      );
+    });
+
+    test("returns true for \"that's everything\" signal", () {
+      expect(
+        agent.shouldEndSession(
+          followUpCount: 1,
+          latestUserMessage: "that's everything",
+        ),
+        isTrue,
+      );
+    });
+
+    test('returns true for "bye!" with trailing punctuation', () {
+      expect(
+        agent.shouldEndSession(followUpCount: 1, latestUserMessage: 'bye!'),
+        isTrue,
+      );
+    });
+
+    test('strips multiple trailing punctuation marks', () {
+      expect(
+        agent.shouldEndSession(followUpCount: 1, latestUserMessage: 'nope...'),
+        isTrue,
+      );
+    });
+
+    test('does not false-positive on "no regrets"', () {
+      expect(
+        agent.shouldEndSession(
+          followUpCount: 0,
+          latestUserMessage: 'no regrets',
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('generateSummary (Layer A)', () {

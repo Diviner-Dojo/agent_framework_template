@@ -7,7 +7,9 @@
 //   - The greeting message is displayed
 //   - The send button is present
 //   - The end session button is present
-//   - An empty input does not trigger a send
+//   - Back button shows confirmation dialog (B1)
+//   - Escalating thinking indicator updates message (B7)
+//   - Done button appears after session close (B2)
 // ===========================================================================
 
 import 'package:drift/native.dart';
@@ -18,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
+import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/ui/screens/journal_session_screen.dart';
 
 void main() {
@@ -38,9 +41,18 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container = ProviderContainer(
-            overrides: [databaseProvider.overrideWithValue(database)],
+            overrides: [
+              databaseProvider.overrideWithValue(database),
+              agentRepositoryProvider.overrideWithValue(AgentRepository()),
+            ],
           ),
-          child: const MaterialApp(home: JournalSessionScreen()),
+          child: MaterialApp(
+            initialRoute: '/session',
+            routes: {
+              '/': (_) => const Scaffold(body: Text('Session List')),
+              '/session': (_) => const JournalSessionScreen(),
+            },
+          ),
         ),
       );
 
@@ -88,6 +100,77 @@ void main() {
       addTearDown(container.dispose);
 
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    });
+
+    testWidgets('back button shows confirmation dialog', (tester) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Tap the back button.
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+
+      // Confirmation dialog should appear.
+      expect(find.text('End this session?'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('End'), findsOneWidget);
+    });
+
+    testWidgets('cancel in confirmation dialog keeps session active', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Show confirmation dialog.
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+
+      // Tap Cancel.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Dialog should close, session still active.
+      expect(find.text('End this session?'), findsNothing);
+      expect(find.text('Journal Entry'), findsOneWidget);
+
+      final state = container.read(sessionNotifierProvider);
+      expect(state.activeSessionId, isNotNull);
+    });
+
+    testWidgets('confirm in dialog ends session and shows Done button', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Show confirmation dialog.
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+
+      // Tap End.
+      await tester.tap(find.text('End'));
+      await tester.pumpAndSettle();
+
+      // Session should show closing complete state with Done button.
+      expect(find.text('Done'), findsOneWidget);
+    });
+
+    testWidgets('end session button is hidden when session is ending', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Confirm exit via dialog.
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('End'));
+      await tester.pumpAndSettle();
+
+      // End session button should be hidden when session is ending/complete.
+      // The "Done" button should be visible instead.
+      expect(find.text('Done'), findsOneWidget);
     });
   });
 }

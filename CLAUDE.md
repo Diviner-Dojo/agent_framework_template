@@ -35,7 +35,7 @@
 - Each subagent gets its own isolated context window
 - Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
   - **opus**: Complex generation and architectural reasoning (facilitator, architecture-consultant)
-  - **sonnet**: Analysis, review, and evaluation (security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst)
+  - **sonnet**: Analysis, review, and evaluation (security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst, ux-evaluator)
   - **haiku**: Mechanical verification and lightweight tasks (educator)
 
 ### Collaboration Mode Spectrum (facilitator selects per change)
@@ -74,7 +74,7 @@ Content here.
 
 ```
 .claude/
-  agents/       — Specialist agent definitions (9 core, including project-analyst)
+  agents/       — Specialist agent definitions (10 core, including project-analyst and ux-evaluator)
   commands/     — Slash command workflows (12 commands)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
   rules/        — Auto-loaded standards (all agents inherit)
@@ -153,7 +153,7 @@ For low-risk changes (config, docs, simple fixes), the quality gate alone may su
 
 The `/build_module` command integrates mid-build checkpoint reviews to enforce Principle #4 (independence) during code generation, not just at commit time. After each build task, the facilitator evaluates whether a checkpoint triggers based on trigger categories defined in `.claude/rules/build_review_protocol.md`:
 
-- **Triggers**: new module, architecture choice, database schema, security-relevant code, state management wiring, external API integration
+- **Triggers**: new module, architecture choice, database schema, security-relevant code, state management wiring, external API integration, UI flow / navigation
 - **Exempt**: scaffolding, dependency config, pure test writing, theme/style-only, docs, final verification
 - **Protocol**: 2 specialists dispatched per checkpoint, APPROVE or REVISE (under 200 words), max 2 rounds — build continues after Round 2 regardless of outcome
 - **Capture**: All checkpoint events go into the build's discussion via `write_event.py`

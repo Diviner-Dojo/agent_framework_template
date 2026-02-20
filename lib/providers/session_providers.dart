@@ -95,6 +95,11 @@ class SessionState {
   /// The UI uses this to show a typing/loading indicator and disable the send button.
   final bool isWaitingForAgent;
 
+  /// True after endSession() finishes saving the closing message.
+  /// The UI shows a "Done" button instead of auto-popping, so the user
+  /// can read the summary at their own pace.
+  final bool isClosingComplete;
+
   /// Tracks all messages as role/content pairs for Claude API context.
   /// Layer B (Claude) needs the full conversation history for contextual responses.
   /// Layer A ignores this — it only uses latestUserMessage and conversationHistory.
@@ -106,6 +111,7 @@ class SessionState {
     this.usedQuestions = const [],
     this.isSessionEnding = false,
     this.isWaitingForAgent = false,
+    this.isClosingComplete = false,
     this.conversationMessages = const [],
   });
 
@@ -120,6 +126,7 @@ class SessionState {
     List<String>? usedQuestions,
     bool? isSessionEnding,
     bool? isWaitingForAgent,
+    bool? isClosingComplete,
     List<Map<String, String>>? conversationMessages,
   }) {
     return SessionState(
@@ -130,6 +137,7 @@ class SessionState {
       usedQuestions: usedQuestions ?? this.usedQuestions,
       isSessionEnding: isSessionEnding ?? this.isSessionEnding,
       isWaitingForAgent: isWaitingForAgent ?? this.isWaitingForAgent,
+      isClosingComplete: isClosingComplete ?? this.isClosingComplete,
       conversationMessages: conversationMessages ?? this.conversationMessages,
     );
   }
@@ -281,7 +289,15 @@ class SessionNotifier extends StateNotifier<SessionState> {
     state = state.copyWith(isWaitingForAgent: false);
 
     if (followUpResponse == null) {
-      // Agent says conversation is done.
+      // Agent says conversation is done — insert bridging message so the
+      // transition to closing doesn't feel abrupt.
+      await _messageDao.insertMessage(
+        generateUuid(),
+        sessionId,
+        'ASSISTANT',
+        'Thanks for sharing today. Let me put together your summary...',
+        nowUtc(),
+      );
       await endSession();
       return;
     }
@@ -381,7 +397,18 @@ class SessionNotifier extends StateNotifier<SessionState> {
       topicTags: topicTagsJson,
     );
 
-    // Clear the active session state.
+    // Signal that the closing summary is ready for the user to read.
+    // Keep activeSessionId set so the message stream stays live.
+    // The UI shows a "Done" button; dismissSession() clears state when tapped.
+    state = state.copyWith(isWaitingForAgent: false, isClosingComplete: true);
+  }
+
+  /// Dismiss the completed session and clear all state.
+  ///
+  /// Called by the UI after the user has read the closing summary and tapped
+  /// "Done". This is the only path that clears activeSessionId after a
+  /// session ends.
+  void dismissSession() {
     state = const SessionState();
     _ref.read(activeSessionIdProvider.notifier).state = null;
   }
