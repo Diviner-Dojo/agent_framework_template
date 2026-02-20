@@ -9,7 +9,9 @@
 import 'package:flutter/material.dart';
 
 import '../../database/app_database.dart';
+import '../../models/sync_status.dart';
 import '../../utils/timestamp_utils.dart';
+import 'sync_status_indicator.dart';
 
 /// A card representing a single past journal session.
 ///
@@ -78,12 +80,20 @@ class SessionCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
 
-              // Bottom row: message count.
-              Text(
-                '$messageCount message${messageCount == 1 ? '' : 's'}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              // Bottom row: message count and sync status.
+              Row(
+                children: [
+                  Text(
+                    '$messageCount message${messageCount == 1 ? '' : 's'}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  SyncStatusIndicator(
+                    status: SyncStatus.fromString(session.syncStatus),
+                  ),
+                ],
               ),
             ],
           ),

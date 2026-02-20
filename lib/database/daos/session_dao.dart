@@ -132,4 +132,57 @@ class SessionDao {
         ]))
         .watch();
   }
+
+  // =========================================================================
+  // Sync methods (Phase 4)
+  // =========================================================================
+
+  /// Get sessions that need to be synced to the cloud.
+  ///
+  /// Returns sessions where syncStatus is 'PENDING' or 'FAILED',
+  /// ordered by start time ascending (oldest first — sync in chronological order).
+  Future<List<JournalSession>> getSessionsToSync() async {
+    return (_db.select(_db.journalSessions)
+          ..where(
+            (s) =>
+                s.syncStatus.equals('PENDING') | s.syncStatus.equals('FAILED'),
+          )
+          ..orderBy([
+            (s) =>
+                OrderingTerm(expression: s.startTime, mode: OrderingMode.asc),
+          ]))
+        .get();
+  }
+
+  /// Update the sync status of a session.
+  ///
+  /// Called by SyncRepository after a sync attempt:
+  ///   - On success: status='SYNCED', lastAttempt=now
+  ///   - On failure: status='FAILED', lastAttempt=now
+  Future<void> updateSyncStatus(
+    String sessionId,
+    String status,
+    DateTime lastAttempt,
+  ) async {
+    await (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        syncStatus: Value(status),
+        lastSyncAttempt: Value(lastAttempt),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
+  /// Watch the count of sessions that are not yet synced.
+  ///
+  /// Used by the sync status UI to show pending sync count.
+  Stream<int> watchPendingSyncCount() {
+    final count = _db.journalSessions.sessionId.count();
+    final query = _db.selectOnly(_db.journalSessions)
+      ..addColumns([count])
+      ..where(_db.journalSessions.syncStatus.isIn(['PENDING', 'FAILED']));
+    return query.watchSingle().map((row) => row.read(count) ?? 0);
+  }
 }

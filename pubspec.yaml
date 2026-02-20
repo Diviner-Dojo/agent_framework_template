@@ -30,6 +30,12 @@ dependencies:
   # Connectivity detection — online/offline state for LLM fallback
   connectivity_plus: ^6.1.1
 
+  # Supabase client — auth, database, realtime (Phase 4: cloud sync)
+  supabase_flutter: ^2.8.0
+
+  # Secure storage — token persistence (used by supabase_flutter internally)
+  flutter_secure_storage: ^9.2.0
+
   # Core Flutter
   cupertino_icons: ^1.0.8
   path_provider: ^2.1.5
