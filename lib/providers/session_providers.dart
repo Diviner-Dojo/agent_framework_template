@@ -37,7 +37,9 @@ import '../services/claude_api_service.dart';
 import '../services/connectivity_service.dart';
 import '../utils/uuid_generator.dart';
 import '../utils/timestamp_utils.dart';
+import 'auth_providers.dart';
 import 'database_provider.dart';
+import 'sync_providers.dart';
 
 /// Streams all sessions from the database for the session list screen.
 ///
@@ -401,6 +403,26 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Keep activeSessionId set so the message stream stays live.
     // The UI shows a "Done" button; dismissSession() clears state when tapped.
     state = state.copyWith(isWaitingForAgent: false, isClosingComplete: true);
+
+    // Phase 4: Trigger non-blocking sync after session ends.
+    // This runs in the background — sync failure doesn't affect the session flow.
+    _triggerSyncAfterEnd(sessionId);
+  }
+
+  /// Trigger background sync for a completed session.
+  ///
+  /// Non-blocking: runs asynchronously without awaiting. If sync fails,
+  /// the session's syncStatus stays PENDING/FAILED for later retry.
+  void _triggerSyncAfterEnd(String sessionId) {
+    final isAuthenticated = _ref.read(isAuthenticatedProvider);
+    if (!isAuthenticated) return;
+
+    final connectivityService = _ref.read(connectivityServiceProvider);
+    if (!connectivityService.isOnline) return;
+
+    // Fire-and-forget: don't await, don't block the session flow.
+    final syncRepo = _ref.read(syncRepositoryProvider);
+    syncRepo.syncSession(sessionId);
   }
 
   /// Dismiss the completed session and clear all state.
@@ -441,7 +463,11 @@ final connectivityServiceProvider = Provider<ConnectivityService>((ref) {
 /// (isConfigured returns false) and AgentRepository uses Layer A only.
 final claudeApiServiceProvider = Provider<ClaudeApiService>((ref) {
   final environment = ref.watch(environmentProvider);
-  return ClaudeApiService(environment: environment);
+  final supabaseService = ref.watch(supabaseServiceProvider);
+  return ClaudeApiService(
+    environment: environment,
+    accessTokenProvider: () => supabaseService.accessToken,
+  );
 });
 
 /// Provider for the AgentRepository.

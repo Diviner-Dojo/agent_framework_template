@@ -12,6 +12,7 @@
 //   '/session'        → JournalSessionScreen (active conversation)
 //   '/session/detail' → SessionDetailScreen (read-only transcript view)
 //   '/settings'       → SettingsScreen (assistant status, app info)
+//   '/auth'           → AuthScreen (optional sign in/up for cloud sync)
 //   '/onboarding'     → OnboardingScreen (first-launch guide)
 //
 // Intent Routing (Phase 2):
@@ -35,6 +36,7 @@ import 'providers/settings_providers.dart';
 import 'ui/screens/journal_session_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/session_detail_screen.dart';
+import 'ui/screens/auth_screen.dart';
 import 'ui/screens/session_list_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/theme/app_theme.dart';
@@ -124,6 +126,7 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp> {
         '/': (context) => const SessionListScreen(),
         '/session': (context) => const JournalSessionScreen(),
         '/settings': (context) => const SettingsScreen(),
+        '/auth': (context) => const AuthScreen(),
         '/onboarding': (context) => const OnboardingScreen(),
       },
 

@@ -17,8 +17,8 @@
 // Security:
 //   - API key is in Deno.env (Supabase secret), never in response
 //   - Input validation: max 50KB payload, required fields checked
-//   - Proxy secret enforced even in Phase 3 (prevents open-proxy abuse)
-//   - Auth header checked if present (Phase 4: JWT validation required)
+//   - JWT validation via Supabase Auth when user is authenticated (Phase 4)
+//   - PROXY_ACCESS_KEY fallback for unauthenticated mode
 //   - Error responses never expose internal details or API key
 //
 // See: ADR-0005 (Claude API via Supabase Edge Function Proxy)
@@ -27,6 +27,8 @@
 // Supabase Edge Functions run on Deno. "serve" handles HTTP routing.
 // @ts-ignore - Deno-specific import
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-ignore - Deno-specific import
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -184,25 +186,47 @@ serve(async (req: Request) => {
     return errorResponse("Method not allowed", 405);
   }
 
-  // --- Proxy secret check (prevents open-proxy abuse even in Phase 3) ---
-  // The client sends the Supabase anon key as a Bearer token. We compare it
-  // against the PROXY_ACCESS_KEY secret to verify the caller is our app.
-  // Phase 4 upgrades this to full JWT validation.
+  // --- Auth: JWT validation with proxy secret fallback ---
+  // Phase 4: Try JWT validation first. If the token is a valid Supabase JWT,
+  // the user is authenticated. If not, fall back to the PROXY_ACCESS_KEY check
+  // so unauthenticated users can still use the Claude proxy.
   const authHeader = req.headers.get("Authorization");
-  const proxyAccessKey = Deno.env.get("PROXY_ACCESS_KEY");
-  if (!proxyAccessKey) {
-    // Fail-closed: reject all requests if proxy secret is not configured
-    console.error("PROXY_ACCESS_KEY not configured in Supabase secrets");
-    return errorResponse("Service temporarily unavailable", 503);
-  }
   const token = authHeader?.replace("Bearer ", "") ?? "";
-  if (token !== proxyAccessKey) {
-    return errorResponse("Unauthorized", 401);
+
+  let isAuthorized = false;
+
+  // Try JWT validation via Supabase Auth
+  if (token) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (supabaseUrl && supabaseAnonKey) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+          global: { headers: { Authorization: `Bearer ${token}` } },
+        });
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (user && !error) {
+          isAuthorized = true;
+        }
+      } catch {
+        // JWT validation failed — fall through to proxy key check
+      }
+    }
   }
-  // TODO Phase 4: Replace proxy secret with full JWT validation:
-  // const jwt = authHeader?.replace("Bearer ", "") ?? "";
-  // const isValid = await verifyJwt(jwt, Deno.env.get("SUPABASE_JWT_SECRET"));
-  // if (!isValid) return errorResponse("Unauthorized", 401);
+
+  // Fallback: proxy secret check (for unauthenticated mode)
+  if (!isAuthorized) {
+    const proxyAccessKey = Deno.env.get("PROXY_ACCESS_KEY");
+    if (!proxyAccessKey) {
+      console.error("PROXY_ACCESS_KEY not configured in Supabase secrets");
+      return errorResponse("Service temporarily unavailable", 503);
+    }
+    if (token !== proxyAccessKey) {
+      return errorResponse("Unauthorized", 401);
+    }
+    isAuthorized = true;
+  }
 
   // --- Payload size check ---
   const contentLength = req.headers.get("content-length");

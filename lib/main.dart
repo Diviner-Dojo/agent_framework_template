@@ -9,15 +9,18 @@
 // Initialization order:
 //   1. Flutter bindings (required for async before runApp)
 //   2. SharedPreferences (onboarding state)
-//   3. ConnectivityService (network monitoring for Layer B)
-//   4. runApp with ProviderScope overrides
+//   3. Supabase client (auth + cloud sync, Phase 4 — conditional)
+//   4. ConnectivityService (network monitoring for Layer B)
+//   5. runApp with ProviderScope overrides
 // ===========================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'config/environment.dart';
 import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
 import 'services/connectivity_service.dart';
@@ -30,6 +33,22 @@ void main() async {
   // Load SharedPreferences before the app starts.
   // This is needed for synchronous onboarding state checks in the widget tree.
   final prefs = await SharedPreferences.getInstance();
+
+  // Initialize Supabase client for auth and cloud sync (Phase 4).
+  // Only initialize when environment is configured (--dart-define values present).
+  // If not configured, the app works fully offline without sync.
+  const env = Environment();
+  if (env.isConfigured) {
+    try {
+      await Supabase.initialize(
+        url: env.supabaseUrl,
+        anonKey: env.supabaseAnonKey,
+      );
+    } on Exception {
+      // Supabase initialization failed — app continues without sync.
+      // Auth and sync features will be unavailable.
+    }
+  }
 
   // Initialize connectivity monitoring for Layer B (Claude API) support.
   // This checks current network state and subscribes to changes.
