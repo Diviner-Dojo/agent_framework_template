@@ -1,39 +1,60 @@
 // ===========================================================================
 // file: lib/repositories/agent_repository.dart
-// purpose: Rule-based conversation engine (Layer A) for Phase 1.
+// purpose: Conversation engine with Layer A (rule-based) and Layer B (LLM).
 //
-// This is the "brain" of the journaling assistant in Phase 1. It uses
-// simple keyword detection and predefined question pools to drive a
-// multi-turn journaling conversation. No AI, no network calls.
+// This is the "brain" of the journaling assistant. It orchestrates between:
+//   - Layer A: Rule-based keyword detection (offline, always available)
+//   - Layer B: Claude API via Supabase Edge Function (online, enhanced)
 //
 // Design Decision: AgentRepository is INTENTIONALLY STATELESS.
 //   All conversation state (follow-up count, message history, used questions)
-//   is owned by SessionNotifier in the providers layer (Task 8).
+//   is owned by SessionNotifier in the providers layer.
 //   The repository receives everything it needs as method parameters.
-//   This keeps it pure and trivially testable — no setup/teardown needed.
 //
-// Phase 3 Extension Point:
-//   Phase 3 will add: final ClaudeApiService? _claudeService;
-//   Phase 3 constructor: AgentRepository({ClaudeApiService? claudeService})
-//     : _claudeService = claudeService;
-//   The stateless design means Phase 3 can add the service without
-//   restructuring the provider layer.
+// Design Decision: No ConversationAgent Interface (SPEC-20260220-064221)
+//   Phase 2 stretch goal proposed extracting a ConversationAgent abstract
+//   interface. Decision: NOT extracting for Phase 3. Switching logic lives
+//   directly in this class, consistent with ADR-0006 Consequences.
+//   Phase 5 re-evaluation: when Layer C (intent classification) is added,
+//   evaluate whether layer dispatch should be extracted into a strategy class.
+//
+// Fallback Chain:
+//   1. Check: is ClaudeApiService configured AND online?
+//   2. If yes → call Claude API → return Layer B response
+//   3. If Claude call fails (timeout, network, parse) → fall back to Layer A
+//   4. If no → use Layer A directly (no network call attempted)
+//
+// See: ADR-0005 (API key proxy), ADR-0006 (Three-Layer Agent Design)
 // ===========================================================================
 
+import '../models/agent_response.dart';
+import '../services/claude_api_service.dart';
+import '../services/connectivity_service.dart';
 import '../utils/keyword_extractor.dart';
 
-/// The rule-based journaling agent for Phase 1.
+/// Conversation engine with online/offline layer switching.
 ///
 /// Drives conversations through: greeting → follow-ups → summary → close.
-/// All methods are synchronous (no async needed — pure logic, no I/O).
+/// Methods are async to support the Claude API call path. When offline or
+/// when Claude is unavailable, falls back to rule-based logic synchronously.
 class AgentRepository {
-  AgentRepository();
+  final ClaudeApiService? _claudeService;
+  final ConnectivityService? _connectivityService;
+
+  /// Creates an AgentRepository.
+  ///
+  /// [claudeService] — optional Claude API client. When null, Layer A only.
+  /// [connectivityService] — optional connectivity checker. When null, Layer A only.
+  AgentRepository({
+    ClaudeApiService? claudeService,
+    ConnectivityService? connectivityService,
+  }) : _claudeService = claudeService,
+       _connectivityService = connectivityService;
 
   // =========================================================================
-  // Follow-up question pools
+  // Follow-up question pools (Layer A)
   // =========================================================================
 
-  /// Emotional follow-up questions — used when the user expresses feelings.
   static const List<String> _emotionalFollowUps = [
     "That sounds like a lot. What do you think is driving that feeling?",
     "How long have you been feeling this way?",
@@ -42,7 +63,6 @@ class AgentRepository {
     "Have you noticed any patterns around when this feeling comes up?",
   ];
 
-  /// Social follow-up questions — used when the user mentions people.
   static const List<String> _socialFollowUps = [
     "How did that interaction make you feel?",
     "What's your relationship with them like these days?",
@@ -51,7 +71,6 @@ class AgentRepository {
     "What do you appreciate most about that relationship?",
   ];
 
-  /// Work follow-up questions — used when the user mentions work topics.
   static const List<String> _workFollowUps = [
     "How do you feel about how that's going?",
     "What's the biggest challenge you're facing with that?",
@@ -60,7 +79,6 @@ class AgentRepository {
     "What would success look like for you in this situation?",
   ];
 
-  /// Generic follow-up questions — used when no keywords match.
   static const List<String> _genericFollowUps = [
     "Tell me more about that.",
     "What else is on your mind?",
@@ -69,7 +87,6 @@ class AgentRepository {
     "What's been the highlight of your day so far?",
   ];
 
-  /// Words/phrases that signal the user wants to end the session.
   static const List<String> _doneSignals = [
     'no',
     'nope',
@@ -84,26 +101,189 @@ class AgentRepository {
   ];
 
   // =========================================================================
-  // Public API
+  // Public API (async — supports both Layer A and Layer B)
   // =========================================================================
 
-  /// Get the opening greeting based on time of day and recency of last session.
+  /// Whether the LLM layer is available (configured + online).
+  bool get _isLlmAvailable =>
+      _claudeService != null &&
+      _claudeService.isConfigured &&
+      (_connectivityService?.isOnline ?? false);
+
+  /// Get the opening greeting.
+  ///
+  /// When online: Claude generates a context-aware greeting.
+  /// When offline: Rule-based time-of-day greeting (Layer A).
   ///
   /// [lastSessionDate] — when the user's most recent session started.
-  ///   If null, this is the user's first session ever.
-  ///   If more than 2 days ago, triggers a "welcome back" greeting.
-  ///
-  /// [now] — injectable for deterministic testing. Defaults to DateTime.now().
-  ///
-  /// Time-of-day rules (using local time):
-  ///   5:00 AM – 11:59 AM  → "Good morning! ..."
-  ///   12:00 PM – 4:59 PM  → "How's your afternoon going?"
-  ///   5:00 PM – 9:59 PM   → "How was your day?"
-  ///   10:00 PM – 4:59 AM  → "Still up? What's on your mind?"
-  String getGreeting({DateTime? lastSessionDate, DateTime? now}) {
+  /// [now] — injectable for testing. Defaults to DateTime.now().
+  /// [sessionCount] — total number of past sessions (for Claude context).
+  /// [conversationMessages] — not used for greeting, but included for
+  ///   API consistency.
+  Future<AgentResponse> getGreeting({
+    DateTime? lastSessionDate,
+    DateTime? now,
+    int sessionCount = 0,
+  }) async {
     final currentTime = now ?? DateTime.now();
 
-    // Check for gap since last session (> 2 days).
+    if (_isLlmAvailable) {
+      try {
+        // Build context for Claude's greeting
+        final daysSinceLast = lastSessionDate != null
+            ? currentTime.difference(lastSessionDate).inDays
+            : null;
+        final timeOfDay = _getTimeOfDay(currentTime);
+
+        final response = await _claudeService!.chat(
+          messages: [
+            {
+              'role': 'user',
+              'content': 'Start a new journal session. Greet me appropriately.',
+            },
+          ],
+          context: {
+            'time_of_day': timeOfDay,
+            if (daysSinceLast != null) 'days_since_last': daysSinceLast,
+            'session_count': sessionCount,
+          },
+        );
+
+        return AgentResponse(content: response, layer: AgentLayer.llmRemote);
+      } on ClaudeApiException {
+        // Fall through to Layer A
+      }
+    }
+
+    // Layer A fallback
+    return AgentResponse(
+      content: _getLocalGreeting(
+        lastSessionDate: lastSessionDate,
+        now: currentTime,
+      ),
+      layer: AgentLayer.ruleBasedLocal,
+    );
+  }
+
+  /// Get a follow-up question based on the user's message.
+  ///
+  /// When online: Claude generates a natural conversational follow-up.
+  /// When offline: Rule-based keyword detection (Layer A).
+  ///
+  /// Returns null (wrapped in AgentResponse) when the conversation should end.
+  ///
+  /// [latestUserMessage] — the message the user just sent.
+  /// [conversationHistory] — previous follow-up questions (Layer A dedup).
+  /// [followUpCount] — how many follow-ups have been asked so far.
+  /// [allMessages] — full conversation as role/content pairs (for Claude).
+  Future<AgentResponse?> getFollowUp({
+    required String latestUserMessage,
+    required List<String> conversationHistory,
+    required int followUpCount,
+    List<Map<String, String>>? allMessages,
+  }) async {
+    // Check if session should end (works for both layers)
+    if (shouldEndSession(
+      followUpCount: followUpCount,
+      latestUserMessage: latestUserMessage,
+    )) {
+      return null;
+    }
+
+    if (_isLlmAvailable && allMessages != null && allMessages.isNotEmpty) {
+      try {
+        final response = await _claudeService!.chat(messages: allMessages);
+        return AgentResponse(content: response, layer: AgentLayer.llmRemote);
+      } on ClaudeApiException {
+        // Fall through to Layer A
+      }
+    }
+
+    // Layer A fallback
+    final localFollowUp = _getLocalFollowUp(
+      latestUserMessage: latestUserMessage,
+      conversationHistory: conversationHistory,
+      followUpCount: followUpCount,
+    );
+
+    if (localFollowUp == null) return null;
+
+    return AgentResponse(
+      content: localFollowUp,
+      layer: AgentLayer.ruleBasedLocal,
+    );
+  }
+
+  /// Generate a session summary and extract metadata.
+  ///
+  /// When online: Claude generates a natural summary + structured metadata
+  ///   (mood tags, people, topics).
+  /// When offline: Rule-based first-sentence extraction (Layer A), no metadata.
+  ///
+  /// [userMessages] — only the USER messages (for Layer A summary).
+  /// [allMessages] — full conversation as role/content pairs (for Claude).
+  Future<AgentResponse> generateSummary({
+    required List<String> userMessages,
+    List<Map<String, String>>? allMessages,
+  }) async {
+    if (_isLlmAvailable && allMessages != null && allMessages.isNotEmpty) {
+      try {
+        // First get the metadata (summary, mood, people, topics)
+        final metadata = await _claudeService!.extractMetadata(
+          messages: allMessages,
+        );
+
+        // Use the Claude-generated summary, or fall back to local
+        final summary =
+            metadata.summary ?? _generateLocalSummaryText(userMessages);
+
+        return AgentResponse(
+          content: summary,
+          layer: AgentLayer.llmRemote,
+          metadata: metadata,
+        );
+      } on ClaudeApiException {
+        // Fall through to Layer A
+      }
+    }
+
+    // Layer A fallback — no metadata
+    return AgentResponse(
+      content: _generateLocalSummaryText(userMessages),
+      layer: AgentLayer.ruleBasedLocal,
+    );
+  }
+
+  /// Determine if the session should end based on conversation state.
+  ///
+  /// This is synchronous and layer-independent — the same rules apply
+  /// regardless of which layer is serving the conversation.
+  bool shouldEndSession({
+    required int followUpCount,
+    required String latestUserMessage,
+  }) {
+    if (followUpCount > 3) return true;
+    final trimmed = latestUserMessage.trim().toLowerCase();
+    return _doneSignals.contains(trimmed);
+  }
+
+  // =========================================================================
+  // Layer A (rule-based) — private methods
+  // =========================================================================
+
+  /// Get a time-of-day string for Claude context.
+  String _getTimeOfDay(DateTime time) {
+    final hour = time.hour;
+    if (hour >= 5 && hour < 12) return 'morning';
+    if (hour >= 12 && hour < 17) return 'afternoon';
+    if (hour >= 17 && hour < 22) return 'evening';
+    return 'late_night';
+  }
+
+  /// Rule-based greeting (Layer A).
+  String _getLocalGreeting({DateTime? lastSessionDate, DateTime? now}) {
+    final currentTime = now ?? DateTime.now();
+
     if (lastSessionDate != null) {
       final daysSinceLastSession = currentTime
           .difference(lastSessionDate)
@@ -113,9 +293,7 @@ class AgentRepository {
       }
     }
 
-    // Time-of-day greeting based on local hour.
     final hour = currentTime.hour;
-
     if (hour >= 5 && hour < 12) {
       return "Good morning! Any plans or thoughts for today?";
     } else if (hour >= 12 && hour < 17) {
@@ -123,75 +301,44 @@ class AgentRepository {
     } else if (hour >= 17 && hour < 22) {
       return "How was your day?";
     } else {
-      // 10 PM – 4:59 AM
       return "Still up? What's on your mind?";
     }
   }
 
-  /// Get a follow-up question based on the user's message.
-  ///
-  /// Returns null when the conversation should end (max follow-ups reached
-  /// and user has responded to the closing prompt).
-  ///
-  /// [latestUserMessage] — the message the user just sent.
-  /// [conversationHistory] — all previous follow-up questions asked in this
-  ///   session (used to avoid repeating the same question).
-  /// [followUpCount] — how many follow-ups have been asked so far.
-  ///
-  /// The conversation flow:
-  ///   0-3 follow-ups: ask contextually relevant questions
-  ///   At follow-up 3+: transition to closing with a summary prompt
-  ///   After closing: return null to signal session end
-  String? getFollowUp({
+  /// Rule-based follow-up (Layer A).
+  String? _getLocalFollowUp({
     required String latestUserMessage,
     required List<String> conversationHistory,
     required int followUpCount,
   }) {
-    // After the closing message has been sent and user responded, end session.
-    if (followUpCount > 3) {
-      return null;
-    }
+    if (followUpCount > 3) return null;
 
-    // At follow-up count 3, transition to closing.
-    // The summary will be generated by generateLocalSummary() separately.
     if (followUpCount == 3) {
       return "Thanks for sharing. Is there anything else you'd like to add "
           "before we wrap up?";
     }
 
-    // For follow-ups 0-2, use keyword-based question selection.
     final category = extractCategory(latestUserMessage);
     final pool = _getPoolForCategory(category);
 
-    // Pick a question that hasn't been used yet in this session.
     for (final question in pool) {
       if (!conversationHistory.contains(question)) {
         return question;
       }
     }
 
-    // All questions in this category have been used — fall back to generic.
     for (final question in _genericFollowUps) {
       if (!conversationHistory.contains(question)) {
         return question;
       }
     }
 
-    // Extremely unlikely: all questions exhausted. Transition to closing.
     return "Thanks for sharing. Is there anything else you'd like to add "
         "before we wrap up?";
   }
 
-  /// Generate a local summary from the user's messages.
-  ///
-  /// Phase 1 approach: extract the first sentence of each user message
-  /// and combine them as bullet points.
-  ///
-  /// Phase 3 will replace this with Claude-generated summaries.
-  ///
-  /// [userMessages] — only the USER messages (not assistant messages).
-  /// Returns an empty string if no messages provided.
-  String generateLocalSummary(List<String> userMessages) {
+  /// Rule-based summary (Layer A).
+  String _generateLocalSummaryText(List<String> userMessages) {
     if (userMessages.isEmpty) return '';
 
     final sentences = <String>[];
@@ -203,39 +350,9 @@ class AgentRepository {
     }
 
     if (sentences.isEmpty) return '';
-
-    // Format as a simple list.
     return sentences.join('. ');
   }
 
-  /// Determine if the session should end based on conversation state.
-  ///
-  /// Returns true when:
-  ///   1. The follow-up count exceeds the maximum (4+), OR
-  ///   2. The user's latest message is a "done" signal (e.g., "no", "bye")
-  ///
-  /// [followUpCount] — how many follow-ups have been asked.
-  /// [latestUserMessage] — the user's most recent message text.
-  bool shouldEndSession({
-    required int followUpCount,
-    required String latestUserMessage,
-  }) {
-    // Max follow-ups reached.
-    if (followUpCount > 3) return true;
-
-    // Check for explicit done signals.
-    // We check if the ENTIRE message (trimmed, lowered) matches a done signal.
-    // This avoids false positives like "I'm done with the project" matching
-    // because we compare the whole message, not substrings.
-    final trimmed = latestUserMessage.trim().toLowerCase();
-    return _doneSignals.contains(trimmed);
-  }
-
-  // =========================================================================
-  // Private helpers
-  // =========================================================================
-
-  /// Get the question pool for a keyword category.
   List<String> _getPoolForCategory(KeywordCategory category) {
     switch (category) {
       case KeywordCategory.emotional:
@@ -249,21 +366,15 @@ class AgentRepository {
     }
   }
 
-  /// Extract the first sentence from a message.
-  ///
-  /// Looks for sentence-ending punctuation (. ! ?).
-  /// If none found, returns the entire message (it's one short sentence).
   String _extractFirstSentence(String message) {
     final trimmed = message.trim();
     if (trimmed.isEmpty) return '';
 
-    // Find the first sentence-ending punctuation.
     final match = RegExp(r'[.!?]').firstMatch(trimmed);
     if (match != null) {
       return trimmed.substring(0, match.end).trim();
     }
 
-    // No punctuation found — return the whole message.
     return trimmed;
   }
 }

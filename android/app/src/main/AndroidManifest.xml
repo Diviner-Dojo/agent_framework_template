@@ -25,6 +25,23 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Register as a digital assistant candidate.
+                 ACTION_ASSIST: triggered by long-press Home on most devices.
+                 ACTION_VOICE_ASSIST: triggered by "Hey Google" or voice button on some devices.
+                 The user must manually select this app as default in
+                 Settings → Apps → Default Apps → Digital Assistant. -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Icon shown by the system UI for the assistant action. -->
+            <meta-data
+                android:name="com.android.systemui.action_assist_icon"
+                android:resource="@mipmap/ic_launcher" />
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

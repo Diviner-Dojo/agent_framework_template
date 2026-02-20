@@ -2,16 +2,17 @@
 // file: lib/providers/settings_providers.dart
 // purpose: Providers for app settings and derived data.
 //
-// Phase 1: Minimal — only lastSessionDateProvider is needed.
+// Phase 1: lastSessionDateProvider for greeting gap detection.
+// Phase 2: Assistant registration service + default assistant status.
 // Future phases will add providers for:
 //   - Theme preference (light/dark/system)
 //   - Notification settings
 //   - Sync configuration
-//   - Voice input settings
 // ===========================================================================
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/assistant_registration_service.dart';
 import 'database_provider.dart';
 
 /// Provides the start time of the most recent journal session.
@@ -24,6 +25,26 @@ import 'database_provider.dart';
 /// This is a FutureProvider because it performs an async database query.
 /// It auto-refreshes whenever the session list changes (because the
 /// SessionDao query is re-evaluated).
+/// Provider for the assistant registration service.
+///
+/// Returns a default instance in production. Override in tests with a mock
+/// or an instance configured with `isAndroid: true` to test channel calls.
+final assistantServiceProvider = Provider<AssistantRegistrationService>((ref) {
+  return AssistantRegistrationService();
+});
+
+/// Provides the current default assistant status.
+///
+/// Returns `true` if this app is set as the default digital assistant on
+/// Android 10+. Returns `false` on iOS, older Android, or on error.
+///
+/// Invalidate this provider to re-check (e.g., after returning from
+/// system settings via `ref.invalidate(isDefaultAssistantProvider)`).
+final isDefaultAssistantProvider = FutureProvider<bool>((ref) async {
+  final service = ref.watch(assistantServiceProvider);
+  return service.isDefaultAssistant();
+});
+
 final lastSessionDateProvider = FutureProvider<DateTime?>((ref) async {
   final sessionDao = ref.watch(sessionDaoProvider);
   // getAllSessionsByDate returns newest first, so first element is most recent.

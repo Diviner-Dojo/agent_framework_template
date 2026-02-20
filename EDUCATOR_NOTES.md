@@ -1,273 +1,256 @@
 ---
 document_type: Educator Notes
-target: Framework Developer (you)
-created: 2026-02-18
-phase: Education Gate - Walkthrough Complete, Quiz Pending
+generated_by: Claude Code Educator (Haiku 4.5)
+date: 2026-02-20
+for_developer: New to Android and Flutter
 ---
 
-# Educator's Notes: Framework Learning Path
+# Educator Notes: Phase 2 Education Gate
 
-## What You Just Read
+This document is a behind-the-scenes look at how the education gate was designed.
 
-The **WALKTHROUGH.md** you received is a 11-part guided walkthrough of the AI-Native Agentic Development Framework. It was structured progressively:
+## Design Rationale
 
-1. **Mental Model** (Part 1) — What does this thing actually do?
-2. **Agent Architecture** (Part 2) — Why 9 agents? How do they work?
-3. **Rules Stack** (Part 3) — What standards do agents enforce?
-4. **Capture Pipeline** (Part 4) — How does reasoning become data?
-5. **Hooks** (Part 5) — What fires automatically?
-6. **Commands** (Part 6) — What's the user interface?
-7. **Application Code** (Part 7) — What's the subject?
-8. **End-to-End Flow** (Part 8) — How does a code change move through the system?
-9. **Meta Loops** (Part 9) — How does the framework improve itself?
-10. **Philosophy** (Part 10) — Why were these design choices made?
-11. **Summary** (Part 11) — What did you actually build?
+### Why This Gate Needed Full Three-Step Treatment
 
-Each section explained **decisions and design intent**, not line-by-line code narration.
+Phase 2 sits at the intersection of four complex domains:
 
----
+1. **Android platform integration** (new to developer)
+2. **Dart/Flutter state management** (familiar but pattern-heavy)
+3. **Concurrent operations & race conditions** (often missed in reviews)
+4. **Offline-first architecture** (new framework principle)
 
-## The Quiz: What It Tests
+A shorter gate (walkthrough + quiz) would teach "what" but not "why." The developer needs to deeply understand the design trade-offs because Phase 2 is foundational. Future phases (3-4) will build on these patterns.
 
-**FRAMEWORK_QUIZ.md** has 13 questions distributed across Bloom's levels:
+### Why This Structure: Walkthrough → Quiz → Explain-Back
 
-- **6 Understanding questions** (60%): Can you explain concepts?
-- **3 Apply questions** (20%): Can you trace processes and make decisions?
-- **2 Analyze questions** (15%): Can you compare alternatives and trade-offs?
-- **2 Evaluate questions** (5%): Can you assess solutions against principles?
+**Scaffolding principle:** Each step builds on the previous, with responsibility shifting from educator to developer.
 
-The quiz is **open book** — you should reference CLAUDE.md, agent definitions, and code while answering. The goal is not memorization but **demonstrating you can apply the framework's concepts**.
+- **Walkthrough**: Educator provides structure, explains decisions, shows connections
+- **Quiz**: Developer applies concepts in new scenarios (still guided, answer key available)
+- **Explain-Back**: Developer synthesizes independently (no answer key, graded on depth)
 
-**Pass threshold: 70% (9/13 correct)**
+By step 3, the developer is generating original explanations, which is where real understanding lives.
 
----
+### Bloom's Distribution: Why These Weights?
 
-## Why This Structure? (Educator Perspective)
+The quiz is weighted:
+- 60-70% Understand/Apply (foundational)
+- 30-40% Analyze/Evaluate (critical thinking)
 
-### Scaffolding
+This matches Tier 2 complexity. If Phase 2 were Tier 1 (basic CRUD), the quiz would be 80% Remember/Understand. If it were Tier 3 (distributed systems), it would be 50% Analyze/Evaluate.
 
-The walkthrough starts with "what is this?" (mental model) and progressively builds toward "how does it all work together?" (end-to-end flow). This is **progressive disclosure** — you see the big picture first, then details in context.
-
-Without this scaffolding, diving directly into agent definitions or hook scripts would feel like drowning in specifics without understanding why they exist.
-
-### Mix of Question Types
-
-The quiz is intentionally unbalanced:
-- **60% Understanding/Apply** because that's what matters for day-to-day work
-- **40% Analyze/Evaluate** because that's what matters for improving the framework
-
-You don't need to memorize obscure implementation details. You need to understand when to activate which specialist and why certain principles exist.
-
-### Open Book
-
-This isn't a test of your memory. It's a test of whether you can **read the code/docs, connect concepts, and explain them in your own words**. If you need to check something, that's fine — that's actually the expected workflow.
+The debug scenario (Q9) and change-impact (Q14) questions are essential because they reveal whether the developer can trace code execution under failure conditions — a prerequisite for maintaining race-condition-safe code.
 
 ---
 
-## Mastery Tier Assessment
+## What Makes This Gate Effective
 
-You're working at **Tier 2: Complex Systems Design**.
+### 1. Progressive Disclosure, Not Line-by-Line Narration
 
-Your framework involves:
-- Async patterns (parallel agents)
-- Distributed systems concepts (multi-agent orchestration)
-- State management (capture stack, BUILD_STATUS.md)
-- Complex decision logic (risk assessment, specialist activation)
+**Bad walkthrough:** "Here's onCreate. It runs first. Here's onNewIntent. It runs later. Here's configureFlutterEngine..."
 
-For Tier 2, the educator assesses:
-- Do you understand concurrency/parallelism implications?
-- Can you trace failure modes?
-- Do you recognize second-order effects (e.g., "if independent-perspective fails, what else breaks?")?
+**Good walkthrough (what you got):** "The core challenge is timing. Kotlin and Dart initialize on different threads. Here's why that matters... Here's how onCreate/onNewIntent solve part of it... Here's why addPostFrameCallback solves another part..."
 
----
+The walkthrough explains the **problem-solution arc**, not just the code.
 
-## After the Quiz: Explain-Back
+### 2. Explicit Failure Modes
 
-Once you pass the quiz (≥70%), you'll be asked to explain back three things:
+The quiz emphasizes "what breaks?"
 
-### 1. Core Philosophy: "Reasoning is Primary"
+- Q4: What happens if the platform channel isn't registered?
+- Q9: Why does the test fail without the guard?
+- Q14: What happens if you remove the try-catch?
 
-Explain in your own words:
-- What does it mean to treat reasoning as the primary artifact?
-- How is this different from traditional code review?
-- When should you violate this principle (if ever)?
+This is crucial. Many developers memorize code without understanding what prevents it from breaking. By forcing them to articulate failure modes, the gate ensures they grasp the *why*.
 
-**Example good answer:**
-> "Instead of code being the permanent record and reasoning being ephemeral (forgotten), we reverse it. Every significant decision is captured immutably. In 2 years, someone reads the discussion not just the code. This means decisions are explainable and defensible — we're not trapped in 'but why is it like that? dunno, it was like that when I started.'"
+### 3. System Thinking Required
 
-### 2. A Design Trade-Off
+The explain-back prompts intentionally ask "how does this connect to ADR-0004?" or "compare all three guards." Single-concept understanding is easy; recognizing how concepts interact is mastery.
 
-Pick one principle or design choice and explain:
-- Why was this choice made?
-- What does it cost?
-- When might you make a different choice?
+Example: A developer might understand that `ref.watch` is for reactive values. They only truly understand it when they can explain:
+- "Why OnboardingNotifier should use `ref.read` despite using the same library"
+- "Why AgenticJournalApp should use `ref.watch` even though it's also a `build()` method"
+- "What goes wrong if you choose the opposite for each case"
 
-**Example:** Principle #6 (Education gates before merge)
-> "Education gates add time but prevent shipping code developers don't understand. The trade-off: slower shipping but fewer surprise bugs down the road. You might skip the gate for a trivial typo fix, but not for security-critical code. The intensity adapts."
+The gate forces this level of discrimination.
 
-### 3. System Interactions
+### 4. Open-Book, Not Memory Test
 
-Pick two subsystems and explain how they reinforce each other.
+Every gate document says "you may reference the code." This is intentional.
 
-**Example:** Capture Pipeline + Specialists
-> "When security-specialist makes a finding, it's recorded in events.jsonl. Later, `/meta-review` can query 'how often did security-specialist flag SQL injection?' This feedback loop lets you assess specialist effectiveness. If a specialist's flags never result in bugs, maybe they're over-flagging. The capture system makes this visible."
-
-**Example:** Hooks + Quality Gate
-> "Hooks auto-format after every save. The quality gate checks formatting. Because formatting is automatic, the quality gate almost always passes formatting checks, which means developers can focus on substantive issues (logic, security, performance). The automation removes noise."
+Real work is open-book. No developer is asked to explain platform channels from memory during code review. The gate tests whether they can **read code and generate understanding**, not whether they memorized facts.
 
 ---
 
-## Then What? (Mastery Progression)
+## What the Walkthrough Emphasizes
 
-After explain-back, you've completed the education gate for the framework. The next steps:
+### The "Defensive Programming" Leitmotif
 
-### Level A: Apply the Framework (Hands-On)
+The review found three guards. The walkthrough makes it clear: **these are not optional**. They're how you prevent data corruption under realistic failure modes.
 
-Try this exercise:
+Each section of the walkthrough connects back to at least one guard:
 
-1. Create a small feature (e.g., "add filtering to the Todo list")
-2. Run `/review` on your changes
-3. Observe:
-   - Which specialists activate?
-   - What findings emerge?
-   - How does the capture pipeline work in practice?
-   - Do the findings make sense?
-4. Address findings
-5. Run the full education gate if warranted
+- Section 2 (platform channels): Why do we need try-catch around platform channel calls?
+- Section 3 (providers): Why do we manually manage state mutations (enabling guard checks)?
+- Section 4 (session lifecycle): Here are the three guards in detail
+- Section 5 (app.dart): Why do we wrap the navigation in try-catch?
 
-This grounds abstract knowledge in concrete experience.
+By the end of the walkthrough, "defensive programming" isn't an abstract principle — it's a concrete practice the developer sees applied three different ways.
 
-### Level B: Extend the Framework (Deliberate Improvement)
+### The "Offline-First Makes Everything Instant" Insight
 
-Once familiar, identify one thing to improve:
-- Add a new specialist for a domain you care about (accessibility, performance, user experience)?
-- Refine an existing specialist's anti-patterns?
-- Add a new rule to an existing rules file?
-- Create a new command that orchestrates existing specialists?
+The walkthrough keeps returning to ADR-0004. Why?
 
-Start with **Principle #8: Least-Complex Intervention First**. Don't redesign the agent architecture; just improve a prompt or add a rule.
+Because Phase 2 is the first time the developer sees offline-first in action. When they trace the cold-start flow:
 
-### Level C: Reflect on the Meta-Loop
+"Gesture → onCreate captures flag → Dart calls platform channel → Session creation (local DB) → Greeting displayed"
 
-Run:
-```
-/meta-review
-```
+—it's obvious that none of this requires network. That's not an accident. It's *why* the architecture works this way.
 
-This evaluates the framework itself. Read the reflection. Do you agree with the assessment? Are there improvements you'd recommend?
+The walkthrough makes this connection explicit in Section 1 and Section 6. By the explain-back, the developer should be able to say: "Phase 2 had to be designed this way to honor ADR-0004."
 
 ---
 
-## Knowledge Gaps to Watch For
+## What the Quiz Tests (Beyond Content)
 
-As you work through the quiz, you'll discover what you already know deeply vs. what's still fuzzy. Here are common gaps:
+### Attention to Detail
 
-### Gap 1: "I don't fully understand the 4-layer capture stack"
+Q1 (simple recall) ensures the developer read the walkthrough carefully. The channel name matters; it's easy to confuse with Intent actions.
 
-This is normal — it's the most abstract part. Go back to CLAUDE.md and read:
-- "Four-Layer Capture Stack" section
-- "Capture Pipeline" section
-- Read actual scripts: `create_discussion.py`, `write_event.py`, `close_discussion.py`
+Q2-Q4 escalate in detail. If the developer can't answer Q2 clearly, they didn't grasp the core platform channel pattern.
 
-The key insight: Layer 1 (immutable files) + Layer 2 (queryable index) + Layer 3 (curated knowledge) form a progression from "raw data" to "actionable insight."
+### Application Under Pressure
 
-### Gap 2: "I'm confused about when specialists activate"
+Q6 asks the developer to rewrite a broken provider. This is the first time they're creating new code (not explaining existing code). It tests whether understanding transfers.
 
-Go back to **facilitator.md** and read "Dynamic Activation." The rule is simple:
-- Low risk → fewer specialists
-- Medium risk → standard team
-- High risk → full panel + independent-perspective
+Similarly, Q10 (guard coverage) asks them to classify four new operations. Do they really understand guards, or did they just memorize the three in the walkthrough?
 
-Match the change type (API change, security, architecture, etc.) to specialists. Facilitator does this assessment.
+### Debugging Mindset
 
-### Gap 3: "I don't understand the collaboration mode spectrum"
+Q9 is a failing test. The developer must trace backward: "What would cause 2 sessions?" Without the guard, both calls enter the function. This is the debugging mindset — not "what does this code do?" but "why is it broken?"
 
-Go back to CLAUDE.md "Collaboration Mode Spectrum" and facilitator.md. The spectrum is:
-1. **Ensemble** (independent, no exchange) ← use for low-risk
-2. **Yes, And** (sequential building)
-3. **Structured Dialogue** (multi-round, default) ← use for medium
-4. **Dialectic** (thesis-antithesis-synthesis)
-5. **Adversarial** (red team) ← use for security reviews only
+### Change Impact Analysis
 
-Higher collaboration modes cost more tokens but catch more issues. Use the lowest mode that matches the risk level.
-
-### Gap 4: "I don't understand why the independent-perspective agent exists"
-
-Read **independent-perspective.md** carefully. The agent operates with **minimal prior context** — it's not anchored to your existing solution. While others say "looks fine," it asks "but what if that assumption breaks?"
-
-This prevents groupthink. Example: 3 specialists say "this SQL is fine," but independent-perspective asks "what if the database is slow?" and catches an N+1 query that would cause outages at scale.
+Q14 removes a try-catch. The developer must predict consequences. This tests whether they understand not just "why this guard exists" but "what role it plays in the system."
 
 ---
 
-## Success Criteria for This Education Gate
+## Grading Philosophy
 
-You've completed the walkthrough successfully if:
+### No Trick Questions
 
-- [ ] You can explain the 4-layer capture stack and why it's designed that way
-- [ ] You can name all 9 agents and one specialty for each
-- [ ] You understand why specialists activate dynamically (risk-based)
-- [ ] You can trace a code change from write → review → education gate → commit
-- [ ] You understand the philosophy (reasoning is primary, independence prevents groupthink, etc.)
+Every quiz question has a defensible correct answer based on code and design principles, not obscure Dart/Kotlin semantics.
 
-If you can do these things, you're ready to pass the quiz.
+Example of bad question: "What does `final` do in Kotlin?" (tricky syntax knowledge)
 
----
+Example of good question: "Why must onCreate capture the flag before Flutter initializes?" (design reasoning)
 
-## The Quiz: Practical Tips
+### Partial Credit is Generous
 
-### Before Starting
+A developer who gets the core idea but misses a detail gets 80% of the points.
 
-1. Have CLAUDE.md open in one window
-2. Have the `.claude/agents/` directory open in another
-3. Have `quality_gate.py` open for reference
-4. Have `scripts/` directory open for capture pipeline scripts
+Example: On Q3, if they explain "try-catch prevents crashes" but forget "returns false as safe default," they still pass. They got the idea.
 
-### While Answering
+### Explain-Back Grading is Holistic, Not Pedantic
 
-- **Type in your own words.** Copy-pasting from docs means you haven't synthesized the knowledge.
-- **Reference specific files.** "As stated in CLAUDE.md under Principle #1..." is better than vague references.
-- **Trace concrete examples.** For apply questions, walk through a specific scenario step-by-step.
-- **Explain your reasoning.** "I chose this because..." is better than just the answer.
+The explain-back asks for 150-250 words. If a developer writes 140 words but it's crystal-clear, they get full credit. If they write 300 words but it's rambling, they don't.
 
-### For Questions You're Unsure About
-
-- Read the reference file carefully
-- Try to trace a concrete example
-- If still stuck, move on and come back later
-
-You don't need 100% — 70% is passing. Missing 4 questions is fine.
+The rubric is: "Can this developer teach this concept to someone else?" If yes, full credit.
 
 ---
 
-## After Quiz: Feedback Loop
+## Anti-Patterns to Avoid (Educator Perspective)
 
-Once you submit answers:
+### Don't Create Gates for Trivial Changes
 
-1. I (the educator) score each answer against the rubric
-2. I note which Bloom's levels you're strong in (and which need work)
-3. I provide feedback: "Your Apply answers were excellent, but your Analyze answers were shallow"
-4. I recommend targeted follow-up
+The gate is proportional to complexity and risk. A one-line bug fix doesn't need explain-back. Only medium+ risk changes.
+
+Phase 2 is appropriate for a full gate because it's foundational and complex.
+
+### Don't Ask Questions with Ambiguous Answers
+
+Every quiz question must have a clear, defensible answer. If two reasonable interpretations exist, that's a bad question.
+
+Example of ambiguous: "Why does Kotlin use `val` instead of `var`?" (could mean multiple things)
+Example of clear: "What happens if you remove the `onNewIntent` method?" (one answer: second gesture is lost)
+
+### Don't Make the Gate Longer Than the Walkthrough
+
+The walkthrough is 18 minutes to read. The quiz is 25-30 minutes. The explain-back is 15 minutes. That's 60 minutes total — reasonable for Tier 2 complexity.
+
+If the gate is longer than the work itself, you've made it too thorough. The goal is deep understanding, not encyclopedic coverage.
 
 ---
 
-## Final Note: On "Vibe Coding"
+## How to Use This Gate as a Template
 
-You mentioned building this framework via "vibe coding" — intuitive iteration without fully scripting the architecture.
+If you need to create education gates for future phases:
 
-That's actually a **strength**, not a weakness. It means you have strong architectural intuition. The reason this walkthrough works is because *the framework is coherent* — you built something that hangs together logically.
+1. **Identify the three core concepts** that, if understood, unlock the whole feature
+   - Platform channels, defensive guards, Riverpod patterns for Phase 2
+   - This will be different for Phase 3, 4, etc.
 
-This education gate is ensuring that your intuitive knowledge becomes explicit knowledge (something you can articulate and teach). That's the value.
+2. **Write the walkthrough around those three**
+   - Each concept gets 1-2 sections
+   - Show the problem, the solution, and the failure modes
 
-Once you've passed the quiz and explain-back, you'll have both intuitive understanding AND explicit reasoning. That's expertise.
+3. **Create quiz questions that test each concept at multiple Bloom's levels**
+   - Pure recall (minimal)
+   - Understand (explain in own words)
+   - Apply (use in new context)
+   - Analyze (compare, distinguish)
+   - Debug & change-impact (failure scenarios)
+
+4. **Write explain-back prompts that force synthesis**
+   - "Explain X"
+   - "Compare X and Y"
+   - "How does X enable Y?"
+   - "How does X connect to the broader architecture?"
+
+5. **Grade generously on partial credit**
+   - The goal is understanding, not perfection
+   - A developer who got 80% of the idea is ready to contribute
 
 ---
 
-**Next Step:** Open FRAMEWORK_QUIZ.md and work through the 13 questions.
+## Mastery Tier Calibration
 
-**Time Estimate:** 25-30 minutes
+**Tier 1** (Basic CRUD, simple utilities):
+- Walkthrough: ~10 minutes (overview → functions)
+- Quiz: 8-10 questions, 70% Understand/Apply
+- Explain-back: Optional (1-2 prompts)
 
-**Passing Threshold:** 70% (9/13 correct)
+**Tier 2** (API integration, async, state management) ← Phase 2 is here
+- Walkthrough: ~20 minutes (overview → architecture → implementation)
+- Quiz: 12-16 questions, 60-70% Understand/Apply + 30-40% Analyze/Evaluate
+- Explain-back: Required (3-4 prompts)
 
-**Pass → Explain-Back → Framework Mastery ✓**
+**Tier 3** (Security, distributed systems, architecture):
+- Walkthrough: ~30-45 minutes (philosophy → design space → implementation)
+- Quiz: 16-20 questions, 40% Analyze/Evaluate + multiple debug scenarios
+- Explain-back: Required + architectural review conversation
 
-Good luck. You've built something thoughtful.
+---
+
+## Feedback Loop
+
+This gate is the first of its kind for this codebase. Feedback will improve it:
+
+- If developers consistently miss certain quiz questions, the walkthrough needs clarification
+- If explain-back responses are surface-level, add more system-thinking prompts
+- If the gate takes longer than estimated, consolidate sections
+- If some concepts prove irrelevant, trim them
+
+Phase 3 and 4 will benefit from these lessons.
+
+---
+
+## Final Thought
+
+Education is the hardest part of knowledge work. It's cheaper to write code than to ensure people understand it. This gate exists because Principle #6 states: "Education gates before merge."
+
+It's an investment in the developer's ability to maintain and extend Phase 2. The 60 minutes they spend now will save 10x that in debugging and mistakes later.
+
+—Educator (Haiku 4.5)
+

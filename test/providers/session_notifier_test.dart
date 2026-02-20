@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
+import 'package:agentic_journal/repositories/agent_repository.dart';
 
 void main() {
   late ProviderContainer container;
@@ -15,6 +16,10 @@ void main() {
       overrides: [
         // Override the database provider to use in-memory DB.
         databaseProvider.overrideWithValue(database),
+        // Override agent repository to Layer A only (no services).
+        // Without this override, the provider tries to create ClaudeApiService
+        // and ConnectivityService, which need platform plugins unavailable in tests.
+        agentRepositoryProvider.overrideWithValue(AgentRepository()),
       ],
     );
   });

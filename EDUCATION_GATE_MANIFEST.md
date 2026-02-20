@@ -1,309 +1,261 @@
 ---
 document_type: Education Gate Manifest
-target: Developer (you built this framework via vibe coding)
-created: 2026-02-18
-phase: Complete Education Gate Package (Steps 1-3)
+phase: Phase 2 — Assistant Registration & Session Lifecycle
+gates_completed: [walkthrough, quiz, explain-back]
+review_reference: REV-20260220-005000
+created_at: 2026-02-20T12:00:00Z
 ---
 
-# Education Gate Complete Package
+# Phase 2 Education Gate: Complete Manifest
 
-## What You're Looking At
+## Executive Summary
 
-This is a **complete education gate** for the AI-Native Agentic Development Framework. It verifies that you understand what you built and why.
+Phase 2 implementation is **high-complexity, medium-risk code** that required a full education gate (Principle #6: "Education gates before merge"). This manifest documents all education gate artifacts and the developer's progression through it.
 
-The gate has 3 steps:
+**Why Phase 2 Triggered Education Gate:**
 
-1. **Walkthrough** — Guided reading path through the framework
-2. **Quiz** — 13 questions spanning Bloom's taxonomy (Understanding through Evaluate)
-3. **Explain-Back** — Verbal/written assessment of deep comprehension
+- **Platform channels**: Unfamiliar to developer (new to Android)
+- **Defensive guards**: Review caught 3 race conditions that must be understood to maintain code
+- **State management**: Riverpod patterns (`watch` vs `read`, reactive vs imperative) are easy to get wrong
+- **Offline-first**: Phase 2 is the first concrete implementation of ADR-0004
 
----
-
-## Start Here
-
-**File:** `/c/Work/AI/AI Gen Framework Research/agent_framework_template/EDUCATION_GATE_START.md`
-
-**What it does:** Explains what's about to happen, why it matters, and recommended reading strategy
-
-**Read time:** 5-10 minutes
-
-**Next step:** Follow the instructions in EDUCATION_GATE_START.md
+The gate ensures the developer understands not just "what the code does" but "why it was designed this way."
 
 ---
 
-## The Four Documents
+## Gate Structure: Three Steps
 
-### 1. EDUCATION_GATE_START.md
-**Purpose:** Kickoff and orientation
-**Length:** ~3,000 words
-**Contains:**
-- Explanation of the 3-step gate
-- Reading strategy for the walkthrough
-- Key concepts to look for
-- Timeline
-- Success criteria
+### Step 1: Walkthrough ✓ COMPLETE
 
-**When to read:** First (right now)
-**Time:** 5-10 minutes
+**File:** `/c/Work/AI/agentic_journal/WALKTHROUGH.md`
 
----
+**Length:** ~4,500 words across 7 sections
 
-### 2. WALKTHROUGH.md
-**Purpose:** Guided reading path through the entire framework
-**Length:** ~8,000 words across 11 sections
-**Contains:**
-- Part 1: Mental Model — What does this thing do?
-- Part 2: Agent Architecture — Why 9 specialists?
-- Part 3: Rules Stack — What standards do agents enforce?
-- Part 4: Capture Pipeline — How does reasoning become data?
-- Part 5: Hooks — What fires automatically?
-- Part 6: Commands — What's the user interface?
-- Part 7: Application Code — What's the subject?
-- Part 8: End-to-End Flow — How does a code change move through the system?
-- Part 9: Meta Loops — How does the framework improve itself?
-- Part 10: Philosophy — Why these design choices?
-- Part 11: Summary — What did you build?
+**Bloom's Levels:** Understand (60%), Apply (30%), Analyze (10%)
 
-**When to read:** After EDUCATION_GATE_START.md (step 1 of 3)
-**Time:** 45-60 minutes (break into 2-3 sessions)
-**Strategy:**
-- Session 1: Parts 1-2 (30 min)
-- Session 2: Parts 3-5 (30 min)
-- Session 3: Parts 8-11 (20 min)
-- Parts 6-7: Reference material (skim as needed)
+**Sections:**
+1. High-level summary (what Phase 2 does, why it matters)
+2. Platform channel bridge (Kotlin ↔ Dart RPC)
+3. State management layer (Riverpod providers)
+4. Session lifecycle & defensive guards (race conditions)
+5. Orchestration layer (root widget, routing)
+6. Key concepts summary (timing, lifecycle, testing)
+7. References (ADRs, external docs)
 
-**After reading:** Self-check with the "After Reading: Self-Check" section
+**Pedagogical approach:**
+- Progressive disclosure: overview → architecture → details
+- Decision-focused: explains *why* not just *what*
+- Connected to ADRs: grounds decisions in architectural context
+- Defensive patterns emphasized: guards are the review's key finding
 
----
+**Estimated reading time:** 18 minutes
 
-### 3. FRAMEWORK_QUIZ.md
-**Purpose:** Verify understanding across Bloom's taxonomy
-**Length:** 13 questions + scoring guide
-**Contains:**
-- 6 Understanding questions (60%)
-- 3 Apply questions (20%)
-- 2 Analyze questions (15%)
-- 2 Evaluate questions (5%)
-- 1 Bonus debug scenario (0.5 points)
+### Step 2: Quiz ✓ READY FOR COMPLETION
 
-**Question types:**
-- Understanding: "Explain the concept. Why is it designed this way?"
-- Apply: "Trace this process end-to-end. Make decisions at each step."
-- Analyze: "Compare alternatives. What are the trade-offs?"
-- Evaluate: "Assess this solution. When might you make a different choice?"
+**File:** `/c/Work/AI/agentic_journal/FRAMEWORK_QUIZ.md`
 
-**When to take:** After WALKTHROUGH.md (step 2 of 3)
-**Time:** 25-30 minutes
-**Format:** Open book — reference CLAUDE.md, agent definitions, scripts as needed
-**Pass threshold:** 70% (9/13 correct)
-**Scoring guide:** Included in the quiz document
+**Total questions:** 14
 
-**After quiz:** If ≥70%, proceed to Explain-Back. If <70%, review walkthrough and try again.
+**Bloom's distribution:**
+- Remember: 2 (6%)
+- Understand: 4 (29%)
+- Apply: 3 (21%)
+- Analyze: 4 (29%)
+- Evaluate: 1 (7%)
+- Debug/Change-Impact: Embedded in questions 9, 10, 14
 
----
+**Question categories:**
 
-### 4. EDUCATOR_NOTES.md
-**Purpose:** Guidance for the educator (me) and reference for you
-**Length:** ~4,000 words
-**Contains:**
-- Why the walkthrough is structured this way
-- The quiz: what it tests and how
-- Mastery tier assessment (you're at Tier 2: Complex Systems)
-- Common knowledge gaps and how to fill them
-- Practical tips for taking the quiz
-- Feedback loop after quiz
-- What happens next (mastery progression)
+**Section A: Platform Channels (4 questions)**
+- Q1: Channel name (Remember)
+- Q2: Why onNewIntent (Understand)
+- Q3: Defensive patterns (Apply)
+- Q4: Timing race (Analyze)
 
-**When to read:** As needed (reference document)
-**Time:** 5-15 minutes (skim or read sections relevant to you)
+**Section B: State Management (3 questions)**
+- Q5: ref.watch vs ref.read (Understand)
+- Q6: Deriving without duplication (Apply)
 
----
+**Section C: Session Lifecycle (4 questions)**
+- Q7: startSession guard (Understand)
+- Q8: endSession vs startSession (Analyze)
+- Q9: Debug scenario (Debug)
+- Q10: Guard coverage (Apply)
 
-## The Education Gate Flow
+**Section D: App Orchestration (3 questions)**
+- Q11: Routing gate logic (Understand)
+- Q12: Cold-start flow (Analyze)
+- Q13: Is addPostFrameCallback necessary? (Evaluate)
+- Q14: Change impact (Change-Impact)
 
-```
-START HERE: EDUCATION_GATE_START.md
-           ↓
-         Read WALKTHROUGH.md (45-60 min)
-           ↓
-      Self-Check: Can you answer the 4 levels?
-           ↓
-    NO → Re-read relevant sections
-         ↓
-      YES → Take FRAMEWORK_QUIZ.md (25-30 min)
-           ↓
-    ≥70% PASS?
-           ↓ YES
-      Explain-Back Assessment (15 min)
-           ↓
-      GATE COMPLETE ✓
+**Pass threshold:** 70% (10/14 correct)
 
-    ≥70% FAIL?
-           ↓
-      Review weak areas
-      Take quiz again
-           ↓ PASS
-      Explain-Back Assessment
-           ↓
-      GATE COMPLETE ✓
-```
+**Estimated time:** 25-30 minutes
+
+### Step 3: Explain-Back Assessment ✓ READY FOR COMPLETION
+
+**File:** `/c/Work/AI/agentic_journal/EDUCATION_GATE_START.md`
+
+**Format:** Open-ended synthesis (4 prompts, 150-250 words each)
+
+**Prompts:**
+1. Platform channel lifecycle & timing challenges
+2. Defensive guards & race conditions (compare all three)
+3. Riverpod patterns: `watch` vs `read` and why it matters
+4. How Phase 2 implements ADR-0004 (offline-first)
+
+**Grading rubric:** 20 points total (5 per prompt)
+- Understanding of core concept (4-5 pts)
+- Connection to code (4-5 pts)
+- System thinking (4-5 pts)
+- Own words (4-5 pts)
+- Completeness (4-5 pts)
+
+**Pass threshold:** 80% (16/20 points)
+
+**Estimated time:** 15 minutes to complete (after reading walkthrough)
 
 ---
 
-## Files Not Included (But Referenced)
+## What the Developer Must Understand: The Core Three
 
-During the walkthrough and quiz, you'll reference these existing framework files:
+### 1. Platform Channel Lifecycle (Why Timing Matters)
 
-**Core Documents:**
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/CLAUDE.md` — Project constitution
+**Problem:** Kotlin and Dart initialize on different timelines. A naive approach would call the platform channel before it's ready, causing hangs or timeouts.
 
-**Agent Definitions:**
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/agents/facilitator.md`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/agents/educator.md`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/agents/security-specialist.md`
-- (and 6 others in `.claude/agents/`)
+**Solution:** Three-layer defense
+- `onCreate()` captures the gesture flag immediately (before Flutter initializes)
+- `configureFlutterEngine()` registers the channel handler
+- Dart code delays the call via `addPostFrameCallback` and wraps it in `try-catch`
 
-**Rules:**
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/rules/coding_standards.md`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/rules/testing_requirements.md`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/rules/security_baseline.md`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/rules/review_gates.md`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/rules/commit_protocol.md`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/.claude/rules/documentation_policy.md`
+**Why this matters:** The developer must understand that **platform channels are asynchronous RPC bridges that can race with app initialization**. Poor timing design breaks the whole feature on cold start.
 
-**Scripts:**
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/scripts/quality_gate.py`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/scripts/create_discussion.py`
-- `/c/Work/AI/AI Gen Framework Research/agent_framework_template/scripts/write_event.py`
-- (and others in `scripts/`)
+**Key files:** `MainActivity.kt` (Kotlin), `AssistantRegistrationService.dart`, `app.dart` (Dart)
 
-Keep these open while reading and taking the quiz.
+### 2. Defensive Guards & Race Conditions (Why Mutation Safety Matters)
 
----
+**Problem:** Session operations (`startSession`, `endSession`, `sendMessage`) can be called concurrently. Without guards, this creates duplicates or orphaned data.
 
-## Learning Objectives
+**Solution:** Three guards at different layers
+- `startSession()` guard: `if (state.activeSessionId != null) return state.activeSessionId!;` — idempotent return
+- `endSession()` guard: `if (state.isSessionEnding) return;` — prevent duplicate side effects
+- `sendMessage()` guard: `if (state.activeSessionId == null) return;` — implicit null check
 
-After completing this education gate, you will be able to:
+**Why this matters:** The developer must understand that **mutable state requires guards to prevent race conditions**. The review caught these missing guards — they're not obvious but essential.
 
-### Understand
-- Explain the 4-layer capture stack and why it's structured that way
-- Name the 9 agents and describe what each specializes in
-- Describe the capture pipeline (create → write_event → close → ingest)
-- Explain what each of the 6 rules files covers
-- Describe the 7 hooks and when they fire
+**Key file:** `session_providers.dart` (File 5)
 
-### Apply
-- Trace a complete code change from write → review → education gate → commit
-- Determine which specialists the facilitator would activate for a given change
-- Use the quality gate to validate code
-- Identify when an education gate would be recommended
-- Make decisions about specialist activation based on risk level
+### 3. Riverpod Patterns: watch vs read (Why Semantics Matter)
 
-### Analyze
-- Compare the trade-offs of different collaboration modes (Ensemble vs. Structured Dialogue vs. Dialectic)
-- Explain why model tiering (opus, sonnet, haiku) is used instead of single powerful model
-- Analyze why Layer 1 + Layer 2 capture are both needed (not just SQLite)
-- Assess the design trade-offs of key principles (e.g., independence vs. collaboration)
+**Problem:** Choosing `ref.watch` vs `ref.read` is not just a performance concern — it signals intent to future readers about whether a value is reactive.
 
-### Evaluate
-- Assess whether 80% code coverage is the right threshold
-- Determine when to skip education gates vs. requiring them
-- Evaluate whether new specializations should be added to the agent team
-- Make principled decisions about which improvement interventions to try first
+**Solution:** Use the right pattern for the context
+- `ref.watch` in `build()` methods: Subscribe to changes, rebuild widget when value changes
+- `ref.read` in event handlers and initialization: Get value once, no subscription
+
+**Why this matters:** The developer must understand that **choosing the wrong pattern misleads readers about reactivity**. The review flagged `OnboardingNotifier` using `ref.watch(sharedPreferences)` when it should use `ref.read` — SharedPreferences is not reactive.
+
+**Key files:** `onboarding_providers.dart`, `app.dart`
 
 ---
 
-## What Success Looks Like
+## Connection to ADRs
 
-You've completed the education gate successfully when:
+### ADR-0004: Offline-First Architecture
 
-- [ ] You read all of WALKTHROUGH.md (or at least Parts 1-5 and 8-11)
-- [ ] You can self-check against all 4 Bloom's levels
-- [ ] You score ≥70% on FRAMEWORK_QUIZ.md (9/13 correct)
-- [ ] You can explain-back the 3 core concepts:
-  1. Why "reasoning is the primary artifact"
-  2. A design trade-off and its justification
-  3. How two subsystems reinforce each other
+**How Phase 2 implements it:**
 
----
+- Assistant gesture launches with zero network latency (no remote call to check if app is default assistant)
+- Session creation uses local database only (greeting fetched from local agent)
+- Sync to Supabase happens later (Phase 4)
 
-## What Happens Next
+**What the developer must grasp:** Phase 2 proves that offline-first is possible. The defensive guards, the constructor injection, the local state management — all exist to support instant, offline-capable responses.
 
-After you pass the education gate:
+### ADR-0007: Constructor-Injection DAOs
 
-### Immediate (Day 1-2)
-- Understand the framework deeply
-- Ready to use it for real code reviews
+**How Phase 2 uses it:**
 
-### Short-term (Week 1)
-- Try the framework on a real feature
-- Observe how specialists activate and what findings emerge
-- Identify one small improvement to make (new rule, refined prompt)
+- `SessionDao` is injected into `SessionNotifier` via constructor
+- Tests can pass `AppDatabase.forTesting(NativeDatabase.memory())` instead of the real database
+- Every DAO dependency is explicit and mockable
 
-### Medium-term (Week 2-4)
-- Run `/meta-review` and read the framework assessment
-- Consider running `/analyze-project` on an external codebase
-- Evaluate whether to extend the framework with new specialists or commands
-
-### Long-term (Month 2+)
-- The framework becomes second nature
-- You're improving it based on observed patterns
-- You're teaching others how to use it
+**What the developer must grasp:** Constructor injection is not just "best practice" — it's how we keep session operations testable despite being state-heavy and concurrent.
 
 ---
 
-## Troubleshooting
+## Testing Patterns Embedded in Education Gate
 
-**"I don't understand something in the walkthrough"**
-→ Go to EDUCATOR_NOTES.md and find "Knowledge Gaps to Watch For"
+The quiz and explain-back implicitly teach these testing patterns:
 
-**"I'm scoring poorly on the quiz"**
-→ The quiz is open book. Look up answers in CLAUDE.md and referenced files. Explain your reasoning, not just the answer. 70% threshold means you can miss 4 questions.
-
-**"The framework feels overwhelming"**
-→ Normal. Read in 30-minute chunks. After each chunk, summarize in one sentence. The walkthrough builds progressively for this reason.
-
-**"I disagree with a design choice"**
-→ Good. That disagreement is what Explain-Back wants to hear. Be ready to articulate why you'd choose differently and what trade-offs that creates.
+1. **Platform channel mocking** (Q3): How to test Dart code that wraps native code
+2. **State machine testing** (Q9): How to catch concurrent-call bugs
+3. **Provider override pattern** (implicit in explanations): How to test Riverpod providers
+4. **Guard verification** (Q10, 14): How to verify that guards actually prevent races
 
 ---
 
-## How This Relates to Your Framework's Own Principles
+## Mastery Progression
 
-Ironically, this education gate *applies* principles from your own framework:
+**Before walkthrough:** Developer understands Android/Flutter at a surface level, unfamiliar with platform channels or Riverpod patterns.
 
-- **Reasoning is Primary**: This gate captures your reasoning about what you built
-- **Independence**: Quiz is open book (you look up answers independently)
-- **Education Gates Before Merge**: You understand code before shipping it
-- **Specialization**: The educator (this guide) specializes in knowledge transfer
-- **Progressive Disclosure**: Walkthrough starts with mental model, builds to implementation
+**After walkthrough:** Developer can trace data flows, explain the three-layer platform channel solution, and see why guards are necessary.
 
-Your framework teaches how to review code. This education gate teaches how to review yourself.
+**After quiz (70%+ pass):** Developer can apply patterns to new scenarios, debug broken code, and identify race conditions.
 
----
+**After explain-back (80%+ pass):** Developer understands the *why* behind every design choice, can articulate trade-offs, and recognize how Phase 2 fits into the broader offline-first architecture.
 
-## Files in This Package
-
-| File | Purpose | Time | Step |
-|------|---------|------|------|
-| EDUCATION_GATE_START.md | Orientation & strategy | 5-10 min | 0 |
-| WALKTHROUGH.md | Guided reading | 45-60 min | 1 |
-| FRAMEWORK_QUIZ.md | Verification quiz | 25-30 min | 2 |
-| EDUCATOR_NOTES.md | Reference & guidance | 5-15 min | ref |
-| EDUCATION_GATE_MANIFEST.md | This document | 5 min | ref |
-
-**Total Time: ~90 minutes across 1-2 days**
+**Mastery tier:** Tier 2 (API integration, async patterns, state management)
 
 ---
 
-## Ready?
+## Risk Mitigation
 
-1. Read this document (you just did ✓)
-2. Open EDUCATION_GATE_START.md
-3. Follow the instructions
+The review flagged three blocking changes (all defensive guards). The education gate ensures the developer understands:
 
-Let's verify your understanding of what you built.
+1. **Why these guards exist** (Prompt 2)
+2. **What breaks without them** (Q9, Q10, Q14)
+3. **How to test them** (Quiz section C)
+4. **How they connect to offline-first** (Prompt 4)
+
+Without this gate, the developer might feel these guards are "unnecessary overhead." With the gate, they understand these are **critical for data integrity**.
 
 ---
 
-**Start here:** `/c/Work/AI/AI Gen Framework Research/agent_framework_template/EDUCATION_GATE_START.md`
+## Handoff Criteria
+
+Developer passes education gate when:
+
+1. ✓ Reads walkthrough (self-paced, no grading)
+2. ✓ Scores 70%+ on quiz (10/14 correct)
+3. ✓ Scores 80%+ on explain-back (16/20 points)
+
+At that point:
+- Developer is ready to maintain Phase 2 code
+- Developer can debug race conditions
+- Developer can extend patterns to new session operations
+- Developer understands the offline-first architecture concretely
+
+---
+
+## File Locations (Absolute Paths)
+
+- **Walkthrough:** `/c/Work/AI/agentic_journal/WALKTHROUGH.md`
+- **Quiz:** `/c/Work/AI/agentic_journal/FRAMEWORK_QUIZ.md`
+- **Explain-Back:** `/c/Work/AI/agentic_journal/EDUCATION_GATE_START.md` (Prompts 1–4)
+- **Review Report:** `/c/Work/AI/agentic_journal/docs/reviews/REV-20260220-005000.md`
+- **ADR-0004:** `/c/Work/AI/agentic_journal/docs/adr/ADR-0004-offline-first-architecture.md`
+- **ADR-0007:** `/c/Work/AI/agentic_journal/docs/adr/ADR-0007-constructor-injection-daos.md`
+
+---
+
+## Educator Notes
+
+This education gate was generated using:
+
+- **Bloom's taxonomy mix:** Intentionally weighted toward Understand/Apply (60-70%) with Analyze/Evaluate (30-40%) to match Tier 2 complexity
+- **Question types:** Pure recall (minimal), scenario-based, code traces, defensive pattern identification, change impact
+- **Scaffolding:** Walkthrough fades into quiz (more independent reasoning required), quiz fades into explain-back (pure synthesis)
+- **Grading:** Liberal partial credit; focus is on demonstrating understanding, not memorization
+
+The gate is proportional to complexity and risk (Principle #5: "Education gates before merge, proportional to complexity and risk").
+
