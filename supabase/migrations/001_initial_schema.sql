@@ -36,6 +36,7 @@ CREATE TABLE journal_sessions (
 CREATE TABLE journal_messages (
     message_id     UUID PRIMARY KEY,
     session_id     UUID NOT NULL REFERENCES journal_sessions(session_id) ON DELETE CASCADE,
+    user_id        UUID NOT NULL REFERENCES auth.users(id),
     role           TEXT NOT NULL CHECK (role IN ('USER', 'ASSISTANT', 'SYSTEM')),
     content        TEXT NOT NULL,
     timestamp      TIMESTAMPTZ NOT NULL,
@@ -50,6 +51,7 @@ CREATE TABLE journal_messages (
 CREATE TABLE entry_embeddings (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id     UUID NOT NULL REFERENCES journal_sessions(session_id) ON DELETE CASCADE,
+    user_id        UUID NOT NULL REFERENCES auth.users(id),
     chunk_text     TEXT NOT NULL,
     embedding      vector(1536),  -- dimensions match the embedding model used
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -65,6 +67,12 @@ CREATE INDEX idx_sessions_user_date ON journal_sessions(user_id, start_time DESC
 -- Messages within a session, ordered chronologically
 CREATE INDEX idx_messages_session ON journal_messages(session_id, timestamp ASC);
 
+-- Messages by user (supports O(1) RLS policy evaluation)
+CREATE INDEX idx_messages_user ON journal_messages(user_id);
+
+-- Embeddings by user (supports O(1) RLS policy evaluation)
+CREATE INDEX idx_embeddings_user ON entry_embeddings(user_id);
+
 -- Partial index for unsynced sessions (used by sync logic)
 CREATE INDEX idx_sessions_sync ON journal_sessions(sync_status) WHERE sync_status != 'SYNCED';
 
@@ -79,25 +87,23 @@ ALTER TABLE journal_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE journal_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE entry_embeddings ENABLE ROW LEVEL SECURITY;
 
--- Users can only CRUD their own sessions
+-- Users can only CRUD their own sessions.
+-- Explicit WITH CHECK ensures writes are also restricted (not just reads).
 CREATE POLICY "Users can CRUD their own sessions"
     ON journal_sessions FOR ALL
-    USING (auth.uid() = user_id);
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
 
--- Users can only CRUD messages belonging to their own sessions
+-- Users can only CRUD messages belonging to their own sessions.
+-- Direct user_id check (O(1)) instead of correlated subquery on journal_sessions.
 CREATE POLICY "Users can CRUD messages in their own sessions"
     ON journal_messages FOR ALL
-    USING (
-        session_id IN (
-            SELECT session_id FROM journal_sessions WHERE user_id = auth.uid()
-        )
-    );
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
 
--- Users can only CRUD embeddings for their own sessions
+-- Users can only CRUD embeddings for their own sessions.
+-- Direct user_id check (O(1)) instead of correlated subquery on journal_sessions.
 CREATE POLICY "Users can CRUD embeddings for their own sessions"
     ON entry_embeddings FOR ALL
-    USING (
-        session_id IN (
-            SELECT session_id FROM journal_sessions WHERE user_id = auth.uid()
-        )
-    );
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
