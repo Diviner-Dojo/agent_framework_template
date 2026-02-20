@@ -12,18 +12,29 @@
 //   - activeSessionId (which session is in progress)
 //   - followUpCount (how many follow-ups the agent has asked)
 //   - usedQuestions (to prevent the agent from repeating itself)
+//   - isWaitingForAgent (whether an async agent call is in progress)
 //
 // The AgentRepository is stateless — the notifier passes followUpCount
 // and conversation history as parameters on each call. Data flows DOWN
 // (provider → repository), never UP (repository never imports a provider).
+//
+// Phase 3 Change: All agent methods are now async (return Future<AgentResponse>).
+// The notifier sets isWaitingForAgent=true before each agent call and clears it
+// after, so the UI can show a loading indicator. Stale responses (arriving after
+// session ended) are discarded by checking activeSessionId after await.
 // ===========================================================================
+
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../config/environment.dart';
 import '../database/app_database.dart';
 import '../database/daos/session_dao.dart';
 import '../database/daos/message_dao.dart';
 import '../repositories/agent_repository.dart';
+import '../services/claude_api_service.dart';
+import '../services/connectivity_service.dart';
 import '../utils/uuid_generator.dart';
 import '../utils/timestamp_utils.dart';
 import 'database_provider.dart';
@@ -66,30 +77,60 @@ final activeSessionMessagesProvider = StreamProvider<List<JournalMessage>>((
 /// that the SessionNotifier manages. Using an immutable state class
 /// (instead of mutable fields) makes it easy to reason about state changes
 /// and works well with Riverpod's rebuild system.
+/// Sentinel object for copyWith — distinguishes "not provided" from "set to null".
+///
+/// Dart's nullable parameter syntax can't distinguish between "caller didn't pass
+/// a value" and "caller passed null". For fields like activeSessionId where null
+/// is a meaningful value (no active session), we use a sentinel object as the
+/// default so copyWith(activeSessionId: null) correctly clears the field.
+const _sentinel = Object();
+
 class SessionState {
   final String? activeSessionId;
   final int followUpCount;
   final List<String> usedQuestions;
   final bool isSessionEnding;
 
+  /// True while awaiting an async agent response (greeting, follow-up, summary).
+  /// The UI uses this to show a typing/loading indicator and disable the send button.
+  final bool isWaitingForAgent;
+
+  /// Tracks all messages as role/content pairs for Claude API context.
+  /// Layer B (Claude) needs the full conversation history for contextual responses.
+  /// Layer A ignores this — it only uses latestUserMessage and conversationHistory.
+  final List<Map<String, String>> conversationMessages;
+
   const SessionState({
     this.activeSessionId,
     this.followUpCount = 0,
     this.usedQuestions = const [],
     this.isSessionEnding = false,
+    this.isWaitingForAgent = false,
+    this.conversationMessages = const [],
   });
 
+  /// Create a copy with updated fields.
+  ///
+  /// Uses sentinel pattern for activeSessionId so that
+  /// copyWith(activeSessionId: null) correctly clears the session ID,
+  /// while omitting the parameter preserves the current value.
   SessionState copyWith({
-    String? activeSessionId,
+    Object? activeSessionId = _sentinel,
     int? followUpCount,
     List<String>? usedQuestions,
     bool? isSessionEnding,
+    bool? isWaitingForAgent,
+    List<Map<String, String>>? conversationMessages,
   }) {
     return SessionState(
-      activeSessionId: activeSessionId ?? this.activeSessionId,
+      activeSessionId: identical(activeSessionId, _sentinel)
+          ? this.activeSessionId
+          : activeSessionId as String?,
       followUpCount: followUpCount ?? this.followUpCount,
       usedQuestions: usedQuestions ?? this.usedQuestions,
       isSessionEnding: isSessionEnding ?? this.isSessionEnding,
+      isWaitingForAgent: isWaitingForAgent ?? this.isWaitingForAgent,
+      conversationMessages: conversationMessages ?? this.conversationMessages,
     );
   }
 }
@@ -125,6 +166,10 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// Creates a session record in the database, gets a time-appropriate
   /// greeting from the agent, and saves the greeting as the first message.
   ///
+  /// The agent call is async (may hit Claude API when online). The notifier
+  /// sets isWaitingForAgent=true immediately so the UI can show a loading
+  /// indicator during the greeting fetch.
+  ///
   /// Returns the session ID so the UI can navigate to the session screen.
   Future<String> startSession() async {
     // Guard: if a session is already active, return its ID instead of
@@ -145,10 +190,15 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Using 'UTC' as timezone for Phase 1 — Phase 2 adds flutter_timezone.
     await _sessionDao.createSession(sessionId, now, 'UTC');
 
-    // Get the greeting from the agent.
-    final greeting = _agent.getGreeting(
+    // Set loading state BEFORE the agent call (spec requirement: immediate flag).
+    state = SessionState(activeSessionId: sessionId, isWaitingForAgent: true);
+    _ref.read(activeSessionIdProvider.notifier).state = sessionId;
+
+    // Get the greeting from the agent (async — may call Claude API).
+    final greetingResponse = await _agent.getGreeting(
       lastSessionDate: lastSessionDate,
       now: now.toLocal(), // Agent uses local time for time-of-day greeting.
+      sessionCount: sessions.length,
     );
 
     // Save the greeting as the first ASSISTANT message.
@@ -156,15 +206,17 @@ class SessionNotifier extends StateNotifier<SessionState> {
       generateUuid(),
       sessionId,
       'ASSISTANT',
-      greeting,
+      greetingResponse.content,
       now,
     );
 
-    // Update state — this triggers UI rebuilds.
-    state = SessionState(activeSessionId: sessionId);
-
-    // Also update the global active session ID provider.
-    _ref.read(activeSessionIdProvider.notifier).state = sessionId;
+    // Track the greeting in conversation history for Claude context.
+    state = state.copyWith(
+      isWaitingForAgent: false,
+      conversationMessages: [
+        {'role': 'assistant', 'content': greetingResponse.content},
+      ],
+    );
 
     return sessionId;
   }
@@ -173,9 +225,12 @@ class SessionNotifier extends StateNotifier<SessionState> {
   ///
   /// Saves the user message to the DB, then:
   ///   - If the user signaled "done", ends the session.
-  ///   - Otherwise, gets a follow-up question from the agent.
+  ///   - Otherwise, gets a follow-up question from the agent (async).
   ///   - If the agent returns null (max follow-ups), ends the session.
   ///   - Otherwise, saves the follow-up as an ASSISTANT message.
+  ///
+  /// Stale response handling: If the user ends the session while a follow-up
+  /// is being fetched (activeSessionId becomes null), the response is discarded.
   Future<void> sendMessage(String text) async {
     final sessionId = state.activeSessionId;
     if (sessionId == null) return;
@@ -191,6 +246,13 @@ class SessionNotifier extends StateNotifier<SessionState> {
       now,
     );
 
+    // Track user message in conversation history for Claude context.
+    final updatedMessages = [
+      ...state.conversationMessages,
+      {'role': 'user', 'content': text},
+    ];
+    state = state.copyWith(conversationMessages: updatedMessages);
+
     // Check if the user wants to end the session.
     if (_agent.shouldEndSession(
       followUpCount: state.followUpCount,
@@ -200,40 +262,62 @@ class SessionNotifier extends StateNotifier<SessionState> {
       return;
     }
 
-    // Get a follow-up question from the agent.
-    final followUp = _agent.getFollowUp(
+    // Set loading state before the async agent call.
+    state = state.copyWith(isWaitingForAgent: true);
+
+    // Get a follow-up question from the agent (async — may call Claude API).
+    final followUpResponse = await _agent.getFollowUp(
       latestUserMessage: text,
       conversationHistory: state.usedQuestions,
       followUpCount: state.followUpCount,
+      allMessages: state.conversationMessages,
     );
 
-    if (followUp == null) {
+    // Stale response check: if the session ended while we were waiting,
+    // discard the response. This happens when endSession() is called
+    // concurrently (e.g., user presses back during agent wait).
+    if (state.activeSessionId == null) return;
+
+    state = state.copyWith(isWaitingForAgent: false);
+
+    if (followUpResponse == null) {
       // Agent says conversation is done.
       await endSession();
       return;
     }
+
+    final followUpText = followUpResponse.content;
 
     // Save the follow-up as an ASSISTANT message.
     await _messageDao.insertMessage(
       generateUuid(),
       sessionId,
       'ASSISTANT',
-      followUp,
+      followUpText,
       nowUtc(), // Slightly after user message timestamp.
     );
 
     // Update conversation state.
     state = state.copyWith(
       followUpCount: state.followUpCount + 1,
-      usedQuestions: [...state.usedQuestions, followUp],
+      usedQuestions: [...state.usedQuestions, followUpText],
+      conversationMessages: [
+        ...state.conversationMessages,
+        {'role': 'assistant', 'content': followUpText},
+      ],
     );
   }
 
   /// End the current session.
   ///
-  /// Generates a local summary from all user messages, updates the
-  /// session record with the end time and summary, then clears the
-  /// active session state.
+  /// Generates a summary (async — Claude extracts metadata when online),
+  /// updates the session record with end time, summary, and metadata,
+  /// then clears the active session state.
+  ///
+  /// When Claude is available (Layer B), the summary includes structured
+  /// metadata: mood_tags, people, topic_tags. These are stored as JSON
+  /// strings in the drift session table. When offline (Layer A), these
+  /// fields remain null.
   Future<void> endSession() async {
     // Guard: if endSession is already in progress (e.g., back-press during
     // wrap-up), do not re-enter. Prevents duplicate closing messages.
@@ -242,7 +326,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
     final sessionId = state.activeSessionId;
     if (sessionId == null) return;
 
-    state = state.copyWith(isSessionEnding: true);
+    state = state.copyWith(isSessionEnding: true, isWaitingForAgent: true);
 
     // Get all user messages for summary generation.
     final messages = await _messageDao.getMessagesForSession(sessionId);
@@ -251,8 +335,13 @@ class SessionNotifier extends StateNotifier<SessionState> {
         .map((m) => m.content)
         .toList();
 
-    // Generate the summary.
-    final summary = _agent.generateLocalSummary(userMessages);
+    // Generate the summary (async — Claude generates summary + metadata when online).
+    final summaryResponse = await _agent.generateSummary(
+      userMessages: userMessages,
+      allMessages: state.conversationMessages,
+    );
+
+    final summary = summaryResponse.content;
 
     // Save a closing ASSISTANT message.
     final closingMessage = summary.isNotEmpty
@@ -266,11 +355,30 @@ class SessionNotifier extends StateNotifier<SessionState> {
       nowUtc(),
     );
 
-    // Update the session record with end time and summary.
+    // Extract metadata from the agent response (only populated by Layer B).
+    // Convert List<String> to JSON strings for drift storage.
+    final metadata = summaryResponse.metadata;
+    final moodTagsJson = metadata?.moodTags != null
+        ? jsonEncode(metadata!.moodTags)
+        : null;
+    final peopleJson = metadata?.people != null
+        ? jsonEncode(metadata!.people)
+        : null;
+    final topicTagsJson = metadata?.topicTags != null
+        ? jsonEncode(metadata!.topicTags)
+        : null;
+
+    // Use the Claude-generated summary if available, otherwise the local one.
+    final storedSummary = metadata?.summary ?? summary;
+
+    // Update the session record with end time, summary, and metadata.
     await _sessionDao.endSession(
       sessionId,
       nowUtc(),
-      summary: summary.isNotEmpty ? summary : null,
+      summary: storedSummary.isNotEmpty ? storedSummary : null,
+      moodTags: moodTagsJson,
+      people: peopleJson,
+      topicTags: topicTagsJson,
     );
 
     // Clear the active session state.
@@ -279,11 +387,47 @@ class SessionNotifier extends StateNotifier<SessionState> {
   }
 }
 
+/// Provides the compile-time environment configuration.
+///
+/// Uses --dart-define values baked in at build time. When the values are
+/// missing (no --dart-define), Environment.isConfigured returns false and
+/// the app uses Layer A (rule-based) exclusively.
+final environmentProvider = Provider<Environment>((ref) {
+  return const Environment();
+});
+
+/// Provides the connectivity monitoring service.
+///
+/// This is a singleton that monitors network state. It must be initialized
+/// once at app startup via connectivityService.initialize().
+/// The provider calls dispose() on cleanup.
+final connectivityServiceProvider = Provider<ConnectivityService>((ref) {
+  final service = ConnectivityService();
+  ref.onDispose(() => service.dispose());
+  return service;
+});
+
+/// Provides the Claude API client.
+///
+/// Depends on Environment for the Edge Function URL and anon key.
+/// When Environment.isConfigured is false, the service self-disables
+/// (isConfigured returns false) and AgentRepository uses Layer A only.
+final claudeApiServiceProvider = Provider<ClaudeApiService>((ref) {
+  final environment = ref.watch(environmentProvider);
+  return ClaudeApiService(environment: environment);
+});
+
 /// Provider for the AgentRepository.
 ///
-/// Stateless, so it's a simple Provider (not a StateProvider).
+/// Injects ClaudeApiService and ConnectivityService for Layer B support.
+/// When either service is unavailable, the repository falls back to Layer A.
 final agentRepositoryProvider = Provider<AgentRepository>((ref) {
-  return AgentRepository();
+  final claudeService = ref.watch(claudeApiServiceProvider);
+  final connectivityService = ref.watch(connectivityServiceProvider);
+  return AgentRepository(
+    claudeService: claudeService,
+    connectivityService: connectivityService,
+  );
 });
 
 /// Provider for the SessionNotifier.

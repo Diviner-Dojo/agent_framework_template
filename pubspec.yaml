@@ -24,6 +24,12 @@ dependencies:
   # Timezone detection
   flutter_timezone: ^3.0.1
 
+  # HTTP client — interceptors for auth, retry, logging
+  dio: ^5.7.0
+
+  # Connectivity detection — online/offline state for LLM fallback
+  connectivity_plus: ^6.1.1
+
   # Core Flutter
   cupertino_icons: ^1.0.8
   path_provider: ^2.1.5

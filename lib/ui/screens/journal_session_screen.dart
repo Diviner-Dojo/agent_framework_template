@@ -31,7 +31,6 @@ class JournalSessionScreen extends ConsumerStatefulWidget {
 class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  bool _isSending = false;
   int _lastMessageCount = 0;
 
   @override
@@ -98,6 +97,11 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
               child: Text('Wrapping up your session...'),
             ),
 
+          // Typing indicator — shown while waiting for agent response.
+          // This appears above the input field to mimic a "typing..." bubble.
+          if (sessionState.isWaitingForAgent && !sessionState.isSessionEnding)
+            _buildTypingIndicator(context),
+
           // Text input field — hidden when session is ending.
           if (!sessionState.isSessionEnding) _buildInputField(context),
         ],
@@ -105,8 +109,39 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     );
   }
 
+  /// Build the typing indicator shown while waiting for agent response.
+  Widget _buildTypingIndicator(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Thinking...',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Build the message input field and send button.
   Widget _buildInputField(BuildContext context) {
+    final isWaiting = ref.watch(
+      sessionNotifierProvider.select((s) => s.isWaitingForAgent),
+    );
+
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       // Slight elevation to separate from the message list.
@@ -126,18 +161,19 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
           Expanded(
             child: TextField(
               controller: _textController,
+              enabled: !isWaiting,
               textCapitalization: TextCapitalization.sentences,
               maxLines: null, // Allows multi-line input.
               decoration: const InputDecoration(
                 hintText: 'Type your thoughts...',
               ),
-              onSubmitted: (_) => _sendMessage(),
+              onSubmitted: isWaiting ? null : (_) => _sendMessage(),
             ),
           ),
           const SizedBox(width: 8),
-          // Send button — disabled while a message is being processed.
+          // Send button — disabled while waiting for agent response.
           IconButton.filled(
-            onPressed: _isSending ? null : _sendMessage,
+            onPressed: isWaiting ? null : _sendMessage,
             icon: const Icon(Icons.send),
           ),
         ],
@@ -146,18 +182,19 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
   }
 
   /// Send the user's message to the session notifier.
+  ///
+  /// The loading state is managed by SessionNotifier.isWaitingForAgent,
+  /// not local widget state. This ensures the loading indicator stays
+  /// consistent across the entire agent call lifecycle.
   Future<void> _sendMessage() async {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
-    setState(() => _isSending = true);
     _textController.clear();
 
     await ref.read(sessionNotifierProvider.notifier).sendMessage(text);
 
     if (mounted) {
-      setState(() => _isSending = false);
-
       // Check if the session ended (notifier cleared the active session).
       final sessionState = ref.read(sessionNotifierProvider);
       if (sessionState.activeSessionId == null && mounted) {

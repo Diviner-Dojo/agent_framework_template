@@ -1,15 +1,16 @@
 // ===========================================================================
 // file: lib/main.dart
-// purpose: App entry point. Initializes SharedPreferences and wraps the app
+// purpose: App entry point. Initializes services and wraps the app
 //          in ProviderScope for Riverpod.
 //
 // ProviderScope is Riverpod's equivalent of a dependency injection container.
 // It must wrap the entire app so all providers are accessible from any widget.
 //
-// SharedPreferences is loaded before runApp because:
-//   1. The onboarding check needs it synchronously to decide the initial route
-//   2. SharedPreferences.getInstance() is async, so we await it here
-//   3. We pass it as a ProviderScope override so providers can use it
+// Initialization order:
+//   1. Flutter bindings (required for async before runApp)
+//   2. SharedPreferences (onboarding state)
+//   3. ConnectivityService (network monitoring for Layer B)
+//   4. runApp with ProviderScope overrides
 // ===========================================================================
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'providers/onboarding_providers.dart';
+import 'providers/session_providers.dart';
+import 'services/connectivity_service.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized before any async work.
@@ -28,12 +31,27 @@ void main() async {
   // This is needed for synchronous onboarding state checks in the widget tree.
   final prefs = await SharedPreferences.getInstance();
 
+  // Initialize connectivity monitoring for Layer B (Claude API) support.
+  // This checks current network state and subscribes to changes.
+  // If initialization fails (e.g., platform plugin unavailable), the app
+  // continues without connectivity monitoring — Layer A works regardless.
+  final connectivityService = ConnectivityService();
+  try {
+    await connectivityService.initialize();
+  } on Exception {
+    // Connectivity plugin unavailable — Layer A fallback is always available.
+  }
+
   runApp(
     // ProviderScope makes all Riverpod providers available to the widget tree.
-    // The override passes the loaded SharedPreferences instance to the
-    // sharedPreferencesProvider, which would otherwise throw UnimplementedError.
+    // Overrides inject pre-initialized instances that need async setup:
+    //   - SharedPreferences for onboarding state
+    //   - ConnectivityService for network monitoring (pre-initialized)
     ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        connectivityServiceProvider.overrideWithValue(connectivityService),
+      ],
       child: const AgenticJournalApp(),
     ),
   );

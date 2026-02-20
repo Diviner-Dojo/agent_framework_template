@@ -1,33 +1,32 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-20 ~01:30 UTC
+> Last updated: 2026-02-20 ~08:15 UTC
 
 ## Current Task
 
-**Status:** Phase 2 build complete — ready for `/review` and commit
+**Status:** Phase 3 review complete, fixes applied — ready to commit
 **Branch:** `main`
-**Spec:** `docs/sprints/SPEC-20260220-000100-phase2-assistant-registration.md` (approved)
+**Spec:** `docs/sprints/SPEC-20260220-064221-phase3-claude-api-integration.md` (approved)
 
 ### In Progress
-- Run `/review` on Phase 2 files before committing
+- Commit Phase 3 and create PR
 
 ### Recently Completed
-- Phase 2 build: 10 tasks, 3 checkpoints fired, 0 unresolved concerns
-  - Task 3: onNewIntent gap fix (architecture checkpoint)
-  - Task 5: StateNotifier → Notifier migration (architecture checkpoint)
-  - Task 8: First-launch assistant race condition guard (independent-perspective checkpoint)
-- 133 tests pass, 86.6% coverage, quality gate 5/5
-- Discussion DISC-20260220-001813-build-phase2-assistant-registration sealed (13 turns)
+- `/review` on Phase 3: APPROVE-WITH-CHANGES (REV-20260220-073817)
+  - 4 blocking fixes applied: await on async tests, PROXY_ACCESS_KEY fail-closed, Layer B fallback tests, extractMetadata text fallback tests
+  - Discussion DISC-20260220-073817-review-phase3-claude-api sealed (5 turns)
+- Phase 3 build: 11 tasks, 4 checkpoints fired, 0 unresolved concerns
+- 190 tests pass, 85.7% coverage, quality gate 6/6
+- Phase 2 committed and merged (PR #6)
 - Phase 1 Walking Skeleton (all passing)
-- Feedback loop closure + first retro + first meta-review
-- 4 stale rule file rewrites
-- All prior work committed and merged: PR #4, PR #5
+
+### Deferred
+- **Education gate for Phase 3** — `/walkthrough` and `/quiz` on Phase 3 files (Tier 2: async patterns, layered fallback, sentinel copyWith, proxy security). Run when time permits.
 
 ### Next Up
-- Run `/review` on Phase 2 files
-- Education gate (`/walkthrough`, `/quiz`)
 - Commit and create PR
+- Plan Phase 4
 
 ## Open Discussions
 
@@ -35,38 +34,38 @@
 |--------------|-------|--------|
 | (none) | All discussions sealed | — |
 
-## Phase 2 Files Modified
+## Phase 3 Files Modified
 
 **New files:**
-- `lib/services/assistant_registration_service.dart` — Platform channel wrapper
-- `lib/providers/onboarding_providers.dart` — SharedPreferences-backed onboarding state
-- `lib/ui/screens/settings_screen.dart` — Digital Assistant status + About
-- `lib/ui/screens/onboarding_screen.dart` — 3-page onboarding flow
-- `test/services/assistant_registration_service_test.dart` — 11 tests
-- `test/providers/onboarding_providers_test.dart` — 5 tests
-- `test/ui/settings_screen_test.dart` — 7 tests
-- `test/ui/onboarding_screen_test.dart` — 10 tests
-- `test/app_routing_test.dart` — 6 tests
-- `test/ui/journal_session_screen_test.dart` — 5 tests (coverage boost)
-- `test/ui/session_detail_screen_test.dart` — 4 tests (coverage boost)
-- `docs/sprints/SPEC-20260220-000100-phase2-assistant-registration.md`
+- `lib/config/environment.dart` — Compile-time config via --dart-define
+- `lib/services/claude_api_service.dart` — HTTP client for Edge Function
+- `lib/services/connectivity_service.dart` — Network monitoring wrapper
+- `lib/models/agent_response.dart` — AgentResponse, AgentLayer, AgentMetadata types
+- `supabase/functions/claude-proxy/index.ts` — Deno Edge Function proxy
+- `supabase/functions/claude-proxy/index_test.ts` — Deno unit tests
+- `DART_DEFINE_FLAGS.md` — Documents --dart-define flags
+- `test/config/environment_test.dart` — 9 tests
+- `test/models/agent_response_test.dart` — 10 tests
+- `test/services/claude_api_service_test.dart` — 17 tests (was 15, +2 from review fixes)
+- `test/services/connectivity_service_test.dart` — 6 tests
+- `test/repositories/agent_repository_online_test.dart` — 13 tests (was 9, +4 from review fixes)
 
 **Modified files:**
-- `pubspec.yaml` — added shared_preferences
-- `android/app/src/main/AndroidManifest.xml` — intent filters
-- `android/app/src/main/kotlin/.../MainActivity.kt` — full rewrite with platform channel
-- `lib/providers/settings_providers.dart` — assistant providers
-- `lib/main.dart` — SharedPreferences init
-- `lib/app.dart` — full rewrite with routing + intent detection
-- `lib/ui/screens/session_list_screen.dart` — settings gear icon
+- `pubspec.yaml` — added dio, connectivity_plus
+- `lib/repositories/agent_repository.dart` — async + LLM integration (Layer A preserved)
+- `lib/providers/session_providers.dart` — async agent, isWaitingForAgent, metadata storage, providers
+- `lib/ui/screens/journal_session_screen.dart` — typing indicator, disabled send button
+- `lib/main.dart` — connectivity service initialization
+- `test/repositories/agent_repository_test.dart` — migrated to async
+- `test/providers/session_notifier_test.dart` — agentRepositoryProvider override
 
 ## Key Decisions (Recent)
 
-- Injectable `isAndroid` parameter for testability (Platform.isAndroid is always false in flutter test)
-- Riverpod 2.x Notifier (not legacy StateNotifier) for onboarding
-- SharedPreferences loaded before runApp, passed as ProviderScope override
-- Lifecycle-anchored assistant launch in initState() with hasOnboarded guard
-- onNewIntent override for singleTop launch mode
+- No ConversationAgent interface (Phase 5 re-evaluation when Layer C added)
+- Sentinel pattern for SessionState.copyWith (nullable field clearing)
+- PROXY_ACCESS_KEY secret check in Edge Function (prevents open-proxy abuse)
+- METADATA_PARSE_ERROR typed error code for client-side detection
+- dart format auto-hook handles formatting; info-level null-aware suggestions left as-is
 
 ## Blockers
 
