@@ -29,7 +29,17 @@ class SessionListScreen extends ConsumerWidget {
     final sessionsAsync = ref.watch(allSessionsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Agentic Journal')),
+      appBar: AppBar(
+        title: const Text('Agentic Journal'),
+        actions: [
+          // Settings gear icon — opens the settings screen.
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.of(context).pushNamed('/settings'),
+          ),
+        ],
+      ),
       body: sessionsAsync.when(
         // Data loaded — show the list or empty state.
         data: (sessions) {

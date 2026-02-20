@@ -127,6 +127,11 @@ class SessionNotifier extends StateNotifier<SessionState> {
   ///
   /// Returns the session ID so the UI can navigate to the session screen.
   Future<String> startSession() async {
+    // Guard: if a session is already active, return its ID instead of
+    // creating a duplicate. Prevents orphaned sessions from rapid
+    // assistant gestures or concurrent calls.
+    if (state.activeSessionId != null) return state.activeSessionId!;
+
     final sessionId = generateUuid();
     final now = nowUtc();
 
@@ -230,6 +235,10 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// session record with the end time and summary, then clears the
   /// active session state.
   Future<void> endSession() async {
+    // Guard: if endSession is already in progress (e.g., back-press during
+    // wrap-up), do not re-enter. Prevents duplicate closing messages.
+    if (state.isSessionEnding) return;
+
     final sessionId = state.activeSessionId;
     if (sessionId == null) return;
 

@@ -1,57 +1,135 @@
 // ===========================================================================
 // file: lib/app.dart
-// purpose: Root MaterialApp widget with theme and navigation setup.
+// purpose: Root MaterialApp widget with theme, navigation, and intent routing.
 //
-// Navigation Strategy (intentional for Phase 1):
-//   Using string-based named routes for simplicity with only 3 screens.
-//   Before Phase 5 adds search and onboarding screens, migrate to go_router
-//   for type-safe, declarative routing. This is a known upgrade path, not
-//   technical debt.
+// Navigation Strategy:
+//   Using string-based named routes for simplicity. Before Phase 5 adds
+//   search screens, migrate to go_router for type-safe routing. This is
+//   a known upgrade path, not technical debt.
 //
 // Routes:
 //   '/'               → SessionListScreen (home — list of past sessions)
 //   '/session'        → JournalSessionScreen (active conversation)
 //   '/session/detail' → SessionDetailScreen (read-only transcript view)
+//   '/settings'       → SettingsScreen (assistant status, app info)
+//   '/onboarding'     → OnboardingScreen (first-launch guide)
+//
+// Intent Routing (Phase 2):
+//   When the app is launched via Android's assistant gesture (long-press Home),
+//   the Kotlin side sets a flag that we check ONCE in initState(). If set,
+//   we auto-start a new journal session after the first frame renders.
+//   The _assistantLaunchChecked guard prevents double-fire on hot reload.
+//
+// Onboarding Redirect:
+//   On first launch (onboardingNotifierProvider == false), the initial route
+//   is '/onboarding'. After the user completes onboarding, subsequent
+//   launches go to '/' (session list).
 // ===========================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'ui/theme/app_theme.dart';
-import 'ui/screens/session_list_screen.dart';
+import 'providers/onboarding_providers.dart';
+import 'providers/session_providers.dart';
+import 'providers/settings_providers.dart';
 import 'ui/screens/journal_session_screen.dart';
+import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/session_detail_screen.dart';
+import 'ui/screens/session_list_screen.dart';
+import 'ui/screens/settings_screen.dart';
+import 'ui/theme/app_theme.dart';
 
 /// The root widget of the app.
 ///
-/// This is a ConsumerWidget (Riverpod-aware) so that child screens
-/// can access providers without additional setup.
-class AgenticJournalApp extends ConsumerWidget {
+/// This is a ConsumerStatefulWidget (Riverpod-aware + stateful) because:
+/// 1. We need initState() to check the assistant-launch flag exactly once
+/// 2. We need ref access for providers (onboarding state, assistant service)
+class AgenticJournalApp extends ConsumerStatefulWidget {
   const AgenticJournalApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AgenticJournalApp> createState() => _AgenticJournalAppState();
+}
+
+class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp> {
+  /// Guard to ensure wasLaunchedAsAssistant() is called exactly once.
+  /// Without this, hot-reload or widget tree rebuilds could re-trigger
+  /// the assistant launch detection.
+  bool _assistantLaunchChecked = false;
+
+  /// GlobalKey for the navigator so we can push routes from initState's
+  /// post-frame callback, where we don't have a BuildContext from the
+  /// MaterialApp's navigator.
+  final _navigatorKey = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAssistantLaunch();
+  }
+
+  /// Check if the app was launched via the assistant gesture.
+  ///
+  /// This is called exactly once in initState(). If the app was launched
+  /// via ACTION_ASSIST, we auto-start a new journal session and navigate
+  /// to the session screen.
+  ///
+  /// Why addPostFrameCallback?
+  ///   We can't navigate until the MaterialApp's navigator is built.
+  ///   addPostFrameCallback runs after the first frame, when the
+  ///   navigator is ready.
+  Future<void> _checkAssistantLaunch() async {
+    if (_assistantLaunchChecked) return;
+    _assistantLaunchChecked = true;
+
+    final service = ref.read(assistantServiceProvider);
+    final wasAssistant = await service.wasLaunchedAsAssistant();
+    // Only auto-start a session if onboarding is already complete.
+    // On first-ever launch via assistant gesture, onboarding must finish
+    // first — otherwise /session gets pushed on top of /onboarding,
+    // creating a broken back-stack.
+    final hasOnboarded = ref.read(onboardingNotifierProvider);
+    if (wasAssistant && hasOnboarded && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          await ref.read(sessionNotifierProvider.notifier).startSession();
+          _navigatorKey.currentState?.pushNamed('/session');
+        } catch (_) {
+          // startSession failed — stay on the initial route rather than
+          // navigating to /session with no active session.
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Watch onboarding state to determine the initial route.
+    // This is the single source of truth — see onboarding_providers.dart.
+    final hasCompletedOnboarding = ref.watch(onboardingNotifierProvider);
+
     return MaterialApp(
       title: 'Agentic Journal',
       debugShowCheckedModeBanner: false,
+      navigatorKey: _navigatorKey,
 
       // Theme configuration — follows device light/dark setting.
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.system,
 
-      // Named routes for navigation.
-      initialRoute: '/',
+      // Initial route depends on onboarding state.
+      initialRoute: hasCompletedOnboarding ? '/' : '/onboarding',
       routes: {
         '/': (context) => const SessionListScreen(),
         '/session': (context) => const JournalSessionScreen(),
+        '/settings': (context) => const SettingsScreen(),
+        '/onboarding': (context) => const OnboardingScreen(),
       },
 
       // onGenerateRoute handles routes that need arguments (like session ID).
-      // The '/session/detail' route receives a session ID as an argument.
       onGenerateRoute: (settings) {
         if (settings.name == '/session/detail') {
-          // The session ID is passed as an argument when navigating.
           final sessionId = settings.arguments as String;
           return MaterialPageRoute(
             builder: (context) => SessionDetailScreen(sessionId: sessionId),

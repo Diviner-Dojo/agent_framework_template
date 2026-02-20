@@ -1,98 +1,72 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-19 ~12:00 UTC
+> Last updated: 2026-02-20 ~01:30 UTC
 
 ## Current Task
 
-**Status:** Phase 1 Walking Skeleton COMPLETE
+**Status:** Phase 2 build complete — ready for `/review` and commit
 **Branch:** `main`
-**Spec:** `docs/sprints/SPEC-20260219-174121-phase1-walking-skeleton.md`
+**Spec:** `docs/sprints/SPEC-20260220-000100-phase2-assistant-registration.md` (approved)
 
 ### In Progress
-- (none)
+- Run `/review` on Phase 2 files before committing
 
 ### Recently Completed
-- Task 1: Flutter project creation (`flutter create`)
-- Task 2: Dependencies (drift, riverpod, supabase_flutter, dio, uuid, path_provider, path)
-- Task 3: Directory structure (lib/ subdirectories for database, models, providers, repositories, ui, utils)
-- Task 4: Database tables + code generation (drift schema, `dart run build_runner build`)
-- Task 5: Database DAOs (session_dao.dart, message_dao.dart — constructor injection per ADR-0007)
-- Task 6: Domain models & utilities (sync_status, uuid_generator, timestamp_utils, keyword_extractor)
-- Task 7: Rule-based agent (agent_repository.dart — stateless, keyword-based follow-ups)
-- Task 8: Riverpod providers (database_provider, settings_providers, session_providers + SessionNotifier)
-- Task 9: UI theme + app shell (Material 3, app.dart with named routes, main.dart)
-- Task 10: Screens & widgets (session_list, journal_session, session_detail, chat_bubble, session_card, end_session_button)
-- Task 11: Tests (85 tests across 10 files, all passing)
-- Task 12: Quality gate migration (rewritten for Flutter/Dart, coverage excludes *.g.dart)
-- Task 13: Final verification (all 5 quality gate checks pass, debug APK builds successfully at 145MB)
+- Phase 2 build: 10 tasks, 3 checkpoints fired, 0 unresolved concerns
+  - Task 3: onNewIntent gap fix (architecture checkpoint)
+  - Task 5: StateNotifier → Notifier migration (architecture checkpoint)
+  - Task 8: First-launch assistant race condition guard (independent-perspective checkpoint)
+- 133 tests pass, 86.6% coverage, quality gate 5/5
+- Discussion DISC-20260220-001813-build-phase2-assistant-registration sealed (13 turns)
+- Phase 1 Walking Skeleton (all passing)
+- Feedback loop closure + first retro + first meta-review
+- 4 stale rule file rewrites
+- All prior work committed and merged: PR #4, PR #5
 
 ### Next Up
-- Phase 2 planning (Supabase cloud backend, auth, sync)
-- Emulator testing (manual: install app-debug.apk, verify full journaling flow)
+- Run `/review` on Phase 2 files
+- Education gate (`/walkthrough`, `/quiz`)
+- Commit and create PR
 
 ## Open Discussions
 
 | Discussion ID | Topic | Status |
 |--------------|-------|--------|
-| DISC-20260219-174121 | Phase 1 spec planning | closed |
+| (none) | All discussions sealed | — |
 
-## Modified Files (This Session)
+## Phase 2 Files Modified
 
-### New files created:
-- lib/database/daos/session_dao.dart
-- lib/database/daos/message_dao.dart
-- lib/models/sync_status.dart
-- lib/utils/uuid_generator.dart
-- lib/utils/timestamp_utils.dart
-- lib/utils/keyword_extractor.dart
-- lib/repositories/agent_repository.dart
-- lib/providers/database_provider.dart
-- lib/providers/settings_providers.dart
-- lib/providers/session_providers.dart
-- lib/ui/theme/app_theme.dart
-- lib/app.dart
-- lib/ui/widgets/chat_bubble.dart
-- lib/ui/widgets/session_card.dart
-- lib/ui/widgets/end_session_button.dart
-- lib/ui/screens/session_list_screen.dart
-- lib/ui/screens/journal_session_screen.dart
-- lib/ui/screens/session_detail_screen.dart
-- test/database/session_dao_test.dart
-- test/database/message_dao_test.dart
-- test/repositories/agent_repository_test.dart
-- test/utils/keyword_extractor_test.dart
-- test/utils/timestamp_utils_test.dart
-- test/models/sync_status_test.dart
-- test/providers/session_notifier_test.dart
-- test/ui/chat_bubble_test.dart
-- test/ui/session_list_screen_test.dart
-- test/ui/end_session_button_test.dart
+**New files:**
+- `lib/services/assistant_registration_service.dart` — Platform channel wrapper
+- `lib/providers/onboarding_providers.dart` — SharedPreferences-backed onboarding state
+- `lib/ui/screens/settings_screen.dart` — Digital Assistant status + About
+- `lib/ui/screens/onboarding_screen.dart` — 3-page onboarding flow
+- `test/services/assistant_registration_service_test.dart` — 11 tests
+- `test/providers/onboarding_providers_test.dart` — 5 tests
+- `test/ui/settings_screen_test.dart` — 7 tests
+- `test/ui/onboarding_screen_test.dart` — 10 tests
+- `test/app_routing_test.dart` — 6 tests
+- `test/ui/journal_session_screen_test.dart` — 5 tests (coverage boost)
+- `test/ui/session_detail_screen_test.dart` — 4 tests (coverage boost)
+- `docs/sprints/SPEC-20260220-000100-phase2-assistant-registration.md`
 
-### Modified files:
-- lib/main.dart (replaced placeholder with ProviderScope + AgenticJournalApp)
-- scripts/quality_gate.py (rewritten for Flutter/Dart toolchain)
-
-### Deleted files:
-- test/widget_test.dart (legacy Flutter default)
-
-## Resume Instructions
-
-When resuming, Claude should:
-1. Read this file first
-2. Phase 1 is complete — all 13 tasks done, quality gate 5/5, debug APK builds
-3. Ask the developer what they'd like to work on next (Phase 2, emulator testing, etc.)
-4. The spec at `docs/sprints/SPEC-20260219-174121-phase1-walking-skeleton.md` has the full task list
+**Modified files:**
+- `pubspec.yaml` — added shared_preferences
+- `android/app/src/main/AndroidManifest.xml` — intent filters
+- `android/app/src/main/kotlin/.../MainActivity.kt` — full rewrite with platform channel
+- `lib/providers/settings_providers.dart` — assistant providers
+- `lib/main.dart` — SharedPreferences init
+- `lib/app.dart` — full rewrite with routing + intent detection
+- `lib/ui/screens/session_list_screen.dart` — settings gear icon
 
 ## Key Decisions (Recent)
 
-- ADR-0007: Constructor injection for DAOs (not drift @DriftAccessor mixin)
-- Generated code (*.g.dart, *.freezed.dart) excluded from coverage calculations
-- Material 3 with seed color #5B8A9A (calming teal-blue)
-- All DB timestamps stored as UTC; convert to local only in UI layer
-- AgentRepository is stateless; SessionNotifier owns all conversation state
-- Keyword extraction priority: emotional > social > work > none
-- Known limitation: day names (e.g., "Friday") detected as proper nouns in keyword extractor
+- Injectable `isAndroid` parameter for testability (Platform.isAndroid is always false in flutter test)
+- Riverpod 2.x Notifier (not legacy StateNotifier) for onboarding
+- SharedPreferences loaded before runApp, passed as ProviderScope override
+- Lifecycle-anchored assistant launch in initState() with hasOnboarded guard
+- onNewIntent override for singleTop launch mode
 
 ## Blockers
 
