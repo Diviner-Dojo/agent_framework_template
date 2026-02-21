@@ -12,9 +12,12 @@
 //   to the database class hierarchy and complicates test setup.
 // ===========================================================================
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../app_database.dart';
+import '../search_query_utils.dart';
 
 /// Provides all database operations for journal sessions.
 ///
@@ -184,5 +187,172 @@ class SessionDao {
       ..addColumns([count])
       ..where(_db.journalSessions.syncStatus.isIn(['PENDING', 'FAILED']));
     return query.watchSingle().map((row) => row.read(count) ?? 0);
+  }
+
+  // =========================================================================
+  // Search methods (Phase 5)
+  // =========================================================================
+
+  /// Search sessions by keyword across summary and metadata columns.
+  ///
+  /// Uses case-insensitive LIKE queries with ESCAPE clause (not FTS5) —
+  /// see ADR-0013. LIKE wildcards (%, _) in [query] are escaped.
+  /// Optional filters narrow results by date range and metadata tags.
+  ///
+  /// Note: Metadata tag filters use substring LIKE matching against JSON
+  /// array strings (e.g., '["happy","tired"]'). This means a filter for
+  /// "happ" would match "happy". Acceptable for personal journal scale;
+  /// a normalized tags table would eliminate this if needed.
+  ///
+  /// Returns sessions ordered by start time descending (newest first).
+  Future<List<JournalSession>> searchSessions(
+    String query, {
+    DateTime? dateStart,
+    DateTime? dateEnd,
+    List<String>? moodTags,
+    List<String>? people,
+    List<String>? topicTags,
+  }) async {
+    final escaped = escapeLikeWildcards(query);
+    final pattern = '%$escaped%';
+
+    final select = _db.select(_db.journalSessions)
+      ..where((s) {
+        // Keyword match across summary and metadata columns.
+        Expression<bool> keywordMatch =
+            LikeWithEscape(s.summary, pattern) |
+            LikeWithEscape(s.moodTags, pattern) |
+            LikeWithEscape(s.people, pattern) |
+            LikeWithEscape(s.topicTags, pattern);
+
+        // Apply optional date range filter.
+        if (dateStart != null) {
+          keywordMatch =
+              keywordMatch & s.startTime.isBiggerOrEqualValue(dateStart);
+        }
+        if (dateEnd != null) {
+          keywordMatch =
+              keywordMatch & s.startTime.isSmallerOrEqualValue(dateEnd);
+        }
+
+        // Apply optional metadata tag filters (AND logic — all must match).
+        if (moodTags != null && moodTags.isNotEmpty) {
+          for (final tag in moodTags) {
+            final tagPattern = '%${escapeLikeWildcards(tag)}%';
+            keywordMatch =
+                keywordMatch & LikeWithEscape(s.moodTags, tagPattern);
+          }
+        }
+        if (people != null && people.isNotEmpty) {
+          for (final person in people) {
+            final personPattern = '%${escapeLikeWildcards(person)}%';
+            keywordMatch =
+                keywordMatch & LikeWithEscape(s.people, personPattern);
+          }
+        }
+        if (topicTags != null && topicTags.isNotEmpty) {
+          for (final tag in topicTags) {
+            final tagPattern = '%${escapeLikeWildcards(tag)}%';
+            keywordMatch =
+                keywordMatch & LikeWithEscape(s.topicTags, tagPattern);
+          }
+        }
+
+        return keywordMatch;
+      })
+      ..orderBy([
+        (s) => OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
+      ]);
+
+    return select.get();
+  }
+
+  /// Get all distinct mood tags across all sessions.
+  ///
+  /// Parses JSON array strings from the moodTags column and returns
+  /// a deduplicated, sorted list. Used to populate filter chips.
+  Future<List<String>> getDistinctMoodTags() async {
+    return _getDistinctJsonArrayValues((s) => s.moodTags);
+  }
+
+  /// Get all distinct people mentioned across all sessions.
+  ///
+  /// Parses JSON array strings from the people column and returns
+  /// a deduplicated, sorted list. Used to populate filter chips.
+  Future<List<String>> getDistinctPeople() async {
+    return _getDistinctJsonArrayValues((s) => s.people);
+  }
+
+  /// Get all distinct topic tags across all sessions.
+  ///
+  /// Parses JSON array strings from the topicTags column and returns
+  /// a deduplicated, sorted list. Used to populate filter chips.
+  Future<List<String>> getDistinctTopicTags() async {
+    return _getDistinctJsonArrayValues((s) => s.topicTags);
+  }
+
+  /// Count the total number of sessions.
+  ///
+  /// Used for progressive disclosure: search icon appears at 5+ sessions.
+  Future<int> countSessions() async {
+    final count = _db.journalSessions.sessionId.count();
+    final query = _db.selectOnly(_db.journalSessions)..addColumns([count]);
+    final result = await query.getSingle();
+    return result.read(count) ?? 0;
+  }
+
+  // =========================================================================
+  // Private helpers
+  // =========================================================================
+
+  /// Extract distinct values from a JSON array column across all sessions.
+  ///
+  /// The moodTags, people, and topicTags columns store JSON arrays as strings
+  /// (e.g., '["happy","tired"]'). This method reads all non-null values,
+  /// parses each JSON array, and returns a deduplicated sorted list.
+  Future<List<String>> _getDistinctJsonArrayValues(
+    GeneratedColumn<String> Function($JournalSessionsTable) columnSelector,
+  ) async {
+    final column = columnSelector(_db.journalSessions);
+    final query = _db.selectOnly(_db.journalSessions)
+      ..addColumns([column])
+      ..where(column.isNotNull());
+
+    final rows = await query.get();
+    final values = <String>{};
+
+    for (final row in rows) {
+      final jsonStr = row.read(column);
+      if (jsonStr == null || jsonStr.isEmpty) continue;
+      try {
+        final decoded = _decodeJsonArray(jsonStr);
+        values.addAll(decoded);
+      } on FormatException {
+        // Skip malformed JSON — don't crash search for bad data.
+      }
+    }
+
+    final sorted = values.toList()..sort();
+    return sorted;
+  }
+
+  /// Decode a JSON string into a list of strings.
+  ///
+  /// Handles both JSON array format '["a","b"]' and plain strings.
+  static List<String> _decodeJsonArray(String jsonStr) {
+    final dynamic decoded = _jsonDecode(jsonStr);
+    if (decoded is List) {
+      return decoded.whereType<String>().toList();
+    }
+    // If it's a plain string (not JSON array), return as single-element list.
+    if (decoded is String) {
+      return [decoded];
+    }
+    return [];
+  }
+
+  /// Wrapper for json.decode to keep the import localized.
+  static dynamic _jsonDecode(String source) {
+    return const JsonDecoder().convert(source);
   }
 }

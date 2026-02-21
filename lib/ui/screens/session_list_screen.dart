@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/app_database.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/search_providers.dart';
 import '../../providers/session_providers.dart';
 import '../widgets/session_card.dart';
 
@@ -42,6 +43,9 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
       appBar: AppBar(
         title: const Text('Agentic Journal'),
         actions: [
+          // Search icon — visible at 5+ sessions (progressive disclosure).
+          // Placed to the left of the settings gear per UX research.
+          _SearchIconButton(),
           // Settings gear icon — opens the settings screen.
           IconButton(
             icon: const Icon(Icons.settings),
@@ -192,6 +196,32 @@ class _SessionCardWithCountState extends ConsumerState<_SessionCardWithCount> {
       session: widget.session,
       messageCount: _messageCount,
       onTap: widget.onTap,
+    );
+  }
+}
+
+/// Search icon button with progressive disclosure.
+///
+/// Only visible when the user has 5+ sessions. This prevents showing a
+/// search feature when there's nothing meaningful to search through.
+/// Uses [sessionCountProvider] for the gate check.
+class _SearchIconButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countAsync = ref.watch(sessionCountProvider);
+
+    return countAsync.when(
+      data: (count) {
+        if (count < 5) return const SizedBox.shrink();
+        return IconButton(
+          icon: const Icon(Icons.search),
+          tooltip: 'Search journal',
+          onPressed: () => Navigator.of(context).pushNamed('/search'),
+        );
+      },
+      // Don't show search during loading or error — non-critical feature.
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

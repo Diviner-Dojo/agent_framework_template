@@ -1,53 +1,51 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-20 ~21:45 UTC
+> Last updated: 2026-02-20 ~23:50 UTC
 
 ## Current Task
 
-**Status:** All Phase 4 work complete (including blocking fix PR #10 merged). Retro done.
+**Status:** Phase 5 review complete. 3 blocking fixes required before commit.
 **Branch:** `main`
 
 ### In Progress
-- (none)
+- Fix 3 blocking issues from REV-20260220-234604:
+  1. Navigation route bug in search_screen.dart ('/session/${id}' → match app.dart route)
+  2. Raw error exposure in search_screen.dart (replace error.toString() with user-friendly message)
+  3. Redundant searchEntries() call in session_providers.dart catch block
 
 ### Recently Completed
-- `/retro` RETRO-20260220c: retroactive review validated, 4 blocking findings fixed, specialist feedback incorporated
-- PR #10 merged: Phase 4 blocking finding fixes (RLS WITH CHECK, proxy entropy, UPSERT tests, user_id RLS)
-- `/review` on Phase 4: APPROVE-WITH-CHANGES (REV-20260220-192505) — 4 blocking, 15 advisory
-- `/retro` RETRO-20260220b: education gate executed (87%), 5 PENDING adoptions → CONFIRMED
-- Phase 4 merged (PR #9): 15 tasks, 35 files, 3222 insertions, 291 tests, 81.2% coverage
+- Phase 5 review: REV-20260220-234604, verdict APPROVE-WITH-CHANGES, 4 specialists, 26 findings
+- Phase 5 build: 12 tasks, all complete, 435 tests, 81.6% coverage
+- Quality gate: 5/5 passed (format, lint, tests, coverage, ADRs)
+- Phase 4 complete (PR #9 + #10 merged)
 - UX Friction Sprint merged (PR #8)
-- Phase 3 merged (PR #7): full pipeline execution
+- Phase 3 merged (PR #7)
 
 ### Deferred
-- **Education gate for Phase 3** — `/walkthrough` and `/quiz` on Phase 3 files (Tier 2). 3rd retro flagging. Must complete before Phase 5. Note: independent-perspective questions whether this is risk reduction or compliance.
-- **Education gate for Phase 4** — `/walkthrough` and `/quiz` on Phase 4 files (Tier 2: auth flow, sync state machine, Edge Function security)
-- **CLAUDE.md updates from RETRO-20260220b** — plan-mode boundary, quality gate limitation note, education gate wording alignment. 3rd retro flagging — apply immediately.
-- **Add post-hoc review note to review_gates.md** — one sentence per docs-knowledge recommendation
-- **PROXY_ACCESS_KEY deprecation path** — remove fallback entirely when JWT is primary (Phase 5 cleanup)
-- **Migration drift check** — no automated check that Supabase production matches migration files
-
-### Open Advisory Findings (from REV-20260220-192505)
-- 15 advisory findings across security, QA, architecture, performance — untracked
-- Items surviving 2 sprints escalate to blocking (per RETRO-20260220b)
+- **Education gate for Phase 3** — `/walkthrough` and `/quiz` on Phase 3 files
+- **Education gate for Phase 4** — `/walkthrough` and `/quiz` on Phase 4 files
+- **Education gate for Phase 5** — recommended by review (Tier 2)
+- **CLAUDE.md updates from RETRO-20260220b**
+- **PROXY_ACCESS_KEY deprecation path**
+- **Migration drift check**
+- **Non-blocking review improvements** — see REV-20260220-234604 recommended section
 
 ## Open Discussions
 
 | Discussion ID | Topic | Status |
 |--------------|-------|--------|
-| (none) | All discussions sealed | — |
+| (none) | — | — |
 
 ## Key Decisions (Recent)
 
-- Retroactive review model validated as emergency fallback (not default workflow)
-- @visibleForTesting is standard Dart — no project-level documentation needed
-- Post-hoc review note goes in review_gates.md, not ADR (Principle #8)
-- Education gate debt tracked in BUILD_STATUS.md, not carried as retro signal
+- ADR-0013: Search + Memory Recall Architecture (LIKE-based local search, intent classifier, offline fallback)
+- Intent classifier conservative: single-signal meta-questions (0.45) stay below 0.5 threshold
+- Drift type system: Expression<String> not Expression<String?>, $JournalSessionsTable not JournalSessions
 
 ## Blockers
 
-- (none)
+- 3 blocking fixes from review must be applied before commit
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
