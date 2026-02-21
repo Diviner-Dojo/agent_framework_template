@@ -1,0 +1,57 @@
+---
+discussion_id: DISC-20260220-221106-phase5-search-recall-spec-review
+started: 2026-02-20T22:11:14.318767+00:00
+ended: 2026-02-20T22:22:47.044540+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist]
+total_turns: 6
+---
+
+# Discussion: DISC-20260220-221106-phase5-search-recall-spec-review
+
+## Turn 1 — facilitator (proposal)
+*2026-02-20T22:11:14.318767+00:00 | confidence: 0.8*
+*tags: spec, draft, phase5*
+
+Phase 5 spec draft: Search + Memory Recall. 12 tasks covering ADR, search DAOs, SearchRepository, IntentClassifier, Edge Function recall mode, ClaudeApiService recall, providers, search UI, result cards, in-session recall, navigation, tests. LIKE-based local search (not FTS5), conservative intent classification, 10-session context cap for recall, offline-first with graceful degradation.
+
+---
+
+## Turn 2 — architecture-consultant (critique)
+*2026-02-20T22:14:45.498614+00:00 | confidence: 0.87*
+*tags: spec-review, architecture*
+
+7 findings (1 high, 3 medium, 3 low). HIGH: handleRecallQuery should NOT go in AgentRepository — creates fat orchestrator, leaks SearchRepository dependency into journaling layer. Keep recall orchestration in SessionNotifier (already owns session routing). MEDIUM: ClaudeApiService.recall() should accept primitives not domain types (SessionContext leaks domain into transport layer). MEDIUM: Intent classifier needs its own ADR-0013 (classification method, placement, conservative-default policy — ADR-0006 explicitly deferred this). MEDIUM: RecallResponse type under-specified (separate type vs AgentResponse extension, how citations stored, role value for recall messages). LOW: FTS5->LIKE deviation from ADR-0006 should be documented. LOW: Providers should go in search_providers.dart per sync_providers.dart precedent. LOW: 50KB payload cap may be tight for 10-session recall context — define per-field truncation limits.
+
+---
+
+## Turn 3 — security-specialist (critique)
+*2026-02-20T22:14:52.905321+00:00 | confidence: 0.88*
+*tags: spec-review, security*
+
+5 findings (1 high, 2 medium, 2 low). HIGH: Prompt injection via context_entries — user-authored journal content (summaries, snippets) goes directly into Claude prompt. Mitigate with structural delimiters, server-side truncation, explicit data-not-instruction framing in RECALL_SYSTEM_PROMPT. MEDIUM: cited_sessions IDOR — client must validate returned session IDs exist in local DB before navigation. MEDIUM: validateRequest() must be extended for recall mode before any implementation — context_entries needs type/length/count validation (max 10 entries, per-field char limits). LOW: 50KB payload cap sized for chat, may reject valid recall requests — define per-field limits server-side. LOW: LogInterceptor requestBody=false must remain for recall path (multi-session PII exposure). Strengths: drift LIKE queries are safe (parameterized), sending local data to Edge Function is architecturally sound (same trust model as metadata mode), intent classifier has no security surface.
+
+---
+
+## Turn 4 — qa-specialist (critique)
+*2026-02-20T22:15:01.313652+00:00 | confidence: 0.87*
+*tags: spec-review, qa*
+
+11 findings (3 high, 5 medium, 3 low). HIGH: handleRecallQuery has 4 branches — tests for offline-with-matches, no-matches, and search-throws are not named in Task 12. HIGH: SessionNotifier.sendMessage() intent gate insertion needs dedicated tests (route to recall vs follow-up). HIGH: IntentClassifier edge cases must be enumerated — short questions (What?), temporal words in non-query context (I talked to her last week), recall verbs in journal context (I remember feeling happy), empty/whitespace input. MEDIUM: LIKE wildcard injection (%,_) in search queries needs escape and test. MEDIUM: Dedup+ranking logic needs concrete test scenarios (session matching both summary and message). MEDIUM: cited_sessions validation (phantom IDs filtered) needs test. MEDIUM: Search screen 300ms debounce needs explicit time control in widget tests. MEDIUM: Empty journal recall query (zero sessions) is distinct from no-matches. LOW: getSessionContext 10-session cap needs enforcement test. LOW: Empty query + active filter behavior unspecified. LOW: Edge Function recall missing cited_sessions field needs defensive parse test. Performance criterion (<500ms) not automatable — needs manual benchmark or tagged slow test.
+
+---
+
+## Turn 5 — facilitator (evidence)
+*2026-02-20T22:20:40.672239+00:00 | confidence: 0.85*
+*tags: spec-review, ux, research*
+
+UX research findings (ux-evaluator equivalent): 9 areas researched with 20+ sources. Key recommendations: (1) Search icon in app bar -> dedicated /search screen, not persistent bar (journaling FAB must dominate). (2) Progressive disclosure: hide search until 5+ sessions. (3) Filter chips in horizontal scroll + bottom sheet pickers with presets. (4) Implicit intent classification with explicit inline confirmation for ambiguous cases. (5) Recall answers inline in conversation with left-border visual discriminator + 'From your journal' header + tappable ActionChip citations. (6) Offline: show raw session chips without synthesis + plain-language explanation. (7) Zero results: warm copy + filter relaxation prompt. (8) ChatBubble needs isRecall parameter. (9) go_router migration may be prerequisite for search route state passing.
+
+---
+
+## Turn 6 — facilitator (synthesis)
+*2026-02-20T22:22:47.044540+00:00 | confidence: 0.88*
+*tags: spec-review, synthesis*
+
+Spec revised to reviewed status. Blocking changes: (1) ARCH: Moved recall orchestration from AgentRepository to SessionNotifier — AgentRepository stays as pure journaling engine. (2) ARCH: ClaudeApiService.recall() accepts Map<String,dynamic> not domain types. (3) ARCH: RecallResponse is separate type, not part of AgentResponse. (4) SEC: Added prompt injection mitigations — structural delimiters, data-not-instruction framing, server-side truncation. (5) SEC: context_entries validation in Edge Function validateRequest() — type, length, count limits. (6) SEC: Client-side cited_sessions validation. (7) QA: Named tests for all 4 recall branches + SessionNotifier intent gate + IntentClassifier edge cases. (8) QA: LIKE wildcard escaping + test. (9) UX: Search icon progressive disclosure at 5+ sessions. (10) UX: Filter chips + bottom sheet pickers with presets. (11) UX: Recall bubbles with left-border discriminator + ActionChip citations. (12) UX: Inline confirmation for ambiguous intent. (13) UX: Three distinct empty states. Advisory deferred: go_router migration, performance benchmark strategy.
+
+---

@@ -29,6 +29,7 @@ import 'package:flutter/foundation.dart';
 
 import '../config/environment.dart';
 import '../models/agent_response.dart';
+import '../models/search_models.dart';
 
 // ---------------------------------------------------------------------------
 // Typed exceptions for error handling
@@ -217,6 +218,57 @@ class ClaudeApiService {
 
     // Nothing parseable — return empty metadata (not an error)
     return const AgentMetadata();
+  }
+
+  /// Send a recall query with journal context to get a grounded answer.
+  ///
+  /// [question] — the user's natural language question about their history.
+  /// [contextEntries] — pre-serialized session context maps from
+  ///   [SearchRepository.getSessionContext()]. Accepts Map<String, dynamic>
+  ///   not domain types — serialization stays in the caller, keeping this
+  ///   service as a transport layer (ADR-0013 §5).
+  ///
+  /// Returns a [RecallResponse] with the synthesized answer and cited session IDs.
+  /// Missing `cited_sessions` in the response returns an empty list, not an
+  /// exception (defensive parsing per qa-specialist).
+  ///
+  // NOTE: contextEntries contains raw journal content. NEVER enable
+  // requestBody logging for this path (security-specialist).
+  Future<RecallResponse> recall({
+    required String question,
+    required List<Map<String, dynamic>> contextEntries,
+  }) async {
+    _ensureConfigured();
+
+    final response = await _post({
+      'messages': [
+        {'role': 'user', 'content': question},
+      ],
+      'mode': 'recall',
+      'context_entries': contextEntries,
+    });
+
+    // Defensive parsing: extract answer and cited_sessions.
+    // If fields are missing or wrong type, use safe defaults.
+    final answer = response['response'];
+    if (answer is! String || answer.isEmpty) {
+      throw const ClaudeApiParseException(
+        'Missing or empty "response" field in recall response',
+      );
+    }
+
+    // cited_sessions may be missing entirely — return empty list, not error.
+    final citedRaw = response['cited_sessions'];
+    final citedSessionIds = <String>[];
+    if (citedRaw is List) {
+      for (final item in citedRaw) {
+        if (item is String) {
+          citedSessionIds.add(item);
+        }
+      }
+    }
+
+    return RecallResponse(answer: answer, citedSessionIds: citedSessionIds);
   }
 
   // =========================================================================

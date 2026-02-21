@@ -22,10 +22,16 @@
 // The notifier sets isWaitingForAgent=true before each agent call and clears it
 // after, so the UI can show a loading indicator. Stale responses (arriving after
 // session ended) are discarded by checking activeSessionId after await.
+//
+// Phase 5 Change: Intent classification + memory recall. Before calling
+// getFollowUp(), sendMessage() classifies the user's message. High-confidence
+// queries route to _handleRecallQuery() instead of the journaling follow-up.
+// Ambiguous queries set pendingRecallQuery for inline confirmation (ADR-0013).
 // ===========================================================================
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/environment.dart';
@@ -33,12 +39,15 @@ import '../database/app_database.dart';
 import '../database/daos/session_dao.dart';
 import '../database/daos/message_dao.dart';
 import '../repositories/agent_repository.dart';
+import '../repositories/search_repository.dart';
 import '../services/claude_api_service.dart';
 import '../services/connectivity_service.dart';
+import '../services/intent_classifier.dart';
 import '../utils/uuid_generator.dart';
 import '../utils/timestamp_utils.dart';
 import 'auth_providers.dart';
 import 'database_provider.dart';
+import 'search_providers.dart';
 import 'sync_providers.dart';
 
 /// Streams all sessions from the database for the session list screen.
@@ -107,6 +116,15 @@ class SessionState {
   /// Layer A ignores this — it only uses latestUserMessage and conversationHistory.
   final List<Map<String, String>> conversationMessages;
 
+  /// Non-null when the intent classifier detected an ambiguous query
+  /// (confidence between 0.5 and 0.8). The UI shows an inline confirmation
+  /// prompt; the user can accept (→ recall) or dismiss (→ journal follow-up).
+  /// Cleared after the user responds to the confirmation.
+  final String? pendingRecallQuery;
+
+  /// Search terms extracted by the intent classifier for the pending query.
+  final List<String> pendingSearchTerms;
+
   const SessionState({
     this.activeSessionId,
     this.followUpCount = 0,
@@ -115,6 +133,8 @@ class SessionState {
     this.isWaitingForAgent = false,
     this.isClosingComplete = false,
     this.conversationMessages = const [],
+    this.pendingRecallQuery,
+    this.pendingSearchTerms = const [],
   });
 
   /// Create a copy with updated fields.
@@ -130,6 +150,8 @@ class SessionState {
     bool? isWaitingForAgent,
     bool? isClosingComplete,
     List<Map<String, String>>? conversationMessages,
+    Object? pendingRecallQuery = _sentinel,
+    List<String>? pendingSearchTerms,
   }) {
     return SessionState(
       activeSessionId: identical(activeSessionId, _sentinel)
@@ -141,6 +163,10 @@ class SessionState {
       isWaitingForAgent: isWaitingForAgent ?? this.isWaitingForAgent,
       isClosingComplete: isClosingComplete ?? this.isClosingComplete,
       conversationMessages: conversationMessages ?? this.conversationMessages,
+      pendingRecallQuery: identical(pendingRecallQuery, _sentinel)
+          ? this.pendingRecallQuery
+          : pendingRecallQuery as String?,
+      pendingSearchTerms: pendingSearchTerms ?? this.pendingSearchTerms,
     );
   }
 }
@@ -158,16 +184,34 @@ class SessionNotifier extends StateNotifier<SessionState> {
   final SessionDao _sessionDao;
   final MessageDao _messageDao;
   final AgentRepository _agent;
+  final IntentClassifier _intentClassifier;
+  final SearchRepository _searchRepository;
+  final ClaudeApiService _claudeApiService;
+  final ConnectivityService _connectivityService;
   final Ref _ref;
+
+  /// Confidence threshold for auto-routing to recall (no confirmation).
+  static const _highConfidenceThreshold = 0.8;
+
+  /// Confidence threshold for showing inline confirmation prompt.
+  static const _ambiguousThreshold = 0.5;
 
   SessionNotifier({
     required SessionDao sessionDao,
     required MessageDao messageDao,
     required AgentRepository agent,
+    required IntentClassifier intentClassifier,
+    required SearchRepository searchRepository,
+    required ClaudeApiService claudeApiService,
+    required ConnectivityService connectivityService,
     required Ref ref,
   }) : _sessionDao = sessionDao,
        _messageDao = messageDao,
        _agent = agent,
+       _intentClassifier = intentClassifier,
+       _searchRepository = searchRepository,
+       _claudeApiService = claudeApiService,
+       _connectivityService = connectivityService,
        _ref = ref,
        super(const SessionState());
 
@@ -262,6 +306,25 @@ class SessionNotifier extends StateNotifier<SessionState> {
       {'role': 'user', 'content': text},
     ];
     state = state.copyWith(conversationMessages: updatedMessages);
+
+    // Phase 5: Intent classification — detect recall queries before routing
+    // to the normal journaling follow-up (ADR-0013 §3).
+    final intentResult = _intentClassifier.classify(text);
+    if (intentResult.type == IntentType.query &&
+        intentResult.confidence >= _highConfidenceThreshold) {
+      // High confidence: route directly to recall.
+      await _handleRecallQuery(text, intentResult.searchTerms);
+      return;
+    }
+    if (intentResult.type == IntentType.query &&
+        intentResult.confidence >= _ambiguousThreshold) {
+      // Ambiguous: save pending query for inline confirmation by the UI.
+      state = state.copyWith(
+        pendingRecallQuery: text,
+        pendingSearchTerms: intentResult.searchTerms,
+      );
+      return;
+    }
 
     // Check if the user wants to end the session.
     if (_agent.shouldEndSession(
@@ -434,6 +497,269 @@ class SessionNotifier extends StateNotifier<SessionState> {
     state = const SessionState();
     _ref.read(activeSessionIdProvider.notifier).state = null;
   }
+
+  // =========================================================================
+  // Phase 5: Memory Recall (ADR-0013)
+  // =========================================================================
+
+  /// Confirm the pending recall query (user accepted inline prompt).
+  ///
+  /// Called by the UI when the user taps "Search my journal" on the
+  /// ambiguous intent confirmation widget.
+  Future<void> confirmRecallQuery() async {
+    final query = state.pendingRecallQuery;
+    final terms = state.pendingSearchTerms;
+    if (query == null) return;
+
+    // Clear the pending state before handling.
+    state = state.copyWith(
+      pendingRecallQuery: null,
+      pendingSearchTerms: const [],
+    );
+    await _handleRecallQuery(query, terms);
+  }
+
+  /// Dismiss the pending recall query (user chose to continue journaling).
+  ///
+  /// Routes the original message through the normal follow-up path.
+  Future<void> dismissRecallQuery() async {
+    final query = state.pendingRecallQuery;
+    if (query == null) return;
+
+    // Clear the pending state.
+    state = state.copyWith(
+      pendingRecallQuery: null,
+      pendingSearchTerms: const [],
+    );
+
+    // Route through normal journaling follow-up.
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return;
+
+    // Check end-session signal first.
+    if (_agent.shouldEndSession(
+      followUpCount: state.followUpCount,
+      latestUserMessage: query,
+    )) {
+      await endSession();
+      return;
+    }
+
+    state = state.copyWith(isWaitingForAgent: true);
+    final followUpResponse = await _agent.getFollowUp(
+      latestUserMessage: query,
+      conversationHistory: state.usedQuestions,
+      followUpCount: state.followUpCount,
+      allMessages: state.conversationMessages,
+    );
+
+    // Stale response check: session may have ended during the async call.
+    if (state.activeSessionId == null) return;
+    state = state.copyWith(isWaitingForAgent: false);
+
+    if (followUpResponse == null) {
+      await _messageDao.insertMessage(
+        generateUuid(),
+        sessionId,
+        'ASSISTANT',
+        'Thanks for sharing today. Let me put together your summary...',
+        nowUtc(),
+      );
+      await endSession();
+      return;
+    }
+
+    final followUpText = followUpResponse.content;
+    await _messageDao.insertMessage(
+      generateUuid(),
+      sessionId,
+      'ASSISTANT',
+      followUpText,
+      nowUtc(),
+    );
+
+    state = state.copyWith(
+      followUpCount: state.followUpCount + 1,
+      usedQuestions: [...state.usedQuestions, followUpText],
+      conversationMessages: [
+        ...state.conversationMessages,
+        {'role': 'assistant', 'content': followUpText},
+      ],
+    );
+  }
+
+  /// Handle a recall query: search local data and synthesize an answer.
+  ///
+  /// Flow (ADR-0013 §3):
+  ///   1. Search for matching sessions using search terms
+  ///   2. If no matches: save "couldn't find" message
+  ///   3. If matches and online: format context, call Claude synthesis
+  ///   4. If matches but offline: save raw session list as fallback
+  ///   5. Validate cited session IDs against local DB before saving
+  Future<void> _handleRecallQuery(
+    String question,
+    List<String> searchTerms,
+  ) async {
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return;
+
+    state = state.copyWith(isWaitingForAgent: true);
+
+    // Search local data using the extracted search terms.
+    // Hoisted above try so catch can reuse results on Claude API failure.
+    final searchQuery = searchTerms.isNotEmpty
+        ? searchTerms.join(' ')
+        : question;
+    final results = await _searchRepository.searchEntries(searchQuery);
+
+    try {
+      // Stale check: session may have ended during search.
+      if (state.activeSessionId == null) return;
+
+      if (results.isEmpty) {
+        // Check total session count for context-appropriate response.
+        final totalCount = await _sessionDao.countSessions();
+        final String noMatchMsg;
+        if (totalCount == 0) {
+          noMatchMsg =
+              "You don't have any journal entries yet. Once you "
+              "start journaling, I'll be able to help you recall your entries.";
+        } else if (totalCount < 5) {
+          noMatchMsg =
+              "I only have $totalCount ${totalCount == 1 ? 'entry' : 'entries'} "
+              "so far. As your journal grows, I'll be able to help you "
+              'recall more.';
+        } else {
+          noMatchMsg =
+              "I couldn't find any entries matching that in your journal.";
+        }
+
+        await _saveRecallMessage(sessionId, noMatchMsg);
+        return;
+      }
+
+      // Format context for Claude.
+      final sessionIds = results.items.map((r) => r.sessionId).toList();
+
+      // If offline: return raw session list without synthesis.
+      if (!_connectivityService.isOnline || !_claudeApiService.isConfigured) {
+        final chips = results.items
+            .take(5)
+            .map((item) {
+              final date = formatShortDate(item.session.startTime);
+              final summary = item.session.summary ?? 'Untitled session';
+              return '$date — $summary';
+            })
+            .join('\n');
+
+        final offlineMsg =
+            'Your journal has ${results.count} entries about that:\n\n$chips';
+        await _saveRecallMessage(
+          sessionId,
+          offlineMsg,
+          citedSessionIds: sessionIds.take(5).toList(),
+          isOffline: true,
+        );
+        return;
+      }
+
+      // Online: get formatted context and call Claude for synthesis.
+      final context = await _searchRepository.getSessionContext(sessionIds);
+      final recallResponse = await _claudeApiService.recall(
+        question: question,
+        contextEntries: context,
+      );
+
+      // Stale check after async call.
+      if (state.activeSessionId == null) return;
+
+      // Validate cited session IDs against local DB (hallucination guard).
+      final validatedIds = <String>[];
+      for (final citedId in recallResponse.citedSessionIds) {
+        final exists = await _sessionDao.getSessionById(citedId);
+        if (exists != null) {
+          validatedIds.add(citedId);
+        }
+      }
+
+      await _saveRecallMessage(
+        sessionId,
+        recallResponse.answer,
+        citedSessionIds: validatedIds,
+      );
+    } on ClaudeApiException catch (e) {
+      // Claude API failed — fall back to showing the results we already have.
+      if (kDebugMode) {
+        debugPrint('Recall Claude API failed: $e');
+      }
+      // Reuse the results from the search above (already in scope).
+      if (results.isEmpty) {
+        await _saveRecallMessage(
+          sessionId,
+          "I couldn't find any entries matching that in your journal.",
+        );
+      } else {
+        final chips = results.items
+            .take(5)
+            .map((item) {
+              final date = formatShortDate(item.session.startTime);
+              final summary = item.session.summary ?? 'Untitled session';
+              return '$date — $summary';
+            })
+            .join('\n');
+        await _saveRecallMessage(
+          sessionId,
+          'I found ${results.count} related entries but '
+          "couldn't generate a summary right now:\n\n$chips",
+          citedSessionIds: results.items
+              .take(5)
+              .map((r) => r.sessionId)
+              .toList(),
+          isOffline: true,
+        );
+      }
+    } finally {
+      if (mounted) {
+        state = state.copyWith(isWaitingForAgent: false);
+      }
+    }
+  }
+
+  /// Save a recall response as an ASSISTANT message with recall metadata.
+  ///
+  /// The message content stores the recall answer. Cited session IDs and
+  /// the isOffline flag are stored as JSON in the entitiesJson column
+  /// for the UI to render citation chips and offline styling.
+  Future<void> _saveRecallMessage(
+    String sessionId,
+    String content, {
+    List<String> citedSessionIds = const [],
+    bool isOffline = false,
+  }) async {
+    // Build recall metadata JSON stored in the entitiesJson column.
+    final recallMetadata = jsonEncode({
+      'type': 'recall',
+      'cited_sessions': citedSessionIds,
+      'is_offline': isOffline,
+    });
+
+    await _messageDao.insertMessage(
+      generateUuid(),
+      sessionId,
+      'ASSISTANT',
+      content,
+      nowUtc(),
+      entitiesJson: recallMetadata,
+    );
+
+    // Track in conversation messages so Claude has recall context.
+    state = state.copyWith(
+      conversationMessages: [
+        ...state.conversationMessages,
+        {'role': 'assistant', 'content': content},
+      ],
+    );
+  }
 }
 
 /// Provides the compile-time environment configuration.
@@ -495,6 +821,10 @@ final sessionNotifierProvider =
         sessionDao: ref.watch(sessionDaoProvider),
         messageDao: ref.watch(messageDaoProvider),
         agent: ref.watch(agentRepositoryProvider),
+        intentClassifier: ref.watch(intentClassifierProvider),
+        searchRepository: ref.watch(searchRepositoryProvider),
+        claudeApiService: ref.watch(claudeApiServiceProvider),
+        connectivityService: ref.watch(connectivityServiceProvider),
         ref: ref,
       );
     });
