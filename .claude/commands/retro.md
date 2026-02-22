@@ -56,6 +56,33 @@ conn = sqlite3.connect('metrics/evaluation.db')
 for row in conn.execute('SELECT discussion_id, risk_level, collaboration_mode, status, agent_count FROM discussions ORDER BY created_at DESC LIMIT 20'):
     print(row)
 print('---')
+# Protocol durations (effort analysis)
+print('=== Protocol Durations ===')
+for row in conn.execute('''
+    SELECT discussion_id, command_type,
+           ROUND((julianday(closed_at) - julianday(created_at)) * 24 * 60, 1) as duration_minutes
+    FROM discussions
+    WHERE status = 'closed' AND closed_at IS NOT NULL
+    ORDER BY created_at DESC LIMIT 20
+'''):
+    print(row)
+print('---')
+# Protocol yield (if table exists)
+try:
+    print('=== Protocol Yield ===')
+    for row in conn.execute('''
+        SELECT protocol_type, COUNT(*) as invocations,
+               SUM(findings_blocking) as total_blocking,
+               SUM(findings_advisory) as total_advisory,
+               SUM(agent_turns_used) as total_turns,
+               ROUND(CAST(SUM(findings_blocking) AS REAL) / NULLIF(SUM(agent_turns_used), 0), 2) as yield_per_turn
+        FROM protocol_yield
+        GROUP BY protocol_type
+    '''):
+        print(row)
+except sqlite3.OperationalError:
+    print('(protocol_yield table not yet created — estimate yield from transcripts)')
+print('---')
 # Recent turns by agent
 for row in conn.execute('SELECT agent, intent, COUNT(*) FROM turns GROUP BY agent, intent ORDER BY COUNT(*) DESC'):
     print(row)
@@ -107,6 +134,26 @@ discussions_analyzed: N
 
 ## Risk Heuristic Updates
 - [Changes to how we assess risk for different types of changes]
+
+## Effort Analysis
+- **Total protocol time**: [Sum of discussion durations for this sprint, in minutes]
+- **Overhead ratio**: [Protocol time / estimated total dev time]
+- **Highest-cost protocol**: [Which command type consumed the most time]
+- **Value-per-minute**: [Blocking findings per minute of protocol time]
+- **Trend**: [Is overhead growing, stable, or shrinking vs. previous sprint?]
+
+## Protocol Value Assessment
+
+| Protocol | Invocations | Blocking Findings | Advisory | Agent Turns | Yield/Turn | Trend |
+|----------|------------|-------------------|----------|-------------|------------|-------|
+| review | | | | | | |
+| checkpoint | | | | | | |
+| education_gate | | | | | | |
+| quality_gate | | | | | | |
+| retro | | | | | | |
+
+Protocols with consistently zero blocking findings are relaxation candidates.
+Present data; do NOT recommend automatic relaxation (Principle #7 — human decides).
 ```
 
 ## Step 4: Review Adoption Log
@@ -115,8 +162,17 @@ Check `memory/lessons/adoption-log.md` for:
 1. Patterns with 3+ sightings that haven't been adopted yet (Rule of Three trigger)
 2. Recently deferred patterns that may warrant re-evaluation
 3. Whether adopted patterns from external analyses are actually being used in the codebase
+4. **PENDING adoption age**: For each PENDING pattern, compute days since its `Adopted` date. Report stale-pending count (patterns PENDING for >14 days). If stale count > 5, recommend the developer run `/batch-evaluate` to clear the backlog.
 
-Add findings to the draft under a "## External Learning" section.
+Add findings to the draft under a "## External Learning" section. Include a PENDING age summary:
+
+```markdown
+### PENDING Adoption Age
+- Total PENDING: N
+- Stale (>14 days): M
+- Oldest: [pattern name] (X days)
+- Recommendation: [run /batch-evaluate | no action needed]
+```
 
 ## Step 5: Create Discussion + Dispatch Specialists
 
@@ -200,7 +256,17 @@ python scripts/write_event.py <discussion_id> \
   --tags "retro,synthesis"
 ```
 
-### 6c. Close Discussion
+### 6c. Record Protocol Yield
+
+Record yield metrics for this retrospective:
+
+```bash
+python scripts/record_yield.py <discussion_id> retro pass --blocking <N> --advisory <M> --turns <agent_turn_count>
+```
+
+Where `<N>` is the count of actionable findings (proposed adjustments) and `<M>` is the count of informational observations.
+
+### 6d. Close Discussion
 
 ```bash
 python scripts/close_discussion.py <discussion_id>

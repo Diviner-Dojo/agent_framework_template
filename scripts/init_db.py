@@ -32,7 +32,9 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 CHECK(status IN ('open', 'closed', 'reopened')),
             linked_decision TEXT,
             linked_pr       TEXT,
-            agent_count     INTEGER NOT NULL DEFAULT 0
+            agent_count     INTEGER NOT NULL DEFAULT 0,
+            command_type    TEXT,
+            duration_minutes REAL
         );
 
         CREATE TABLE IF NOT EXISTS turns (
@@ -87,6 +89,23 @@ def init_db(db_path: Path = DB_PATH) -> None:
             timestamp       DATETIME NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS protocol_yield (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
+            protocol_type   TEXT NOT NULL CHECK(protocol_type IN (
+                'review', 'checkpoint', 'education_gate', 'quality_gate', 'retro'
+            )),
+            findings_blocking   INTEGER NOT NULL DEFAULT 0,
+            findings_advisory   INTEGER NOT NULL DEFAULT 0,
+            findings_false_positive INTEGER NOT NULL DEFAULT 0,
+            agent_turns_used    INTEGER NOT NULL DEFAULT 0,
+            outcome         TEXT NOT NULL CHECK(outcome IN (
+                'approve', 'approve-with-changes', 'request-changes', 'reject',
+                'pass', 'fail', 'revise-resolved', 'revise-unresolved'
+            )),
+            timestamp       DATETIME NOT NULL
+        );
+
         -- Indexes for common query patterns
         CREATE INDEX IF NOT EXISTS idx_turns_discussion ON turns(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_turns_agent ON turns(agent);
@@ -98,7 +117,19 @@ def init_db(db_path: Path = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_education_discussion ON education_results(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_discussions_status ON discussions(status);
         CREATE INDEX IF NOT EXISTS idx_discussions_created ON discussions(created_at);
+        CREATE INDEX IF NOT EXISTS idx_protocol_yield_discussion ON protocol_yield(discussion_id);
+        CREATE INDEX IF NOT EXISTS idx_protocol_yield_type ON protocol_yield(protocol_type);
     """)
+
+    conn.commit()
+
+    # Migration: add new columns to existing databases (safe — SQLite ignores if already present)
+    for col, col_type in [("command_type", "TEXT"), ("duration_minutes", "REAL")]:
+        try:
+            conn.execute(f"ALTER TABLE discussions ADD COLUMN {col} {col_type}")
+            print(f"  Migration: added discussions.{col}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     conn.commit()
     conn.close()

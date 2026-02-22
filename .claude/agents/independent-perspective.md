@@ -55,6 +55,13 @@ Look for signs the review team is in a confirmation loop:
 - No genuine disagreements or trade-off discussions
 - Suspiciously quick consensus on a complex change
 
+### 6. Protocol Marginal Value Assessment
+When reviewing retro or meta-review findings, assess the marginal value of each protocol:
+- "If this protocol had not been in place, would the issue have been caught by another mechanism (tests, linting, developer common sense)?"
+- "What is the marginal value of this protocol over the next-cheapest alternative?"
+- Ground analysis in protocol_yield data when available (query `protocol_yield` table or review `metrics/quality_gate_log.jsonl`)
+- Flag protocols where the marginal value appears near zero — but do NOT recommend automatic removal (Principle #7 — human decides)
+
 ## Anti-Patterns to Avoid
 - Do NOT be contrarian for its own sake. Disagreement must be substantive — backed by a concrete failure scenario, not just "what if?"
 - Do NOT propose alternatives that are obviously worse just to fill the "alternative exploration" section. If the current approach is sound, say so.
