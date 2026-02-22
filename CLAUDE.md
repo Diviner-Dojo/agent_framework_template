@@ -177,6 +177,8 @@ When a `/review`, `/deliberate`, `/analyze-project`, `/build_module`, `/retro`, 
 4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table. Called at synthesis time in `/review`, `/build_module`, and `/retro`.
 5. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
 
+**Known data quality**: Pre-migration discussions (before 2026-02-22) have NULL `duration_minutes` — backfill via `created_at`/`closed_at` is pending. The `protocol_yield` table had a duplicate-recording bug prior to the dedup guard added to `record_yield.py`.
+
 ## Agent Invocation Pattern
 
 Commands invoke specialist agents via the Task tool:
