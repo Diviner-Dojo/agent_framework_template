@@ -19,6 +19,7 @@ import argparse
 import os
 import subprocess
 import sys
+from datetime import UTC
 from pathlib import Path
 
 import yaml
@@ -396,6 +397,41 @@ def check_review_existence() -> bool:
     return False
 
 
+QUALITY_GATE_LOG = PROJECT_ROOT / "metrics" / "quality_gate_log.jsonl"
+
+_CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews"]
+
+
+def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, total: int) -> None:
+    """Append a JSONL record of the quality gate outcome for trend analysis."""
+    import json
+    from datetime import datetime
+
+    check_results = {}
+    idx = 0
+    for name, skip_attr in zip(
+        _CHECK_NAMES,
+        ["skip_format", "skip_lint", "skip_tests", "skip_coverage", "skip_adrs", "skip_reviews"],
+    ):
+        if getattr(args, skip_attr, False):
+            check_results[name] = "skipped"
+        else:
+            check_results[name] = "pass" if idx < len(results) and results[idx] else "fail"
+            idx += 1
+
+    record = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "overall": "pass" if passed == total else "fail",
+        "passed_count": passed,
+        "total": total,
+        "checks": check_results,
+    }
+
+    QUALITY_GATE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(QUALITY_GATE_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+
 def main() -> int:
     """Run all quality checks and return exit code."""
     parser = argparse.ArgumentParser(description="Quality gate — validate all framework standards")
@@ -478,6 +514,10 @@ def main() -> int:
     # Summary
     passed = sum(results)
     print("=" * 40)
+
+    # Log outcome to JSONL for trend analysis
+    _log_outcome(args, results, passed, total)
+
     if passed == total:
         print(f"{GREEN}{BOLD}Quality Gate: {passed}/{total} passed{RESET}\n")
         return 0

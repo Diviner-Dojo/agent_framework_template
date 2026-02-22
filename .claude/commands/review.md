@@ -143,9 +143,15 @@ For structured-dialogue mode, run a second round where specialists can respond t
 
 ## Step 7: Synthesize Review Report
 
+Before writing the synthesis, count findings across all specialist responses:
+- **Blocking findings**: Issues that must be fixed before merge (security vulnerabilities, correctness bugs, architectural violations)
+- **Advisory findings**: Recommendations that improve quality but don't block merge
+
+Include these counts as tags on the synthesis event for yield tracking.
+
 Write the synthesis event:
 ```
-python scripts/write_event.py "<discussion_id>" "facilitator" "synthesis" "<synthesis>" --confidence <score>
+python scripts/write_event.py "<discussion_id>" "facilitator" "synthesis" "<synthesis>" --confidence <score> --tags "blocking:<N>,advisory:<M>"
 ```
 
 Create the review report following `docs/templates/review-report-template.md` and save it to:
@@ -166,6 +172,16 @@ state['report_path'] = 'docs/reviews/REV-YYYYMMDD-HHMMSS.md'
 state_path.write_text(json.dumps(state, indent=2))
 "
 ```
+
+## Step 7b: Record Protocol Yield
+
+After synthesizing, record the yield metrics for this review:
+
+```bash
+python scripts/record_yield.py "<discussion_id>" review <verdict> --blocking <N> --advisory <M> --turns <agent_turn_count>
+```
+
+Where `<verdict>` maps to: approve, approve-with-changes, request-changes, or reject.
 
 ## Step 8: Close Discussion
 

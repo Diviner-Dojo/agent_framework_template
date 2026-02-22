@@ -131,6 +131,29 @@ period: [start date] to [end date]
 
 ## Double-Loop Findings
 [Meta-level insights about the review process itself]
+
+## Protocol Overhead Audit
+
+For each protocol type (review, checkpoint, education_gate, quality_gate, retro):
+
+| Protocol | Invocations | Duration (min) | Blocking Findings | Advisory | Yield/Min | Trend |
+|----------|------------|----------------|-------------------|----------|-----------|-------|
+| review | | | | | | |
+| checkpoint | | | | | | |
+| education_gate | | | | | | |
+| quality_gate | | | | | | |
+| retro | | | | | | |
+
+Query protocol_yield table (if available) or estimate from discussion transcripts.
+Also query quality_gate_log.jsonl for gate pass/fail trends.
+
+Assess:
+- **Redundancy**: Are multiple protocols catching the same issues? Which could be consolidated?
+- **Solo-dev calibration**: Which protocols are designed for team-scale and add disproportionate overhead for a solo developer?
+- **Efficiency trend**: Is each protocol getting faster (learning curve) or slower (scope creep)?
+- **Explicit question**: "Which protocols should be relaxed for solo development?"
+
+Present findings as analysis input. Do NOT recommend automatic relaxation (Principle #7 — human decides).
 ```
 
 ## Step 5: Adoption Log Trend Assessment

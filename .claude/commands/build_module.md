@@ -153,10 +153,19 @@ All checks must pass before proceeding.
 
 ## Step 7: Close Discussion
 
-Capture the build outcome:
+Capture the build outcome. Count total blocking and advisory findings across all checkpoints:
+
 ```bash
-python scripts/write_event.py "<discussion_id>" "facilitator" "synthesis" "Build complete: <N tasks>, <M checkpoints fired>, <K unresolved concerns>" --tags "build-summary"
+python scripts/write_event.py "<discussion_id>" "facilitator" "synthesis" "Build complete: <N tasks>, <M checkpoints fired>, <K unresolved concerns>" --tags "build-summary,blocking:<B>,advisory:<A>"
 ```
+
+Record yield metrics for each checkpoint that fired during the build:
+
+```bash
+python scripts/record_yield.py "<discussion_id>" checkpoint <outcome> --blocking <N> --advisory <M> --turns <turns>
+```
+
+Where `<outcome>` is: approve, revise-resolved, or revise-unresolved.
 
 Seal the discussion:
 ```bash

@@ -11,10 +11,9 @@ This script:
 """
 
 import argparse
-import os
 import sqlite3
 import stat
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -41,14 +40,23 @@ def close_discussion(discussion_id: str) -> None:
     print(f"Ingesting events for {discussion_id}...")
     ingest_events(discussion_id)
 
-    # Step 3: Mark discussion as closed in SQLite
+    # Step 3: Mark discussion as closed in SQLite and compute duration
     if DB_PATH.exists():
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         conn = sqlite3.connect(str(DB_PATH))
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute(
             "UPDATE discussions SET status = 'closed', closed_at = ? WHERE discussion_id = ?",
             (now, discussion_id),
+        )
+        # Compute duration_minutes from created_at to closed_at
+        conn.execute(
+            """UPDATE discussions
+               SET duration_minutes = ROUND(
+                   (julianday(closed_at) - julianday(created_at)) * 24 * 60, 1
+               )
+               WHERE discussion_id = ?""",
+            (discussion_id,),
         )
         conn.commit()
         conn.close()
