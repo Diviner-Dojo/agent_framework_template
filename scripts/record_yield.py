@@ -45,6 +45,19 @@ def record_yield(
 
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("PRAGMA foreign_keys=ON")
+
+    # Check for existing record to prevent duplicate recording
+    existing = conn.execute(
+        "SELECT id FROM protocol_yield WHERE discussion_id = ? AND protocol_type = ?",
+        (discussion_id, protocol_type),
+    ).fetchone()
+    if existing:
+        print(
+            f"WARNING: Yield already recorded for {discussion_id} / {protocol_type} (row {existing[0]}). Skipping duplicate."
+        )
+        conn.close()
+        return
+
     conn.execute(
         """INSERT INTO protocol_yield
            (discussion_id, protocol_type, findings_blocking, findings_advisory,
