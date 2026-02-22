@@ -26,6 +26,8 @@ For any change that modifies application source code (`lib/`), tests (`test/`), 
 
 For documentation-only or trivial config changes, the quality gate alone is sufficient.
 
+**Framework-only changes** (files under `.claude/`, `scripts/`, `docs/`) touching **more than 5 files** are treated as medium-risk and require `/review`. This prevents large framework changes from bypassing review under the "no product code" rationale.
+
 ### Step 3: Education Gate (Required for medium-risk or above)
 Required when the review verdict is medium-risk or above, or when the review explicitly recommends it:
 - Run `/walkthrough <files>` for the developer

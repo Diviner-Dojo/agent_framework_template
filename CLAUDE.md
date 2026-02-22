@@ -98,7 +98,7 @@ memory/         — Layer 3: Curated promoted knowledge
   patterns/     — Promoted code and process patterns
   reflections/  — Promoted agent reflections
   rules/        — Promoted rules (graduated to .claude/rules/)
-metrics/        — Layer 2: SQLite relational index
+metrics/        — Layer 2: SQLite relational index + quality_gate_log.jsonl (trend data)
 scripts/        — Capture pipeline utilities + quality gate (Python dev tools)
 BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
@@ -116,6 +116,8 @@ Before declaring work complete, run the quality gate to verify all documented st
 python scripts/quality_gate.py
 ```
 This checks: formatting (`dart format`), linting (`dart analyze`), tests (`flutter test`), coverage (>= 80%), ADR completeness, and review existence (for code changes). Use `--fix` to auto-fix issues via `dart fix --apply`. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass review existence).
+
+Each run appends a result record to `metrics/quality_gate_log.jsonl` for trend analysis at retro and meta-review time.
 
 **Known limitation**: The review existence check verifies that a review report exists for today, not that it covers the specific files being committed.
 
@@ -149,7 +151,7 @@ Every commit must pass two gates:
 1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting (`dart format`), linting (`dart analyze`), tests (`flutter test`), or coverage fail, the commit is blocked.
 2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`.
 
-For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first.
+For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching more than 5 files require `/review` — large framework changes are medium-risk regardless of whether they touch product code.
 
 ## Build Review Protocol
 
@@ -172,6 +174,8 @@ When a `/review`, `/deliberate`, `/analyze-project`, `/build_module`, `/retro`, 
    - `scripts/ingest_events.py` inserts events into SQLite (Layer 2)
    - Updates discussion status to `closed` in SQLite
    - Sets discussion directory to read-only
+4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table. Called at synthesis time in `/review`, `/build_module`, and `/retro`.
+5. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
 
 ## Agent Invocation Pattern
 
