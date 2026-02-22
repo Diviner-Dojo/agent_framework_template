@@ -64,7 +64,7 @@ def record_yield(
     conn.commit()
     conn.close()
     print(
-        f"Recorded yield: {protocol_type} → {outcome} (blocking={findings_blocking}, advisory={findings_advisory})"
+        f"Recorded yield: {protocol_type} -> {outcome} (blocking={findings_blocking}, advisory={findings_advisory})"
     )
 
 
