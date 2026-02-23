@@ -307,7 +307,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
   ///
   /// Stale response handling: If the user ends the session while a follow-up
   /// is being fetched (activeSessionId becomes null), the response is discarded.
-  Future<void> sendMessage(String text) async {
+  Future<void> sendMessage(String text, {String inputMethod = 'TEXT'}) async {
     final sessionId = state.activeSessionId;
     if (sessionId == null) return;
 
@@ -320,6 +320,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
       'USER',
       text,
       now,
+      inputMethod: inputMethod,
     );
 
     // Track user message in conversation history for Claude context.

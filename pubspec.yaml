@@ -42,6 +42,12 @@ dependencies:
   path: ^1.9.1
   shared_preferences: ^2.5.4
 
+  # Voice (Phase 7A — ADR-0015)
+  sherpa_onnx: ^1.12.25
+  record: ^6.2.0
+  flutter_tts: ^4.2.5
+  crypto: ^3.0.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -23,6 +23,7 @@ import '../../providers/database_provider.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
+import '../../providers/voice_providers.dart';
 
 /// Settings screen showing assistant status and app information.
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -67,6 +68,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         padding: const EdgeInsets.all(16),
         children: [
           _buildAssistantCard(context, assistantStatusAsync),
+          const SizedBox(height: 16),
+          _buildVoiceCard(context),
           const SizedBox(height: 16),
           _buildCloudSyncCard(context),
           const SizedBox(height: 16),
@@ -147,6 +150,81 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build the "Voice" settings card with toggle and model status.
+  Widget _buildVoiceCard(BuildContext context) {
+    final voiceEnabled = ref.watch(voiceModeEnabledProvider);
+    final modelReadyAsync = ref.watch(sttModelReadyProvider);
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Voice', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              title: const Text('Enable voice mode'),
+              subtitle: const Text('Adds mic button for push-to-talk input'),
+              value: voiceEnabled,
+              onChanged: (value) {
+                ref.read(voiceModeEnabledProvider.notifier).state = value;
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 8),
+            // STT model download status.
+            modelReadyAsync.when(
+              data: (isReady) => Row(
+                children: [
+                  Icon(
+                    isReady ? Icons.check_circle : Icons.download,
+                    color: isReady ? Colors.green : theme.colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isReady
+                          ? 'Speech model: Downloaded'
+                          : 'Speech model: Not downloaded',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+              loading: () => const Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 8),
+                  Text('Checking model status...'),
+                ],
+              ),
+              error: (_, _) => Text(
+                'Could not check model status',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+            if (voiceEnabled && modelReadyAsync.valueOrNull != true) ...[
+              const SizedBox(height: 8),
+              Text(
+                'The speech model will be downloaded when you first use voice input.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ],
         ),
       ),
