@@ -14,9 +14,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/config/environment.dart';
 import 'package:agentic_journal/providers/auth_providers.dart';
+import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
@@ -49,13 +51,18 @@ void main() {
   group('SettingsScreen', () {
     late MockAssistantService mockService;
 
-    setUp(() {
+    late SharedPreferences prefs;
+
+    setUp(() async {
       mockService = MockAssistantService();
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
     });
 
     Widget buildTestWidget({bool isAuthenticated = false}) {
       return ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
           assistantServiceProvider.overrideWithValue(mockService),
           environmentProvider.overrideWithValue(
             const Environment.custom(supabaseUrl: '', supabaseAnonKey: ''),
@@ -192,6 +199,7 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              sharedPreferencesProvider.overrideWithValue(prefs),
               assistantServiceProvider.overrideWithValue(mockService),
               environmentProvider.overrideWithValue(
                 const Environment.custom(supabaseUrl: '', supabaseAnonKey: ''),
@@ -226,6 +234,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
             assistantServiceProvider.overrideWithValue(mockService),
             environmentProvider.overrideWithValue(
               const Environment.custom(supabaseUrl: '', supabaseAnonKey: ''),
@@ -260,6 +269,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
             assistantServiceProvider.overrideWithValue(mockService),
             environmentProvider.overrideWithValue(
               const Environment.custom(supabaseUrl: '', supabaseAnonKey: ''),
@@ -288,6 +298,14 @@ void main() {
             },
           ),
         ),
+      );
+      await tester.pumpAndSettle();
+
+      // Scroll down to ensure Sign In button is visible.
+      await tester.scrollUntilVisible(
+        find.widgetWithText(FilledButton, 'Sign In'),
+        200,
+        scrollable: find.byType(Scrollable),
       );
       await tester.pumpAndSettle();
 

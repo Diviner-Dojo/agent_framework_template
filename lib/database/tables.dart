@@ -1,3 +1,4 @@
+// coverage:ignore-file — drift table schema definitions, no executable logic.
 // ===========================================================================
 // file: lib/database/tables.dart
 // purpose: drift table definitions for the local SQLite database.

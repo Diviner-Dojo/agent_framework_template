@@ -582,6 +582,20 @@ class SessionNotifier extends StateNotifier<SessionState> {
     return sessionId;
   }
 
+  /// Resume the most recent open session, or return null if none exists.
+  ///
+  /// Used by voice commands like "continue my journal" or "add to today's
+  /// entry." Finds the most recent session with no endTime and resumes it.
+  Future<String?> resumeLatestSession() async {
+    final sessions = await _sessionDao.getAllSessionsByDate();
+    final openSession = sessions.cast<JournalSession?>().firstWhere(
+      (s) => s!.endTime == null,
+      orElse: () => null,
+    );
+    if (openSession == null) return null;
+    return resumeSession(openSession.sessionId);
+  }
+
   /// Discard the active session without saving a summary.
   ///
   /// Clears state immediately, then deletes messages and session from the DB

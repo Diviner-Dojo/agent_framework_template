@@ -96,4 +96,23 @@ class AssistantRegistrationService {
       return false;
     }
   }
+
+  /// Check if the app was launched specifically via ACTION_VOICE_ASSIST.
+  ///
+  /// Returns `true` exactly once after a voice-assist launch. Used by
+  /// Phase 7B to distinguish voice launch (starts continuous mode) from
+  /// generic assistant launch (starts text mode).
+  ///
+  /// Returns `false` on iOS, non-voice launches, or if the check fails.
+  Future<bool> wasLaunchedAsVoiceAssistant() async {
+    if (!_isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>(
+        'wasLaunchedAsVoiceAssistant',
+      );
+      return result ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
 }

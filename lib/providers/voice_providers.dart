@@ -12,6 +12,12 @@
 //   the UI must call initialize() before use (triggered by first voice
 //   activation, after model download is confirmed).
 //
+// Phase 7B additions:
+//   - audioFocusServiceProvider: singleton for Android audio focus
+//   - voiceModeEnabledProvider: now persisted via SharedPreferences
+//   - autoSaveOnExitProvider: persisted toggle for auto-save on backgrounding
+//   - voiceOrchestratorProvider: continuous voice loop state machine
+//
 // See: ADR-0015 (Voice Mode Architecture)
 // ===========================================================================
 
@@ -20,15 +26,69 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../services/audio_focus_service.dart';
 import '../services/speech_recognition_service.dart';
 import '../services/text_to_speech_service.dart';
+import '../services/voice_session_orchestrator.dart';
+import 'onboarding_providers.dart';
+
+/// SharedPreferences key for the voice mode toggle.
+const voiceModeEnabledKey = 'voice_mode_enabled';
+
+/// SharedPreferences key for the auto-save on exit toggle.
+const autoSaveOnExitKey = 'auto_save_on_exit';
 
 /// Controls whether voice mode is enabled for sessions.
 ///
 /// When true, the journal session screen shows a mic button and TTS
 /// speaks assistant responses aloud. Persisted in SharedPreferences
-/// (Phase 7A uses simple state; persistence can be added later).
-final voiceModeEnabledProvider = StateProvider<bool>((ref) => false);
+/// so the setting survives app restarts.
+///
+/// Uses the same Notifier pattern as [OnboardingNotifier].
+class VoiceModeNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getBool(voiceModeEnabledKey) ?? false;
+  }
+
+  /// Toggle voice mode on or off. Persists to SharedPreferences.
+  Future<void> setEnabled(bool enabled) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(voiceModeEnabledKey, enabled);
+    state = enabled;
+  }
+}
+
+/// Provider for the voice mode enabled notifier.
+///
+/// Watch for the bool value; call `.notifier.setEnabled(bool)` to change.
+final voiceModeEnabledProvider = NotifierProvider<VoiceModeNotifier, bool>(
+  VoiceModeNotifier.new,
+);
+
+/// Controls whether the session auto-saves when the app is backgrounded.
+///
+/// Defaults to true. Persisted in SharedPreferences.
+class AutoSaveOnExitNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getBool(autoSaveOnExitKey) ?? true;
+  }
+
+  /// Set auto-save behavior. Persists to SharedPreferences.
+  Future<void> setEnabled(bool enabled) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(autoSaveOnExitKey, enabled);
+    state = enabled;
+  }
+}
+
+/// Provider for the auto-save on exit notifier.
+final autoSaveOnExitProvider = NotifierProvider<AutoSaveOnExitNotifier, bool>(
+  AutoSaveOnExitNotifier.new,
+);
 
 // coverage:ignore-start
 /// Provides the STT service singleton.
@@ -50,6 +110,16 @@ final speechRecognitionServiceProvider = Provider<SpeechRecognitionService>((
 /// container is disposed.
 final textToSpeechServiceProvider = Provider<TextToSpeechService>((ref) {
   final service = FlutterTextToSpeechService();
+  ref.onDispose(() => service.dispose());
+  return service;
+});
+
+/// Provides the audio focus service singleton.
+///
+/// Manages Android audio focus for STT/TTS coordination with other
+/// apps (music, phone calls, navigation). Disposed on provider cleanup.
+final audioFocusServiceProvider = Provider<AudioFocusService>((ref) {
+  final service = AndroidAudioFocusService();
   ref.onDispose(() => service.dispose());
   return service;
 });
@@ -86,5 +156,25 @@ final sttModelReadyProvider = FutureProvider<bool>((ref) async {
 final sttModelPathProvider = FutureProvider<String>((ref) async {
   final dir = await getApplicationSupportDirectory();
   return '${dir.path}/zipformer';
+});
+
+/// Provides the voice session orchestrator.
+///
+/// The orchestrator manages the continuous listen→process→speak→listen
+/// loop. It coordinates STT, TTS, and audio focus services.
+/// Disposed when the provider container is disposed.
+final voiceOrchestratorProvider = Provider<VoiceSessionOrchestrator>((ref) {
+  final stt = ref.watch(speechRecognitionServiceProvider);
+  final tts = ref.watch(textToSpeechServiceProvider);
+  final audioFocus = ref.watch(audioFocusServiceProvider);
+
+  final orchestrator = VoiceSessionOrchestrator(
+    sttService: stt,
+    ttsService: tts,
+    audioFocusService: audioFocus,
+  );
+
+  ref.onDispose(() => orchestrator.dispose());
+  return orchestrator;
 });
 // coverage:ignore-end
