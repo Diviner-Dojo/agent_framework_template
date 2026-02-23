@@ -59,6 +59,14 @@ class JournalSessions extends Table {
   TextColumn get syncStatus => text().withDefault(const Constant('PENDING'))();
   DateTimeColumn get lastSyncAttempt => dateTime().nullable()();
 
+  // Whether this session was resumed after being initially ended.
+  // Set to true by SessionDao.resumeSession(). Default false for new sessions.
+  BoolColumn get isResumed => boolean().withDefault(const Constant(false))();
+
+  // How many times this session has been resumed.
+  // Incremented by SessionDao.resumeSession() each time.
+  IntColumn get resumeCount => integer().withDefault(const Constant(0))();
+
   // Standard timestamps — createdAt defaults to current time,
   // updatedAt should be set manually whenever the record is modified.
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

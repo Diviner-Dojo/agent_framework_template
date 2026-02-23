@@ -13,7 +13,6 @@
 // ===========================================================================
 
 import 'package:flutter/foundation.dart';
-import 'package:meta/meta.dart';
 
 import '../database/app_database.dart';
 import '../database/daos/message_dao.dart';
@@ -153,6 +152,8 @@ class SyncRepository {
       'mood_tags': session.moodTags,
       'people': session.people,
       'topic_tags': session.topicTags,
+      'is_resumed': session.isResumed,
+      'resume_count': session.resumeCount,
       'sync_status': 'SYNCED',
       'created_at': session.createdAt.toUtc().toIso8601String(),
       'updated_at': DateTime.now().toUtc().toIso8601String(),

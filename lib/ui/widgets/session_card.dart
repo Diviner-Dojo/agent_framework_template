@@ -4,6 +4,7 @@
 //
 // Shows: date, summary (or placeholder), duration, message count.
 // Tapping navigates to the session detail (read-only transcript) screen.
+// Overflow menu provides a "Delete" option with confirmation dialog.
 // ===========================================================================
 
 import 'package:flutter/material.dart';
@@ -18,16 +19,19 @@ import 'sync_status_indicator.dart';
 /// [session] is the drift-generated JournalSession data class.
 /// [messageCount] is the number of messages in this session.
 /// [onTap] is called when the user taps the card.
+/// [onDelete] is called when the user confirms deletion via the overflow menu.
 class SessionCard extends StatelessWidget {
   final JournalSession session;
   final int messageCount;
   final VoidCallback? onTap;
+  final VoidCallback? onDelete;
 
   const SessionCard({
     super.key,
     required this.session,
     required this.messageCount,
     this.onTap,
+    this.onDelete,
   });
 
   @override
@@ -46,7 +50,7 @@ class SessionCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top row: date and duration.
+              // Top row: date, duration, and overflow menu.
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -56,13 +60,23 @@ class SessionCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (duration != null)
-                    Text(
-                      formatDuration(duration),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (duration != null)
+                        Text(
+                          formatDuration(duration),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      if (onDelete != null)
+                        _DeleteMenuButton(
+                          session: session,
+                          onDelete: onDelete!,
+                        ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -98,6 +112,76 @@ class SessionCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Overflow menu button for session card actions.
+class _DeleteMenuButton extends StatelessWidget {
+  final JournalSession session;
+  final VoidCallback onDelete;
+
+  const _DeleteMenuButton({required this.session, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert, size: 20),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      tooltip: 'Session options',
+      onSelected: (value) {
+        if (value == 'delete') {
+          _showDeleteConfirmation(context);
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'delete',
+          child: ListTile(
+            leading: Icon(
+              Icons.delete_outline,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            title: Text(
+              'Delete',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context) {
+    final dateStr = formatShortDate(session.startTime);
+    final summaryPreview = session.summary != null
+        ? '"${session.summary!.length > 60 ? '${session.summary!.substring(0, 60)}...' : session.summary!}"'
+        : 'No summary';
+
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this entry?'),
+        content: Text('$dateStr\n$summaryPreview\n\nThis cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () {
+              Navigator.of(context).pop(true);
+              onDelete();
+            },
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
   }

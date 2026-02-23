@@ -6,10 +6,11 @@
 //   - The screen renders with app bar and input field
 //   - The greeting message is displayed
 //   - The send button is present
-//   - The end session button is present
+//   - Overflow menu has End Session and Discard options
 //   - Back button shows confirmation dialog (B1)
-//   - Escalating thinking indicator updates message (B7)
+//   - Discard confirmation works
 //   - Done button appears after session close (B2)
+//   - Auto-discard SnackBar on empty session (Phase 6)
 // ===========================================================================
 
 import 'package:drift/native.dart';
@@ -102,6 +103,66 @@ void main() {
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
     });
 
+    testWidgets('has overflow menu with End Session and Discard', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Overflow menu icon should be present.
+      expect(find.byIcon(Icons.more_vert), findsOneWidget);
+
+      // Tap the overflow menu.
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      // Menu items should appear.
+      expect(find.text('End Session'), findsOneWidget);
+      expect(find.text('Discard'), findsOneWidget);
+    });
+
+    testWidgets('discard from overflow menu shows confirmation dialog', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Open overflow menu and tap Discard.
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+
+      // Confirmation dialog should appear.
+      expect(find.text('Discard this entry?'), findsOneWidget);
+      expect(find.text('This cannot be undone.'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      // The Discard button in the dialog.
+      expect(find.widgetWithText(FilledButton, 'Discard'), findsOneWidget);
+    });
+
+    testWidgets('cancel in discard dialog keeps session active', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Open overflow menu and tap Discard.
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+
+      // Tap Cancel.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Dialog closed, session still active.
+      expect(find.text('Discard this entry?'), findsNothing);
+      final state = container.read(sessionNotifierProvider);
+      expect(state.activeSessionId, isNotNull);
+    });
+
     testWidgets('back button shows confirmation dialog', (tester) async {
       final container = await buildTestWidget(tester);
       addTearDown(container.dispose);
@@ -144,6 +205,11 @@ void main() {
       final container = await buildTestWidget(tester);
       addTearDown(container.dispose);
 
+      // Send a user message so the session is not empty.
+      await tester.enterText(find.byType(TextField), 'I feel great');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pumpAndSettle();
+
       // Show confirmation dialog.
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
@@ -156,11 +222,16 @@ void main() {
       expect(find.text('Done'), findsOneWidget);
     });
 
-    testWidgets('end session button is hidden when session is ending', (
+    testWidgets('overflow menu is hidden when session is ending', (
       tester,
     ) async {
       final container = await buildTestWidget(tester);
       addTearDown(container.dispose);
+
+      // Send a user message so the session is not empty.
+      await tester.enterText(find.byType(TextField), 'Testing');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pumpAndSettle();
 
       // Confirm exit via dialog.
       await tester.tap(find.byIcon(Icons.arrow_back));
@@ -168,9 +239,31 @@ void main() {
       await tester.tap(find.text('End'));
       await tester.pumpAndSettle();
 
-      // End session button should be hidden when session is ending/complete.
+      // Overflow menu should be hidden when session is ending/complete.
+      expect(find.byIcon(Icons.more_vert), findsNothing);
       // The "Done" button should be visible instead.
       expect(find.text('Done'), findsOneWidget);
+    });
+
+    testWidgets('auto-discard shows SnackBar on empty session end', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // End session without sending any user messages (empty session guard).
+      // Use overflow menu End Session.
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('End Session'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // SnackBar should appear with discard message.
+      expect(
+        find.text('Session discarded \u2014 nothing was recorded.'),
+        findsOneWidget,
+      );
     });
   });
 }

@@ -4,6 +4,7 @@
 //
 // Shows all messages as chat bubbles (same as the active session screen)
 // but without the text input field — this is a view-only screen.
+// Includes a "Continue Entry" button to resume the session (ADR-0014).
 //
 // Accessed by tapping a SessionCard in the session list screen.
 // The session ID is passed as a route argument.
@@ -16,6 +17,7 @@ import '../../database/app_database.dart';
 import '../../database/daos/message_dao.dart';
 import '../../database/daos/session_dao.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/session_providers.dart';
 import '../../utils/timestamp_utils.dart';
 import '../widgets/chat_bubble.dart';
 
@@ -34,6 +36,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   JournalSession? _session;
   List<JournalMessage>? _messages;
   bool _isLoading = true;
+  bool _isResuming = false;
 
   @override
   void initState() {
@@ -60,6 +63,9 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch active session to know if another session is in progress.
+    final activeSessionId = ref.watch(activeSessionIdProvider);
+
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Session')),
@@ -76,9 +82,30 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
 
     final session = _session!;
     final messages = _messages ?? [];
+    // Show Continue Entry if this session has an endTime (completed)
+    // and no other session is currently active.
+    final canResume = session.endTime != null && activeSessionId == null;
 
     return Scaffold(
-      appBar: AppBar(title: Text(formatShortDate(session.startTime))),
+      appBar: AppBar(
+        title: Text(formatShortDate(session.startTime)),
+        actions: [
+          if (canResume)
+            _isResuming
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : TextButton(
+                    onPressed: () => _resumeSession(context),
+                    child: const Text('Continue Entry'),
+                  ),
+        ],
+      ),
       body: Column(
         children: [
           // Session summary header (if available).
@@ -115,5 +142,22 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         ],
       ),
     );
+  }
+
+  /// Resume the session and navigate to the active session screen.
+  Future<void> _resumeSession(BuildContext context) async {
+    setState(() => _isResuming = true);
+    try {
+      final notifier = ref.read(sessionNotifierProvider.notifier);
+      final resumed = await notifier.resumeSession(widget.sessionId);
+      if (resumed != null && context.mounted) {
+        // Replace this detail screen with the active session screen.
+        Navigator.of(context).pushReplacementNamed('/session');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isResuming = false);
+      }
+    }
   }
 }

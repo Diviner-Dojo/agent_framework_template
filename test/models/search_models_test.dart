@@ -9,6 +9,8 @@ void main() {
       startTime: DateTime.utc(2026, 2, 19, 10, 0),
       timezone: 'UTC',
       syncStatus: 'PENDING',
+      isResumed: false,
+      resumeCount: 0,
       createdAt: DateTime.utc(2026, 2, 19),
       updatedAt: DateTime.utc(2026, 2, 19),
     );

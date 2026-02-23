@@ -104,6 +104,66 @@ class MessageDao {
     return result.read(count)!;
   }
 
+  /// Get message counts for multiple sessions in a single query.
+  ///
+  /// Returns a map of sessionId → messageCount. Sessions with 0 messages
+  /// are not included in the result (callers should default to 0).
+  /// Used by the landing page to avoid N+1 per-card count queries.
+  Future<Map<String, int>> getMessageCountsForSessions(
+    List<String> sessionIds,
+  ) async {
+    if (sessionIds.isEmpty) return {};
+
+    final sid = _db.journalMessages.sessionId;
+    final count = sid.count();
+
+    final query = _db.selectOnly(_db.journalMessages)
+      ..addColumns([sid, count])
+      ..where(sid.isIn(sessionIds))
+      ..groupBy([sid]);
+
+    final rows = await query.get();
+    return {for (final row in rows) row.read(sid)!: row.read(count)!};
+  }
+
+  // =========================================================================
+  // Delete methods (Phase 6 — ADR-0014)
+  // =========================================================================
+
+  /// Delete all messages for a session.
+  ///
+  /// Used as the cascade step before [SessionDao.deleteSession].
+  /// Returns the number of rows deleted.
+  Future<int> deleteMessagesBySession(String sessionId) async {
+    return (_db.delete(
+      _db.journalMessages,
+    )..where((m) => m.sessionId.equals(sessionId))).go();
+  }
+
+  /// Delete all messages across all sessions.
+  ///
+  /// Used as the cascade step before [SessionDao.deleteAllSessions].
+  /// Returns the number of rows deleted.
+  Future<int> deleteAllMessages() async {
+    return _db.delete(_db.journalMessages).go();
+  }
+
+  /// Count messages by role for a specific session.
+  ///
+  /// Used by the empty session guard to check if any USER messages exist
+  /// before generating a summary (ADR-0014).
+  Future<int> getMessageCountByRole(String sessionId, String role) async {
+    final count = _db.journalMessages.messageId.count();
+    final query = _db.selectOnly(_db.journalMessages)
+      ..addColumns([count])
+      ..where(
+        _db.journalMessages.sessionId.equals(sessionId) &
+            _db.journalMessages.role.equals(role),
+      );
+    final result = await query.getSingle();
+    return result.read(count) ?? 0;
+  }
+
   // =========================================================================
   // Search methods (Phase 5)
   // =========================================================================

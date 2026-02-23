@@ -5,7 +5,7 @@
 // This is where the conversation happens. It shows:
 //   - A scrollable list of chat bubbles (assistant + user messages)
 //   - A text input field at the bottom with a send button
-//   - An end session button in the app bar
+//   - An overflow menu in the app bar (End Session / Discard)
 //
 // The screen auto-scrolls to the latest message when new messages arrive.
 // On first load, the session has already been created by SessionNotifier
@@ -15,6 +15,7 @@
 //   - PopScope intercepts back navigation with a confirmation dialog
 //   - Escalating thinking indicator provides progress feedback
 //   - Closing summary stays visible until user taps "Done"
+//   - Auto-discard SnackBar when empty session is ended
 // ===========================================================================
 
 import 'dart:async';
@@ -24,7 +25,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/session_providers.dart';
 import '../widgets/chat_bubble.dart';
-import '../widgets/end_session_button.dart';
 
 /// The active journal conversation screen.
 class JournalSessionScreen extends ConsumerStatefulWidget {
@@ -51,6 +51,23 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
   Widget build(BuildContext context) {
     final sessionState = ref.watch(sessionNotifierProvider);
     final messagesAsync = ref.watch(activeSessionMessagesProvider);
+
+    // Listen for auto-discard signal and show SnackBar + auto-pop.
+    ref.listen<bool>(wasAutoDiscardedProvider, (previous, wasDiscarded) {
+      if (wasDiscarded) {
+        // Reset the flag immediately so it doesn't re-trigger.
+        ref.read(wasAutoDiscardedProvider.notifier).state = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session discarded \u2014 nothing was recorded.'),
+          ),
+        );
+        // Auto-pop back to the list after a brief delay.
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      }
+    });
 
     return PopScope(
       canPop:
@@ -80,9 +97,46 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
             },
           ),
           actions: [
-            // End session button — hidden when session is already ending.
+            // Overflow menu — hidden when session is already ending.
             if (!sessionState.isSessionEnding)
-              EndSessionButton(onEndSession: () => _endSession(context)),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                tooltip: 'Session options',
+                onSelected: (value) {
+                  switch (value) {
+                    case 'end':
+                      _endSession(context);
+                    case 'discard':
+                      _showDiscardConfirmation();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'end',
+                    child: ListTile(
+                      leading: Icon(Icons.stop_circle_outlined),
+                      title: Text('End Session'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'discard',
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.delete_outline,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      title: Text(
+                        'Discard',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
         body: Column(
@@ -222,6 +276,37 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     }
   }
 
+  /// Show a confirmation dialog before discarding the session.
+  Future<void> _showDiscardConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard this entry?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await ref.read(sessionNotifierProvider.notifier).discardSession();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
   /// Show a confirmation dialog before ending and leaving the session.
   Future<void> _showExitConfirmation() async {
     final confirmed = await showDialog<bool>(
@@ -263,9 +348,9 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
 ///
 /// Starts with "Thinking..." and escalates to provide reassurance
 /// during slow API calls:
-///   0s  → "Thinking..."
-///   8s  → "Still thinking..."
-///   15s → "Taking a moment..."
+///   0s  -> "Thinking..."
+///   8s  -> "Still thinking..."
+///   15s -> "Taking a moment..."
 class _ThinkingIndicator extends StatefulWidget {
   const _ThinkingIndicator();
 

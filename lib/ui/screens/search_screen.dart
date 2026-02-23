@@ -131,7 +131,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               data: (results) =>
                   _buildResultsBody(context, results, query, filters),
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => Center(
+              error: (_, _) => Center(
                 child: Text(
                   'Something went wrong. Try searching again.',
                   style: theme.textTheme.bodyMedium,
@@ -643,7 +643,7 @@ class _MultiSelectSheetState extends ConsumerState<_MultiSelectSheet> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const Text('Failed to load options'),
+              error: (_, _) => const Text('Failed to load options'),
             ),
           ],
         ),

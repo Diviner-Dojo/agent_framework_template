@@ -109,6 +109,8 @@ void main() {
     test('sets isClosingComplete and keeps activeSessionId', () async {
       final notifier = container.read(sessionNotifierProvider.notifier);
       await notifier.startSession();
+      // Must send a user message to avoid empty session guard (ADR-0014).
+      await notifier.sendMessage('Testing end session');
       await notifier.endSession();
 
       final state = container.read(sessionNotifierProvider);
@@ -124,6 +126,8 @@ void main() {
     test('clears all state after user reads summary', () async {
       final notifier = container.read(sessionNotifierProvider.notifier);
       await notifier.startSession();
+      // Must send a user message to avoid empty session guard (ADR-0014).
+      await notifier.sendMessage('Testing dismiss');
       await notifier.endSession();
 
       // Verify isClosingComplete is true before dismissing.
