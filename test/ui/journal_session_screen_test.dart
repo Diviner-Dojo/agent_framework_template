@@ -17,9 +17,11 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
+import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/ui/screens/journal_session_screen.dart';
@@ -28,8 +30,12 @@ void main() {
   group('JournalSessionScreen', () {
     late AppDatabase database;
 
-    setUp(() {
+    late SharedPreferences prefs;
+
+    setUp(() async {
       database = AppDatabase.forTesting(NativeDatabase.memory());
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
     });
 
     tearDown(() async {
@@ -43,6 +49,7 @@ void main() {
         UncontrolledProviderScope(
           container: container = ProviderContainer(
             overrides: [
+              sharedPreferencesProvider.overrideWithValue(prefs),
               databaseProvider.overrideWithValue(database),
               agentRepositoryProvider.overrideWithValue(AgentRepository()),
             ],

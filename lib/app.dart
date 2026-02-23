@@ -34,6 +34,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
 import 'providers/settings_providers.dart';
+import 'providers/voice_providers.dart';
 import 'ui/screens/journal_session_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/session_detail_screen.dart';
@@ -76,7 +77,8 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp> {
   ///
   /// This is called exactly once in initState(). If the app was launched
   /// via ACTION_ASSIST, we auto-start a new journal session and navigate
-  /// to the session screen.
+  /// to the session screen. If specifically via VOICE_ASSIST, we also
+  /// enable voice mode so the session starts in continuous voice mode.
   ///
   /// Why addPostFrameCallback?
   ///   We can't navigate until the MaterialApp's navigator is built.
@@ -87,13 +89,21 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp> {
     _assistantLaunchChecked = true;
 
     final service = ref.read(assistantServiceProvider);
-    final wasAssistant = await service.wasLaunchedAsAssistant();
+    // Check voice-specific launch BEFORE generic (both clear flags).
+    final wasVoiceAssistant = await service.wasLaunchedAsVoiceAssistant();
+    final wasAssistant =
+        wasVoiceAssistant || await service.wasLaunchedAsAssistant();
     // Only auto-start a session if onboarding is already complete.
     // On first-ever launch via assistant gesture, onboarding must finish
     // first — otherwise /session gets pushed on top of /onboarding,
     // creating a broken back-stack.
     final hasOnboarded = ref.read(onboardingNotifierProvider);
     if (wasAssistant && hasOnboarded && mounted) {
+      // If launched via VOICE_ASSIST, enable voice mode so the session
+      // screen starts in continuous mode.
+      if (wasVoiceAssistant) {
+        ref.read(voiceModeEnabledProvider.notifier).setEnabled(true);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         try {
           await ref.read(sessionNotifierProvider.notifier).startSession();

@@ -159,6 +159,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   /// Build the "Voice" settings card with toggle and model status.
   Widget _buildVoiceCard(BuildContext context) {
     final voiceEnabled = ref.watch(voiceModeEnabledProvider);
+    final autoSave = ref.watch(autoSaveOnExitProvider);
     final modelReadyAsync = ref.watch(sttModelReadyProvider);
     final theme = Theme.of(context);
 
@@ -172,13 +173,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             const SizedBox(height: 12),
             SwitchListTile(
               title: const Text('Enable voice mode'),
-              subtitle: const Text('Adds mic button for push-to-talk input'),
+              subtitle: const Text(
+                'Adds mic button; long-press for continuous mode',
+              ),
               value: voiceEnabled,
               onChanged: (value) {
-                ref.read(voiceModeEnabledProvider.notifier).state = value;
+                ref.read(voiceModeEnabledProvider.notifier).setEnabled(value);
               },
               contentPadding: EdgeInsets.zero,
             ),
+            if (voiceEnabled) ...[
+              SwitchListTile(
+                title: const Text('Auto-save on exit'),
+                subtitle: const Text('Save session when app is backgrounded'),
+                value: autoSave,
+                onChanged: (value) {
+                  ref.read(autoSaveOnExitProvider.notifier).setEnabled(value);
+                },
+                contentPadding: EdgeInsets.zero,
+              ),
+            ],
             const SizedBox(height: 8),
             // STT model download status.
             modelReadyAsync.when(

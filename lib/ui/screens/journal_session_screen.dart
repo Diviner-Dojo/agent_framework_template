@@ -16,6 +16,12 @@
 //   - Escalating thinking indicator provides progress feedback
 //   - Closing summary stays visible until user taps "Done"
 //   - Auto-discard SnackBar when empty session is ended
+//
+// Phase 7B changes:
+//   - Voice state delegated to VoiceSessionOrchestrator
+//   - WidgetsBindingObserver for lifecycle management (auto-save)
+//   - Continuous mode with phase indicator and interrupt button
+//   - Transcript preview during listening
 // ===========================================================================
 
 import 'dart:async';
@@ -26,7 +32,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/session_providers.dart';
 import '../../providers/voice_providers.dart';
 import '../../services/model_download_service.dart';
-import '../../services/speech_recognition_service.dart';
+import '../../services/voice_session_orchestrator.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/model_download_dialog.dart';
 
@@ -39,40 +45,133 @@ class JournalSessionScreen extends ConsumerStatefulWidget {
       _JournalSessionScreenState();
 }
 
-class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
+class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   int _lastMessageCount = 0;
 
-  // Voice state.
-  bool _isRecording = false;
-  bool _isInitializingStt = false;
-  bool _lastInputWasVoice = false;
-  bool _ttsInitialized = false;
-  StreamSubscription<SpeechResult>? _recognitionSubscription;
+  /// Tracks the last assistant message ID to avoid re-speaking.
   String _previousTranscriptId = '';
+
+  /// Whether STT model is being initialized (5-8s loading).
+  bool _isInitializingStt = false;
+
+  /// Whether the orchestrator callbacks have been wired.
+  bool _orchestratorWired = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Rebuild when text changes so mic/send button toggles correctly.
     _textController.addListener(() {
       if (mounted) setState(() {});
+    });
+
+    // Wire orchestrator callbacks after the first frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _wireOrchestrator();
+      _maybeStartContinuousMode();
     });
   }
 
   @override
   void dispose() {
-    _stopRecording();
+    WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    final orchestrator = ref.read(voiceOrchestratorProvider);
+
+    switch (lifecycleState) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        // Pause voice and optionally auto-save.
+        orchestrator.pause();
+        _autoSaveIfNeeded();
+      case AppLifecycleState.resumed:
+        orchestrator.resume();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        break;
+    }
+  }
+
+  /// Wire the orchestrator's callbacks to SessionNotifier methods.
+  void _wireOrchestrator() {
+    if (_orchestratorWired) return;
+    _orchestratorWired = true;
+
+    final orchestrator = ref.read(voiceOrchestratorProvider);
+    final sessionNotifier = ref.read(sessionNotifierProvider.notifier);
+
+    orchestrator.onSendMessage = (text, {String inputMethod = 'TEXT'}) async {
+      await sessionNotifier.sendMessage(text, inputMethod: inputMethod);
+      return null; // Response comes via message stream.
+    };
+    orchestrator.onEndSession = () => sessionNotifier.endSession();
+    orchestrator.onDiscardSession = () => sessionNotifier.discardSession();
+    orchestrator.onResumeSession = (sessionId) =>
+        sessionNotifier.resumeSession(sessionId);
+
+    // Keep orchestrator's session ID in sync for undo support.
+    final sessionId = ref.read(sessionNotifierProvider).activeSessionId;
+    orchestrator.currentSessionId = sessionId;
+  }
+
+  /// If voice mode is enabled, auto-start continuous mode after greeting.
+  void _maybeStartContinuousMode() {
+    final voiceEnabled = ref.read(voiceModeEnabledProvider);
+    if (!voiceEnabled) return;
+
+    // Listen for the first assistant message (the greeting) to start
+    // continuous mode. Uses a one-shot listener.
+    final messages = ref.read(activeSessionMessagesProvider).valueOrNull;
+    if (messages != null && messages.isNotEmpty) {
+      final lastMsg = messages.last;
+      if (lastMsg.role == 'ASSISTANT') {
+        _startContinuousModeWithGreeting(lastMsg.content);
+      }
+    }
+  }
+
+  /// Start continuous mode with the greeting message.
+  Future<void> _startContinuousModeWithGreeting(String greeting) async {
+    final orchestrator = ref.read(voiceOrchestratorProvider);
+    if (orchestrator.state.phase != VoiceLoopPhase.idle) return;
+
+    // Ensure STT is initialized before starting continuous mode.
+    final sttReady = await _ensureSttReady();
+    if (!sttReady || !mounted) return;
+
+    await orchestrator.startContinuousMode(greeting);
+  }
+
+  /// Auto-save session on backgrounding if enabled.
+  void _autoSaveIfNeeded() {
+    final autoSave = ref.read(autoSaveOnExitProvider);
+    final sessionState = ref.read(sessionNotifierProvider);
+
+    if (autoSave &&
+        sessionState.activeSessionId != null &&
+        !sessionState.isSessionEnding) {
+      ref.read(sessionNotifierProvider.notifier).endSession();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final sessionState = ref.watch(sessionNotifierProvider);
     final messagesAsync = ref.watch(activeSessionMessagesProvider);
+    final voiceEnabled = ref.watch(voiceModeEnabledProvider);
+
+    // Watch orchestrator state for UI rebuilds.
+    final orchestrator = ref.watch(voiceOrchestratorProvider);
 
     // Listen for auto-discard signal and show SnackBar + auto-pop.
     ref.listen<bool>(wasAutoDiscardedProvider, (previous, wasDiscarded) {
@@ -91,6 +190,25 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
       }
     });
 
+    // Listen for new assistant messages to feed to the orchestrator.
+    ref.listen<AsyncValue<List<dynamic>>>(activeSessionMessagesProvider, (
+      previous,
+      next,
+    ) {
+      if (!voiceEnabled) return;
+      final messages = next.valueOrNull;
+      if (messages == null || messages.isEmpty) return;
+      final lastMsg = messages.last;
+      // Only process new assistant messages.
+      if (lastMsg.role == 'ASSISTANT') {
+        final msgId = '${lastMsg.messageId}';
+        if (msgId != _previousTranscriptId) {
+          _previousTranscriptId = msgId;
+          orchestrator.onAssistantMessage(lastMsg.content);
+        }
+      }
+    });
+
     return PopScope(
       canPop:
           sessionState.isClosingComplete ||
@@ -101,6 +219,8 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
           if (sessionState.isClosingComplete) {
             ref.read(sessionNotifierProvider.notifier).dismissSession();
           }
+          // Stop orchestrator on navigation away.
+          ref.read(voiceOrchestratorProvider).stop();
           return;
         }
         _showExitConfirmation();
@@ -209,7 +329,8 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
               const _ThinkingIndicator(),
 
             // Text input field — hidden when session is ending.
-            if (!sessionState.isSessionEnding) _buildInputField(context),
+            if (!sessionState.isSessionEnding)
+              _buildInputField(context, voiceEnabled, orchestrator),
           ],
         ),
       ),
@@ -231,33 +352,17 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
   }
 
   /// Build the message input field with send/mic button.
-  ///
-  /// When voice mode is enabled and the text field is empty, shows a mic
-  /// button instead of the send button. When recording, shows a stop button.
-  Widget _buildInputField(BuildContext context) {
+  Widget _buildInputField(
+    BuildContext context,
+    bool voiceEnabled,
+    VoiceSessionOrchestrator orchestrator,
+  ) {
     final isWaiting = ref.watch(
       sessionNotifierProvider.select((s) => s.isWaitingForAgent),
     );
-    final voiceEnabled = ref.watch(voiceModeEnabledProvider);
-
-    // Listen for new assistant messages to trigger TTS.
-    ref.listen<AsyncValue<List<dynamic>>>(activeSessionMessagesProvider, (
-      previous,
-      next,
-    ) {
-      if (!voiceEnabled) return;
-      final messages = next.valueOrNull;
-      if (messages == null || messages.isEmpty) return;
-      final lastMsg = messages.last;
-      // Only speak new assistant messages.
-      if (lastMsg.role == 'ASSISTANT') {
-        final msgId = '${lastMsg.messageId}';
-        if (msgId != _previousTranscriptId) {
-          _previousTranscriptId = msgId;
-          _speakAssistantMessage(lastMsg.content);
-        }
-      }
-    });
+    final voiceState = orchestrator.state;
+    final isListening = voiceState.phase == VoiceLoopPhase.listening;
+    final isSpeaking = voiceState.phase == VoiceLoopPhase.speaking;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -275,8 +380,27 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Phase indicator chip for continuous mode.
+          if (voiceEnabled && voiceState.isContinuousMode)
+            _buildPhaseIndicator(voiceState),
+
+          // Transcript preview during listening.
+          if (isListening && voiceState.transcriptPreview.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                voiceState.transcriptPreview,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+
           // Recording indicator.
-          if (_isRecording)
+          if (isListening && voiceState.transcriptPreview.isEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
@@ -288,7 +412,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    'Recording...',
+                    'Listening...',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.error,
                       fontSize: 12,
@@ -298,17 +422,18 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
                 ],
               ),
             ),
+
           Row(
             children: [
               // Text field — expands to fill available width.
               Expanded(
                 child: TextField(
                   controller: _textController,
-                  enabled: !isWaiting && !_isRecording,
+                  enabled: !isWaiting && !isListening && !isSpeaking,
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: null, // Allows multi-line input.
                   decoration: InputDecoration(
-                    hintText: _isRecording
+                    hintText: isListening
                         ? 'Listening...'
                         : 'Type your thoughts...',
                   ),
@@ -316,8 +441,8 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              // Action button: mic, stop, or send.
-              _buildActionButton(isWaiting, voiceEnabled),
+              // Action button: mic, stop, interrupt, or send.
+              _buildActionButton(isWaiting, voiceEnabled, orchestrator),
             ],
           ),
         ],
@@ -325,10 +450,64 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     );
   }
 
-  /// Build the action button (mic/stop/send/initializing) based on state.
-  Widget _buildActionButton(bool isWaiting, bool voiceEnabled) {
+  /// Build the voice phase indicator chip.
+  Widget _buildPhaseIndicator(VoiceOrchestratorState voiceState) {
+    final (label, icon, color) = switch (voiceState.phase) {
+      VoiceLoopPhase.listening => (
+        'Listening',
+        Icons.mic,
+        Theme.of(context).colorScheme.error,
+      ),
+      VoiceLoopPhase.processing => (
+        'Thinking',
+        Icons.psychology,
+        Theme.of(context).colorScheme.primary,
+      ),
+      VoiceLoopPhase.speaking => (
+        'Speaking',
+        Icons.volume_up,
+        Theme.of(context).colorScheme.tertiary,
+      ),
+      VoiceLoopPhase.paused => (
+        'Paused',
+        Icons.pause,
+        Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      VoiceLoopPhase.error => (
+        'Error',
+        Icons.error_outline,
+        Theme.of(context).colorScheme.error,
+      ),
+      VoiceLoopPhase.idle => (
+        'Voice Ready',
+        Icons.mic_none,
+        Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 12, color: color)),
+        ],
+      ),
+    );
+  }
+
+  /// Build the action button (mic/stop/interrupt/send/initializing).
+  Widget _buildActionButton(
+    bool isWaiting,
+    bool voiceEnabled,
+    VoiceSessionOrchestrator orchestrator,
+  ) {
+    final voiceState = orchestrator.state;
+
+    // 1. STT initializing → spinner.
     if (_isInitializingStt) {
-      // Loading spinner while STT model is initializing (5-8s).
       return const SizedBox(
         width: 48,
         height: 48,
@@ -339,11 +518,29 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
       );
     }
 
-    if (_isRecording) {
-      // Stop recording button.
+    // 2. Speaking → interrupt button.
+    if (voiceState.phase == VoiceLoopPhase.speaking) {
+      return IconButton.filled(
+        tooltip: 'Stop speaking',
+        onPressed: () => orchestrator.interrupt(),
+        style: IconButton.styleFrom(
+          backgroundColor: Theme.of(context).colorScheme.tertiary,
+        ),
+        icon: const Icon(Icons.stop),
+      );
+    }
+
+    // 3. Listening → stop button (red).
+    if (voiceState.phase == VoiceLoopPhase.listening) {
       return IconButton.filled(
         tooltip: 'Stop recording',
-        onPressed: _stopRecording,
+        onPressed: () {
+          if (voiceState.isContinuousMode) {
+            orchestrator.stop();
+          } else {
+            orchestrator.stopPushToTalk();
+          }
+        },
         style: IconButton.styleFrom(
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
@@ -351,16 +548,19 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
       );
     }
 
+    // 4. Idle + voice enabled + empty text → mic button.
     if (voiceEnabled && _textController.text.isEmpty && !isWaiting) {
-      // Mic button — shown when text field is empty and voice is enabled.
-      return IconButton.filled(
-        tooltip: 'Start voice input',
-        onPressed: _startRecording,
-        icon: const Icon(Icons.mic),
+      return GestureDetector(
+        onLongPress: () => _startContinuousMode(),
+        child: IconButton.filled(
+          tooltip: 'Start voice input (long press for continuous)',
+          onPressed: () => _startPushToTalk(),
+          icon: const Icon(Icons.mic),
+        ),
       );
     }
 
-    // Send button — default behavior.
+    // 5. Default → send button.
     return IconButton.filled(
       tooltip: 'Send message',
       onPressed: isWaiting ? null : _sendMessage,
@@ -368,11 +568,31 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     );
   }
 
-  /// Start voice recording and transcription.
-  Future<void> _startRecording() async {
-    // Guard against double-tap during async initialization.
-    if (_isInitializingStt || _isRecording) return;
+  /// Start push-to-talk via the orchestrator.
+  Future<void> _startPushToTalk() async {
+    final sttReady = await _ensureSttReady();
+    if (!sttReady || !mounted) return;
 
+    final orchestrator = ref.read(voiceOrchestratorProvider);
+    await orchestrator.startPushToTalk();
+  }
+
+  /// Start continuous mode via the orchestrator.
+  Future<void> _startContinuousMode() async {
+    final sttReady = await _ensureSttReady();
+    if (!sttReady || !mounted) return;
+
+    final orchestrator = ref.read(voiceOrchestratorProvider);
+    await orchestrator.startContinuousMode(
+      "I'm listening. Go ahead and share what's on your mind.",
+    );
+  }
+
+  /// Ensure STT model is downloaded and service is initialized.
+  ///
+  /// Returns true if STT is ready, false if not (user cancelled download
+  /// or initialization failed).
+  Future<bool> _ensureSttReady() async {
     // Check if model is downloaded.
     final modelReady = ref.read(sttModelReadyProvider).valueOrNull ?? false;
     if (!modelReady) {
@@ -384,12 +604,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
       );
       downloadService.dispose();
 
-      if (!downloaded || !mounted) return;
+      if (!downloaded || !mounted) return false;
       // Invalidate so the provider re-checks.
       ref.invalidate(sttModelReadyProvider);
     }
 
-    // Show loading indicator during STT initialization (5-8 seconds).
+    // Initialize STT if needed.
     final sttService = ref.read(speechRecognitionServiceProvider);
     if (!sttService.isInitialized) {
       setState(() => _isInitializingStt = true);
@@ -399,76 +619,10 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
       } finally {
         if (mounted) setState(() => _isInitializingStt = false);
       }
-      if (!mounted) return;
+      if (!mounted) return false;
     }
 
-    // Start listening.
-    final stream = sttService.startListening();
-    setState(() => _isRecording = true);
-
-    _recognitionSubscription = stream.listen(
-      (result) {
-        if (!mounted) return;
-        setState(() {
-          _textController.text = result.text;
-          _textController.selection = TextSelection.fromPosition(
-            TextPosition(offset: result.text.length),
-          );
-        });
-        // On final result, stop recording automatically and mark as voice input.
-        if (result.isFinal) {
-          _lastInputWasVoice = true;
-          _stopRecording();
-        }
-      },
-      onError: (Object error) {
-        if (mounted) {
-          _stopRecording();
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Voice error: $error')));
-        }
-      },
-    );
-  }
-
-  /// Stop voice recording.
-  Future<void> _stopRecording() async {
-    if (!_isRecording) return;
-
-    await _recognitionSubscription?.cancel();
-    _recognitionSubscription = null;
-
-    final sttService = ref.read(speechRecognitionServiceProvider);
-    if (sttService.isListening) {
-      await sttService.stopListening();
-    }
-
-    if (mounted) {
-      setState(() => _isRecording = false);
-    }
-  }
-
-  /// Speak an assistant message via TTS.
-  ///
-  /// Lazily initializes the TTS service on first use. TTS failures are
-  /// non-critical — the user can still read the text.
-  Future<void> _speakAssistantMessage(String text) async {
-    final ttsService = ref.read(textToSpeechServiceProvider);
-    try {
-      // Lazy initialization on first TTS use.
-      if (!_ttsInitialized) {
-        await ttsService.initialize();
-        _ttsInitialized = true;
-      }
-      if (ttsService.isSpeaking) {
-        await ttsService.stop();
-      }
-      await ttsService.speak(text);
-    } catch (e) {
-      // TTS failures are non-critical — user can still read the text.
-      debugPrint('[TTS] Error: $e');
-    }
+    return true;
   }
 
   /// Send the user's message to the session notifier.
@@ -476,30 +630,23 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
-    // Capture voice input flag before clearing.
-    // _lastInputWasVoice is set in the stream listener when endpoint detection
-    // auto-stops recording. _isRecording is also checked for the case where
-    // the user taps send while still recording (before endpoint fires).
-    final wasVoiceInput = _lastInputWasVoice || _isRecording;
-    _lastInputWasVoice = false;
-    if (_isRecording) {
-      await _stopRecording();
-    }
-
     _textController.clear();
 
     await ref
         .read(sessionNotifierProvider.notifier)
-        .sendMessage(text, inputMethod: wasVoiceInput ? 'VOICE' : 'TEXT');
+        .sendMessage(text, inputMethod: 'TEXT');
   }
 
   /// End the session (summary will be generated; UI stays on screen).
   Future<void> _endSession(BuildContext context) async {
+    // Stop orchestrator before ending session.
+    ref.read(voiceOrchestratorProvider).stop();
     await ref.read(sessionNotifierProvider.notifier).endSession();
   }
 
   /// Dismiss the completed session and navigate back to the list.
   void _dismissAndPop() {
+    ref.read(voiceOrchestratorProvider).stop();
     ref.read(sessionNotifierProvider.notifier).dismissSession();
     if (mounted) {
       Navigator.of(context).pop();
@@ -530,6 +677,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     );
 
     if (confirmed == true && mounted) {
+      ref.read(voiceOrchestratorProvider).stop();
       await ref.read(sessionNotifierProvider.notifier).discardSession();
       if (mounted) {
         Navigator.of(context).pop();
@@ -558,6 +706,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen> {
     );
 
     if (confirmed == true && mounted) {
+      ref.read(voiceOrchestratorProvider).stop();
       await ref.read(sessionNotifierProvider.notifier).endSession();
     }
   }

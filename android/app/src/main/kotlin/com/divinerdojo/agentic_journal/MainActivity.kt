@@ -46,6 +46,10 @@ class MainActivity : FlutterActivity() {
     // to auto-start a journal session.
     private var launchedAsAssistant = false
 
+    // Flag to track if the launch was specifically a VOICE_ASSIST intent.
+    // Used by Phase 7B to distinguish voice launch from generic assistant launch.
+    private var launchedAsVoiceAssistant = false
+
     // Audio focus management for voice recording (Phase 7A).
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -58,6 +62,8 @@ class MainActivity : FlutterActivity() {
         // ACTION_ASSIST means the user long-pressed Home (or similar gesture).
         launchedAsAssistant = intent?.action == Intent.ACTION_ASSIST ||
                 intent?.action == "android.intent.action.VOICE_ASSIST"
+        // Track specifically voice-assist launches for Phase 7B continuous mode.
+        launchedAsVoiceAssistant = intent?.action == "android.intent.action.VOICE_ASSIST"
     }
 
     // Handle the case where the app is already running (singleTop) and the
@@ -68,6 +74,7 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         launchedAsAssistant = intent.action == Intent.ACTION_ASSIST ||
                 intent.action == "android.intent.action.VOICE_ASSIST"
+        launchedAsVoiceAssistant = intent.action == "android.intent.action.VOICE_ASSIST"
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -90,6 +97,13 @@ class MainActivity : FlutterActivity() {
                         val wasLaunched = launchedAsAssistant
                         launchedAsAssistant = false
                         result.success(wasLaunched)
+                    }
+                    "wasLaunchedAsVoiceAssistant" -> {
+                        // Return true specifically for VOICE_ASSIST intent.
+                        // Phase 7B uses this to auto-start continuous voice mode.
+                        val wasVoice = launchedAsVoiceAssistant
+                        launchedAsVoiceAssistant = false
+                        result.success(wasVoice)
                     }
                     else -> result.notImplemented()
                 }
