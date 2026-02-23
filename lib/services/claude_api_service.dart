@@ -176,7 +176,7 @@ class ClaudeApiService {
     final response = await _post({
       'messages': messages,
       'mode': 'chat',
-      if (context != null) 'context': context,
+      'context': ?context,
     });
 
     final responseText = response['response'];

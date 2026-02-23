@@ -51,7 +51,7 @@ void main() {
       );
 
       // Wait for the stream to emit
-      final sub = container.listen(pendingSyncCountProvider, (_, __) {});
+      final sub = container.listen(pendingSyncCountProvider, (_, _) {});
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       final count = container.read(pendingSyncCountProvider);
@@ -85,7 +85,7 @@ void main() {
       );
 
       // Wait for the stream to emit
-      final sub = container.listen(pendingSyncCountProvider, (_, __) {});
+      final sub = container.listen(pendingSyncCountProvider, (_, _) {});
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       final count = container.read(pendingSyncCountProvider);
@@ -123,7 +123,7 @@ void main() {
         ],
       );
 
-      final sub = container.listen(pendingSyncCountProvider, (_, __) {});
+      final sub = container.listen(pendingSyncCountProvider, (_, _) {});
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       final count = container.read(pendingSyncCountProvider);

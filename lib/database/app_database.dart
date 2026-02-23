@@ -49,7 +49,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -57,15 +57,31 @@ class AppDatabase extends _$AppDatabase {
     // It creates all tables defined in the @DriftDatabase annotation.
     onCreate: (Migrator m) async {
       await m.createAll();
+      // Index for paginated landing page (startTime DESC).
+      // Also created in onUpgrade for v1→v2 upgrades.
+      await m.createIndex(
+        Index(
+          'journal_sessions',
+          'CREATE INDEX IF NOT EXISTS idx_sessions_start_time_desc '
+              'ON journal_sessions (start_time DESC)',
+        ),
+      );
     },
     // onUpgrade handles schema changes between versions.
-    // For Phase 1, we only have version 1 — no migrations needed yet.
-    // Future example:
-    //   if (from < 2) {
-    //     await m.addColumn(journalSessions, journalSessions.newColumn);
-    //   }
     onUpgrade: (Migrator m, int from, int to) async {
-      // Migrations will be added here as the schema evolves.
+      if (from < 2) {
+        // Phase 6: Add resume tracking columns (ADR-0014).
+        await m.addColumn(journalSessions, journalSessions.isResumed);
+        await m.addColumn(journalSessions, journalSessions.resumeCount);
+        // Index for paginated landing page (startTime DESC).
+        await m.createIndex(
+          Index(
+            'journal_sessions',
+            'CREATE INDEX idx_sessions_start_time_desc '
+                'ON journal_sessions (start_time DESC)',
+          ),
+        );
+      }
     },
   );
 }

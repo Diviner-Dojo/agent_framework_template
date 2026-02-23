@@ -60,6 +60,28 @@ final allSessionsProvider = StreamProvider<List<JournalSession>>((ref) {
   return sessionDao.watchAllSessions();
 });
 
+/// Controls the page size for the landing page session list.
+///
+/// Incrementing this by 50 loads older entries. The paginated stream
+/// re-emits whenever the table changes or the limit changes.
+final sessionPageSizeProvider = StateProvider<int>((ref) => 50);
+
+/// Streams sessions with a dynamic limit for the paginated landing page.
+///
+/// Watches [sessionPageSizeProvider] so that increasing the page size
+/// automatically triggers a new stream with the larger limit.
+final paginatedSessionsProvider = StreamProvider<List<JournalSession>>((ref) {
+  final sessionDao = ref.watch(sessionDaoProvider);
+  final pageSize = ref.watch(sessionPageSizeProvider);
+  return sessionDao.watchSessionsPaginated(pageSize);
+});
+
+/// True when a session was auto-discarded (empty, no USER messages).
+///
+/// The UI watches this to show a SnackBar notification. The UI resets it
+/// to false after displaying the message.
+final wasAutoDiscardedProvider = StateProvider<bool>((ref) => false);
+
 /// Holds the active session ID (null when no session is in progress).
 ///
 /// When this has a value, the UI navigates to the journal session screen.
@@ -407,6 +429,19 @@ class SessionNotifier extends StateNotifier<SessionState> {
     final sessionId = state.activeSessionId;
     if (sessionId == null) return;
 
+    // Phase 6: Empty session guard (ADR-0014).
+    // If the user hasn't sent any messages, auto-discard instead of
+    // generating a summary. Only the greeting exists.
+    final userMessageCount = await _messageDao.getMessageCountByRole(
+      sessionId,
+      'USER',
+    );
+    if (userMessageCount == 0) {
+      _ref.read(wasAutoDiscardedProvider.notifier).state = true;
+      await discardSession();
+      return;
+    }
+
     state = state.copyWith(isSessionEnding: true, isWaitingForAgent: true);
 
     // Get all user messages for summary generation.
@@ -486,6 +521,82 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Fire-and-forget: don't await, don't block the session flow.
     final syncRepo = _ref.read(syncRepositoryProvider);
     syncRepo.syncSession(sessionId);
+  }
+
+  /// Resume a past session for continued journaling (ADR-0014).
+  ///
+  /// Guards: cannot resume if another session is active.
+  /// Loads existing messages into conversation context, gets a resume
+  /// greeting, and makes the session active again.
+  Future<String?> resumeSession(String sessionId) async {
+    // Guard: cannot resume if a session is already active.
+    if (state.activeSessionId != null) return null;
+
+    // Resume the session in the database.
+    final updated = await _sessionDao.resumeSession(sessionId);
+    if (updated == 0) return null;
+
+    // Load existing messages into conversation context.
+    final messages = await _messageDao.getMessagesForSession(sessionId);
+    final conversationMessages = messages.map((m) {
+      final role = m.role == 'USER' ? 'user' : 'assistant';
+      return {'role': role, 'content': m.content};
+    }).toList();
+
+    // Count follow-ups by USER messages. Each user message corresponds to
+    // one follow-up round. Using USER count avoids miscounting closing and
+    // bridging ASSISTANT messages (greeting, summary, bridging) as follow-ups.
+    final followUpCount = messages.where((m) => m.role == 'USER').length;
+
+    // Set state before getting greeting.
+    state = SessionState(
+      activeSessionId: sessionId,
+      isWaitingForAgent: true,
+      followUpCount: followUpCount,
+      conversationMessages: conversationMessages,
+    );
+    _ref.read(activeSessionIdProvider.notifier).state = sessionId;
+
+    // Get resume greeting.
+    final greetingResponse = await _agent.getResumeGreeting();
+
+    // Save the resume greeting as an ASSISTANT message.
+    await _messageDao.insertMessage(
+      generateUuid(),
+      sessionId,
+      'ASSISTANT',
+      greetingResponse.content,
+      nowUtc(),
+    );
+
+    // Update state.
+    state = state.copyWith(
+      isWaitingForAgent: false,
+      conversationMessages: [
+        ...state.conversationMessages,
+        {'role': 'assistant', 'content': greetingResponse.content},
+      ],
+    );
+
+    return sessionId;
+  }
+
+  /// Discard the active session without saving a summary.
+  ///
+  /// Clears state immediately, then deletes messages and session from the DB
+  /// in a single transaction to prevent orphaned data.
+  /// Used when the user explicitly discards or when the empty session guard
+  /// triggers auto-discard (ADR-0014).
+  Future<void> discardSession() async {
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return;
+
+    // Clear state immediately so the UI doesn't wait for DB operations.
+    state = const SessionState();
+    _ref.read(activeSessionIdProvider.notifier).state = null;
+
+    // Transactional cascade delete: messages first, then session.
+    await _sessionDao.deleteSessionCascade(_messageDao, sessionId);
   }
 
   /// Dismiss the completed session and clear all state.
@@ -760,6 +871,20 @@ class SessionNotifier extends StateNotifier<SessionState> {
       ],
     );
   }
+}
+
+/// Deletes a completed session and its messages from the database.
+///
+/// Accepts [SessionDao] and [MessageDao] directly so it can be called from
+/// both providers (Ref) and widgets (WidgetRef). The session list auto-updates
+/// via drift's stream because [allSessionsProvider] watches the table.
+/// Uses a transaction to prevent orphaned data on partial failure.
+Future<void> deleteSessionCascade(
+  SessionDao sessionDao,
+  MessageDao messageDao,
+  String sessionId,
+) async {
+  await sessionDao.deleteSessionCascade(messageDao, sessionId);
 }
 
 /// Provides the compile-time environment configuration.

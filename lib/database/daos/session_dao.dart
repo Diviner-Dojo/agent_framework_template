@@ -18,6 +18,7 @@ import 'package:drift/drift.dart';
 
 import '../app_database.dart';
 import '../search_query_utils.dart';
+import 'message_dao.dart';
 
 /// Provides all database operations for journal sessions.
 ///
@@ -134,6 +135,95 @@ class SessionDao {
           (s) => OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
         ]))
         .watch();
+  }
+
+  /// Watch sessions with a dynamic limit, ordered newest first.
+  ///
+  /// Used by the landing page for pagination. The [limit] parameter
+  /// controls how many sessions are streamed. Incrementing it loads
+  /// older entries without a separate cursor-based query.
+  Stream<List<JournalSession>> watchSessionsPaginated(int limit) {
+    return (_db.select(_db.journalSessions)
+          ..orderBy([
+            (s) =>
+                OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
+          ])
+          ..limit(limit))
+        .watch();
+  }
+
+  // =========================================================================
+  // Delete methods (Phase 6 — ADR-0014)
+  // =========================================================================
+
+  /// Delete a single session by ID.
+  ///
+  /// Returns the number of rows deleted (0 if session doesn't exist, 1 if deleted).
+  /// IMPORTANT: Caller must delete associated messages first via
+  /// [MessageDao.deleteMessagesBySession] — drift's `references()` is
+  /// documentation-only and does not enforce cascading deletes.
+  Future<int> deleteSession(String sessionId) async {
+    return (_db.delete(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).go();
+  }
+
+  /// Delete all sessions.
+  ///
+  /// Returns the number of rows deleted.
+  /// IMPORTANT: Caller must delete all messages first via
+  /// [MessageDao.deleteAllMessages].
+  Future<int> deleteAllSessions() async {
+    return _db.delete(_db.journalSessions).go();
+  }
+
+  /// Delete a session and all its messages atomically.
+  ///
+  /// Wraps the cascade delete (messages first, then session) in a
+  /// transaction to prevent orphaned data if one step fails.
+  /// Returns the number of session rows deleted (0 or 1).
+  Future<int> deleteSessionCascade(
+    MessageDao messageDao,
+    String sessionId,
+  ) async {
+    return _db.transaction(() async {
+      await messageDao.deleteMessagesBySession(sessionId);
+      return deleteSession(sessionId);
+    });
+  }
+
+  /// Delete all sessions and messages atomically.
+  ///
+  /// Wraps the cascade (all messages first, then all sessions) in a
+  /// transaction to prevent orphaned data if one step fails.
+  Future<void> deleteAllCascade(MessageDao messageDao) async {
+    await _db.transaction(() async {
+      await messageDao.deleteAllMessages();
+      await deleteAllSessions();
+    });
+  }
+
+  /// Resume a completed session for continued journaling (ADR-0014).
+  ///
+  /// Clears endTime, sets isResumed=true, increments resumeCount,
+  /// and reverts syncStatus to 'PENDING' (resumed content needs re-sync).
+  /// Returns the number of rows updated (0 if session doesn't exist, 1 if updated).
+  Future<int> resumeSession(String sessionId) async {
+    // First read the current resumeCount.
+    final session = await getSessionById(sessionId);
+    if (session == null) return 0;
+
+    return (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        endTime: const Value(null),
+        isResumed: const Value(true),
+        resumeCount: Value(session.resumeCount + 1),
+        syncStatus: const Value('PENDING'),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
   }
 
   // =========================================================================

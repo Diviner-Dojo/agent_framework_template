@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:agentic_journal/config/environment.dart';
 import 'package:agentic_journal/providers/auth_providers.dart';
+import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
 import 'package:agentic_journal/providers/sync_providers.dart';
@@ -69,6 +70,7 @@ void main() {
           isAuthenticatedProvider.overrideWithValue(isAuthenticated),
           currentUserProvider.overrideWithValue(null),
           pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
+          sessionCountProvider.overrideWith((ref) => Future.value(0)),
         ],
         child: MaterialApp(
           home: const SettingsScreen(),
@@ -111,6 +113,15 @@ void main() {
 
     testWidgets('renders About card with version', (tester) async {
       await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      // Scroll down to make the About card visible (it may be below fold
+      // after the Data Management card was added in Phase 6).
+      await tester.scrollUntilVisible(
+        find.text('About'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('About'), findsOneWidget);
@@ -194,6 +205,7 @@ void main() {
               isAuthenticatedProvider.overrideWithValue(true),
               currentUserProvider.overrideWithValue(null),
               pendingSyncCountProvider.overrideWith((ref) => Stream.value(3)),
+              sessionCountProvider.overrideWith((ref) => Future.value(0)),
             ],
             child: MaterialApp(
               home: const SettingsScreen(),
@@ -226,6 +238,7 @@ void main() {
             isAuthenticatedProvider.overrideWithValue(true),
             currentUserProvider.overrideWithValue(null),
             pendingSyncCountProvider.overrideWith((ref) => Stream.value(1)),
+            sessionCountProvider.overrideWith((ref) => Future.value(0)),
           ],
           child: MaterialApp(
             home: const SettingsScreen(),
@@ -258,6 +271,7 @@ void main() {
             isAuthenticatedProvider.overrideWithValue(false),
             currentUserProvider.overrideWithValue(null),
             pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
+            sessionCountProvider.overrideWith((ref) => Future.value(0)),
           ],
           child: MaterialApp(
             home: const SettingsScreen(),

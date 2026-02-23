@@ -19,6 +19,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auth_providers.dart';
+import '../../providers/database_provider.dart';
+import '../../providers/search_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
 
@@ -67,6 +69,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           _buildAssistantCard(context, assistantStatusAsync),
           const SizedBox(height: 16),
           _buildCloudSyncCard(context),
+          const SizedBox(height: 16),
+          _buildDataManagementCard(context),
           const SizedBox(height: 16),
           _buildAboutCard(context),
         ],
@@ -254,6 +258,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
+  /// Build the "Data Management" card with storage info and clear all.
+  Widget _buildDataManagementCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final sessionCountAsync = ref.watch(sessionCountProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Data Management', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+            // Storage summary.
+            sessionCountAsync.when(
+              data: (count) => Text(
+                'Journal entries: $count session${count == 1 ? '' : 's'}',
+                style: theme.textTheme.bodyMedium,
+              ),
+              loading: () => const Text('Counting entries...'),
+              error: (_, _) => const Text('Could not count entries'),
+            ),
+            const SizedBox(height: 12),
+            // Clear all button.
+            OutlinedButton.icon(
+              onPressed: () => _showClearAllDialog(context),
+              icon: Icon(Icons.delete_forever, color: theme.colorScheme.error),
+              label: Text(
+                'Clear All Entries',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: theme.colorScheme.error),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Show a two-step confirmation dialog for clearing all data.
+  ///
+  /// The user must type "DELETE" to enable the confirm button.
+  Future<void> _showClearAllDialog(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => const _ClearAllDialog(),
+    );
+
+    if (confirmed == true && context.mounted) {
+      final sessionDao = ref.read(sessionDaoProvider);
+      final messageDao = ref.read(messageDaoProvider);
+      await sessionDao.deleteAllCascade(messageDao);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All journal entries cleared.')),
+        );
+      }
+    }
+  }
+
   /// Build the "About" card with app information.
   Widget _buildAboutCard(BuildContext context) {
     return Card(
@@ -285,6 +352,84 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Two-step confirmation dialog for clearing all journal entries.
+///
+/// The user must type "DELETE" in a text field to enable the confirm button.
+/// This prevents accidental data loss.
+class _ClearAllDialog extends StatefulWidget {
+  const _ClearAllDialog();
+
+  @override
+  State<_ClearAllDialog> createState() => _ClearAllDialogState();
+}
+
+class _ClearAllDialogState extends State<_ClearAllDialog> {
+  final _controller = TextEditingController();
+  bool _isConfirmEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final enabled = _controller.text.trim() == 'DELETE';
+      if (enabled != _isConfirmEnabled) {
+        setState(() => _isConfirmEnabled = enabled);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Clear all entries?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This will permanently delete all journal sessions and messages. '
+            'This cannot be undone.',
+          ),
+          const SizedBox(height: 16),
+          const Text('Type DELETE to confirm:'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _controller,
+            decoration: const InputDecoration(
+              hintText: 'DELETE',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _isConfirmEnabled
+              ? () => Navigator.of(context).pop(true)
+              : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: _isConfirmEnabled
+                ? Theme.of(context).colorScheme.error
+                : null,
+          ),
+          child: const Text('Clear All'),
+        ),
+      ],
     );
   }
 }

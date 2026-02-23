@@ -1,17 +1,13 @@
 // ===========================================================================
 // file: lib/ui/screens/session_list_screen.dart
-// purpose: Home screen — displays a list of past journal sessions.
+// purpose: Home screen — displays a paginated list of past journal sessions
+//          grouped by month-year with sticky headers.
 //
 // This is the first screen the user sees when opening the app.
-// It shows all past sessions sorted by date (newest first), with a
-// floating action button to start a new session.
+// Sessions are sorted by date (newest first), grouped by month-year,
+// with a "Load older entries" button at the bottom for pagination.
 //
-// Uses allSessionsProvider (a StreamProvider) for reactive updates —
-// when a new session is created or an existing one is updated,
-// the list automatically refreshes.
-//
-// The FAB shows a loading indicator while a session is being created
-// to prevent multi-tap and provide visual feedback.
+// Uses paginatedSessionsProvider (a StreamProvider) for reactive updates.
 // ===========================================================================
 
 import 'package:flutter/material.dart';
@@ -23,7 +19,7 @@ import '../../providers/search_providers.dart';
 import '../../providers/session_providers.dart';
 import '../widgets/session_card.dart';
 
-/// Home screen showing all past journal sessions.
+/// Home screen showing all past journal sessions with month-year grouping.
 class SessionListScreen extends ConsumerStatefulWidget {
   const SessionListScreen({super.key});
 
@@ -33,18 +29,19 @@ class SessionListScreen extends ConsumerStatefulWidget {
 
 class _SessionListScreenState extends ConsumerState<SessionListScreen> {
   bool _isStarting = false;
+  Map<String, int> _messageCounts = {};
+  List<String>? _lastSessionIds;
 
   @override
   Widget build(BuildContext context) {
-    // Watch the stream of all sessions for reactive updates.
-    final sessionsAsync = ref.watch(allSessionsProvider);
+    // Watch the paginated stream of sessions for reactive updates.
+    final sessionsAsync = ref.watch(paginatedSessionsProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Agentic Journal'),
         actions: [
           // Search icon — visible at 5+ sessions (progressive disclosure).
-          // Placed to the left of the settings gear per UX research.
           _SearchIconButton(),
           // Settings gear icon — opens the settings screen.
           IconButton(
@@ -55,16 +52,15 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
         ],
       ),
       body: sessionsAsync.when(
-        // Data loaded — show the list or empty state.
         data: (sessions) {
           if (sessions.isEmpty) {
             return _buildEmptyState(context);
           }
-          return _buildSessionList(context, ref, sessions);
+          // Batch-load message counts when the session list changes.
+          _refreshMessageCounts(sessions);
+          return _buildGroupedSessionList(context, ref, sessions);
         },
-        // Loading — show a progress indicator.
         loading: () => const Center(child: CircularProgressIndicator()),
-        // Error — show error message.
         error: (error, stack) =>
             Center(child: Text('Error loading sessions: $error')),
       ),
@@ -117,29 +113,116 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
     );
   }
 
-  /// Build the scrollable list of session cards.
-  Widget _buildSessionList(
+  /// Build the grouped session list with month-year headers.
+  Widget _buildGroupedSessionList(
     BuildContext context,
     WidgetRef ref,
     List<JournalSession> sessions,
   ) {
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 8, bottom: 80),
-      itemCount: sessions.length,
-      itemBuilder: (context, index) {
-        final session = sessions[index];
-        // Get message count for each session.
-        // Using a FutureProvider per session to avoid blocking the list.
-        return _SessionCardWithCount(
-          session: session,
-          onTap: () {
-            Navigator.of(
-              context,
-            ).pushNamed('/session/detail', arguments: session.sessionId);
-          },
-        );
-      },
+    // Group sessions by month-year.
+    final groups = _groupByMonth(sessions);
+    final pageSize = ref.watch(sessionPageSizeProvider);
+
+    return CustomScrollView(
+      slivers: [
+        // Build a sliver per month group.
+        for (final entry in groups.entries) ...[
+          // Sticky month-year header.
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _MonthHeaderDelegate(entry.key),
+          ),
+          // Session cards in this group.
+          SliverList(
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final session = entry.value[index];
+              return SessionCard(
+                session: session,
+                messageCount: _messageCounts[session.sessionId] ?? 0,
+                onTap: () {
+                  Navigator.of(
+                    context,
+                  ).pushNamed('/session/detail', arguments: session.sessionId);
+                },
+                onDelete: () => deleteSessionCascade(
+                  ref.read(sessionDaoProvider),
+                  ref.read(messageDaoProvider),
+                  session.sessionId,
+                ),
+              );
+            }, childCount: entry.value.length),
+          ),
+        ],
+
+        // "Load older entries" button — only shown if the current page is full.
+        if (sessions.length >= pageSize)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+              child: OutlinedButton(
+                onPressed: () {
+                  ref.read(sessionPageSizeProvider.notifier).state += 50;
+                },
+                child: const Text('Load older entries'),
+              ),
+            ),
+          )
+        else
+          // Bottom padding so content doesn't hide behind the FAB.
+          const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
+      ],
     );
+  }
+
+  /// Group sessions by month-year string from startTime.
+  ///
+  /// Returns a LinkedHashMap to preserve insertion order (newest first).
+  Map<String, List<JournalSession>> _groupByMonth(
+    List<JournalSession> sessions,
+  ) {
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    final groups = <String, List<JournalSession>>{};
+    for (final session in sessions) {
+      final local = session.startTime.toLocal();
+      final key = '${months[local.month - 1]} ${local.year}';
+      groups.putIfAbsent(key, () => []).add(session);
+    }
+    return groups;
+  }
+
+  /// Batch-load message counts for all visible sessions.
+  ///
+  /// Only re-fetches when the session ID list changes, avoiding redundant
+  /// queries on every stream emission. Replaces the N+1 per-card pattern.
+  void _refreshMessageCounts(List<JournalSession> sessions) {
+    final sessionIds = sessions.map((s) => s.sessionId).toList();
+    // Only reload if the set of session IDs has changed.
+    if (_lastSessionIds != null &&
+        sessionIds.length == _lastSessionIds!.length &&
+        sessionIds.every((id) => _lastSessionIds!.contains(id))) {
+      return;
+    }
+    _lastSessionIds = sessionIds;
+    final messageDao = ref.read(messageDaoProvider);
+    messageDao.getMessageCountsForSessions(sessionIds).then((counts) {
+      if (mounted) {
+        setState(() => _messageCounts = counts);
+      }
+    });
   }
 
   /// Start a new journaling session and navigate to it.
@@ -158,53 +241,48 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
   }
 }
 
-/// A session card that asynchronously loads its message count.
-///
-/// This is a separate ConsumerStatefulWidget so each card can independently
-/// load its message count without blocking the rest of the list.
-class _SessionCardWithCount extends ConsumerStatefulWidget {
-  final JournalSession session;
-  final VoidCallback? onTap;
+/// Sliver persistent header delegate for month-year group headers.
+class _MonthHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String title;
 
-  const _SessionCardWithCount({required this.session, this.onTap});
+  _MonthHeaderDelegate(this.title);
 
   @override
-  ConsumerState<_SessionCardWithCount> createState() =>
-      _SessionCardWithCountState();
-}
-
-class _SessionCardWithCountState extends ConsumerState<_SessionCardWithCount> {
-  int _messageCount = 0;
+  double get minExtent => 40;
 
   @override
-  void initState() {
-    super.initState();
-    _loadMessageCount();
-  }
-
-  Future<void> _loadMessageCount() async {
-    final messageDao = ref.read(messageDaoProvider);
-    final count = await messageDao.getMessageCount(widget.session.sessionId);
-    if (mounted) {
-      setState(() => _messageCount = count);
-    }
-  }
+  double get maxExtent => 40;
 
   @override
-  Widget build(BuildContext context) {
-    return SessionCard(
-      session: widget.session,
-      messageCount: _messageCount,
-      onTap: widget.onTap,
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(
+      height: 40,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      alignment: Alignment.centerLeft,
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
+  }
+
+  @override
+  bool shouldRebuild(covariant _MonthHeaderDelegate oldDelegate) {
+    return title != oldDelegate.title;
   }
 }
 
 /// Search icon button with progressive disclosure.
 ///
-/// Only visible when the user has 5+ sessions. This prevents showing a
-/// search feature when there's nothing meaningful to search through.
-/// Uses [sessionCountProvider] for the gate check.
+/// Only visible when the user has 5+ sessions.
 class _SearchIconButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -219,9 +297,8 @@ class _SearchIconButton extends ConsumerWidget {
           onPressed: () => Navigator.of(context).pushNamed('/search'),
         );
       },
-      // Don't show search during loading or error — non-critical feature.
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
     );
   }
 }

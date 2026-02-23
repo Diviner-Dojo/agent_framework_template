@@ -147,7 +147,7 @@ class AgentRepository {
           ],
           context: {
             'time_of_day': timeOfDay,
-            if (daysSinceLast != null) 'days_since_last': daysSinceLast,
+            'days_since_last': ?daysSinceLast,
             'session_count': sessionCount,
           },
         );
@@ -253,6 +253,17 @@ class AgentRepository {
     // Layer A fallback — no metadata
     return AgentResponse(
       content: _generateLocalSummaryText(userMessages),
+      layer: AgentLayer.ruleBasedLocal,
+    );
+  }
+
+  /// Get a greeting for a resumed session.
+  ///
+  /// Layer A only for Phase 6 — returns a fixed string. Layer B (Claude)
+  /// could personalize this based on the session context in a future phase.
+  Future<AgentResponse> getResumeGreeting() async {
+    return const AgentResponse(
+      content: "Welcome back! Let's continue where you left off.",
       layer: AgentLayer.ruleBasedLocal,
     );
   }

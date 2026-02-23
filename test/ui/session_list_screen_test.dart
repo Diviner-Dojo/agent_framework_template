@@ -12,7 +12,7 @@ void main() {
         ProviderScope(
           overrides: [
             // Override with an empty stream.
-            allSessionsProvider.overrideWith(
+            paginatedSessionsProvider.overrideWith(
               (ref) => Stream.value(<JournalSession>[]),
             ),
           ],
@@ -30,7 +30,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            allSessionsProvider.overrideWith(
+            paginatedSessionsProvider.overrideWith(
               (ref) => Stream.value(<JournalSession>[]),
             ),
           ],
@@ -47,7 +47,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            allSessionsProvider.overrideWith(
+            paginatedSessionsProvider.overrideWith(
               (ref) => Stream.value(<JournalSession>[]),
             ),
           ],
@@ -68,6 +68,8 @@ void main() {
           startTime: now,
           timezone: 'UTC',
           syncStatus: 'PENDING',
+          isResumed: false,
+          resumeCount: 0,
           createdAt: now,
           updatedAt: now,
         ),
@@ -76,6 +78,8 @@ void main() {
           startTime: now.subtract(const Duration(days: 1)),
           timezone: 'UTC',
           syncStatus: 'PENDING',
+          isResumed: false,
+          resumeCount: 0,
           createdAt: now,
           updatedAt: now,
           summary: 'Had a good day',
@@ -85,7 +89,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            allSessionsProvider.overrideWith((ref) => Stream.value(sessions)),
+            paginatedSessionsProvider.overrideWith(
+              (ref) => Stream.value(sessions),
+            ),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),

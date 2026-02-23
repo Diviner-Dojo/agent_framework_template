@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:agentic_journal/app.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart';
+import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
 import 'package:agentic_journal/services/assistant_registration_service.dart';
@@ -67,10 +68,14 @@ void main() {
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
             assistantServiceProvider.overrideWithValue(mockService),
-            // Override allSessionsProvider to avoid database dependency.
+            // Override session providers to avoid database dependency.
             allSessionsProvider.overrideWith(
               (ref) => Stream.value(<JournalSession>[]),
             ),
+            paginatedSessionsProvider.overrideWith(
+              (ref) => Stream.value(<JournalSession>[]),
+            ),
+            sessionCountProvider.overrideWith((ref) => Future.value(0)),
           ],
           child: const AgenticJournalApp(),
         ),
@@ -153,7 +158,7 @@ void main() {
 
       // Should navigate to settings screen.
       expect(find.text('Digital Assistant'), findsOneWidget);
-      expect(find.text('About'), findsOneWidget);
+      expect(find.text('Cloud Sync'), findsOneWidget);
     });
   });
 }
