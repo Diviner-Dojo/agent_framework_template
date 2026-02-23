@@ -6,8 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/auth_providers.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
+import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
+import 'package:agentic_journal/providers/sync_providers.dart';
+import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/ui/screens/settings_screen.dart';
 
@@ -38,12 +41,26 @@ void main() {
               ),
               // Override auth to not authenticated (avoids Supabase init).
               isAuthenticatedProvider.overrideWithValue(false),
+              currentUserProvider.overrideWithValue(null),
+              pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
+              sessionCountProvider.overrideWith((ref) => Future.value(0)),
+              sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
             ],
           ),
           child: const MaterialApp(home: SettingsScreen()),
         ),
       );
       await tester.pumpAndSettle();
+
+      // Scroll down to make Data Management card visible (the Voice card
+      // added in Phase 7A pushes it below the initial viewport).
+      await tester.scrollUntilVisible(
+        find.text('Data Management'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
+      await tester.pumpAndSettle();
+
       return container;
     }
 

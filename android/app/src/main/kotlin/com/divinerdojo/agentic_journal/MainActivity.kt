@@ -1,6 +1,9 @@
 package com.divinerdojo.agentic_journal
 
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Bundle
 import android.provider.Settings
 import android.app.role.RoleManager
@@ -34,13 +37,19 @@ import io.flutter.plugin.common.MethodChannel
 // ===========================================================================
 
 class MainActivity : FlutterActivity() {
-    // Channel name must match the Dart side exactly.
+    // Channel names must match the Dart side exactly.
     private val CHANNEL = "com.divinerdojo.journal/assistant"
+    private val AUDIO_CHANNEL = "com.divinerdojo.journal/audio"
 
     // Flag to track if we were launched via the assistant gesture.
     // This is set in onCreate and read by Flutter to decide whether
     // to auto-start a journal session.
     private var launchedAsAssistant = false
+
+    // Audio focus management for voice recording (Phase 7A).
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var audioMethodChannel: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +94,24 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Audio focus channel for voice recording (Phase 7A — ADR-0015).
+        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        audioMethodChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL
+        )
+        audioMethodChannel!!.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "requestAudioFocus" -> {
+                    result.success(requestAudioFocus())
+                }
+                "abandonAudioFocus" -> {
+                    abandonAudioFocus()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     // Check if this app currently holds the ROLE_ASSISTANT.
@@ -116,5 +143,63 @@ class MainActivity : FlutterActivity() {
         // back stack.
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
+    }
+
+    // =========================================================================
+    // Audio Focus Management (Phase 7A — ADR-0015)
+    // =========================================================================
+
+    // Audio focus change listener that forwards events to Flutter.
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        // Forward focus change to Flutter via the audio method channel.
+        // Android AudioManager constants:
+        //   AUDIOFOCUS_GAIN = 1
+        //   AUDIOFOCUS_LOSS = -1
+        //   AUDIOFOCUS_LOSS_TRANSIENT = -2
+        //   AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK = -3
+        audioMethodChannel?.invokeMethod("onAudioFocusChange", focusChange)
+    }
+
+    // Request audio focus for voice recording.
+    // Returns true if focus was granted.
+    private fun requestAudioFocus(): Boolean {
+        val am = audioManager ?: return false
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                .build()
+
+            audioFocusRequest = focusRequest
+            val result = am.requestAudioFocus(focusRequest)
+            return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        } else {
+            @Suppress("DEPRECATION")
+            val result = am.requestAudioFocus(
+                audioFocusChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            )
+            return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
+    }
+
+    // Abandon audio focus when recording is done.
+    private fun abandonAudioFocus() {
+        val am = audioManager ?: return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+            audioFocusRequest = null
+        } else {
+            @Suppress("DEPRECATION")
+            am.abandonAudioFocus(audioFocusChangeListener)
+        }
     }
 }

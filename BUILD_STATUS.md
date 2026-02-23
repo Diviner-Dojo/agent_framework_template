@@ -1,90 +1,70 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-23 ~03:00 UTC
+> Last updated: 2026-02-23 ~19:30 UTC
 
 ## Current Task
 
-**Status:** Phase 6 implementation complete. All 10 tasks done. Quality gate passes (5/5). Ready for review and commit.
-**Branch:** `main`
+**Status:** Phase 7A implementation complete. All blocking review findings fixed. Ready to commit + PR.
+**Branch:** `main` (needs new branch `phase7a-voice-foundation`)
 
 ### In Progress
-- None — Phase 6 ready for `/review` and commit
+- Commit Phase 7A changes on `phase7a-voice-foundation` branch, create PR
 
 ### Recently Completed
-- **Phase 6: Session Management & UX Fixes** — all 10 tasks:
-  1. ADR-0014 + Schema v2 Migration (isResumed, resumeCount, index)
-  2. DAO Delete Methods (deleteSession, deleteAll, cascade helpers)
-  3. SessionNotifier.discardSession() + wasAutoDiscardedProvider
-  4. Empty Session Guard (auto-discard empty sessions)
-  5. JournalSessionScreen Overflow Menu (End Session + Discard)
-  6. SessionCard Delete + Confirmation dialog
-  7. Settings Data Management (session count, Clear All with DELETE confirmation)
-  8. Landing Page Redesign (month-year grouped, paginated, sticky headers)
-  9. UTC/Timezone Audit (all clean, round-trip tests added)
-  10. Resume Session (DAO, notifier, detail screen, sync, greeting)
-- Quality gate: 5/5 passed, 501 tests, 82.9% coverage
+- **Phase 7A: Voice Foundation (ADR-0015)** — all 10 tasks complete
+  - Tasks 1-8: Implementation (ADR, services, providers, UI, platform channel)
+  - Task 9: Tests (559 tests, 80.8% coverage)
+  - Task 10: Quality gate (6/6) + review (APPROVE WITH CHANGES)
+  - Review: REV-20260223-191500.md — 5 blocking fixed, 15 advisory noted
+  - Discussion: DISC-20260223-190722-phase7a-voice-foundation-review
+- **PR #18 — Phase 6: Session Management & UX Fixes** (merged → main)
+- **PR #19 — Education Gate Artifacts for Phases 3-5** (merged → main)
+
+### Blocking Fixes Applied
+1. SHA-256 verification infrastructure in model_download_service.dart (crypto package)
+2. wasVoiceInput tracking via _lastInputWasVoice flag
+3. TTS lazy initialization in _speakAssistantMessage
+4. STT init loading indicator (_isInitializingStt state)
+5. Accessibility tooltips on mic/stop/send buttons
 
 ### Deferred
-- **Education gate for Phase 4** — `/walkthrough` and `/quiz` on Phase 4 files
-- **Education gate for Phase 5** — recommended by review (Tier 2)
-- **P3: Native library validation spike** — sherpa_onnx + llamadart on target device
+- **Populate SHA-256 checksums** — need on-device download to get actual hashes
+- **15 advisory findings** — see REV-20260223-191500.md recommended section
 - **CLAUDE.md updates from RETRO-20260220b**
 - **PROXY_ACCESS_KEY deprecation path**
 - **Migration drift check**
-- **Non-blocking review improvements** — see REV-20260220-234604 recommended section
+- **10 advisory findings from Phase 6 review** — see REV-20260223-152500.md
 
-## Modified Files (Phase 6)
+## Key Files (Phase 7A)
 
-### Production Code
-- `docs/adr/ADR-0014-session-lifecycle.md` (new)
-- `lib/database/tables.dart` — added isResumed, resumeCount columns
-- `lib/database/app_database.dart` — schema v2 migration
-- `lib/database/app_database.g.dart` — regenerated
-- `lib/database/daos/session_dao.dart` — delete, resume, paginated methods
-- `lib/database/daos/message_dao.dart` — delete, count methods
-- `lib/providers/session_providers.dart` — discard, resume, pagination providers
-- `lib/repositories/agent_repository.dart` — getResumeGreeting()
-- `lib/repositories/sync_repository.dart` — is_resumed, resume_count in UPSERT
-- `lib/ui/screens/journal_session_screen.dart` — overflow menu, discard, SnackBar
-- `lib/ui/screens/session_list_screen.dart` — month-year grouping, pagination
-- `lib/ui/screens/session_detail_screen.dart` — Continue Entry button
-- `lib/ui/screens/settings_screen.dart` — Data Management card
-- `lib/ui/widgets/session_card.dart` — delete menu
-
-### Test Code (new)
-- `test/database/migration_v2_test.dart` — 3 tests
-- `test/database/dao_delete_test.dart` — 14 tests
-- `test/providers/session_discard_test.dart` — 5 tests
-- `test/providers/session_empty_guard_test.dart` — 2 tests
-- `test/providers/session_resume_test.dart` — 10 tests
-- `test/ui/session_card_delete_test.dart` — 6 tests
-- `test/ui/settings_data_management_test.dart` — 6 tests
-- `test/ui/session_list_redesign_test.dart` — 7 tests
-- `test/ui/session_detail_resume_test.dart` — 3 tests
-- `test/utils/timezone_roundtrip_test.dart` — 6 tests
-
-### Test Code (updated for new schema)
-- `test/ui/journal_session_screen_test.dart` — added user messages for empty guard
-- `test/ui/session_list_screen_test.dart` — paginatedSessionsProvider, isResumed
-- `test/ui/settings_screen_test.dart` — sessionCountProvider override, scroll
-- `test/app_routing_test.dart` — paginatedSessionsProvider, sessionCountProvider
-- `test/models/search_models_test.dart` — isResumed, resumeCount fields
-- `test/ui/search_result_card_test.dart` — isResumed, resumeCount fields
-- `test/providers/session_notifier_test.dart` — user messages for empty guard
+| File | Action |
+|------|--------|
+| docs/adr/ADR-0015-voice-mode-architecture.md | New |
+| lib/services/speech_recognition_service.dart | New |
+| lib/services/text_to_speech_service.dart | New |
+| lib/services/model_download_service.dart | New |
+| lib/services/audio_focus_service.dart | New |
+| lib/providers/voice_providers.dart | New |
+| lib/ui/widgets/model_download_dialog.dart | New |
+| lib/ui/screens/journal_session_screen.dart | Modified |
+| lib/ui/screens/settings_screen.dart | Modified |
+| lib/providers/session_providers.dart | Modified |
+| android/.../MainActivity.kt | Modified |
+| android/app/src/main/AndroidManifest.xml | Modified |
+| pubspec.yaml | Modified |
+| test/ (8 new test files) | New |
 
 ## Open Discussions
 
 | Discussion ID | Topic | Status |
 |--------------|-------|--------|
-| (none) | — | — |
+| DISC-20260223-190722-phase7a-voice-foundation-review | Phase 7A review | closed |
 
 ## Key Decisions (Recent)
 
+- ADR-0015: Voice Mode Architecture — Zipformer STT, flutter_tts, push-to-talk, lazy model download
 - ADR-0014: Hard delete, application-level cascade, empty session auto-discard, resume semantics
-- Schema v2: isResumed + resumeCount columns, idx_sessions_start_time_desc index
-- Landing page: month-year grouping with SliverPersistentHeader, dynamic LIMIT pagination
-- WidgetRef/Ref incompatibility solved via deleteSessionCascade(dao, dao, id) pattern
 
 ## Blockers
 

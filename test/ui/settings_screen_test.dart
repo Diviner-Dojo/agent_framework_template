@@ -21,6 +21,7 @@ import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
 import 'package:agentic_journal/providers/sync_providers.dart';
+import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/services/assistant_registration_service.dart';
 import 'package:agentic_journal/services/supabase_service.dart';
 import 'package:agentic_journal/ui/screens/settings_screen.dart';
@@ -71,6 +72,7 @@ void main() {
           currentUserProvider.overrideWithValue(null),
           pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
           sessionCountProvider.overrideWith((ref) => Future.value(0)),
+          sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
         ],
         child: MaterialApp(
           home: const SettingsScreen(),
@@ -206,6 +208,7 @@ void main() {
               currentUserProvider.overrideWithValue(null),
               pendingSyncCountProvider.overrideWith((ref) => Stream.value(3)),
               sessionCountProvider.overrideWith((ref) => Future.value(0)),
+              sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
             ],
             child: MaterialApp(
               home: const SettingsScreen(),
@@ -239,6 +242,7 @@ void main() {
             currentUserProvider.overrideWithValue(null),
             pendingSyncCountProvider.overrideWith((ref) => Stream.value(1)),
             sessionCountProvider.overrideWith((ref) => Future.value(0)),
+            sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
           ],
           child: MaterialApp(
             home: const SettingsScreen(),
@@ -272,6 +276,7 @@ void main() {
             currentUserProvider.overrideWithValue(null),
             pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
             sessionCountProvider.overrideWith((ref) => Future.value(0)),
+            sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
           ],
           child: MaterialApp(
             home: const SettingsScreen(),
