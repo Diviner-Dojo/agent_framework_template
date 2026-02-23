@@ -1,6 +1,6 @@
 # Project Plan: Phases 6-11 — Voice-First AI Journal Companion
 
-> **Revision 2** — incorporates findings from DISC-20260222-233425-phases-6-11-plan-review (5 specialists, 50 findings). Original plan preserved in git history.
+> **Revision 3** — incorporates P3 spike research: Whisper is batch-only, replaced with Zipformer-transducer for streaming STT; llamadart confirmed non-blocking (background isolate); `record` package added for microphone input. Previous revision incorporated DISC-20260222-233425-phases-6-11-plan-review (5 specialists, 50 findings). Original plan preserved in git history.
 
 ## Context
 
@@ -11,18 +11,20 @@ The developer's vision is to transform this into a **voice-first AI-powered pers
 ### Key Decisions Made
 - **Target device**: Developer's own flagship phone (6GB+ RAM) — no need to support budget devices initially
 - **Local LLM**: Qwen 2.5 3B (Q4_K_M, ~2GB) via `llamadart` — explicit Qwen support, Vulkan GPU, perfect pub.dev score, updated Feb 22 2026. **Also evaluate Qwen 2.5 1.5B** during spike for lower-latency alternative.
-- **STT**: `sherpa_onnx` (Whisper-based) — the **only** Flutter STT package supporting continuous recognition without time limits. `speech_to_text` has a 60s iOS limit and 5s Android pause timeout. **Constrain to Whisper base.en or small.en** (~150-500MB) to coexist with LLM in RAM.
+- **STT**: `sherpa_onnx` — the **only** Flutter STT package supporting continuous recognition without time limits. `speech_to_text` has a 60s iOS limit and 5s Android pause timeout. **Critical finding from P3 research: Whisper is batch/offline only (`OfflineRecognizer`) — it cannot do streaming recognition.** Use **Zipformer-transducer** models (`OnlineRecognizer` + `OnlineStream`) for real-time continuous STT. Models are ~14-56MB (dramatically smaller than Whisper's 150-500MB). Whisper may optionally be used for 2-pass accuracy refinement in a future iteration.
+- **Audio capture**: sherpa_onnx does NOT handle microphone input — use the `record` package separately to capture raw audio and feed it to the recognizer.
 - **TTS**: `flutter_tts` — industry standard (1,560 likes, 147k downloads/week)
 - **Assistant scope**: Google Calendar + reminders only (defer email, tasks to future)
 - **Personality**: Research spike on therapeutic conversation techniques to inform "Guy" personality
-- **Sentence boundary detection**: Use sherpa_onnx's native VAD (Voice Activity Detection) rather than a fixed silence timer — more accurate for variable speech patterns and noisy environments
+- **Sentence boundary detection**: `OnlineRecognizer` has built-in `isEndpoint()` for utterance boundary detection. Silero VAD is also available via sherpa_onnx (~208KB-2.2MB) for additional voice activity detection in noisy environments.
 
 ### Package Research Summary
 
 | Need | Package | Why This One |
 |------|---------|-------------|
 | LLM inference | `llamadart` ^0.6.2 | Perfect pub.dev score (160/130), explicit Qwen 2.5 doc, Vulkan GPU, verified publisher, updated Feb 22 2026. **Note**: pre-1.0 — pin exact version, expect API churn. |
-| Speech-to-text | `sherpa_onnx` ^1.12.25 | Only Flutter STT with continuous recognition (no time limits), Whisper support, built-in VAD, fully offline, perfect pub.dev score |
+| Speech-to-text | `sherpa_onnx` ^1.12.25 | Only Flutter STT with continuous recognition (no time limits), Zipformer-transducer streaming models, built-in endpoint detection + optional Silero VAD, fully offline, perfect pub.dev score |
+| Audio capture | `record` ^5.x | Microphone input — sherpa_onnx does not handle audio capture. Provides raw PCM stream to feed into OnlineRecognizer. |
 | Text-to-speech | `flutter_tts` ^4.2.5 | Industry standard (1,560 likes, 147k/week downloads), verified publisher, battle-tested |
 | Camera | `image_picker` ^1.1.2 | Standard Flutter camera/gallery package |
 | Location | `geolocator` ^13.0.2 | Standard Flutter GPS package |
@@ -49,12 +51,17 @@ Phases 3, 4, and 5 each have deferred education gates. These must be completed b
 
 ### P3. Native library validation spike (1 session)
 Before committing to Phases 7-8, validate on the target device:
-1. **sherpa_onnx**: Confirm compilation, produce transcription output, measure RAM footprint
-2. **llamadart**: Confirm compilation with Qwen 2.5 3B Q4_K_M, measure tokens/second (GPU and CPU), measure time-to-first-token, measure RSS memory during inference
+1. **sherpa_onnx**: Confirm compilation with **Zipformer-transducer** streaming model (NOT Whisper — Whisper is batch-only). Use `OnlineRecognizer` + `OnlineStream` API. Test with `record` package for microphone input. Must call `initBindings()` before any sherpa_onnx usage. Measure RAM footprint (~14-56MB for Zipformer vs 150-500MB for Whisper).
+2. **llamadart**: Confirm compilation with Qwen 2.5 3B Q4_K_M, measure tokens/second (GPU and CPU), measure time-to-first-token, measure RSS memory during inference. **Note from research**: llamadart runs inference in a background isolate internally — does NOT block the Dart UI thread (no need for manual `Isolate.run()` wrapping).
 3. **Also test Qwen 2.5 1.5B** — if 3B latency exceeds 8s per 150-token response, the 1.5B variant (2-4s) may be the better trade-off for voice mode
-4. **Coexistence test**: Load both Whisper (base.en) and Qwen simultaneously, confirm no OOM on 6GB device
+4. **Coexistence test**: Load both Zipformer-transducer STT model (~50MB) and Qwen LLM simultaneously, confirm no OOM on 6GB device. RAM budget is dramatically improved vs original Whisper plan.
 
 **If sherpa_onnx fails to build**: There is no alternative Flutter STT package with continuous recognition. The voice vision must be re-evaluated. This spike de-risks the entire plan.
+
+**API notes from research**:
+- sherpa_onnx exposes a **pull-based polling API**, not `Stream<String>` — need a Dart wrapper that polls `OnlineRecognizer` and emits to a `StreamController`
+- `OnlineRecognizer.isEndpoint()` detects utterance boundaries (no separate VAD needed for basic endpoint detection)
+- Must call `initBindings()` before any sherpa_onnx usage or all recognition silently returns empty strings
 
 ---
 
@@ -130,12 +137,13 @@ Before committing to Phases 7-8, validate on the target device:
 
 #### 7A.1 Integrate `sherpa_onnx` for continuous STT
 - New `lib/services/speech_recognition_service.dart` as **abstract class** with mock implementation for testing
-- Whisper model via sherpa_onnx — constrain to **base.en** (~150MB) or **small.en** (~500MB), document ceiling in ADR-0015
-- Download Whisper model on first use, store in app-private internal storage (`getApplicationDocumentsDirectory()`)
-- Verify sherpa_onnx processes audio in-memory only (no temp files to disk) — document in ADR-0015
-- Continuous streaming recognition — no time limits, no pause timeouts
-- Use **sherpa_onnx native VAD** (Voice Activity Detection) for utterance boundary detection instead of a fixed silence timer
-- Expose `Stream<String>` of recognized text chunks
+- **Zipformer-transducer** streaming model via `OnlineRecognizer` + `OnlineStream` API (~14-56MB). **NOT Whisper** — Whisper is batch/offline only (`OfflineRecognizer`) and cannot do real-time streaming recognition. Document model selection and rationale in ADR-0015.
+- Download Zipformer model on first use, store in app-private internal storage (`getApplicationDocumentsDirectory()`)
+- Use `record` package for microphone input — sherpa_onnx does NOT handle audio capture. Feed raw PCM audio from `record` into `OnlineStream.acceptWaveform()`.
+- **Must call `initBindings()` at app startup** before any sherpa_onnx usage — without this, all recognition silently returns empty strings.
+- sherpa_onnx uses a **pull-based polling API** — `OnlineRecognizer` does not emit a `Stream<String>`. Build a Dart wrapper: poll `recognizer.getResult()` on a timer or after each audio chunk, emit partial/final results to a `StreamController<String>`.
+- Use `OnlineRecognizer.isEndpoint()` for utterance boundary detection — built-in, no separate VAD needed for basic endpoint detection. Optionally add Silero VAD (~208KB-2.2MB) for noisy environments.
+- Expose `Stream<String>` of recognized text chunks (via the wrapper above)
 - Android permissions: `RECORD_AUDIO` in manifest + runtime permission request with rationale dialog
 - Android manifest: declare `android:foregroundServiceType="microphone"` for background STT on Android 10+
 - Handle permission denial gracefully: degrade to text-only mode, show explanation with Settings deep link
@@ -160,9 +168,10 @@ Before committing to Phases 7-8, validate on the target device:
 - Handle Bluetooth audio device connect/disconnect
 
 #### 7A.5 STT model download UX
-- Check for Whisper model at first voice activation (not cold start)
+- Check for Zipformer-transducer model at first voice activation (not cold start)
+- Model size is ~14-56MB (much smaller than the original Whisper plan of 150-500MB) — download is quick even on cellular, but still gate appropriately
 - Show download dialog with size + progress bar
-- **WiFi-only gate**: If on cellular, show "Download on Wi-Fi (recommended) / Download Now on cellular (X MB)" choice
+- **WiFi-only gate**: If on cellular and model > 20MB, show "Download on Wi-Fi (recommended) / Download Now on cellular (X MB)" choice
 - Verify available storage before starting download
 - Resume capability via `dio` Range headers with persisted byte offset
 - SHA-256 checksum hardcoded in app — verify after download, reject + delete on mismatch
@@ -177,15 +186,16 @@ Before committing to Phases 7-8, validate on the target device:
 ### New dependencies
 ```yaml
 sherpa_onnx: ^1.12.25
+record: ^5.1.3
 flutter_tts: ^4.2.5
 ```
 
 ### ADR needed
-- **ADR-0015**: Voice Mode Architecture — STT/TTS boundaries, VAD configuration, audio focus strategy, foreground service, Whisper model size ceiling, audio buffer lifecycle, error recovery contract, battery considerations
+- **ADR-0015**: Voice Mode Architecture — STT/TTS boundaries, Zipformer-transducer model selection (NOT Whisper), `OnlineRecognizer` polling wrapper design, `record` package integration for microphone input, `initBindings()` requirement, endpoint detection strategy, audio focus strategy, foreground service, audio buffer lifecycle, error recovery contract, battery considerations
 
 ### Risks
 - **High**: sherpa_onnx native build complexity — first JNI/C++ integration
-- **Medium**: VAD tuning across different environments (quiet room vs street vs car)
+- **Medium**: Polling wrapper latency — `OnlineRecognizer` is pull-based, need to tune polling interval for responsiveness vs CPU usage
 - **Medium**: Battery drain from microphone + ONNX inference during extended sessions
 
 ---
@@ -209,7 +219,7 @@ flutter_tts: ^4.2.5
 Core flow after session starts in voice mode:
 1. Get greeting → TTS speaks it
 2. After TTS completes → STT starts listening
-3. Accumulate recognized text → VAD detects utterance end
+3. Accumulate recognized text → `OnlineRecognizer.isEndpoint()` detects utterance end
 4. Send accumulated text as USER message
 5. Get agent follow-up → **stream TTS from first completed sentence** while LLM generates the rest (reduces perceived latency from 7-11s to 3-5s)
 6. After TTS completes → resume STT
@@ -265,7 +275,7 @@ Define and implement verbal recovery for every error state:
 
 ### Risks
 - **High**: Voice loop latency — total STT→LLM→TTS chain must be under 5s perceived (streaming TTS is critical)
-- **Medium**: VAD sensitivity tuning — too sensitive = fragmented input, too lenient = long waits
+- **Medium**: Endpoint detection tuning — `isEndpoint()` sensitivity may need adjustment across environments (too sensitive = fragmented input, too lenient = long waits)
 - **Medium**: False positive/negative verbal close detection — mitigated by verbal confirmation
 - **Medium**: Battery drain from continuous STT — mitigated by pausing during TTS and inference
 
@@ -297,9 +307,9 @@ Define and implement verbal recovery for every error state:
 - Configure: temperature=0.7, top_p=0.9, **max_tokens=150** (reduced from 200 — at 10 tok/s, 150 tokens = 15s vs 20s generation time; voice responses should be concise)
 - Vulkan GPU acceleration with CPU fallback
 - Streaming token response via `Stream<String>`
-- **Verify FFI binding type**: If `llamadart` uses blocking FFI, wrap inference in `Isolate.run()` in `local_llm_service.dart` to avoid freezing the Dart UI isolate
+- **FFI binding type**: Research confirms llamadart runs inference in a **background isolate internally** — does NOT block the Dart UI thread. No need for manual `Isolate.run()` wrapping. Document this in ADR-0017.
 - **Model lifecycle management**: Lazy-load Qwen only when first inference is needed. Unload on `onTrimMemory` callback from Android. If RAM is critically low, degrade to Layer A rather than OOM crash.
-- Pause sherpa_onnx STT recognizer during LLM inference (the voice loop already stops STT while TTS speaks — extend this window to cover inference). This eliminates the need for both models to hold full resident memory simultaneously.
+- Pause sherpa_onnx STT recognizer during LLM inference (the voice loop already stops STT while TTS speaks — extend this window to cover inference). With Zipformer-transducer (~50MB RSS) instead of Whisper (~150-500MB), RAM coexistence with Qwen is much more feasible.
 
 #### 8.3 Model download on first use
 - New `lib/services/model_download_service.dart`
@@ -369,9 +379,9 @@ llamadart: ^0.6.2
 - **ADR-0018**: Personality System — prompt engineering, therapy technique mapping, drift storage rationale
 
 ### Risks
-- **High**: llamadart FFI binding may block Dart isolate — must verify and wrap in `Isolate.run()` if needed
+- **Medium** (downgraded): llamadart FFI — research confirms it runs inference in a background isolate internally, not blocking the UI thread. Remaining risk is pre-1.0 API stability.
 - **High**: 2GB model download UX — mitigated by WiFi gate, storage check, resume, deferred prompt
-- **High**: RAM pressure — Whisper + Qwen + Flutter on 6GB device — mitigated by STT pause during inference, lazy loading, `onTrimMemory` lifecycle
+- **Medium** (downgraded from High): RAM pressure — Zipformer-transducer STT (~50MB) + Qwen + Flutter on 6GB device leaves significantly more margin than the original Whisper plan (~150-500MB). Still mitigated by STT pause during inference, lazy loading, `onTrimMemory` lifecycle.
 - **Medium**: Inference latency — 3B model may take 5-10s per response — mitigated by streaming TTS, reduced max_tokens, 1.5B fallback option
 
 ---
@@ -600,9 +610,11 @@ Each schema change needs a matching Supabase migration in `supabase/migrations/`
 
 ### Concurrency Policy
 Phases 7-9 introduce CPU-bound native operations that must not block the Dart UI isolate:
-- **LLM inference** (llamadart): Verify FFI binding; if blocking, wrap in `Isolate.run()`
+- **LLM inference** (llamadart): Runs in a background isolate internally — confirmed by research, no manual wrapping needed
 - **Image compression** (Phase 9): Run in `Isolate.run()`
-- **STT/TTS** (sherpa_onnx, flutter_tts): Managed by platform channels (async by default, verify)
+- **STT** (sherpa_onnx): `OnlineRecognizer` is a pull-based polling API — the Dart wrapper must poll on a timer or after each audio chunk, emitting results via `StreamController`. The polling itself is lightweight and safe on the main isolate.
+- **Audio capture** (`record` package): Provides async PCM stream, safe on main isolate
+- **TTS** (flutter_tts): Managed by platform channels (async by default)
 - **Network I/O** (sync, geocoding): Async I/O, safe on main isolate
 - **SQLite** (drift): Already runs on background isolate by default
 - Document in ADR-0015 or ADR-0017: "CPU-bound operations must run in background isolates"
@@ -634,6 +646,7 @@ Each phase: run `python scripts/quality_gate.py` (format, lint, test, coverage >
 ```yaml
 # Phase 7A
 sherpa_onnx: ^1.12.25
+record: ^5.1.3        # microphone input (sherpa_onnx doesn't handle audio capture)
 flutter_tts: ^4.2.5
 
 # Phase 8
@@ -657,9 +670,9 @@ extension_google_sign_in_as_googleapis_auth: ^2.0.13
 | Risk | Severity | Phase | Mitigation |
 |------|----------|-------|------------|
 | sherpa_onnx native build failure | Critical | 7A | Pre-integration spike (P3) — validate before committing |
-| RAM coexistence (Whisper + Qwen + Flutter) | High | 7A+8 | Constrain Whisper to base.en, pause STT during inference, lazy load, onTrimMemory |
-| Voice loop latency (7-11s per turn) | High | 7B+8 | Streaming TTS, VAD, max_tokens=150, benchmark 1.5B vs 3B |
-| llamadart FFI blocks Dart isolate | High | 8 | Verify binding type, wrap in Isolate.run() if blocking |
+| RAM coexistence (Zipformer + Qwen + Flutter) | Medium | 7A+8 | Zipformer ~50MB (was Whisper ~150-500MB), pause STT during inference, lazy load, onTrimMemory |
+| Voice loop latency (7-11s per turn) | High | 7B+8 | Streaming TTS, endpoint detection, max_tokens=150, benchmark 1.5B vs 3B |
+| llamadart pre-1.0 API stability | Medium | 8 | Pin exact version, runs inference in background isolate internally (no UI blocking) |
 | 2GB model download failure/cellular cost | High | 8 | WiFi gate, resume, storage check, deferred prompt, hardcoded checksum |
 | Model integrity (MITM on HuggingFace) | High | 8 | SHA-256 hardcoded in binary, reject + delete on mismatch |
 | Location data privacy (cloud movement diary) | High | 10 | Precision reduction, opt-in, cloud-only locationName |
