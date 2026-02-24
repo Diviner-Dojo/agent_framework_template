@@ -12,10 +12,14 @@
 //      ADR-0004 (Offline-First Architecture)
 // ===========================================================================
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../database/app_database.dart';
 import '../database/daos/message_dao.dart';
+import '../database/daos/photo_dao.dart';
 import '../database/daos/session_dao.dart';
 import '../services/supabase_service.dart';
 
@@ -43,14 +47,17 @@ class SyncRepository {
   final SupabaseService _supabaseService;
   final SessionDao _sessionDao;
   final MessageDao _messageDao;
+  final PhotoDao? _photoDao;
 
   SyncRepository({
     required SupabaseService supabaseService,
     required SessionDao sessionDao,
     required MessageDao messageDao,
+    PhotoDao? photoDao,
   }) : _supabaseService = supabaseService,
        _sessionDao = sessionDao,
-       _messageDao = messageDao;
+       _messageDao = messageDao,
+       _photoDao = photoDao;
 
   /// Sync all pending and failed sessions to Supabase.
   ///
@@ -182,5 +189,107 @@ class SyncRepository {
 
       await client.from('journal_messages').upsert(messageRows);
     }
+  }
+
+  /// Upload photos for a session to Supabase Storage.
+  ///
+  /// Uploads photos in parallel (max 3 concurrent) to the `journal-photos`
+  /// bucket under `[userId]/photos/[photoId].jpg`. Updates each photo's
+  /// syncStatus and cloudUrl on success/failure.
+  ///
+  /// No-op if not authenticated or no PhotoDao was provided.
+  /// See: ADR-0018 (Photo Storage Architecture)
+  Future<SyncResult> uploadSessionPhotos(String sessionId) async {
+    if (!_supabaseService.isAuthenticated || _photoDao == null) {
+      return const SyncResult();
+    }
+
+    final client = _supabaseService.client;
+    final userId = _supabaseService.currentUser?.id;
+    if (client == null || userId == null) return const SyncResult();
+
+    final photos = await _photoDao.getPhotosForSession(sessionId);
+    final pendingPhotos = photos
+        .where((p) => p.syncStatus != 'SYNCED')
+        .toList();
+    if (pendingPhotos.isEmpty) return const SyncResult();
+
+    int synced = 0;
+    int failed = 0;
+    final errors = <String>[];
+
+    // Process in batches of 3 for bounded concurrency.
+    for (int i = 0; i < pendingPhotos.length; i += 3) {
+      final batch = pendingPhotos.skip(i).take(3);
+      final futures = batch.map((photo) async {
+        try {
+          final file = File(photo.localPath);
+          if (!file.existsSync()) {
+            throw FileSystemException('Photo file not found', photo.localPath);
+          }
+
+          final storagePath = '$userId/photos/${photo.photoId}.jpg';
+          final bytes = await file.readAsBytes();
+
+          await client.storage
+              .from('journal-photos')
+              .uploadBinary(
+                storagePath,
+                bytes,
+                fileOptions: FileOptions(upsert: true),
+              );
+
+          // Store the canonical storage path — NOT a public URL.
+          // The bucket is private; use createSignedUrl() at display time
+          // to generate a short-lived authenticated URL (ADR-0018).
+          await _photoDao.updateCloudUrl(photo.photoId, storagePath);
+          await _photoDao.updateSyncStatus(photo.photoId, 'SYNCED');
+          synced++;
+        } on Exception catch (e) {
+          await _photoDao.updateSyncStatus(photo.photoId, 'FAILED');
+          failed++;
+          errors.add('Photo ${photo.photoId}: $e');
+          if (kDebugMode) {
+            debugPrint('Photo sync failed for ${photo.photoId}: $e');
+          }
+        }
+      });
+
+      await Future.wait(futures);
+    }
+
+    return SyncResult(syncedCount: synced, failedCount: failed, errors: errors);
+  }
+
+  /// Upload all pending photos across all sessions.
+  ///
+  /// Returns a [SyncResult] with counts of synced/failed photos.
+  /// No-op if not authenticated or no PhotoDao was provided.
+  Future<SyncResult> syncPendingPhotos() async {
+    if (!_supabaseService.isAuthenticated || _photoDao == null) {
+      return const SyncResult();
+    }
+
+    final photosToSync = await _photoDao.getPhotosToSync();
+    if (photosToSync.isEmpty) return const SyncResult();
+
+    // Group by session for organized upload.
+    final sessionIds = photosToSync.map((p) => p.sessionId).toSet();
+    int totalSynced = 0;
+    int totalFailed = 0;
+    final allErrors = <String>[];
+
+    for (final sessionId in sessionIds) {
+      final result = await uploadSessionPhotos(sessionId);
+      totalSynced += result.syncedCount;
+      totalFailed += result.failedCount;
+      allErrors.addAll(result.errors);
+    }
+
+    return SyncResult(
+      syncedCount: totalSynced,
+      failedCount: totalFailed,
+      errors: allErrors,
+    );
   }
 }

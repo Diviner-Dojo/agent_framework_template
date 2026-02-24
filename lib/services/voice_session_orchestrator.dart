@@ -355,6 +355,109 @@ class VoiceSessionOrchestrator {
     }
   }
 
+  /// Capture a voice description for a photo (Phase 9 — ADR-0018).
+  ///
+  /// Speaks "Tell me about this photo", then listens for a response.
+  /// Returns the captured description text, or null if:
+  ///   - Voice mode is not active
+  ///   - The user stays silent for 5 seconds (timeout → skip)
+  ///   - STT is not initialized
+  ///
+  /// The orchestrator temporarily pauses the normal voice loop,
+  /// captures the description, then returns to the previous state.
+  Future<String?> capturePhotoDescription() async {
+    // Only works if STT service is initialized.
+    if (!_sttService.isInitialized) return null;
+
+    final wasInContinuousMode = state.isContinuousMode;
+    final previousPhase = state.phase;
+
+    // Pause normal listening if active.
+    if (_sttService.isListening) {
+      await _stopListening();
+    }
+    _silenceTimer?.cancel();
+
+    // Speak the prompt.
+    _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+    await _speak('Tell me about this photo.');
+
+    if (state.phase != VoiceLoopPhase.speaking) {
+      // Interrupted or stopped — return without description.
+      return null;
+    }
+
+    // Listen for the description with a 5-second silence timeout.
+    _updateState(
+      state.copyWith(phase: VoiceLoopPhase.listening, transcriptPreview: ''),
+    );
+
+    String? description;
+    final completer = Completer<String?>();
+
+    // Cancel existing subscription temporarily.
+    await _recognitionSubscription?.cancel();
+
+    try {
+      final stream = _sttService.startListening();
+      Timer? descriptionTimer;
+
+      _recognitionSubscription = stream.listen(
+        (result) {
+          _updateState(state.copyWith(transcriptPreview: result.text));
+
+          // Reset the silence timer on each partial result.
+          descriptionTimer?.cancel();
+          descriptionTimer = Timer(const Duration(seconds: 5), () {
+            if (!completer.isCompleted) {
+              completer.complete(null); // Timeout → skip.
+            }
+          });
+
+          if (result.isFinal) {
+            descriptionTimer?.cancel();
+            if (!completer.isCompleted) {
+              description = result.text;
+              completer.complete(result.text);
+            }
+          }
+        },
+        onError: (error) {
+          descriptionTimer?.cancel();
+          if (!completer.isCompleted) {
+            completer.complete(null);
+          }
+        },
+      );
+
+      // Start the initial silence timeout.
+      descriptionTimer = Timer(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          completer.complete(null);
+        }
+      });
+
+      description = await completer.future;
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('Photo description capture failed: $e');
+      }
+    } finally {
+      await _stopListening();
+    }
+
+    // Resume previous state.
+    if (wasInContinuousMode &&
+        previousPhase != VoiceLoopPhase.idle &&
+        state.phase != VoiceLoopPhase.idle) {
+      await _startListening();
+    } else {
+      _updateState(state.copyWith(phase: previousPhase));
+    }
+
+    return description;
+  }
+
   /// Clean up all resources.
   void dispose() {
     _silenceTimer?.cancel();

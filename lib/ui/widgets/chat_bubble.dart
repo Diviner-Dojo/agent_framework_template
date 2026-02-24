@@ -11,6 +11,8 @@
 // memory recall query with grounded citations (ADR-0013).
 // ===========================================================================
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -39,6 +41,9 @@ class RecallCitation {
 /// [onCitationTap] is called with a session ID when a citation chip is tapped.
 /// [isOfflineRecall] shows an offline fallback message instead of the normal
 ///   recall header/footer.
+/// [photoPath] if set, renders a photo thumbnail above the text content.
+/// [photoCaption] optional caption displayed below the photo thumbnail.
+/// [onPhotoTap] callback when the photo thumbnail is tapped (opens viewer).
 class ChatBubble extends StatelessWidget {
   final String content;
   final String role;
@@ -47,6 +52,13 @@ class ChatBubble extends StatelessWidget {
   final List<RecallCitation> citations;
   final void Function(String sessionId)? onCitationTap;
   final bool isOfflineRecall;
+  final String? photoPath;
+  final String? photoCaption;
+  final VoidCallback? onPhotoTap;
+
+  /// Prefix for the Hero animation tag. Each screen must use a unique prefix
+  /// to avoid duplicate Hero tags when multiple screens are in the widget tree.
+  final String photoHeroPrefix;
 
   const ChatBubble({
     super.key,
@@ -57,6 +69,10 @@ class ChatBubble extends StatelessWidget {
     this.citations = const [],
     this.onCitationTap,
     this.isOfflineRecall = false,
+    this.photoPath,
+    this.photoCaption,
+    this.onPhotoTap,
+    this.photoHeroPrefix = 'photo-chat',
   });
 
   /// Whether this message was sent by the user.
@@ -116,6 +132,54 @@ class ChatBubble extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Photo thumbnail (Phase 9 — ADR-0018).
+                  if (photoPath != null) ...[
+                    Semantics(
+                      label: photoCaption != null && photoCaption!.isNotEmpty
+                          ? 'Photo: $photoCaption. Tap to view full screen.'
+                          : 'Photo. Tap to view full screen.',
+                      button: true,
+                      child: GestureDetector(
+                        onTap: onPhotoTap,
+                        child: Hero(
+                          tag: '$photoHeroPrefix-$photoPath',
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: 200,
+                                maxHeight: 200,
+                              ),
+                              child: Image.file(
+                                File(photoPath!),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const SizedBox(
+                                  width: 200,
+                                  height: 100,
+                                  child: Center(
+                                    child: Icon(Icons.broken_image, size: 40),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (photoCaption != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        photoCaption!,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                  ],
+
                   // Recall header: "From your journal" with history icon.
                   if (isRecall && !isOfflineRecall)
                     _RecallHeader(textColor: textColor),

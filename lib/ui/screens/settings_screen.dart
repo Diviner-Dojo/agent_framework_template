@@ -23,6 +23,7 @@ import '../../providers/auth_providers.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/llm_providers.dart';
 import '../../providers/personality_providers.dart';
+import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
@@ -570,6 +571,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   Widget _buildDataManagementCard(BuildContext context) {
     final theme = Theme.of(context);
     final sessionCountAsync = ref.watch(sessionCountProvider);
+    final photoInfoAsync = ref.watch(photoStorageInfoProvider);
 
     return Card(
       child: Padding(
@@ -579,7 +581,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           children: [
             Text('Data Management', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
-            // Storage summary.
+            // Session count.
             sessionCountAsync.when(
               data: (count) => Text(
                 'Journal entries: $count session${count == 1 ? '' : 's'}',
@@ -587,6 +589,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               ),
               loading: () => const Text('Counting entries...'),
               error: (_, _) => const Text('Could not count entries'),
+            ),
+            const SizedBox(height: 4),
+            // Photo storage info.
+            photoInfoAsync.when(
+              data: (info) => info.count > 0
+                  ? Text(
+                      'Photos: ${info.count} photo${info.count == 1 ? '' : 's'}, ${info.formattedSize}',
+                      style: theme.textTheme.bodyMedium,
+                    )
+                  : Text('Photos: None', style: theme.textTheme.bodyMedium),
+              loading: () => const Text('Counting photos...'),
+              error: (_, _) => const Text('Could not count photos'),
             ),
             const SizedBox(height: 12),
             // Clear all button.
@@ -619,7 +633,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     if (confirmed == true && context.mounted) {
       final sessionDao = ref.read(sessionDaoProvider);
       final messageDao = ref.read(messageDaoProvider);
-      await sessionDao.deleteAllCascade(messageDao);
+      final photoDao = ref.read(photoDaoProvider);
+      final photoService = ref.read(photoServiceProvider);
+
+      // Delete photo files from disk before clearing DB records.
+      // Best-effort: file cleanup failures don't block DB cleanup.
+      try {
+        await photoService.deleteAllPhotos();
+      } on Exception catch (_) {
+        // path_provider or file I/O may be unavailable — continue anyway.
+      }
+
+      await sessionDao.deleteAllCascade(messageDao, photoDao: photoDao);
+      ref.invalidate(photoStorageInfoProvider);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -705,8 +731,8 @@ class _ClearAllDialogState extends State<_ClearAllDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'This will permanently delete all journal sessions and messages. '
-            'This cannot be undone.',
+            'This will permanently delete all journal sessions, messages, '
+            'and photos. This cannot be undone.',
           ),
           const SizedBox(height: 16),
           const Text('Type DELETE to confirm:'),

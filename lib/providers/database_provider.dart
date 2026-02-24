@@ -12,8 +12,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/app_database.dart';
-import '../database/daos/session_dao.dart';
 import '../database/daos/message_dao.dart';
+import '../database/daos/photo_dao.dart';
+import '../database/daos/session_dao.dart';
 
 /// Provides the singleton AppDatabase instance.
 ///
@@ -50,4 +51,12 @@ final sessionDaoProvider = Provider<SessionDao>((ref) {
 /// rather than creating its own MessageDao instance.
 final messageDaoProvider = Provider<MessageDao>((ref) {
   return MessageDao(ref.watch(databaseProvider));
+});
+
+/// Provides a PhotoDao backed by the singleton database.
+///
+/// Any provider that needs to read/write photos should depend on this
+/// rather than creating its own PhotoDao instance.
+final photoDaoProvider = Provider<PhotoDao>((ref) {
+  return PhotoDao(ref.watch(databaseProvider));
 });

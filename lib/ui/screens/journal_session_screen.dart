@@ -30,12 +30,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
 
+import 'package:uuid/uuid.dart';
+
+import '../../providers/database_provider.dart';
+import '../../providers/photo_providers.dart';
 import '../../providers/session_providers.dart';
 import '../../providers/voice_providers.dart';
 import '../../services/model_download_service.dart';
+import '../../services/photo_service.dart';
 import '../../services/voice_session_orchestrator.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/model_download_dialog.dart';
+import '../widgets/photo_capture_sheet.dart';
+import '../widgets/photo_preview_dialog.dart';
+import '../widgets/photo_viewer.dart';
 
 /// The active journal conversation screen.
 class JournalSessionScreen extends ConsumerStatefulWidget {
@@ -160,6 +168,10 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     final sessionState = ref.watch(sessionNotifierProvider);
     final messagesAsync = ref.watch(activeSessionMessagesProvider);
     final voiceEnabled = ref.watch(voiceModeEnabledProvider);
+    final sessionId = sessionState.activeSessionId;
+    final photosAsync = sessionId != null
+        ? ref.watch(sessionPhotosProvider(sessionId))
+        : const AsyncValue<List<dynamic>>.data([]);
 
     // Watch orchestrator state for UI rebuilds.
     final orchestrator = ref.watch(voiceOrchestratorProvider);
@@ -295,16 +307,41 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                       _scrollToBottom();
                     });
                   }
+                  // Index photos by messageId for chat bubbles.
+                  final photos = photosAsync.valueOrNull ?? [];
+                  final photoMap = <String, dynamic>{};
+                  for (final photo in photos) {
+                    if (photo.messageId != null) {
+                      photoMap[photo.messageId as String] = photo;
+                    }
+                  }
+
                   return ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.only(top: 8, bottom: 8),
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
                       final msg = messages[index];
+                      final photo = msg.photoId != null
+                          ? photoMap[msg.messageId]
+                          : null;
                       return ChatBubble(
                         content: msg.content,
                         role: msg.role,
                         timestamp: msg.timestamp,
+                        photoPath: photo?.localPath as String?,
+                        photoCaption: photo?.description as String?,
+                        onPhotoTap: photo != null
+                            ? () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => PhotoViewer(
+                                    photoPath: photo.localPath as String,
+                                    caption: photo.description as String?,
+                                    heroTag: 'photo-chat-${photo.localPath}',
+                                  ),
+                                ),
+                              )
+                            : null,
                       );
                     },
                   );
@@ -441,7 +478,15 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                   onSubmitted: isWaiting ? null : (_) => _sendMessage(),
                 ),
               ),
-              const SizedBox(width: 8),
+              // Camera button — visible when not in active voice/waiting state.
+              if (!isWaiting && !isListening && !isSpeaking)
+                IconButton(
+                  tooltip: 'Add photo',
+                  onPressed: () => _capturePhoto(context),
+                  icon: const Icon(Icons.camera_alt_outlined),
+                ),
+              if (isWaiting || isListening || isSpeaking)
+                const SizedBox(width: 8),
               // Action button: mic, stop, interrupt, or send.
               _buildActionButton(isWaiting, voiceEnabled, orchestrator),
             ],
@@ -647,6 +692,115 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     }
 
     return true;
+  }
+
+  /// Capture a photo and add it to the session.
+  ///
+  /// Flow: show source sheet → capture/pick → preview → process → save.
+  Future<void> _capturePhoto(BuildContext context) async {
+    final sessionId = ref.read(sessionNotifierProvider).activeSessionId;
+    if (sessionId == null) return;
+
+    // Step 1: Choose source (camera or gallery).
+    final source = await showPhotoCaptureSheet(context);
+    if (source == null || !mounted) return;
+
+    // Step 2: Capture or pick the photo.
+    final photoService = ref.read(photoServiceProvider);
+    final rawFile = source == PhotoSource.camera
+        ? await photoService.takePhoto()
+        : await photoService.pickFromGallery();
+    if (rawFile == null || !mounted) return;
+
+    // Step 3: Show preview and wait for user to confirm.
+    final confirmed = await showPhotoPreviewDialog(
+      context: context,
+      photoFile: rawFile,
+    );
+    if (!confirmed || !mounted) return;
+
+    // Step 4: Process and save (with user feedback).
+    final uuid = const Uuid();
+    final photoId = uuid.v4();
+    final messageId = uuid.v4();
+
+    // Show processing indicator while EXIF strip + resize runs.
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Text('Processing photo...'),
+            ],
+          ),
+          duration: Duration(seconds: 10),
+        ),
+      );
+    }
+
+    ProcessedPhoto? processed;
+    try {
+      processed = await photoService.processAndSave(
+        rawFile,
+        sessionId,
+        photoId,
+      );
+    } on Exception {
+      processed = null;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    if (processed == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to add photo. Please try again.')),
+      );
+      return;
+    }
+
+    // Step 5: Insert photo record and photo message.
+    final photoDao = ref.read(photoDaoProvider);
+    final messageDao = ref.read(messageDaoProvider);
+    final now = DateTime.now().toUtc();
+
+    await photoDao.insertPhoto(
+      photoId: photoId,
+      sessionId: sessionId,
+      localPath: processed.file.path,
+      timestamp: now,
+      messageId: messageId,
+      width: processed.width,
+      height: processed.height,
+      fileSizeBytes: processed.fileSizeBytes,
+    );
+
+    await messageDao.insertMessage(
+      messageId,
+      sessionId,
+      'USER',
+      '[Photo]',
+      now,
+      inputMethod: 'PHOTO',
+      photoId: photoId,
+    );
+
+    // If voice mode is active, prompt for a photo description.
+    if (!mounted) return;
+    final voiceEnabled = ref.read(voiceModeEnabledProvider);
+    final orchestrator = ref.read(voiceOrchestratorProvider);
+    if (voiceEnabled && orchestrator.state.phase != VoiceLoopPhase.idle) {
+      final description = await orchestrator.capturePhotoDescription();
+      if (description != null && description.trim().isNotEmpty) {
+        await photoDao.updateDescription(photoId, description.trim());
+      }
+    }
   }
 
   /// Send the user's message to the session notifier.

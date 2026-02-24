@@ -157,6 +157,13 @@ void main() {
         throwsA(isA<LocalLlmException>()),
       );
     });
+
+    test('uses DateTime.now() when now is not provided', () async {
+      mockService.nextResponse = 'Hello!';
+      final response = await layer.getGreeting();
+      expect(response.content, 'Hello!');
+      expect(response.layer, AgentLayer.llmLocal);
+    });
   });
 
   group('getFollowUp', () {
