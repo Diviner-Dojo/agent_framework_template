@@ -39,6 +39,7 @@ import 'ui/screens/journal_session_screen.dart';
 import 'ui/screens/onboarding_screen.dart';
 import 'ui/screens/session_detail_screen.dart';
 import 'ui/screens/auth_screen.dart';
+import 'ui/screens/photo_gallery_screen.dart';
 import 'ui/screens/search_screen.dart';
 import 'ui/screens/session_list_screen.dart';
 import 'ui/screens/settings_screen.dart';
@@ -182,6 +183,7 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
         '/': (context) => const SessionListScreen(),
         '/session': (context) => const JournalSessionScreen(),
         '/search': (context) => const SearchScreen(),
+        '/gallery': (context) => const PhotoGalleryScreen(),
         '/settings': (context) => const SettingsScreen(),
         '/auth': (context) => const AuthScreen(),
         '/onboarding': (context) => const OnboardingScreen(),

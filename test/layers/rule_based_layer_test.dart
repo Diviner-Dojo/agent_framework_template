@@ -73,6 +73,12 @@ void main() {
         'Good morning! Any plans or thoughts for today?',
       );
     });
+
+    test('uses DateTime.now() when now is not provided', () async {
+      final response = await layer.getGreeting();
+      expect(response.content, isNotEmpty);
+      expect(response.layer, AgentLayer.ruleBasedLocal);
+    });
   });
 
   group('RuleBasedLayer getFollowUp', () {
@@ -154,6 +160,28 @@ void main() {
       expect(result, isNotNull);
       expect(result!.layer, AgentLayer.ruleBasedLocal);
     });
+
+    test(
+      'falls back to generic follow-ups when themed pool exhausted',
+      () async {
+        // All 5 emotional follow-ups already used.
+        final usedEmotionalQuestions = [
+          "That sounds like a lot. What do you think is driving that feeling?",
+          "How long have you been feeling this way?",
+          "Is there anything that helps when you feel like this?",
+          "What would make things feel a little better right now?",
+          "Have you noticed any patterns around when this feeling comes up?",
+        ];
+        final result = await layer.getFollowUp(
+          latestUserMessage: 'I feel so stressed',
+          conversationHistory: usedEmotionalQuestions,
+          followUpCount: 0,
+        );
+        expect(result, isNotNull);
+        // Should return a generic follow-up since emotional pool is exhausted.
+        expect(usedEmotionalQuestions, isNot(contains(result!.content)));
+      },
+    );
   });
 
   group('RuleBasedLayer generateSummary', () {

@@ -34,7 +34,7 @@ part 'app_database.g.dart';
 /// Usage:
 ///   final db = AppDatabase();          // production (file-based)
 ///   final db = AppDatabase.forTesting(NativeDatabase.memory());  // tests
-@DriftDatabase(tables: [JournalSessions, JournalMessages])
+@DriftDatabase(tables: [JournalSessions, JournalMessages, Photos])
 class AppDatabase extends _$AppDatabase {
   /// Default constructor — uses a file-based SQLite database.
   /// The database file is created in the app's documents directory.
@@ -49,7 +49,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -66,6 +66,14 @@ class AppDatabase extends _$AppDatabase {
               'ON journal_sessions (start_time DESC)',
         ),
       );
+      // Index for efficient photo retrieval by session (Phase 9).
+      await m.createIndex(
+        Index(
+          'photos',
+          'CREATE INDEX IF NOT EXISTS idx_photos_session_id '
+              'ON photos (session_id)',
+        ),
+      );
     },
     // onUpgrade handles schema changes between versions.
     onUpgrade: (Migrator m, int from, int to) async {
@@ -79,6 +87,19 @@ class AppDatabase extends _$AppDatabase {
             'journal_sessions',
             'CREATE INDEX idx_sessions_start_time_desc '
                 'ON journal_sessions (start_time DESC)',
+          ),
+        );
+      }
+      if (from < 3) {
+        // Phase 9: Photo integration (ADR-0018).
+        await m.createTable(photos);
+        await m.addColumn(journalMessages, journalMessages.photoId);
+        // Index for efficient photo retrieval by session.
+        await m.createIndex(
+          Index(
+            'photos',
+            'CREATE INDEX IF NOT EXISTS idx_photos_session_id '
+                'ON photos (session_id)',
           ),
         );
       }

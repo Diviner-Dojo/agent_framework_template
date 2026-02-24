@@ -124,6 +124,58 @@ class JournalMessages extends Table {
   // Reference to an embedding vector (stored separately or in Supabase pgvector)
   TextColumn get embeddingId => text().nullable()();
 
+  // Reference to a photo attached to this message (Phase 9 — ADR-0018).
+  // When set, this message represents a photo entry in the conversation.
+  TextColumn get photoId => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {messageId};
+}
+
+/// Photos attached to journal sessions (Phase 9 — ADR-0018).
+///
+/// Each photo is associated with a session and optionally linked to a
+/// message via [messageId]. Photos are stored on-device as JPEG files
+/// with EXIF metadata stripped for privacy. Cloud sync uploads to
+/// Supabase Storage.
+class Photos extends Table {
+  // Client-generated UUID — primary key.
+  TextColumn get photoId => text()();
+
+  // Foreign key to JournalSessions — links this photo to its session.
+  TextColumn get sessionId => text().references(JournalSessions, #sessionId)();
+
+  // Optional link to the JournalMessage that represents this photo.
+  // A photo message has role=USER, inputMethod=PHOTO, content="[Photo]".
+  TextColumn get messageId => text().nullable()();
+
+  // Relative path within app support directory (e.g., "photos/uuid/uuid.jpg").
+  TextColumn get localPath => text()();
+
+  // Supabase Storage URL — set after successful upload.
+  TextColumn get cloudUrl => text().nullable()();
+
+  // User-provided or voice-captured description of the photo.
+  TextColumn get description => text().nullable()();
+
+  // When the photo was taken or added to the session.
+  DateTimeColumn get timestamp => dateTime()();
+
+  // Sync tracking — matches session sync pattern (ADR-0012).
+  // Values: 'PENDING' | 'SYNCED' | 'FAILED'
+  TextColumn get syncStatus => text().withDefault(const Constant('PENDING'))();
+
+  // Image dimensions after processing (nullable until processing completes).
+  IntColumn get width => integer().nullable()();
+  IntColumn get height => integer().nullable()();
+
+  // File size in bytes after processing.
+  IntColumn get fileSizeBytes => integer().nullable()();
+
+  // Standard timestamps.
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {photoId};
 }

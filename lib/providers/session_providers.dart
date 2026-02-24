@@ -36,8 +36,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/environment.dart';
 import '../database/app_database.dart';
-import '../database/daos/session_dao.dart';
 import '../database/daos/message_dao.dart';
+import '../database/daos/photo_dao.dart';
+import '../database/daos/session_dao.dart';
+import '../services/photo_service.dart';
 import '../repositories/agent_repository.dart';
 import '../repositories/search_repository.dart';
 import '../services/claude_api_service.dart';
@@ -48,6 +50,7 @@ import '../utils/timestamp_utils.dart';
 import 'auth_providers.dart';
 import 'database_provider.dart';
 import 'llm_providers.dart';
+import 'photo_providers.dart';
 import 'search_providers.dart';
 import 'sync_providers.dart';
 
@@ -631,8 +634,27 @@ class SessionNotifier extends StateNotifier<SessionState> {
     state = const SessionState();
     _ref.read(activeSessionIdProvider.notifier).state = null;
 
-    // Transactional cascade delete: messages first, then session.
-    await _sessionDao.deleteSessionCascade(_messageDao, sessionId);
+    // Delete photo files from disk first (file I/O cannot run in a
+    // drift transaction). Best-effort: file cleanup failure must not
+    // prevent the DB cascade from running.
+    try {
+      final photoService = _ref.read(photoServiceProvider);
+      await photoService.deleteSessionPhotos(sessionId);
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('Photo file cleanup failed for $sessionId: $e');
+      }
+    } on Error catch (e) {
+      if (kDebugMode) {
+        debugPrint('Photo file cleanup failed for $sessionId: $e');
+      }
+    }
+    final photoDao = _ref.read(photoDaoProvider);
+    await _sessionDao.deleteSessionCascade(
+      _messageDao,
+      sessionId,
+      photoDao: photoDao,
+    );
   }
 
   /// Dismiss the completed session and clear all state.
@@ -910,18 +932,30 @@ class SessionNotifier extends StateNotifier<SessionState> {
   }
 }
 
-/// Deletes a completed session and its messages from the database.
+/// Deletes a completed session, its messages, and photos from the database.
 ///
-/// Accepts [SessionDao] and [MessageDao] directly so it can be called from
-/// both providers (Ref) and widgets (WidgetRef). The session list auto-updates
-/// via drift's stream because [allSessionsProvider] watches the table.
-/// Uses a transaction to prevent orphaned data on partial failure.
+/// Accepts DAOs and services directly so it can be called from both providers
+/// (Ref) and widgets (WidgetRef). The session list auto-updates via drift's
+/// stream because [allSessionsProvider] watches the table.
+///
+/// Photo files on disk are deleted first (file I/O cannot run inside a drift
+/// transaction), then the DB cascade runs: photos → messages → session.
 Future<void> deleteSessionCascade(
   SessionDao sessionDao,
   MessageDao messageDao,
-  String sessionId,
-) async {
-  await sessionDao.deleteSessionCascade(messageDao, sessionId);
+  String sessionId, {
+  PhotoDao? photoDao,
+  PhotoService? photoService,
+}) async {
+  // Delete photo files from disk before the DB transaction.
+  if (photoService != null) {
+    await photoService.deleteSessionPhotos(sessionId);
+  }
+  await sessionDao.deleteSessionCascade(
+    messageDao,
+    sessionId,
+    photoDao: photoDao,
+  );
 }
 
 /// Provides the compile-time environment configuration.

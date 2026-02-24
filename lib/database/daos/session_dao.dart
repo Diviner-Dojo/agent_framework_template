@@ -19,6 +19,7 @@ import 'package:drift/drift.dart';
 import '../app_database.dart';
 import '../search_query_utils.dart';
 import 'message_dao.dart';
+import 'photo_dao.dart';
 
 /// Provides all database operations for journal sessions.
 ///
@@ -177,27 +178,40 @@ class SessionDao {
     return _db.delete(_db.journalSessions).go();
   }
 
-  /// Delete a session and all its messages atomically.
+  /// Delete a session and all its messages (and photos) atomically.
   ///
-  /// Wraps the cascade delete (messages first, then session) in a
-  /// transaction to prevent orphaned data if one step fails.
+  /// Wraps the cascade delete in a transaction to prevent orphaned data.
+  /// When [photoDao] is provided, photo records are deleted from the DB.
+  /// Photo files on disk must be deleted separately before calling this
+  /// (file I/O cannot run inside a drift transaction).
   /// Returns the number of session rows deleted (0 or 1).
   Future<int> deleteSessionCascade(
     MessageDao messageDao,
-    String sessionId,
-  ) async {
+    String sessionId, {
+    PhotoDao? photoDao,
+  }) async {
     return _db.transaction(() async {
+      if (photoDao != null) {
+        await photoDao.deletePhotosBySession(sessionId);
+      }
       await messageDao.deleteMessagesBySession(sessionId);
       return deleteSession(sessionId);
     });
   }
 
-  /// Delete all sessions and messages atomically.
+  /// Delete all sessions, messages, and photos atomically.
   ///
-  /// Wraps the cascade (all messages first, then all sessions) in a
-  /// transaction to prevent orphaned data if one step fails.
-  Future<void> deleteAllCascade(MessageDao messageDao) async {
+  /// Wraps the cascade in a transaction to prevent orphaned data.
+  /// When [photoDao] is provided, all photo records are deleted from the DB.
+  /// Photo files on disk must be deleted separately before calling this.
+  Future<void> deleteAllCascade(
+    MessageDao messageDao, {
+    PhotoDao? photoDao,
+  }) async {
     await _db.transaction(() async {
+      if (photoDao != null) {
+        await photoDao.deleteAllPhotos();
+      }
       await messageDao.deleteAllMessages();
       await deleteAllSessions();
     });

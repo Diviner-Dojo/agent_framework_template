@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/database/app_database.dart';
+import 'package:agentic_journal/database/daos/photo_dao.dart';
 import 'package:agentic_journal/providers/auth_providers.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart';
+import 'package:agentic_journal/providers/photo_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
@@ -15,7 +17,18 @@ import 'package:agentic_journal/providers/sync_providers.dart';
 import 'package:agentic_journal/providers/llm_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
+import 'package:agentic_journal/services/photo_service.dart';
 import 'package:agentic_journal/ui/screens/settings_screen.dart';
+
+/// Test-safe PhotoService that doesn't use path_provider.
+class _FakePhotoService extends PhotoService {
+  bool deleteAllCalled = false;
+
+  @override
+  Future<void> deleteAllPhotos() async {
+    deleteAllCalled = true;
+  }
+}
 
 void main() {
   group('Settings Data Management', () {
@@ -54,6 +67,13 @@ void main() {
               sessionCountProvider.overrideWith((ref) => Future.value(0)),
               sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
               llmModelReadyProvider.overrideWith((ref) => Future.value(false)),
+              photoDaoProvider.overrideWithValue(PhotoDao(database)),
+              photoServiceProvider.overrideWithValue(_FakePhotoService()),
+              photoStorageInfoProvider.overrideWith(
+                (ref) => Future.value(
+                  const PhotoStorageInfo(count: 0, totalSizeBytes: 0),
+                ),
+              ),
             ],
           ),
           child: const MaterialApp(home: SettingsScreen()),

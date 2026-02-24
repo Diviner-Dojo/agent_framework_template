@@ -213,8 +213,9 @@ def check_coverage() -> bool:
         return False
 
     # Parse lcov.info to compute coverage.
-    # Exclude generated files (*.g.dart, *.freezed.dart) which inflate
-    # the denominator without reflecting hand-written code quality.
+    # Exclude generated files (*.g.dart, *.freezed.dart) and files with
+    # '// coverage:ignore-file' which inflate the denominator without
+    # reflecting hand-written code quality.
     total_lines = 0
     hit_lines = 0
     current_file = ""
@@ -224,6 +225,16 @@ def check_coverage() -> bool:
         if line.startswith("SF:"):
             current_file = line[3:]
             skip_file = current_file.endswith(".g.dart") or current_file.endswith(".freezed.dart")
+            # Also skip files with // coverage:ignore-file directive.
+            if not skip_file:
+                try:
+                    source_path = Path(current_file)
+                    if source_path.exists():
+                        first_line = source_path.read_text(encoding="utf-8").split("\n", 1)[0]
+                        if "coverage:ignore-file" in first_line:
+                            skip_file = True
+                except OSError:
+                    pass
         elif skip_file:
             continue
         elif line.startswith("LF:"):

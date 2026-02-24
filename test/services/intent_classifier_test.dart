@@ -121,6 +121,16 @@ void main() {
         expect(result.type, IntentType.query);
       });
 
+      test('recall with trailing question mark adds recall score', () {
+        // Must be >4 words to pass short-message guard.
+        // "remember" triggers _recallVerbPattern, question mark triggers the
+        // endsWith('?') fallback in _isRecallAsQuery.
+        final result = classifier.classify(
+          'You said you remember something about that trip?',
+        );
+        expect(result.confidence, greaterThan(0));
+      });
+
       test('past tense only scores 0.4 — below threshold', () {
         // Single-signal (questionPast at 0.4) → journal (conservative default).
         final result = classifier.classify(

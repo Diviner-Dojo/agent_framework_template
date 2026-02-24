@@ -15,11 +15,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/app_database.dart';
 import '../../database/daos/message_dao.dart';
+import '../../database/daos/photo_dao.dart';
 import '../../database/daos/session_dao.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/session_providers.dart';
 import '../../utils/timestamp_utils.dart';
 import '../widgets/chat_bubble.dart';
+import '../widgets/photo_viewer.dart';
 
 /// Read-only transcript view for a past session.
 class SessionDetailScreen extends ConsumerStatefulWidget {
@@ -35,6 +37,7 @@ class SessionDetailScreen extends ConsumerStatefulWidget {
 class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   JournalSession? _session;
   List<JournalMessage>? _messages;
+  Map<String, Photo> _photosByMessageId = {};
   bool _isLoading = true;
   bool _isResuming = false;
 
@@ -44,18 +47,29 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
     _loadData();
   }
 
-  /// Load the session and its messages from the database.
+  /// Load the session, messages, and photos from the database.
   Future<void> _loadData() async {
     final sessionDao = SessionDao(ref.read(databaseProvider));
     final messageDao = MessageDao(ref.read(databaseProvider));
+    final photoDao = PhotoDao(ref.read(databaseProvider));
 
     final session = await sessionDao.getSessionById(widget.sessionId);
     final messages = await messageDao.getMessagesForSession(widget.sessionId);
+    final photos = await photoDao.getPhotosForSession(widget.sessionId);
+
+    // Index photos by messageId for fast lookup.
+    final photoMap = <String, Photo>{};
+    for (final photo in photos) {
+      if (photo.messageId != null) {
+        photoMap[photo.messageId!] = photo;
+      }
+    }
 
     if (mounted) {
       setState(() {
         _session = session;
         _messages = messages;
+        _photosByMessageId = photoMap;
         _isLoading = false;
       });
     }
@@ -131,15 +145,37 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
                       final msg = messages[index];
+                      final photo = msg.photoId != null
+                          ? _photosByMessageId[msg.messageId]
+                          : null;
                       return ChatBubble(
                         content: msg.content,
                         role: msg.role,
                         timestamp: msg.timestamp,
+                        photoPath: photo?.localPath,
+                        photoCaption: photo?.description,
+                        photoHeroPrefix: 'photo-detail',
+                        onPhotoTap: photo != null
+                            ? () => _openPhotoViewer(photo)
+                            : null,
                       );
                     },
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Open the full-screen photo viewer.
+  void _openPhotoViewer(Photo photo) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PhotoViewer(
+          photoPath: photo.localPath,
+          caption: photo.description,
+          heroTag: 'photo-detail-${photo.localPath}',
+        ),
       ),
     );
   }

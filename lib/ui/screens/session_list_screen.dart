@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/app_database.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/session_providers.dart';
 import '../widgets/session_card.dart';
@@ -41,6 +42,8 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
       appBar: AppBar(
         title: const Text('Agentic Journal'),
         actions: [
+          // Gallery icon — visible when photos exist.
+          _GalleryIconButton(),
           // Search icon — visible at 5+ sessions (progressive disclosure).
           _SearchIconButton(),
           // Settings gear icon — opens the settings screen.
@@ -148,6 +151,8 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
                   ref.read(sessionDaoProvider),
                   ref.read(messageDaoProvider),
                   session.sessionId,
+                  photoDao: ref.read(photoDaoProvider),
+                  photoService: ref.read(photoServiceProvider),
                 ),
               );
             }, childCount: entry.value.length),
@@ -277,6 +282,29 @@ class _MonthHeaderDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _MonthHeaderDelegate oldDelegate) {
     return title != oldDelegate.title;
+  }
+}
+
+/// Gallery icon button with progressive disclosure.
+///
+/// Only visible when the user has at least one photo.
+class _GalleryIconButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countAsync = ref.watch(photoCountProvider);
+
+    return countAsync.when(
+      data: (count) {
+        if (count < 1) return const SizedBox.shrink();
+        return IconButton(
+          icon: const Icon(Icons.photo_library_outlined),
+          tooltip: 'Photo gallery',
+          onPressed: () => Navigator.of(context).pushNamed('/gallery'),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+    );
   }
 }
 

@@ -51,6 +51,10 @@ dependencies:
   # Local LLM inference (Phase 8B — ADR-0017)
   llamadart: 0.6.2
 
+  # Photo capture (Phase 9 — ADR-0018)
+  image_picker: ^1.1.0
+  image: ^4.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
