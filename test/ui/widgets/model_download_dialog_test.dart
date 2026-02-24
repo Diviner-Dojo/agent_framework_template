@@ -90,7 +90,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Speech Model Required'), findsOneWidget);
-      expect(find.textContaining('~71 MB'), findsOneWidget);
+      expect(find.textContaining('~43 MB'), findsOneWidget);
       expect(find.text('Download'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
     });

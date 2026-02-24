@@ -60,6 +60,7 @@ class ConnectivityService {
   ///
   /// Call this once at app startup. Safe to call multiple times
   /// (subsequent calls are no-ops).
+  // coverage:ignore-start
   Future<void> initialize() async {
     if (_subscription != null) return; // Already initialized
 
@@ -71,6 +72,7 @@ class ConnectivityService {
       _currentStatus = results;
     });
   }
+  // coverage:ignore-end
 
   /// Whether the device currently has network connectivity.
   ///

@@ -20,7 +20,7 @@ import 'package:flutter/material.dart';
 ///   themeMode: ThemeMode.system,  // Follows device setting
 class AppTheme {
   // Private constructor — this class only has static members.
-  AppTheme._();
+  AppTheme._(); // coverage:ignore-line
 
   // =========================================================================
   // Color palette

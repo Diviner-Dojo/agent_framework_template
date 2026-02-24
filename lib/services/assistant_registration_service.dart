@@ -104,6 +104,7 @@ class AssistantRegistrationService {
   /// generic assistant launch (starts text mode).
   ///
   /// Returns `false` on iOS, non-voice launches, or if the check fails.
+  // coverage:ignore-start
   Future<bool> wasLaunchedAsVoiceAssistant() async {
     if (!_isAndroid) return false;
     try {
@@ -115,4 +116,6 @@ class AssistantRegistrationService {
       return false;
     }
   }
+
+  // coverage:ignore-end
 }

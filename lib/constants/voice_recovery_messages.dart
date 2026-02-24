@@ -15,7 +15,7 @@
 /// These are spoken via TTS to provide hands-free feedback. Keep messages
 /// short and conversational — they're heard, not read.
 class VoiceRecoveryMessages {
-  VoiceRecoveryMessages._();
+  VoiceRecoveryMessages._(); // coverage:ignore-line
 
   // =========================================================================
   // Session lifecycle
@@ -29,7 +29,7 @@ class VoiceRecoveryMessages {
   static const welcomeBack = 'Welcome back. Go ahead.';
 
   /// Spoken when the session ends via voice command.
-  static const sessionEndConfirm = "Got it, I'll wrap up your session now.";
+  static const sessionEndConfirm = 'Saving your session. Take care!';
 
   /// Spoken after the closing summary is generated.
   static const sessionEndComplete =

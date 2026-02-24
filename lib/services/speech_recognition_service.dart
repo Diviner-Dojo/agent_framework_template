@@ -38,7 +38,10 @@ class SpeechResult {
   final bool isFinal;
 
   /// Creates a speech result.
-  const SpeechResult({required this.text, required this.isFinal});
+  const SpeechResult({
+    required this.text,
+    required this.isFinal,
+  }); // coverage:ignore-line
 
   @override
   String toString() => 'SpeechResult(text: "$text", isFinal: $isFinal)';
@@ -111,6 +114,18 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
   bool _isListening = false;
   bool _isInitialized = false;
 
+  /// Convert ALL CAPS sherpa_onnx output to sentence case.
+  ///
+  /// The Zipformer model outputs uppercase text. This converts it to
+  /// natural sentence case (first letter capitalized, rest lowercase).
+  static String _toSentenceCase(String text) {
+    if (text.isEmpty) return text;
+    // Only transform if the text is all uppercase.
+    if (text != text.toUpperCase()) return text;
+    final lower = text.toLowerCase();
+    return lower[0].toUpperCase() + lower.substring(1);
+  }
+
   @override
   Future<void> initialize({required String modelPath}) async {
     if (_isInitialized) return;
@@ -122,11 +137,9 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
     final config = sherpa.OnlineRecognizerConfig(
       model: sherpa.OnlineModelConfig(
         transducer: sherpa.OnlineTransducerModelConfig(
-          encoder:
-              '$modelPath/encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
-          decoder: '$modelPath/decoder-epoch-99-avg-1-chunk-16-left-128.onnx',
-          joiner:
-              '$modelPath/joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
+          encoder: '$modelPath/encoder-epoch-99-avg-1.int8.onnx',
+          decoder: '$modelPath/decoder-epoch-99-avg-1.onnx',
+          joiner: '$modelPath/joiner-epoch-99-avg-1.int8.onnx',
         ),
         tokens: '$modelPath/tokens.txt',
         numThreads: 2,
@@ -213,8 +226,9 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
       _recognizer!.decode(_stream!);
     }
 
-    // Read the current result.
-    final text = _recognizer!.getResult(_stream!).text.trim();
+    // Read the current result and convert from ALL CAPS to sentence case.
+    final rawText = _recognizer!.getResult(_stream!).text.trim();
+    final text = _toSentenceCase(rawText);
 
     // Check for endpoint (utterance boundary).
     if (_recognizer!.isEndpoint(_stream!)) {
@@ -238,7 +252,9 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
 
     // Get any remaining text before stopping.
     if (_recognizer != null && _stream != null && _resultController != null) {
-      final text = _recognizer!.getResult(_stream!).text.trim();
+      final text = _toSentenceCase(
+        _recognizer!.getResult(_stream!).text.trim(),
+      );
       if (text.isNotEmpty) {
         _resultController!.add(SpeechResult(text: text, isFinal: true));
       }

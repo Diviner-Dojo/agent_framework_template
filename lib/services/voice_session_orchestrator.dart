@@ -155,14 +155,15 @@ class VoiceSessionOrchestrator {
   /// Whether TTS has been initialized.
   bool _ttsInitialized = false;
 
+  /// Whether we are actively using audio (STT/TTS).
+  /// Used to ignore audio focus loss events triggered by our own recording.
+  bool _isOurAudioActive = false;
+
   /// Confidence threshold for direct command execution.
   static const _highConfidenceThreshold = 0.8;
 
   /// Silence timeout before re-prompting (seconds).
   final int _silenceTimeoutSeconds;
-
-  /// Undo window duration (seconds).
-  static const _undoWindowSeconds = 30;
 
   /// Confirmation timeout (seconds) — prevents ambient audio spoofing.
   static const _confirmationTimeoutSeconds = 10;
@@ -203,6 +204,7 @@ class VoiceSessionOrchestrator {
       ),
     );
 
+    _isOurAudioActive = true;
     await _audioFocusService.requestFocus();
     await _speak(greeting);
 
@@ -229,6 +231,7 @@ class VoiceSessionOrchestrator {
       ),
     );
 
+    _isOurAudioActive = true;
     await _audioFocusService.requestFocus();
     await _startListeningRaw();
   }
@@ -240,6 +243,7 @@ class VoiceSessionOrchestrator {
     }
 
     await _stopListening();
+    _isOurAudioActive = false;
     await _audioFocusService.abandonFocus();
     _updateState(state.copyWith(phase: VoiceLoopPhase.idle));
   }
@@ -322,6 +326,7 @@ class VoiceSessionOrchestrator {
     if (_ttsService.isSpeaking) {
       await _ttsService.stop();
     }
+    _isOurAudioActive = false;
     await _audioFocusService.abandonFocus();
 
     _updateState(const VoiceOrchestratorState());
@@ -598,8 +603,6 @@ class VoiceSessionOrchestrator {
 
   /// Execute end session command.
   Future<void> _executeEndSession() async {
-    final sessionId = currentSessionId;
-
     _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
     await _speak(VoiceRecoveryMessages.sessionEndConfirm);
 
@@ -608,15 +611,9 @@ class VoiceSessionOrchestrator {
 
     if (onEndSession != null) {
       try {
+        _lastClosedSessionId = currentSessionId;
         await onEndSession!();
-
-        // Store session ID for undo.
-        _lastClosedSessionId = sessionId;
         currentSessionId = null;
-        _startUndoTimer();
-
-        await _speak(VoiceRecoveryMessages.sessionEndComplete);
-        await _speak(VoiceRecoveryMessages.undoAvailable);
       } catch (e) {
         debugPrint('[VoiceOrchestrator] endSession error: $e');
         await _handleError(VoiceRecoveryMessages.processingError);
@@ -624,6 +621,7 @@ class VoiceSessionOrchestrator {
       }
     }
 
+    _isOurAudioActive = false;
     await _audioFocusService.abandonFocus();
     _updateState(const VoiceOrchestratorState());
   }
@@ -694,14 +692,6 @@ class VoiceSessionOrchestrator {
     } else {
       _updateState(state.copyWith(phase: VoiceLoopPhase.idle));
     }
-  }
-
-  /// Start the undo window timer.
-  void _startUndoTimer() {
-    _undoTimer?.cancel();
-    _undoTimer = Timer(const Duration(seconds: _undoWindowSeconds), () {
-      _lastClosedSessionId = null;
-    });
   }
 
   /// Check if text is an affirmative response.
@@ -780,7 +770,12 @@ class VoiceSessionOrchestrator {
     switch (event) {
       case AudioFocusEvent.loss:
       case AudioFocusEvent.lossTransient:
-        pause();
+        // Ignore focus loss triggered by our own recording/TTS.
+        // The `record` package requests its own audio focus when it starts,
+        // which fires a loss event on our separate listener.
+        if (!_isOurAudioActive) {
+          pause();
+        }
       case AudioFocusEvent.gain:
         if (state.phase == VoiceLoopPhase.paused) {
           resume();

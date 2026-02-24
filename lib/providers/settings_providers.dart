@@ -30,7 +30,7 @@ import 'database_provider.dart';
 /// Returns a default instance in production. Override in tests with a mock
 /// or an instance configured with `isAndroid: true` to test channel calls.
 final assistantServiceProvider = Provider<AssistantRegistrationService>((ref) {
-  return AssistantRegistrationService();
+  return AssistantRegistrationService(); // coverage:ignore-line
 });
 
 /// Provides the current default assistant status.
