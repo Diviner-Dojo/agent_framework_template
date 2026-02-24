@@ -266,9 +266,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // SnackBar should appear with discard message.
+      // SnackBar should appear with closed message.
       expect(
-        find.text('Session discarded \u2014 nothing was recorded.'),
+        find.text('Session closed \u2014 nothing was recorded.'),
         findsOneWidget,
       );
     });

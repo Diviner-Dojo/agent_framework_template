@@ -94,8 +94,8 @@ void main() {
   });
 
   group('AgentLayer', () {
-    test('has two values', () {
-      expect(AgentLayer.values, hasLength(2));
+    test('has three values', () {
+      expect(AgentLayer.values, hasLength(3));
     });
 
     test('ruleBasedLocal is the offline layer', () {
@@ -104,6 +104,10 @@ void main() {
 
     test('llmRemote is the online layer', () {
       expect(AgentLayer.llmRemote.name, 'llmRemote');
+    });
+
+    test('llmLocal is the on-device LLM layer', () {
+      expect(AgentLayer.llmLocal.name, 'llmLocal');
     });
   });
 }

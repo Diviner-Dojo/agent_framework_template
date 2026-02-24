@@ -1,60 +1,53 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-23 ~20:30 UTC
+> Last updated: 2026-02-24 ~01:30 UTC
 
 ## Current Task
 
-**Status:** Phase 7B implementation complete. All blocking review findings fixed. Ready to commit + PR.
-**Branch:** `phase7b-continuous-voice` (from `main`)
+**Status:** Phase 8A implementation complete on `phase8a-conversation-layers`.
+**Branch:** `phase8a-conversation-layers`
 
 ### In Progress
-- Commit Phase 7B changes, create PR to main
+- Commit + PR creation for Phase 8A
 
 ### Recently Completed
-- **Phase 7B: Continuous Voice Mode** — all 11 tasks complete
-  - Tasks 1-3: Constants, classifier, providers
-  - Tasks 4-6: VoiceSessionOrchestrator (core state machine, error recovery, verbal close)
-  - Task 7: Journal session screen refactor
-  - Task 8: Auto-save on backgrounding
-  - Task 9: Android assistant voice launch
-  - Task 10: Tests (650 tests, 80.0% coverage)
-  - Task 11: Quality gate (6/6) + review (APPROVE WITH CHANGES)
-  - Review: REV-20260223-202355.md — 6 blocking fixed, 16 advisory noted
-  - Discussion: DISC-20260223-201334-phase7b-continuous-voice-review (closed)
+- **Phase 8A: ConversationLayer Architecture + Journal-Only Mode**
+  - Extracted ConversationLayer strategy pattern (ADR-0017)
+  - Created lib/layers/ module: conversation_layer.dart, rule_based_layer.dart, claude_api_layer.dart
+  - Refactored AgentRepository to thin dispatcher with layer selection + fallback
+  - Added llmLocal to AgentLayer enum (Phase 8B preparation)
+  - Added session-locked layer lifecycle (lock at start, unlock at end/dismiss/discard)
+  - Added llm_providers.dart: preferClaudeProvider + journalOnlyModeProvider
+  - Added journal-only mode: skip greeting, skip follow-ups, Layer A summary only
+  - Added AI Assistant card to settings screen with preference toggles
+  - Data protection fix: empty sessions preserved instead of deleted
+  - 715 tests, 80.4% coverage, quality gate 6/6
+  - Review: REV-20260224-013000 — approve-with-changes (2 blocking fixed)
+- **Phase 7B smoke test fixes** (commit a8ff76d)
+- **Phase 7B: Continuous Voice Mode** — PR #21 merged
 - **Phase 7A: Voice Foundation (ADR-0015)** — PR #20 merged
-- **PR #18 — Phase 6** (merged), **PR #19 — Education Gates** (merged)
-
-### Blocking Fixes Applied (Phase 7B)
-1. _speakNonBlocking: added .catchError() to unawaited TTS future
-2. Phase guards after await _speak() in _executeEndSession/_executeDiscard
-3. Bounded 10-second confirmation timeout (prevents ambient audio spoofing)
-4. Moved "stop"/"finish"/"bye" from _strongEndPattern to _moderateEndPattern
-5. Reset _awaitingConfirmation/_pendingCommand in dispose() and start methods
-6. Fixed classifier test assertions for false-positive cases
 
 ### Deferred
-- **ADR-0016** for Phase 7B decisions (callback pattern, ValueNotifier, classifier separation)
-- **16 advisory findings** — see REV-20260223-202355.md recommended section
-- **Populate SHA-256 checksums** — need on-device download to get actual hashes
+- 12 advisory findings from REV-20260224-013000 (DRY violation, missing tests, UX improvements)
+- **ADR-0016** for Phase 7B decisions
+- **16 advisory findings** from REV-20260223-202355
+- **Populate SHA-256 checksums** for voice models
 - **CLAUDE.md updates from RETRO-20260220b**
 
-## Key Files (Phase 7B)
+## Key Files (Phase 8A)
 
-| File | Action |
-|------|--------|
-| lib/constants/voice_recovery_messages.dart | New |
-| lib/services/voice_command_classifier.dart | New |
-| lib/services/voice_session_orchestrator.dart | New |
-| lib/providers/voice_providers.dart | Modified |
-| lib/ui/screens/journal_session_screen.dart | Modified |
-| lib/ui/screens/settings_screen.dart | Modified |
-| lib/providers/session_providers.dart | Modified |
-| lib/services/assistant_registration_service.dart | Modified |
-| lib/app.dart | Modified |
-| android/.../MainActivity.kt | Modified |
-| lib/database/tables.dart | Modified (coverage:ignore) |
-| test/ (2 new, 1 modified test files) | New/Modified |
+| File | Changes |
+|------|---------|
+| lib/layers/conversation_layer.dart | NEW — abstract strategy interface |
+| lib/layers/rule_based_layer.dart | NEW — Layer A extracted from AgentRepository |
+| lib/layers/claude_api_layer.dart | NEW — Layer B remote extracted from AgentRepository |
+| lib/models/agent_response.dart | Added AgentLayer.llmLocal enum value |
+| lib/repositories/agent_repository.dart | Refactored to thin dispatcher with fallback |
+| lib/providers/llm_providers.dart | NEW — preferClaude + journalOnlyMode providers |
+| lib/providers/session_providers.dart | Layer lock/unlock wiring + journal-only mode |
+| lib/ui/screens/settings_screen.dart | New AI Assistant card with toggles |
+| docs/adr/ADR-0017-local-llm-layer-architecture.md | NEW — supersedes ADR-0006 |
 
 ## Open Discussions
 
@@ -62,8 +55,9 @@ None
 
 ## Key Decisions (Recent)
 
-- ADR-0015: Voice Mode Architecture — Zipformer STT, flutter_tts, push-to-talk, lazy model download
-- Phase 7B: Callback pattern for circular dep avoidance, ValueNotifier for orchestrator state, separate VoiceCommandClassifier, sentence-splitting TTS (pending ADR-0016)
+- ADR-0017: ConversationLayer strategy pattern, session-locked layer, fallback chain
+- ADR-0015: Voice Mode Architecture
+- Phase 7B: Callback pattern, ValueNotifier, VoiceCommandClassifier
 
 ## Blockers
 

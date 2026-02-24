@@ -20,6 +20,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/auth_providers.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/llm_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
@@ -70,6 +71,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           _buildAssistantCard(context, assistantStatusAsync),
           const SizedBox(height: 16),
           _buildVoiceCard(context),
+          const SizedBox(height: 16),
+          _buildAiAssistantCard(context),
           const SizedBox(height: 16),
           _buildCloudSyncCard(context),
           const SizedBox(height: 16),
@@ -239,6 +242,79 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build the "AI Assistant" settings card with layer preferences.
+  Widget _buildAiAssistantCard(BuildContext context) {
+    final preferClaude = ref.watch(preferClaudeProvider);
+    final journalOnly = ref.watch(journalOnlyModeProvider);
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('AI Assistant', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              title: const Text('Prefer Claude when online'),
+              subtitle: Text(
+                journalOnly
+                    ? 'Disabled while Journal only mode is on'
+                    : 'Use Claude API for richer conversations when available',
+              ),
+              value: preferClaude,
+              onChanged: journalOnly
+                  ? null
+                  : (value) {
+                      ref.read(preferClaudeProvider.notifier).setEnabled(value);
+                    },
+              contentPadding: EdgeInsets.zero,
+            ),
+            SwitchListTile(
+              title: const Text('Journal only mode'),
+              subtitle: const Text(
+                'Skip greetings and follow-ups — just capture your thoughts',
+              ),
+              value: journalOnly,
+              onChanged: (value) {
+                ref.read(journalOnlyModeProvider.notifier).setEnabled(value);
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 8),
+            // LLM model status placeholder for Phase 8B.
+            Row(
+              children: [
+                Icon(
+                  Icons.smart_toy_outlined,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Local AI: Not downloaded',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Personality settings coming in a future update',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),
