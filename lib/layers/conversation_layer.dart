@@ -68,3 +68,15 @@ abstract class ConversationLayer {
   /// Get a greeting for a resumed session.
   Future<AgentResponse> getResumeGreeting();
 }
+
+/// Shared time-of-day string for LLM context prompts.
+///
+/// Used by [ClaudeApiLayer] and [LocalLlmLayer] to provide temporal
+/// context in greetings. Extracted here to avoid duplication.
+String getTimeOfDay(DateTime time) {
+  final hour = time.hour;
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 22) return 'evening';
+  return 'late night';
+}

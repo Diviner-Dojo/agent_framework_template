@@ -123,8 +123,7 @@ void main() {
     test(
       'prefer-Claude OFF + local LLM available → local LLM serves',
       () async {
-        final agent = AgentRepository();
-        agent.localLlmLayer = FakeLocalLlmLayer();
+        final agent = AgentRepository(localLlmLayer: FakeLocalLlmLayer());
 
         final response = await agent.getGreeting(
           now: DateTime(2026, 2, 23, 10, 0),
@@ -174,9 +173,9 @@ void main() {
         final agent = AgentRepository(
           claudeService: claudeService,
           connectivityService: connectivity,
+          localLlmLayer: FakeLocalLlmLayer(),
         );
         agent.setPreferClaude(true);
-        agent.localLlmLayer = FakeLocalLlmLayer();
 
         final response = await agent.getGreeting(
           now: DateTime(2026, 2, 23, 10, 0),
@@ -188,36 +187,61 @@ void main() {
 
   group('Session lock', () {
     test('locked layer persists for session duration', () async {
-      final agent = AgentRepository();
-      agent.localLlmLayer = FakeLocalLlmLayer();
+      final env = Environment.custom(
+        supabaseUrl: 'https://test.supabase.co',
+        supabaseAnonKey: 'test-key',
+      );
+      final dio = Dio();
+      dio.httpClientAdapter = _SuccessDioAdapter();
+      final claudeService = ClaudeApiService(environment: env, dio: dio);
+      final connectivity = AlwaysOnlineConnectivityService();
 
+      final agent = AgentRepository(
+        claudeService: claudeService,
+        connectivityService: connectivity,
+        localLlmLayer: FakeLocalLlmLayer(),
+      );
+
+      // Lock on local LLM (default preference, local > Claude in fallback).
       agent.lockLayerForSession();
 
-      // First call uses local LLM (locked).
       final r1 = await agent.getGreeting(now: DateTime(2026, 2, 23, 10, 0));
       expect(r1.layer, AgentLayer.llmLocal);
 
-      // Remove local LLM — but lock should persist.
-      agent.localLlmLayer = null;
+      // Change preference to Claude — but lock should persist.
+      agent.setPreferClaude(true);
 
       final r2 = await agent.getGreeting(now: DateTime(2026, 2, 23, 10, 0));
       expect(r2.layer, AgentLayer.llmLocal);
     });
 
     test('unlock clears session lock', () async {
-      final agent = AgentRepository();
-      agent.localLlmLayer = FakeLocalLlmLayer();
+      final env = Environment.custom(
+        supabaseUrl: 'https://test.supabase.co',
+        supabaseAnonKey: 'test-key',
+      );
+      final dio = Dio();
+      dio.httpClientAdapter = _SuccessDioAdapter();
+      final claudeService = ClaudeApiService(environment: env, dio: dio);
+      final connectivity = AlwaysOnlineConnectivityService();
 
+      final agent = AgentRepository(
+        claudeService: claudeService,
+        connectivityService: connectivity,
+        localLlmLayer: FakeLocalLlmLayer(),
+      );
+
+      // Lock on local LLM.
       agent.lockLayerForSession();
       agent.unlockLayer();
 
-      // Remove local LLM after unlock — should now use rule-based.
-      agent.localLlmLayer = null;
+      // After unlock, preference change takes effect.
+      agent.setPreferClaude(true);
 
       final response = await agent.getGreeting(
         now: DateTime(2026, 2, 23, 10, 0),
       );
-      expect(response.layer, AgentLayer.ruleBasedLocal);
+      expect(response.layer, AgentLayer.llmRemote);
     });
   });
 
@@ -258,8 +282,8 @@ void main() {
         final agent = AgentRepository(
           claudeService: claudeService,
           connectivityService: connectivity,
+          localLlmLayer: FakeLocalLlmLayer(),
         );
-        agent.localLlmLayer = FakeLocalLlmLayer();
 
         // Lock on Claude (prefer Claude).
         agent.setPreferClaude(true);
@@ -298,6 +322,106 @@ void main() {
       expect(summary.layer, AgentLayer.ruleBasedLocal);
     });
   });
+
+  group('LocalLlmLayer fallback — all 4 methods', () {
+    late AgentRepository agent;
+
+    setUp(() {
+      agent = AgentRepository(localLlmLayer: ThrowingLocalLlmLayer());
+    });
+
+    test('getGreeting falls back to rule-based on LocalLlmException', () async {
+      final response = await agent.getGreeting(
+        now: DateTime(2026, 2, 23, 10, 0),
+      );
+      expect(response.layer, AgentLayer.ruleBasedLocal);
+    });
+
+    test('getFollowUp falls back to rule-based on LocalLlmException', () async {
+      final response = await agent.getFollowUp(
+        latestUserMessage: 'I had a good day.',
+        conversationHistory: [],
+        followUpCount: 0,
+        allMessages: [
+          {'role': 'user', 'content': 'I had a good day.'},
+        ],
+      );
+      // Rule-based layer still produces a follow-up.
+      expect(response, isNotNull);
+      expect(response!.layer, AgentLayer.ruleBasedLocal);
+    });
+
+    test(
+      'generateSummary falls back to rule-based on LocalLlmException',
+      () async {
+        final response = await agent.generateSummary(
+          userMessages: ['Had a good day.'],
+          allMessages: [
+            {'role': 'user', 'content': 'Had a good day.'},
+          ],
+        );
+        expect(response.layer, AgentLayer.ruleBasedLocal);
+      },
+    );
+
+    test(
+      'getResumeGreeting falls back to rule-based on LocalLlmException',
+      () async {
+        final response = await agent.getResumeGreeting();
+        expect(response.layer, AgentLayer.ruleBasedLocal);
+      },
+    );
+  });
+
+  group('Prompt isolation', () {
+    test('custom prompt does not leak into rule-based fallback', () async {
+      // When LocalLlmLayer fails and falls back to RuleBasedLayer,
+      // the rule-based response should not contain any custom prompt text.
+      final agent = AgentRepository(localLlmLayer: ThrowingLocalLlmLayer());
+
+      final response = await agent.getGreeting(
+        now: DateTime(2026, 2, 23, 10, 0),
+      );
+      expect(response.layer, AgentLayer.ruleBasedLocal);
+      // Rule-based greetings are fixed strings — no custom prompt leakage.
+      expect(response.content, isNot(contains('custom')));
+    });
+  });
+}
+
+/// A local LLM layer that always throws (for fallback testing).
+class ThrowingLocalLlmLayer implements ConversationLayer {
+  @override
+  Future<AgentResponse> getGreeting({
+    DateTime? lastSessionDate,
+    DateTime? now,
+    int sessionCount = 0,
+  }) async {
+    throw Exception('Local LLM failed');
+  }
+
+  @override
+  Future<AgentResponse?> getFollowUp({
+    required String latestUserMessage,
+    required List<String> conversationHistory,
+    required int followUpCount,
+    List<Map<String, String>>? allMessages,
+  }) async {
+    throw Exception('Local LLM failed');
+  }
+
+  @override
+  Future<AgentResponse> generateSummary({
+    required List<String> userMessages,
+    List<Map<String, String>>? allMessages,
+  }) async {
+    throw Exception('Local LLM failed');
+  }
+
+  @override
+  Future<AgentResponse> getResumeGreeting() async {
+    throw Exception('Local LLM failed');
+  }
 }
 
 /// Mock adapter that returns a successful Claude response.

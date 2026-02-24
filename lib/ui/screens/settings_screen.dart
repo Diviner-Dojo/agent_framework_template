@@ -18,13 +18,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../models/personality_config.dart';
 import '../../providers/auth_providers.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/llm_providers.dart';
+import '../../providers/personality_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
 import '../../providers/voice_providers.dart';
+import '../widgets/llm_model_download_dialog.dart';
 
 /// Settings screen showing assistant status and app information.
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -252,6 +255,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   Widget _buildAiAssistantCard(BuildContext context) {
     final preferClaude = ref.watch(preferClaudeProvider);
     final journalOnly = ref.watch(journalOnlyModeProvider);
+    final llmModelReadyAsync = ref.watch(llmModelReadyProvider);
+    final personality = ref.watch(personalityConfigProvider);
     final theme = Theme.of(context);
 
     return Card(
@@ -289,36 +294,169 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               contentPadding: EdgeInsets.zero,
             ),
             const SizedBox(height: 8),
-            // LLM model status placeholder for Phase 8B.
-            Row(
-              children: [
-                Icon(
-                  Icons.smart_toy_outlined,
-                  color: theme.colorScheme.onSurfaceVariant,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Local AI: Not downloaded',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+            // LLM model status.
+            llmModelReadyAsync.when(
+              data: (isReady) => Row(
+                children: [
+                  Icon(
+                    isReady ? Icons.check_circle : Icons.smart_toy_outlined,
+                    color: isReady
+                        ? Colors.green
+                        : theme.colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isReady ? 'Local AI: Ready' : 'Local AI: Not downloaded',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isReady
+                            ? null
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Personality settings coming in a future update',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                  if (!isReady)
+                    TextButton(
+                      onPressed: () => _showLlmDownloadDialog(context),
+                      child: const Text('Download'),
+                    ),
+                ],
+              ),
+              loading: () => const Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 8),
+                  Text('Checking model status...'),
+                ],
+              ),
+              error: (_, _) => Text(
+                'Could not check model status',
+                style: TextStyle(color: theme.colorScheme.error),
               ),
             ),
+            const SizedBox(height: 16),
+            // Personality section.
+            Text('Personality', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            _buildPersonalitySection(context, personality, journalOnly),
           ],
         ),
       ),
     );
+  }
+
+  /// Show the LLM model download dialog.
+  Future<void> _showLlmDownloadDialog(BuildContext context) async {
+    final downloadService = ref.read(llmModelDownloadServiceProvider);
+    final downloaded = await showLlmModelDownloadDialog(
+      context: context,
+      downloadService: downloadService,
+    );
+    if (downloaded) {
+      ref.invalidate(llmModelReadyProvider);
+    }
+  }
+
+  /// Build the personality settings section.
+  Widget _buildPersonalitySection(
+    BuildContext context,
+    PersonalityConfig personality,
+    bool journalOnly,
+  ) {
+    final theme = Theme.of(context);
+
+    if (journalOnly) {
+      return Text(
+        'Personality settings are disabled in journal-only mode',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Name field.
+        TextFormField(
+          initialValue: personality.name,
+          decoration: const InputDecoration(
+            labelText: 'Assistant name',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          onFieldSubmitted: (value) {
+            if (value.trim().isNotEmpty) {
+              ref
+                  .read(personalityConfigProvider.notifier)
+                  .setName(value.trim());
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        // Conversation style dropdown.
+        DropdownButtonFormField<ConversationStyle>(
+          initialValue: personality.conversationStyle,
+          decoration: const InputDecoration(
+            labelText: 'Conversation style',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          items: ConversationStyle.values.map((style) {
+            return DropdownMenuItem(
+              value: style,
+              child: Text(_styleLabel(style)),
+            );
+          }).toList(),
+          onChanged: (style) {
+            if (style != null) {
+              ref
+                  .read(personalityConfigProvider.notifier)
+                  .setConversationStyle(style);
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        // Custom prompt text area.
+        TextFormField(
+          initialValue: personality.customPrompt ?? '',
+          decoration: const InputDecoration(
+            labelText: 'Custom prompt (optional)',
+            hintText: 'Add extra instructions for the AI...',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          maxLines: 3,
+          maxLength: 500,
+          onFieldSubmitted: (value) {
+            ref
+                .read(personalityConfigProvider.notifier)
+                .setCustomPrompt(value.isEmpty ? null : value);
+          },
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Changes take effect on the next session',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Human-readable label for a conversation style.
+  static String _styleLabel(ConversationStyle style) {
+    return switch (style) {
+      ConversationStyle.warm => 'Warm & Supportive',
+      ConversationStyle.professional => 'Professional & Concise',
+      ConversationStyle.curious => 'Curious & Exploratory',
+    };
   }
 
   /// Build the "Cloud Sync" card showing auth state and sync controls.

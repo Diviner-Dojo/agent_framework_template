@@ -1,32 +1,30 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-24 ~01:30 UTC
+> Last updated: 2026-02-24 ~06:30 UTC
 
 ## Current Task
 
-**Status:** Phase 8A implementation complete on `phase8a-conversation-layers`.
-**Branch:** `phase8a-conversation-layers`
+**Status:** Phase 8B build complete, pending review and commit.
+**Branch:** `main`
 
 ### In Progress
-- Commit + PR creation for Phase 8A
+- Phase 8B needs `/review` before commit
 
 ### Recently Completed
-- **Phase 8A: ConversationLayer Architecture + Journal-Only Mode**
-  - Extracted ConversationLayer strategy pattern (ADR-0017)
-  - Created lib/layers/ module: conversation_layer.dart, rule_based_layer.dart, claude_api_layer.dart
-  - Refactored AgentRepository to thin dispatcher with layer selection + fallback
-  - Added llmLocal to AgentLayer enum (Phase 8B preparation)
-  - Added session-locked layer lifecycle (lock at start, unlock at end/dismiss/discard)
-  - Added llm_providers.dart: preferClaudeProvider + journalOnlyModeProvider
-  - Added journal-only mode: skip greeting, skip follow-ups, Layer A summary only
-  - Added AI Assistant card to settings screen with preference toggles
-  - Data protection fix: empty sessions preserved instead of deleted
-  - 715 tests, 80.4% coverage, quality gate 6/6
-  - Review: REV-20260224-013000 — approve-with-changes (2 blocking fixed)
+- **Phase 8B: Local LLM Integration** — build complete
+  - 13 build tasks, 6 checkpoints (all APPROVE), 0 unresolved
+  - 822 tests passing, 80.7% coverage, quality gate 6/6
+  - Discussion: DISC-20260224-053219-build-phase8b-local-llm (closed)
+  - New files: personality_config.dart, local_llm_service.dart, local_llm_layer.dart,
+    llm_model_download_service.dart, llm_model_download_dialog.dart, personality_providers.dart
+  - Modified: agent_repository.dart, conversation_layer.dart, claude_api_layer.dart,
+    llm_providers.dart, session_providers.dart, settings_screen.dart, pubspec.yaml
+  - Test files: 7 new, 3 modified (settings_screen, settings_assistant, settings_data_management,
+    app_routing tests updated for llmModelReadyProvider override)
+- **Phase 8A: ConversationLayer Architecture + Journal-Only Mode** (merged)
 - **Phase 7B smoke test fixes** (commit a8ff76d)
 - **Phase 7B: Continuous Voice Mode** — PR #21 merged
-- **Phase 7A: Voice Foundation (ADR-0015)** — PR #20 merged
 
 ### Deferred
 - 12 advisory findings from REV-20260224-013000 (DRY violation, missing tests, UX improvements)
@@ -35,19 +33,22 @@
 - **Populate SHA-256 checksums** for voice models
 - **CLAUDE.md updates from RETRO-20260220b**
 
-## Key Files (Phase 8A)
+## Key Files (Phase 8B)
 
 | File | Changes |
 |------|---------|
-| lib/layers/conversation_layer.dart | NEW — abstract strategy interface |
-| lib/layers/rule_based_layer.dart | NEW — Layer A extracted from AgentRepository |
-| lib/layers/claude_api_layer.dart | NEW — Layer B remote extracted from AgentRepository |
-| lib/models/agent_response.dart | Added AgentLayer.llmLocal enum value |
-| lib/repositories/agent_repository.dart | Refactored to thin dispatcher with fallback |
-| lib/providers/llm_providers.dart | NEW — preferClaude + journalOnlyMode providers |
-| lib/providers/session_providers.dart | Layer lock/unlock wiring + journal-only mode |
-| lib/ui/screens/settings_screen.dart | New AI Assistant card with toggles |
-| docs/adr/ADR-0017-local-llm-layer-architecture.md | NEW — supersedes ADR-0006 |
+| lib/models/personality_config.dart | NEW — ConversationStyle enum + PersonalityConfig model |
+| lib/services/local_llm_service.dart | NEW — Abstract LLM service + LlamadartLlmService stub |
+| lib/layers/local_llm_layer.dart | NEW — ConversationLayer for local LLM inference |
+| lib/services/llm_model_download_service.dart | NEW — GGUF download + SHA-256 verification |
+| lib/ui/widgets/llm_model_download_dialog.dart | NEW — Download dialog with WiFi/cellular check |
+| lib/providers/personality_providers.dart | NEW — PersonalityNotifier with SharedPreferences |
+| lib/repositories/agent_repository.dart | localLlmLayer via constructor injection |
+| lib/layers/conversation_layer.dart | Shared getTimeOfDay() utility |
+| lib/providers/llm_providers.dart | 5 new providers (model ready, path, download, service, layer) |
+| lib/providers/session_providers.dart | Wire localLlmLayer into agentRepositoryProvider |
+| lib/ui/screens/settings_screen.dart | Live AI model status, personality section |
+| pubspec.yaml | Added llamadart: 0.6.2 |
 
 ## Open Discussions
 
@@ -56,8 +57,8 @@ None
 ## Key Decisions (Recent)
 
 - ADR-0017: ConversationLayer strategy pattern, session-locked layer, fallback chain
+- Phase 8B: Constructor injection for localLlmLayer, prompt isolation boundary
 - ADR-0015: Voice Mode Architecture
-- Phase 7B: Callback pattern, ValueNotifier, VoiceCommandClassifier
 
 ## Blockers
 

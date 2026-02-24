@@ -48,6 +48,9 @@ dependencies:
   flutter_tts: ^4.2.5
   crypto: ^3.0.6
 
+  # Local LLM inference (Phase 8B — ADR-0017)
+  llamadart: 0.6.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

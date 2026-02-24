@@ -27,6 +27,7 @@ import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
+import 'package:agentic_journal/providers/llm_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/services/assistant_registration_service.dart';
 
@@ -78,6 +79,7 @@ void main() {
             ),
             sessionCountProvider.overrideWith((ref) => Future.value(0)),
             sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
+            llmModelReadyProvider.overrideWith((ref) => Future.value(false)),
           ],
           child: const AgenticJournalApp(),
         ),
@@ -165,7 +167,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,
-        scrollable: find.byType(Scrollable),
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
