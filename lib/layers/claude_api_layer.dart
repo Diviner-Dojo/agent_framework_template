@@ -16,7 +16,8 @@
 
 import '../models/agent_response.dart';
 import '../services/claude_api_service.dart';
-import 'conversation_layer.dart' show ConversationLayer, getTimeOfDay;
+import 'conversation_layer.dart'
+    show ConversationLayer, getTimeOfDay, generateFirstSentenceSummary;
 
 /// Claude API conversation layer (Layer B remote).
 ///
@@ -116,19 +117,6 @@ class ClaudeApiLayer implements ConversationLayer {
 
   /// Simple first-sentence summary as fallback when Claude's summary is null.
   String _generateFallbackSummary(List<String> userMessages) {
-    if (userMessages.isEmpty) return '';
-    final sentences = <String>[];
-    for (final message in userMessages) {
-      final trimmed = message.trim();
-      if (trimmed.isEmpty) continue;
-      final match = RegExp(r'[.!?]').firstMatch(trimmed);
-      if (match != null) {
-        sentences.add(trimmed.substring(0, match.end).trim());
-      } else {
-        sentences.add(trimmed);
-      }
-    }
-    if (sentences.isEmpty) return '';
-    return sentences.join('. ');
+    return generateFirstSentenceSummary(userMessages);
   }
 }

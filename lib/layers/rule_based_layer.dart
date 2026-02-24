@@ -127,18 +127,7 @@ class RuleBasedLayer implements ConversationLayer {
   /// Exposed as public so AgentRepository can force Layer A summary
   /// in journal-only mode regardless of the active layer.
   String generateLocalSummaryText(List<String> userMessages) {
-    if (userMessages.isEmpty) return '';
-
-    final sentences = <String>[];
-    for (final message in userMessages) {
-      final firstSentence = _extractFirstSentence(message);
-      if (firstSentence.isNotEmpty) {
-        sentences.add(firstSentence);
-      }
-    }
-
-    if (sentences.isEmpty) return '';
-    return sentences.join('. ');
+    return generateFirstSentenceSummary(userMessages);
   }
 
   // =========================================================================
@@ -213,17 +202,5 @@ class RuleBasedLayer implements ConversationLayer {
       case KeywordCategory.none:
         return _genericFollowUps;
     }
-  }
-
-  String _extractFirstSentence(String message) {
-    final trimmed = message.trim();
-    if (trimmed.isEmpty) return '';
-
-    final match = RegExp(r'[.!?]').firstMatch(trimmed);
-    if (match != null) {
-      return trimmed.substring(0, match.end).trim();
-    }
-
-    return trimmed;
   }
 }

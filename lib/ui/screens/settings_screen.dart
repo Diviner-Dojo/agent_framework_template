@@ -265,7 +265,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('AI Assistant', style: theme.textTheme.titleMedium),
+            Text('Conversation AI', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
             SwitchListTile(
               title: const Text('Prefer Claude when online'),
@@ -298,12 +298,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             llmModelReadyAsync.when(
               data: (isReady) => Row(
                 children: [
-                  Icon(
-                    isReady ? Icons.check_circle : Icons.smart_toy_outlined,
-                    color: isReady
-                        ? Colors.green
-                        : theme.colorScheme.onSurfaceVariant,
-                    size: 20,
+                  ExcludeSemantics(
+                    child: Icon(
+                      isReady ? Icons.check_circle : Icons.smart_toy_outlined,
+                      color: isReady
+                          ? Colors.green
+                          : theme.colorScheme.onSurfaceVariant,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(

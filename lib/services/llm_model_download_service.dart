@@ -245,6 +245,9 @@ class LlmModelDownloadService {
   }
   // coverage:ignore-end
 
+  /// The model file name extracted from the download URL.
+  static String get modelFileName => _fileNameFromUrl(modelFile.url);
+
   /// Extract the filename from a URL.
   static String _fileNameFromUrl(String url) {
     return Uri.parse(url).pathSegments.last;

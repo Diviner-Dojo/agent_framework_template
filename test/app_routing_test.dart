@@ -163,7 +163,7 @@ void main() {
       // Should navigate to settings screen.
       expect(find.text('Digital Assistant'), findsOneWidget);
 
-      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      // Scroll down past Conversation AI card to make Cloud Sync visible.
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,

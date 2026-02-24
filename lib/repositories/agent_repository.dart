@@ -53,7 +53,15 @@ class AgentRepository {
   bool _preferClaude = false;
 
   /// Whether journal-only mode is active (bypass all layers).
-  bool journalOnlyMode = false;
+  bool _journalOnlyMode = false;
+
+  /// Whether journal-only mode is active.
+  bool get journalOnlyMode => _journalOnlyMode;
+
+  /// Set journal-only mode.
+  void setJournalOnlyMode(bool enabled) {
+    _journalOnlyMode = enabled;
+  }
 
   /// Creates an AgentRepository.
   ///

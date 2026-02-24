@@ -147,12 +147,19 @@ class PersonalityConfig {
     // Step 2: strip control characters except newlines
     result = result.replaceAll(RegExp(r'[\x00-\x09\x0B-\x1F]'), '');
 
-    // Step 3: strip ChatML role markers
+    // Step 3: strip ChatML and other format role markers
     result = result.replaceAll(RegExp(r'<\|im_start\|>'), '');
     result = result.replaceAll(RegExp(r'<\|im_end\|>'), '');
     result = result.replaceAll(RegExp(r'^Human:\s*', multiLine: true), '');
     result = result.replaceAll(RegExp(r'^Assistant:\s*', multiLine: true), '');
     result = result.replaceAll(RegExp(r'^### System\s*', multiLine: true), '');
+    // Llama format markers
+    result = result.replaceAll(RegExp(r'\[INST\]'), '');
+    result = result.replaceAll(RegExp(r'\[/INST\]'), '');
+    // Generic role markers
+    result = result.replaceAll(RegExp(r'<\|system\|>'), '');
+    result = result.replaceAll(RegExp(r'<\|user\|>'), '');
+    result = result.replaceAll(RegExp(r'<\|assistant\|>'), '');
 
     // Step 4: trim again after stripping (markers may leave whitespace)
     result = result.trim();

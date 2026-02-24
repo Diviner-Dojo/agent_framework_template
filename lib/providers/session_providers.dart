@@ -980,7 +980,7 @@ final agentRepositoryProvider = Provider<AgentRepository>((ref) {
     localLlmLayer: localLlmLayer,
   );
   repo.setPreferClaude(preferClaude);
-  repo.journalOnlyMode = journalOnlyMode;
+  repo.setJournalOnlyMode(journalOnlyMode);
   return repo;
 });
 

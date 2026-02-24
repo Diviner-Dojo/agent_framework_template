@@ -120,6 +120,15 @@ void main() {
       expect(userMsg, contains('3 days'));
     });
 
+    test('includes days-since-last when exactly 2 days (boundary)', () async {
+      await layer.getGreeting(
+        now: DateTime(2026, 2, 23, 10, 0),
+        lastSessionDate: DateTime(2026, 2, 21, 10, 0),
+      );
+      final userMsg = mockService.lastMessages!.first['content']!;
+      expect(userMsg, contains('2 days'));
+    });
+
     test('does not include days-since-last when < 2 days', () async {
       await layer.getGreeting(
         now: DateTime(2026, 2, 23, 10, 0),
@@ -143,8 +152,8 @@ void main() {
         llmService: ThrowingLocalLlmService(),
         systemPrompt: testSystemPrompt,
       );
-      expect(
-        () => throwingLayer.getGreeting(now: DateTime(2026, 2, 23, 10, 0)),
+      await expectLater(
+        throwingLayer.getGreeting(now: DateTime(2026, 2, 23, 10, 0)),
         throwsA(isA<LocalLlmException>()),
       );
     });
@@ -217,8 +226,8 @@ void main() {
         llmService: ThrowingLocalLlmService(),
         systemPrompt: testSystemPrompt,
       );
-      expect(
-        () => throwingLayer.getFollowUp(
+      await expectLater(
+        throwingLayer.getFollowUp(
           latestUserMessage: 'Hi',
           conversationHistory: [],
           followUpCount: 0,
@@ -279,8 +288,8 @@ void main() {
         llmService: ThrowingLocalLlmService(),
         systemPrompt: testSystemPrompt,
       );
-      expect(
-        () => throwingLayer.generateSummary(
+      await expectLater(
+        throwingLayer.generateSummary(
           userMessages: ['Hi'],
           allMessages: [
             {'role': 'user', 'content': 'Hi'},
@@ -309,8 +318,8 @@ void main() {
         llmService: ThrowingLocalLlmService(),
         systemPrompt: testSystemPrompt,
       );
-      expect(
-        () => throwingLayer.getResumeGreeting(),
+      await expectLater(
+        throwingLayer.getResumeGreeting(),
         throwsA(isA<LocalLlmException>()),
       );
     });

@@ -170,7 +170,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      // Scroll down past Conversation AI card to make Cloud Sync visible.
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,
@@ -185,7 +185,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget(isAuthenticated: false));
       await tester.pumpAndSettle();
 
-      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      // Scroll down past Conversation AI card to make Cloud Sync visible.
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,
@@ -206,7 +206,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget(isAuthenticated: true));
       await tester.pumpAndSettle();
 
-      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      // Scroll down past Conversation AI card to make Cloud Sync visible.
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,
@@ -253,7 +253,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Scroll down past AI Assistant card to make Cloud Sync visible.
+        // Scroll down past Conversation AI card to make Cloud Sync visible.
         await tester.scrollUntilVisible(
           find.text('Cloud Sync'),
           200,
@@ -297,7 +297,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      // Scroll down past Conversation AI card to make Cloud Sync visible.
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,

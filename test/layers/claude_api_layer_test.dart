@@ -78,8 +78,8 @@ void main() {
     test('throws ClaudeApiException on timeout', () async {
       adapter.setError(DioExceptionType.connectionTimeout);
 
-      expect(
-        () => layer.getGreeting(now: DateTime(2026, 2, 23, 10, 0)),
+      await expectLater(
+        layer.getGreeting(now: DateTime(2026, 2, 23, 10, 0)),
         throwsA(isA<ClaudeApiException>()),
       );
     });
@@ -87,8 +87,8 @@ void main() {
     test('throws ClaudeApiException on network error', () async {
       adapter.setError(DioExceptionType.connectionError);
 
-      expect(
-        () => layer.getGreeting(now: DateTime(2026, 2, 23, 10, 0)),
+      await expectLater(
+        layer.getGreeting(now: DateTime(2026, 2, 23, 10, 0)),
         throwsA(isA<ClaudeApiException>()),
       );
     });
@@ -134,8 +134,8 @@ void main() {
     test('throws ClaudeApiException on API error', () async {
       adapter.setError(DioExceptionType.connectionTimeout);
 
-      expect(
-        () => layer.getFollowUp(
+      await expectLater(
+        layer.getFollowUp(
           latestUserMessage: 'test',
           conversationHistory: [],
           followUpCount: 0,
@@ -186,8 +186,8 @@ void main() {
     test('throws ClaudeApiException on API error', () async {
       adapter.setError(DioExceptionType.connectionTimeout);
 
-      expect(
-        () => layer.generateSummary(
+      await expectLater(
+        layer.generateSummary(
           userMessages: ['test'],
           allMessages: [
             {'role': 'user', 'content': 'test'},

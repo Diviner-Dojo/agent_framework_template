@@ -27,7 +27,7 @@ class _MockAssistantService extends AssistantRegistrationService {
 }
 
 void main() {
-  group('Settings AI Assistant card', () {
+  group('Settings Conversation AI card', () {
     late SharedPreferences prefs;
     late _MockAssistantService mockService;
 
@@ -67,14 +67,14 @@ void main() {
       );
     }
 
-    testWidgets('renders AI Assistant card with both toggles', (
+    testWidgets('renders Conversation AI card with both toggles', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(buildSettingsScreen());
       await tester.pumpAndSettle();
 
       // Card title
-      expect(find.text('AI Assistant'), findsOneWidget);
+      expect(find.text('Conversation AI'), findsOneWidget);
 
       // Both toggles visible
       expect(find.text('Prefer Claude when online'), findsOneWidget);

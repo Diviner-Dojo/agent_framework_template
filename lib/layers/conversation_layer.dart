@@ -80,3 +80,26 @@ String getTimeOfDay(DateTime time) {
   if (hour >= 17 && hour < 22) return 'evening';
   return 'late night';
 }
+
+/// Generate a summary by extracting the first sentence of each user message.
+///
+/// Shared by [RuleBasedLayer] and [ClaudeApiLayer] (as fallback) to avoid
+/// duplicating the first-sentence extraction logic.
+String generateFirstSentenceSummary(List<String> userMessages) {
+  if (userMessages.isEmpty) return '';
+
+  final sentences = <String>[];
+  for (final message in userMessages) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) continue;
+    final match = RegExp(r'[.!?]').firstMatch(trimmed);
+    if (match != null) {
+      sentences.add(trimmed.substring(0, match.end).trim());
+    } else {
+      sentences.add(trimmed);
+    }
+  }
+
+  if (sentences.isEmpty) return '';
+  return sentences.join('. ');
+}
