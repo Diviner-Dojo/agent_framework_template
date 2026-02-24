@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../database/app_database.dart';
+import '../database/daos/calendar_event_dao.dart';
 import '../database/daos/message_dao.dart';
 import '../database/daos/photo_dao.dart';
 import '../database/daos/session_dao.dart';
@@ -48,16 +49,19 @@ class SyncRepository {
   final SessionDao _sessionDao;
   final MessageDao _messageDao;
   final PhotoDao? _photoDao;
+  final CalendarEventDao? _calendarEventDao;
 
   SyncRepository({
     required SupabaseService supabaseService,
     required SessionDao sessionDao,
     required MessageDao messageDao,
     PhotoDao? photoDao,
+    CalendarEventDao? calendarEventDao,
   }) : _supabaseService = supabaseService,
        _sessionDao = sessionDao,
        _messageDao = messageDao,
-       _photoDao = photoDao;
+       _photoDao = photoDao,
+       _calendarEventDao = calendarEventDao;
 
   /// Sync all pending and failed sessions to Supabase.
   ///
@@ -134,12 +138,12 @@ class SyncRepository {
   // Upload logic
   // =========================================================================
 
-  /// Upload a session and its messages to Supabase via UPSERT.
+  /// Upload a session, its messages, and calendar events to Supabase via UPSERT.
   ///
-  /// The session and messages are uploaded in two separate calls (not atomic).
-  /// If the session UPSERT succeeds but messages fail, the caller's catch
-  /// block sets syncStatus to FAILED, so a retry will re-upload both.
-  /// UPSERT idempotency (per ADR-0004) makes retries safe.
+  /// The session, messages, and events are uploaded in separate calls (not
+  /// atomic). If any step fails, the caller's catch block sets syncStatus to
+  /// FAILED, so a retry will re-upload all. UPSERT idempotency (per ADR-0004)
+  /// makes retries safe.
   @visibleForTesting
   Future<void> uploadSession(JournalSession session) async {
     final client = _supabaseService.client;
@@ -176,6 +180,24 @@ class SyncRepository {
 
       await client.from('journal_messages').upsert(messageRows);
     }
+
+    // UPSERT calendar events for this session (ADR-0020).
+    if (_calendarEventDao != null) {
+      final events = await _calendarEventDao.getEventsForSession(
+        session.sessionId,
+      );
+      if (events.isNotEmpty) {
+        final eventRows = events
+            .map((e) => buildEventUpsertMap(e, userId))
+            .toList();
+        await client.from('calendar_events').upsert(eventRows);
+
+        // Mark synced events.
+        for (final event in events) {
+          await _calendarEventDao.updateSyncStatus(event.eventId, 'SYNCED');
+        }
+      }
+    }
   }
 
   /// Build the upsert map for a session row in Supabase.
@@ -206,6 +228,72 @@ class SyncRepository {
       'created_at': session.createdAt.toUtc().toIso8601String(),
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
+  }
+
+  /// Build the upsert map for a calendar event row in Supabase.
+  ///
+  /// Extracted as a testable method so unit tests can assert the map's keys.
+  /// Mirrors the Supabase `calendar_events` table schema (003_events_schema.sql).
+  @visibleForTesting
+  static Map<String, dynamic> buildEventUpsertMap(
+    CalendarEvent event,
+    String userId,
+  ) {
+    return {
+      'event_id': event.eventId,
+      'session_id': event.sessionId,
+      'user_id': userId,
+      'title': event.title,
+      'start_time': event.startTime.toUtc().toIso8601String(),
+      'end_time': event.endTime?.toUtc().toIso8601String(),
+      'google_event_id': event.googleEventId,
+      'status': event.status,
+      'sync_status': 'SYNCED',
+      'raw_user_message': event.rawUserMessage,
+      'created_at': event.createdAt.toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+  }
+
+  /// Sync all pending calendar events across all sessions.
+  ///
+  /// Returns a [SyncResult] with counts of synced/failed events.
+  /// No-op if not authenticated or no CalendarEventDao was provided.
+  /// See: ADR-0020 (Google Calendar Integration)
+  Future<SyncResult> syncPendingCalendarEvents() async {
+    if (!_supabaseService.isAuthenticated || _calendarEventDao == null) {
+      return const SyncResult();
+    }
+
+    final client = _supabaseService.client;
+    final userId = _supabaseService.currentUser?.id;
+    if (client == null || userId == null) return const SyncResult();
+
+    final eventsToSync = await _calendarEventDao.getEventsToSync();
+    if (eventsToSync.isEmpty) return const SyncResult();
+
+    int synced = 0;
+    int failed = 0;
+    final errors = <String>[];
+
+    for (final event in eventsToSync) {
+      try {
+        await client
+            .from('calendar_events')
+            .upsert(buildEventUpsertMap(event, userId));
+        await _calendarEventDao.updateSyncStatus(event.eventId, 'SYNCED');
+        synced++;
+      } on Exception catch (e) {
+        await _calendarEventDao.updateSyncStatus(event.eventId, 'FAILED');
+        failed++;
+        errors.add('Event ${event.eventId}: $e');
+        if (kDebugMode) {
+          debugPrint('Event sync failed for ${event.eventId}: $e');
+        }
+      }
+    }
+
+    return SyncResult(syncedCount: synced, failedCount: failed, errors: errors);
   }
 
   /// Upload photos for a session to Supabase Storage.

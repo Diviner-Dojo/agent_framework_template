@@ -34,7 +34,9 @@ part 'app_database.g.dart';
 /// Usage:
 ///   final db = AppDatabase();          // production (file-based)
 ///   final db = AppDatabase.forTesting(NativeDatabase.memory());  // tests
-@DriftDatabase(tables: [JournalSessions, JournalMessages, Photos])
+@DriftDatabase(
+  tables: [JournalSessions, JournalMessages, Photos, CalendarEvents],
+)
 class AppDatabase extends _$AppDatabase {
   /// Default constructor — uses a file-based SQLite database.
   /// The database file is created in the app's documents directory.
@@ -49,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -72,6 +74,14 @@ class AppDatabase extends _$AppDatabase {
           'photos',
           'CREATE INDEX IF NOT EXISTS idx_photos_session_id '
               'ON photos (session_id)',
+        ),
+      );
+      // Index for efficient event retrieval by session (Phase 11).
+      await m.createIndex(
+        Index(
+          'calendar_events',
+          'CREATE INDEX IF NOT EXISTS idx_calendar_events_session_id '
+              'ON calendar_events (session_id)',
         ),
       );
     },
@@ -109,6 +119,18 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(journalSessions, journalSessions.longitude);
         await m.addColumn(journalSessions, journalSessions.locationAccuracy);
         await m.addColumn(journalSessions, journalSessions.locationName);
+      }
+      if (from < 5) {
+        // Phase 11: Calendar events (ADR-0020).
+        await m.createTable(calendarEvents);
+        // Index for efficient event retrieval by session.
+        await m.createIndex(
+          Index(
+            'calendar_events',
+            'CREATE INDEX IF NOT EXISTS idx_calendar_events_session_id '
+                'ON calendar_events (session_id)',
+          ),
+        );
       }
     },
   );

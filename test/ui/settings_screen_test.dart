@@ -380,9 +380,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // SwitchListTile should be off by default (no preference set).
+      // Find the SwitchListTile that is an ancestor of the 'Enable location'
+      // text, not the last one (which may be a Calendar toggle).
       final switchWidget = tester.widget<SwitchListTile>(
-        find.byType(SwitchListTile).last,
+        find.ancestor(
+          of: find.text('Enable location'),
+          matching: find.byType(SwitchListTile),
+        ),
       );
       expect(switchWidget.value, false);
     });
@@ -433,19 +437,23 @@ void main() {
       await tester.pumpAndSettle();
 
       // Toggle should be off initially.
-      var switchTile = tester.widget<SwitchListTile>(
-        find.byType(SwitchListTile).last,
+      final locationSwitchFinder = find.ancestor(
+        of: find.text('Enable location'),
+        matching: find.byType(SwitchListTile),
       );
+      var switchTile = tester.widget<SwitchListTile>(locationSwitchFinder);
       expect(switchTile.value, false);
 
-      // Tap the toggle to turn it on.
-      await tester.tap(find.byType(Switch).last);
+      // Tap the location toggle to turn it on.
+      final locationSwitch = find.descendant(
+        of: locationSwitchFinder,
+        matching: find.byType(Switch),
+      );
+      await tester.tap(locationSwitch);
       await tester.pumpAndSettle();
 
       // Toggle should now be on (permission was granted).
-      switchTile = tester.widget<SwitchListTile>(
-        find.byType(SwitchListTile).last,
-      );
+      switchTile = tester.widget<SwitchListTile>(locationSwitchFinder);
       expect(switchTile.value, true);
     });
 
@@ -466,8 +474,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Tap the toggle.
-      await tester.tap(find.byType(Switch).last);
+      // Tap the location toggle specifically.
+      final locationSwitchFinder = find.ancestor(
+        of: find.text('Enable location'),
+        matching: find.byType(SwitchListTile),
+      );
+      final locationSwitch = find.descendant(
+        of: locationSwitchFinder,
+        matching: find.byType(Switch),
+      );
+      await tester.tap(locationSwitch);
       await tester.pumpAndSettle();
 
       // SnackBar should appear.
@@ -477,9 +493,7 @@ void main() {
       );
 
       // Toggle should remain off.
-      final switchTile = tester.widget<SwitchListTile>(
-        find.byType(SwitchListTile).last,
-      );
+      final switchTile = tester.widget<SwitchListTile>(locationSwitchFinder);
       expect(switchTile.value, false);
     });
 
@@ -499,8 +513,16 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Tap the toggle.
-        await tester.tap(find.byType(Switch).last);
+        // Tap the location toggle specifically.
+        final locationSwitchFinder = find.ancestor(
+          of: find.text('Enable location'),
+          matching: find.byType(SwitchListTile),
+        );
+        final locationSwitch = find.descendant(
+          of: locationSwitchFinder,
+          matching: find.byType(Switch),
+        );
+        await tester.tap(locationSwitch);
         await tester.pumpAndSettle();
 
         // SnackBar with settings action should appear.
@@ -508,9 +530,7 @@ void main() {
         expect(find.text('Open Settings'), findsOneWidget);
 
         // Toggle should remain off.
-        final switchTile = tester.widget<SwitchListTile>(
-          find.byType(SwitchListTile).last,
-        );
+        final switchTile = tester.widget<SwitchListTile>(locationSwitchFinder);
         expect(switchTile.value, false);
       },
     );

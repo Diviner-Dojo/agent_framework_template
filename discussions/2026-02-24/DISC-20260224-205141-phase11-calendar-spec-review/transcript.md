@@ -1,0 +1,41 @@
+---
+discussion_id: DISC-20260224-205141-phase11-calendar-spec-review
+started: 2026-02-24T20:54:15.339801+00:00
+ended: 2026-02-24T20:55:53.444258+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist]
+total_turns: 4
+---
+
+# Discussion: DISC-20260224-205141-phase11-calendar-spec-review
+
+## Turn 1 — architecture-consultant (critique)
+*2026-02-24T20:54:15.339801+00:00 | confidence: 0.88*
+*tags: architecture, boundaries, adr-alignment*
+
+APPROVE WITH CHANGES. 1 blocking: (B1) ADR-0020 must formally address the ADR-0005 deviation — Google OAuth direct-from-device vs Claude API proxy pattern. Without documenting why token-in-device is acceptable for OAuth but not for fixed API keys, the deviation is invisible. 2 medium advisory: (F2) sendMessage() already has 5 routing branches; adding calendar/reminder creates an ever-lengthening if/else chain — consider handler map refactor at this inflection point, (F3) CalendarEvents schema conflates event lifecycle state with sync state — separate status and syncStatus columns. 2 low: (F4) deferred OAuth state ownership unspecified (SessionState vs new provider), (F5) event extraction may need direct ClaudeApiService call vs ConversationLayer interface change — recommend option (b) matching existing recall pattern. Strengths: correct execution ordering (ADR first), token storage in flutter_secure_storage is consistent, voice-mode deferral shows good awareness of constraints, dedicated CalendarEvents table maintains separation, offline-first degradation respected.
+
+---
+
+## Turn 2 — security-specialist (critique)
+*2026-02-24T20:54:20.212385+00:00 | confidence: 0.87*
+*tags: security, oauth, validation, scope*
+
+APPROVE WITH CHANGES. 1 blocking: (B1) No validation step between LLM extraction output and Calendar API insert — crafted user input could manipulate LLM JSON response producing unexpected field values. Must validate extracted JSON against strict schema (title length, datetime range, no unexpected keys) before passing to Google Calendar API. 2 advisory: (F2) calendar.events scope grants create AND edit AND delete on ALL events, not just app-created ones — investigate calendar.events.owned or document scope minimization constraint in ADR, (F3) PENDING event queue should be capped and require per-item confirmation before bulk submission. Trust boundaries: user input to LLM extraction is the critical untrusted boundary. Strengths: direct device-to-Google with user's own OAuth token is correct architecture, flutter_secure_storage consistent with baseline, confirmation requirement is strong compensating control, RLS on Supabase table follows established pattern.
+
+---
+
+## Turn 3 — qa-specialist (critique)
+*2026-02-24T20:54:25.499592+00:00 | confidence: 0.88*
+*tags: testing, regression, coverage, edge-cases*
+
+APPROVE WITH CHANGES. 2 blocking: (B1) No regression harness for classifier API change — extract existing 23 test cases into named regression fixture group before any classifier code is written; pin expected types AND minimum confidence values. (B2) Temporal collision disambiguation not tested — inputs containing both future-action and past-recall signals need parameterized tests covering the collision space. 4 medium advisory: (F3) No test for malformed LLM extraction JSON, partial fields, or past datetime — define failure contract, (F4) migration_v3_test.dart hardcodes schemaVersion=4, will fail on bump to 5, (F5) Queue lifecycle tests needed: enqueue on disconnect, drain on reconnect, clear on signout, (F6) Voice orchestrator silence timeout must be tested with new confirmation state to prevent stuck state. Edge cases identified: relative time ambiguity, OAuth token expiry mid-creation, duplicate event insertion, interrupt+confirm collision in voice mode. Strengths: existing migration test pattern is exemplary, injectable callable pattern makes mock injection trivial, recall confirmation tests provide exact pattern for calendar confirmation.
+
+---
+
+## Turn 4 — facilitator (synthesis)
+*2026-02-24T20:55:53.444258+00:00 | confidence: 0.89*
+*tags: blocking:4, advisory:6*
+
+Verdict: APPROVE WITH CHANGES. 4 blocking findings addressed in spec revision, 6 advisory noted. Cross-specialist convergence on intent classifier regression risk (2/3 flagged). Blocking fixes applied: (B1-arch) ADR-0020 must document ADR-0005 deviation rationale for direct-from-device OAuth vs Edge Function proxy. (B2-sec) LLM extraction output must be validated against strict schema before Calendar API insert — added validation rules and failure contract to Task 5. (B3-qa) Regression harness must be created before any classifier code changes — added Step 2a to Task 2. (B4-qa) Temporal collision disambiguation tests must be specified — added parameterized collision test cases to Task 2. Advisory items incorporated: handler map refactor for sendMessage routing (arch F2), separate status/syncStatus columns (arch F3), PENDING queue cap of 5 (sec F3), extraction routing via direct service call matching recall pattern (arch F5). Advisory items deferred: migration test schemaVersion update (qa F4), queue lifecycle tests (qa F5), voice orchestrator timeout test for confirmation state (qa F6).
+
+---

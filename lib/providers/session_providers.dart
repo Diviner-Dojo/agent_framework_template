@@ -31,14 +31,18 @@
 
 import 'dart:convert';
 
+import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/environment.dart';
 import '../database/app_database.dart';
+import '../database/daos/calendar_event_dao.dart';
 import '../database/daos/message_dao.dart';
 import '../database/daos/photo_dao.dart';
 import '../database/daos/session_dao.dart';
+import '../services/event_extraction_service.dart';
+import '../services/google_calendar_service.dart';
 import '../services/photo_service.dart';
 import '../repositories/agent_repository.dart';
 import '../repositories/search_repository.dart';
@@ -48,6 +52,7 @@ import '../services/intent_classifier.dart';
 import '../utils/uuid_generator.dart';
 import '../utils/timestamp_utils.dart';
 import 'auth_providers.dart';
+import 'calendar_providers.dart';
 import 'database_provider.dart';
 import 'llm_providers.dart';
 import 'location_providers.dart';
@@ -153,6 +158,26 @@ class SessionState {
   /// Search terms extracted by the intent classifier for the pending query.
   final List<String> pendingSearchTerms;
 
+  /// Non-null when a calendar event intent was detected and is pending
+  /// user confirmation. Contains the raw user message. The UI shows an
+  /// inline confirmation card with extracted event details.
+  /// Follows the same pattern as [pendingRecallQuery] (ADR-0020 §7).
+  final String? pendingCalendarEvent;
+
+  /// Non-null when a reminder intent was detected and is pending user
+  /// confirmation. Contains the raw user message.
+  final String? pendingReminder;
+
+  /// The extracted event details from [pendingCalendarEvent] or
+  /// [pendingReminder]. Null when extraction hasn't run or failed.
+  final ExtractedEvent? pendingExtractedEvent;
+
+  /// True while the event extraction service is processing.
+  final bool isExtracting;
+
+  /// Error message if extraction failed.
+  final String? extractionError;
+
   const SessionState({
     this.activeSessionId,
     this.followUpCount = 0,
@@ -163,6 +188,11 @@ class SessionState {
     this.conversationMessages = const [],
     this.pendingRecallQuery,
     this.pendingSearchTerms = const [],
+    this.pendingCalendarEvent,
+    this.pendingReminder,
+    this.pendingExtractedEvent,
+    this.isExtracting = false,
+    this.extractionError,
   });
 
   /// Create a copy with updated fields.
@@ -180,6 +210,11 @@ class SessionState {
     List<Map<String, String>>? conversationMessages,
     Object? pendingRecallQuery = _sentinel,
     List<String>? pendingSearchTerms,
+    Object? pendingCalendarEvent = _sentinel,
+    Object? pendingReminder = _sentinel,
+    Object? pendingExtractedEvent = _sentinel,
+    bool? isExtracting,
+    Object? extractionError = _sentinel,
   }) {
     return SessionState(
       activeSessionId: identical(activeSessionId, _sentinel)
@@ -195,6 +230,19 @@ class SessionState {
           ? this.pendingRecallQuery
           : pendingRecallQuery as String?,
       pendingSearchTerms: pendingSearchTerms ?? this.pendingSearchTerms,
+      pendingCalendarEvent: identical(pendingCalendarEvent, _sentinel)
+          ? this.pendingCalendarEvent
+          : pendingCalendarEvent as String?,
+      pendingReminder: identical(pendingReminder, _sentinel)
+          ? this.pendingReminder
+          : pendingReminder as String?,
+      pendingExtractedEvent: identical(pendingExtractedEvent, _sentinel)
+          ? this.pendingExtractedEvent
+          : pendingExtractedEvent as ExtractedEvent?,
+      isExtracting: isExtracting ?? this.isExtracting,
+      extractionError: identical(extractionError, _sentinel)
+          ? this.extractionError
+          : extractionError as String?,
     );
   }
 }
@@ -351,24 +399,12 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Journal-only mode: save message silently, no follow-up or classification.
     if (_agent.journalOnlyMode) return;
 
-    // Phase 5: Intent classification — detect recall queries before routing
-    // to the normal journaling follow-up (ADR-0013 §3).
+    // Phase 5+11: Intent classification — detect recall, calendar, and
+    // reminder intents before routing to the journaling follow-up.
+    // Uses the top-ranked intent from classifyMulti() (ADR-0013, ADR-0020).
     final intentResult = _intentClassifier.classify(text);
-    if (intentResult.type == IntentType.query &&
-        intentResult.confidence >= _highConfidenceThreshold) {
-      // High confidence: route directly to recall.
-      await _handleRecallQuery(text, intentResult.searchTerms);
-      return;
-    }
-    if (intentResult.type == IntentType.query &&
-        intentResult.confidence >= _ambiguousThreshold) {
-      // Ambiguous: save pending query for inline confirmation by the UI.
-      state = state.copyWith(
-        pendingRecallQuery: text,
-        pendingSearchTerms: intentResult.searchTerms,
-      );
-      return;
-    }
+    final handled = await _routeByIntent(text, intentResult);
+    if (handled) return;
 
     // Check if the user wants to end the session.
     if (_agent.shouldEndSession(
@@ -717,6 +753,253 @@ class SessionNotifier extends StateNotifier<SessionState> {
   }
 
   // =========================================================================
+  // Intent routing (ADR-0013, ADR-0020)
+  // =========================================================================
+
+  /// Route a classified intent to the appropriate handler.
+  ///
+  /// Returns true if the intent was handled (caller should not continue
+  /// with the normal journaling follow-up). Returns false for journal
+  /// intent or intents below the ambiguous threshold.
+  Future<bool> _routeByIntent(String text, IntentResult intent) async {
+    switch (intent.type) {
+      case IntentType.query:
+        if (intent.confidence >= _highConfidenceThreshold) {
+          await _handleRecallQuery(text, intent.searchTerms);
+          return true;
+        }
+        if (intent.confidence >= _ambiguousThreshold) {
+          state = state.copyWith(
+            pendingRecallQuery: text,
+            pendingSearchTerms: intent.searchTerms,
+          );
+          return true;
+        }
+        return false;
+
+      case IntentType.calendarEvent:
+        if (intent.confidence >= _ambiguousThreshold) {
+          _handleCalendarIntent(text);
+          return true;
+        }
+        return false;
+
+      case IntentType.reminder:
+        if (intent.confidence >= _ambiguousThreshold) {
+          _handleReminderIntent(text);
+          return true;
+        }
+        return false;
+
+      case IntentType.journal:
+        return false;
+    }
+  }
+
+  /// Maximum pending calendar events per session (ADR-0020 §7).
+  static const _maxPendingEventsPerSession = 5;
+
+  /// Handle a calendar event intent: set pending state and extract details.
+  ///
+  /// The UI shows an inline confirmation card with extracted event details.
+  /// Extraction runs asynchronously — the card shows a loading state until
+  /// the extraction result arrives.
+  ///
+  /// Enforces the 5-event pending cap per ADR-0020 §7.
+  Future<void> _handleCalendarIntent(String text) async {
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return;
+
+    // Enforce pending event cap (ADR-0020 §7).
+    final calendarEventDao = _ref.read(calendarEventDaoProvider);
+    final pendingCount = await calendarEventDao.countPendingForSession(
+      sessionId,
+    );
+    if (pendingCount >= _maxPendingEventsPerSession) {
+      return;
+    }
+
+    state = state.copyWith(
+      pendingCalendarEvent: text,
+      isExtracting: true,
+      extractionError: null,
+      pendingExtractedEvent: null,
+    );
+    await _extractEventDetails(text);
+  }
+
+  /// Handle a reminder intent: set pending state and extract details.
+  ///
+  /// Enforces the 5-event pending cap per ADR-0020 §7.
+  Future<void> _handleReminderIntent(String text) async {
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return;
+
+    // Enforce pending event cap (ADR-0020 §7).
+    final calendarEventDao = _ref.read(calendarEventDaoProvider);
+    final pendingCount = await calendarEventDao.countPendingForSession(
+      sessionId,
+    );
+    if (pendingCount >= _maxPendingEventsPerSession) {
+      return;
+    }
+
+    state = state.copyWith(
+      pendingReminder: text,
+      isExtracting: true,
+      extractionError: null,
+      pendingExtractedEvent: null,
+    );
+    await _extractEventDetails(text);
+  }
+
+  /// Run event extraction and update pending state with the result.
+  Future<void> _extractEventDetails(String text) async {
+    final extractionService = _ref.read(eventExtractionServiceProvider);
+    final now = nowUtc();
+
+    final result = await extractionService.extract(text, now);
+
+    // Check that we still have a pending event (user may have dismissed).
+    if (state.pendingCalendarEvent == null && state.pendingReminder == null) {
+      return;
+    }
+
+    switch (result) {
+      case ExtractionSuccess(:final event):
+        state = state.copyWith(
+          pendingExtractedEvent: event,
+          isExtracting: false,
+        );
+      case ExtractionFailure(:final error):
+        state = state.copyWith(
+          isExtracting: false,
+          extractionError: error.reason,
+        );
+    }
+  }
+
+  /// Confirm the pending calendar event: create it in Google Calendar
+  /// and save to the local database.
+  ///
+  /// Called by the UI when the user taps "Add to Calendar" on the
+  /// confirmation card. Requires Google connection.
+  ///
+  /// Guards against double invocation (TOCTOU race from double-tap or
+  /// concurrent voice + UI confirmation) via isWaitingForAgent check.
+  Future<void> confirmCalendarEvent() async {
+    // Guard: prevent double invocation from concurrent UI + voice confirmation.
+    if (state.isWaitingForAgent) return;
+
+    final sessionId = state.activeSessionId;
+    final rawMessage = state.pendingCalendarEvent ?? state.pendingReminder;
+    final event = state.pendingExtractedEvent;
+    if (sessionId == null || rawMessage == null || event == null) return;
+
+    final isReminder = state.pendingReminder != null;
+
+    // Clear pending state immediately (optimistic UI).
+    state = state.copyWith(
+      pendingCalendarEvent: null,
+      pendingReminder: null,
+      pendingExtractedEvent: null,
+      extractionError: null,
+      isWaitingForAgent: true,
+    );
+
+    // Save the event to the local database.
+    final calendarEventDao = _ref.read(calendarEventDaoProvider);
+    final eventId = generateUuid();
+
+    await calendarEventDao.insertEvent(
+      CalendarEventsCompanion(
+        eventId: Value(eventId),
+        sessionId: Value(sessionId),
+        title: Value(event.title),
+        startTime: Value(event.startTime),
+        endTime: Value(event.endTime),
+        rawUserMessage: Value(rawMessage),
+        status: const Value(EventStatus.pendingCreate),
+        syncStatus: const Value(EventSyncStatus.pending),
+        createdAt: Value(nowUtc()),
+        updatedAt: Value(nowUtc()),
+      ),
+    );
+
+    // Try to create the event in Google Calendar.
+    final isConnected = _ref.read(isGoogleConnectedProvider);
+    if (isConnected) {
+      await _createGoogleCalendarEvent(eventId, event, isReminder);
+    }
+
+    // Save an assistant confirmation message.
+    final confirmMsg = isConnected
+        ? "Added '${event.title}' to your calendar."
+        : "Saved '${event.title}' — connect Google Calendar to sync it.";
+    await _messageDao.insertMessage(
+      generateUuid(),
+      sessionId,
+      'ASSISTANT',
+      confirmMsg,
+      nowUtc(),
+    );
+
+    state = state.copyWith(
+      isWaitingForAgent: false,
+      conversationMessages: [
+        ...state.conversationMessages,
+        {'role': 'assistant', 'content': confirmMsg},
+      ],
+    );
+  }
+
+  /// Create a Google Calendar event via the API.
+  Future<void> _createGoogleCalendarEvent(
+    String eventId,
+    ExtractedEvent event,
+    bool isReminder,
+  ) async {
+    final calendarEventDao = _ref.read(calendarEventDaoProvider);
+
+    try {
+      final authService = _ref.read(googleAuthServiceProvider);
+      final authClient = await authService.getAuthClient();
+      if (authClient == null) {
+        await calendarEventDao.updateStatus(eventId, EventStatus.failed);
+        return;
+      }
+
+      final calendarService = GoogleCalendarService.withClient(authClient);
+      final CalendarCreateResult result;
+
+      if (isReminder) {
+        result = await calendarService.createReminder(
+          title: event.title,
+          dateTime: event.startTime,
+        );
+      } else {
+        result = await calendarService.createEvent(
+          title: event.title,
+          startTime: event.startTime,
+          endTime: event.endTime,
+        );
+      }
+
+      await calendarEventDao.updateGoogleEventId(eventId, result.googleEventId);
+    } on CalendarServiceException catch (e) {
+      if (kDebugMode) {
+        debugPrint('Google Calendar API failed: $e');
+      }
+      await calendarEventDao.updateStatus(eventId, EventStatus.failed);
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('Google Calendar creation failed: $e');
+      }
+      await calendarEventDao.updateStatus(eventId, EventStatus.failed);
+    }
+  }
+
+  // =========================================================================
   // Phase 5: Memory Recall (ADR-0013)
   // =========================================================================
 
@@ -804,6 +1087,95 @@ class SessionNotifier extends StateNotifier<SessionState> {
         {'role': 'assistant', 'content': followUpText},
       ],
     );
+  }
+
+  /// Defer a calendar event when Google is not connected during voice mode.
+  ///
+  /// Saves the extracted event to the local database with PENDING_CREATE
+  /// status (no Google Calendar creation attempted). The user is reminded
+  /// to connect Google Calendar after the session ends via a banner on
+  /// the session list screen (ADR-0020 §8).
+  Future<void> deferCalendarEvent() async {
+    final sessionId = state.activeSessionId;
+    final rawMessage = state.pendingCalendarEvent ?? state.pendingReminder;
+    final event = state.pendingExtractedEvent;
+    if (sessionId == null || rawMessage == null || event == null) return;
+
+    // Save to local DB with PENDING_CREATE status.
+    final calendarEventDao = _ref.read(calendarEventDaoProvider);
+    final eventId = generateUuid();
+
+    await calendarEventDao.insertEvent(
+      CalendarEventsCompanion(
+        eventId: Value(eventId),
+        sessionId: Value(sessionId),
+        title: Value(event.title),
+        startTime: Value(event.startTime),
+        endTime: Value(event.endTime),
+        rawUserMessage: Value(rawMessage),
+        status: const Value(EventStatus.pendingCreate),
+        syncStatus: const Value(EventSyncStatus.pending),
+        createdAt: Value(nowUtc()),
+        updatedAt: Value(nowUtc()),
+      ),
+    );
+
+    // Clear pending state — the event is saved, conversation continues.
+    state = state.copyWith(
+      pendingCalendarEvent: null,
+      pendingReminder: null,
+      pendingExtractedEvent: null,
+      extractionError: null,
+      isExtracting: false,
+    );
+  }
+
+  /// Dismiss the pending calendar event (user chose to continue journaling).
+  ///
+  /// Clears the pending state and extraction data. The message was already
+  /// saved to the DB in sendMessage(), so it's part of the journal entry.
+  void dismissCalendarEvent() {
+    final sessionId = state.activeSessionId;
+    state = state.copyWith(
+      pendingCalendarEvent: null,
+      pendingExtractedEvent: null,
+      isExtracting: false,
+      extractionError: null,
+    );
+
+    // Update the event status in the DB if one was created.
+    if (sessionId != null) {
+      _cancelPendingEvents(sessionId);
+    }
+  }
+
+  /// Dismiss the pending reminder (user chose to continue journaling).
+  void dismissReminder() {
+    final sessionId = state.activeSessionId;
+    state = state.copyWith(
+      pendingReminder: null,
+      pendingExtractedEvent: null,
+      isExtracting: false,
+      extractionError: null,
+    );
+
+    if (sessionId != null) {
+      _cancelPendingEvents(sessionId);
+    }
+  }
+
+  /// Cancel any PENDING_CREATE events for the session.
+  Future<void> _cancelPendingEvents(String sessionId) async {
+    final calendarEventDao = _ref.read(calendarEventDaoProvider);
+    final pending = await calendarEventDao.getPendingEvents();
+    for (final event in pending) {
+      if (event.sessionId == sessionId) {
+        await calendarEventDao.updateStatus(
+          event.eventId,
+          EventStatus.cancelled,
+        );
+      }
+    }
   }
 
   /// Handle a recall query: search local data and synthesize an answer.

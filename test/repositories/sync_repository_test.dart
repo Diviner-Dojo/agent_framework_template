@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:agentic_journal/config/environment.dart';
 import 'package:agentic_journal/database/app_database.dart';
+import 'package:agentic_journal/database/daos/calendar_event_dao.dart';
 import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/database/daos/message_dao.dart';
 import 'package:agentic_journal/repositories/sync_repository.dart';
@@ -375,6 +377,191 @@ void main() {
 
       final s1After = await sessionDao.getSessionById('session-1');
       expect(s1After!.syncStatus, 'SYNCED');
+    });
+  });
+
+  group('buildEventUpsertMap', () {
+    test('includes all calendar event fields', () {
+      final now = DateTime.utc(2026, 2, 25, 12, 0);
+      final event = CalendarEvent(
+        eventId: 'evt-1',
+        sessionId: 'session-1',
+        title: 'Team meeting',
+        startTime: now,
+        endTime: now.add(const Duration(hours: 1)),
+        googleEventId: 'google-123',
+        status: EventStatus.confirmed,
+        syncStatus: EventSyncStatus.pending,
+        rawUserMessage: 'Schedule a team meeting at noon',
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final map = SyncRepository.buildEventUpsertMap(event, 'user-abc');
+
+      expect(map['event_id'], 'evt-1');
+      expect(map['session_id'], 'session-1');
+      expect(map['user_id'], 'user-abc');
+      expect(map['title'], 'Team meeting');
+      expect(map['start_time'], now.toIso8601String());
+      expect(
+        map['end_time'],
+        now.add(const Duration(hours: 1)).toIso8601String(),
+      );
+      expect(map['google_event_id'], 'google-123');
+      expect(map['status'], EventStatus.confirmed);
+      expect(map['sync_status'], 'SYNCED');
+      expect(map['raw_user_message'], 'Schedule a team meeting at noon');
+      expect(map['created_at'], now.toIso8601String());
+      expect(map['updated_at'], isNotNull);
+    });
+
+    test('handles nullable end_time and google_event_id', () {
+      final now = DateTime.utc(2026, 2, 25, 12, 0);
+      final event = CalendarEvent(
+        eventId: 'evt-2',
+        sessionId: 'session-1',
+        title: 'Reminder: take meds',
+        startTime: now,
+        status: EventStatus.pendingCreate,
+        syncStatus: EventSyncStatus.pending,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final map = SyncRepository.buildEventUpsertMap(event, 'user-abc');
+
+      expect(map['end_time'], isNull);
+      expect(map['google_event_id'], isNull);
+      expect(map['raw_user_message'], isNull);
+    });
+  });
+
+  group('SyncRepository - calendar event sync', () {
+    late AppDatabase database;
+    late SessionDao sessionDao;
+    late MessageDao messageDao;
+    late CalendarEventDao calendarEventDao;
+
+    setUp(() {
+      database = AppDatabase.forTesting(NativeDatabase.memory());
+      sessionDao = SessionDao(database);
+      messageDao = MessageDao(database);
+      calendarEventDao = CalendarEventDao(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test(
+      'syncPendingCalendarEvents returns empty when not authenticated',
+      () async {
+        final syncRepo = SyncRepository(
+          supabaseService: SupabaseService(
+            environment: const Environment.custom(
+              supabaseUrl: '',
+              supabaseAnonKey: '',
+            ),
+          ),
+          sessionDao: sessionDao,
+          messageDao: messageDao,
+          calendarEventDao: calendarEventDao,
+        );
+
+        final result = await syncRepo.syncPendingCalendarEvents();
+        expect(result.syncedCount, 0);
+        expect(result.failedCount, 0);
+      },
+    );
+
+    test(
+      'syncPendingCalendarEvents returns empty when no dao provided',
+      () async {
+        final syncRepo = SyncRepository(
+          supabaseService: _FakeAuthenticatedSupabaseService(),
+          sessionDao: sessionDao,
+          messageDao: messageDao,
+          // No calendarEventDao
+        );
+
+        final result = await syncRepo.syncPendingCalendarEvents();
+        expect(result.syncedCount, 0);
+        expect(result.failedCount, 0);
+      },
+    );
+
+    test(
+      'syncPendingCalendarEvents returns empty when no events to sync',
+      () async {
+        final syncRepo = SyncRepository(
+          supabaseService: _FakeAuthenticatedSupabaseService(),
+          sessionDao: sessionDao,
+          messageDao: messageDao,
+          calendarEventDao: calendarEventDao,
+        );
+
+        final result = await syncRepo.syncPendingCalendarEvents();
+        expect(result.syncedCount, 0);
+        expect(result.failedCount, 0);
+      },
+    );
+
+    test('getEventsToSync only returns CONFIRMED+PENDING events', () async {
+      // Create a session first (FK constraint).
+      await sessionDao.createSession(
+        'session-1',
+        DateTime.utc(2026, 2, 25),
+        'UTC',
+      );
+
+      final now = DateTime.utc(2026, 2, 25, 12, 0);
+
+      // CONFIRMED + PENDING → should be included.
+      await calendarEventDao.insertEvent(
+        CalendarEventsCompanion(
+          eventId: const Value('evt-1'),
+          sessionId: const Value('session-1'),
+          title: const Value('Sync me'),
+          startTime: Value(now),
+          status: const Value(EventStatus.confirmed),
+          syncStatus: const Value(EventSyncStatus.pending),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+      // PENDING_CREATE + PENDING → should NOT be included (not confirmed yet).
+      await calendarEventDao.insertEvent(
+        CalendarEventsCompanion(
+          eventId: const Value('evt-2'),
+          sessionId: const Value('session-1'),
+          title: const Value('Not ready'),
+          startTime: Value(now),
+          status: const Value(EventStatus.pendingCreate),
+          syncStatus: const Value(EventSyncStatus.pending),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+      // CONFIRMED + SYNCED → should NOT be included (already synced).
+      await calendarEventDao.insertEvent(
+        CalendarEventsCompanion(
+          eventId: const Value('evt-3'),
+          sessionId: const Value('session-1'),
+          title: const Value('Already synced'),
+          startTime: Value(now),
+          status: const Value(EventStatus.confirmed),
+          syncStatus: const Value(EventSyncStatus.synced),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+      final toSync = await calendarEventDao.getEventsToSync();
+      expect(toSync, hasLength(1));
+      expect(toSync.first.eventId, 'evt-1');
     });
   });
 

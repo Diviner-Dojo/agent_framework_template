@@ -1,22 +1,39 @@
 // ===========================================================================
 // file: lib/services/intent_classifier.dart
-// purpose: Classifies user messages as journal entries or recall queries.
+// purpose: Classifies user messages into intent categories for routing.
 //
 // Uses rule-based pattern matching (not LLM) per ADR-0013 §2.
 // Conservative default: messages classify as 'journal' unless the
-// classifier has high confidence in query intent. This prevents jarring
-// mode switches during active journaling.
+// classifier has high confidence in a specific intent. This prevents
+// jarring mode switches during active journaling.
+//
+// Intent types (ADR-0020 §3):
+//   - journal: normal journaling conversation
+//   - query: recall about past journal entries
+//   - calendarEvent: create/schedule a calendar event
+//   - reminder: set a reminder
+//
+// Multi-intent ranking: classifyMulti() returns a ranked list of
+// IntentResult objects. The top-ranked intent drives routing. This allows
+// overlapping signals to be resolved by comparing confidence scores
+// rather than exclusive if/else branching.
 //
 // Confidence tiers:
-//   ≥0.8: High — automatically route to recall
+//   ≥0.8: High — automatically route to handler
 //   0.5–0.8: Ambiguous — show inline confirmation prompt
 //   <0.5: Low — continue normal journaling
+//
+// Temporal disambiguation (ADR-0020 §3):
+//   Temporal references score for recall ONLY when combined with
+//   past-tense question structure. Calendar/reminder score when
+//   temporal references combine with future-tense imperative/action verbs.
 //
 // NOTE: All patterns are English-only. Extend with i18n pattern sets
 // before non-English market launch — without patterns, the classifier
 // silently defaults to journal for all input (no error, no recall).
 //
 // See: ADR-0013 (Search + Memory Recall Architecture)
+// See: ADR-0020 (Google Calendar Integration)
 // ===========================================================================
 
 /// The type of intent detected in a user message.
@@ -26,6 +43,12 @@ enum IntentType {
 
   /// A query about past journal entries (recall request).
   query,
+
+  /// Create or schedule a calendar event.
+  calendarEvent,
+
+  /// Set a reminder.
+  reminder,
 }
 
 /// The result of intent classification.
@@ -33,12 +56,12 @@ enum IntentType {
 /// Contains the classified intent type, confidence score, and extracted
 /// search terms that can be used for the recall query.
 class IntentResult {
-  /// Whether the message is a journal entry or a recall query.
+  /// The detected intent type.
   final IntentType type;
 
   /// Confidence in the classification (0.0 to 1.0).
   ///
-  /// High (≥0.8): auto-route to recall.
+  /// High (≥0.8): auto-route to handler.
   /// Ambiguous (0.5–0.8): show inline confirmation.
   /// Low (<0.5): continue journaling.
   final double confidence;
@@ -56,57 +79,66 @@ class IntentResult {
   });
 }
 
-/// Classifies user messages as journal entries or recall queries.
+/// Classifies user messages into intent categories for routing.
 ///
-/// Uses pattern matching to detect query intent signals:
-/// - Question words with past tense ("What did I...", "When was...")
-/// - Temporal references ("last week", "yesterday")
-/// - Recall verbs ("remember when", "find entries about")
-/// - Meta-questions ("How often do I...", "Who did I mention...")
+/// Uses pattern matching to detect intent signals across four categories:
+/// - **Query/recall**: question words, past tense, temporal + question,
+///   recall verbs, meta-questions about patterns
+/// - **Calendar**: scheduling verbs, calendar references, event nouns
+///   with future temporal context
+/// - **Reminder**: "remind me", "don't forget", "remember to"
+/// - **Journal**: conservative default when no other intent scores high
 ///
-/// Conservative default: returns [IntentType.journal] unless multiple
-/// signals combine to produce high confidence.
+/// Temporal disambiguation (ADR-0020 §3): temporal references score for
+/// recall ONLY when combined with past-tense question structure. Calendar/
+/// reminder score when temporal references combine with future-tense
+/// imperative/action verbs.
 class IntentClassifier {
-  /// Classify a user message as journal or query.
+  /// Classify a user message (backward-compatible single result).
   ///
-  /// Returns [IntentResult] with type, confidence, and search terms.
+  /// Returns the top-ranked [IntentResult] from [classifyMulti].
   /// Empty or whitespace-only input always returns journal with 0 confidence.
   IntentResult classify(String message) {
+    return classifyMulti(message).first;
+  }
+
+  /// Classify a user message and return ranked intent results.
+  ///
+  /// Returns a list of [IntentResult] objects sorted by confidence
+  /// (highest first). The top-ranked intent drives routing. Intents
+  /// with scores below 0.3 are excluded. If no intent reaches the
+  /// inclusion threshold, returns a single journal result.
+  List<IntentResult> classifyMulti(String message) {
     final trimmed = message.trim();
 
     // Empty/whitespace input is always journal.
     if (trimmed.isEmpty) {
-      return const IntentResult(type: IntentType.journal, confidence: 0.0);
+      return const [IntentResult(type: IntentType.journal, confidence: 0.0)];
     }
 
     // Very short messages (≤4 words) are almost always conversational.
     // "What?", "Really?", "Why not?", "Tell me more" — all journal.
     final words = trimmed.split(RegExp(r'\s+'));
-    if (words.length <= 4 && !_hasStrongQuerySignal(trimmed)) {
-      return const IntentResult(type: IntentType.journal, confidence: 0.1);
+    if (words.length <= 4 &&
+        !_hasStrongQuerySignal(trimmed) &&
+        !_hasStrongCalendarSignal(trimmed) &&
+        !_hasStrongReminderSignal(trimmed)) {
+      return const [IntentResult(type: IntentType.journal, confidence: 0.1)];
     }
 
-    // Score the message across multiple signal categories.
-    double score = 0.0;
+    // Score each intent type independently.
+    double queryScore = 0.0;
+    double calendarScore = 0.0;
+    double reminderScore = 0.0;
     final searchTerms = <String>[];
+
+    // === Query signals (existing logic, unchanged) ===
 
     // Category 1: Question words + past tense / recall framing.
     final questionPastMatch = _questionPastPattern.firstMatch(trimmed);
     if (questionPastMatch != null) {
-      score += 0.4;
+      queryScore += 0.4;
       _extractSearchTerms(trimmed, searchTerms);
-    }
-
-    // Category 2: Temporal references.
-    if (_temporalPattern.hasMatch(trimmed)) {
-      // Only count temporal as query signal when combined with a question
-      // structure. "I talked to her last week" is journal, not query.
-      if (_isQuestionStructure(trimmed)) {
-        score += 0.3;
-      } else {
-        // Temporal in narrative context — slight signal but not enough alone.
-        score += 0.05;
-      }
     }
 
     // Category 3: Explicit recall/search verbs in query context.
@@ -115,33 +147,150 @@ class IntentClassifier {
       // "I remember feeling happy" is journal. "Do you remember when I..."
       // or "Find entries about..." is query.
       if (_isRecallAsQuery(trimmed)) {
-        score += 0.35;
+        queryScore += 0.35;
         _extractSearchTerms(trimmed, searchTerms);
       }
     }
 
     // Category 4: Meta-questions about patterns.
     if (_metaQuestionPattern.hasMatch(trimmed)) {
-      score += 0.45;
+      queryScore += 0.45;
       _extractSearchTerms(trimmed, searchTerms);
     }
 
-    // Determine intent type based on score.
-    final clampedScore = score.clamp(0.0, 1.0);
-    if (clampedScore >= 0.5) {
-      // Remove duplicates from search terms.
+    // === Calendar signals ===
+
+    if (_calendarIntentPattern.hasMatch(trimmed)) {
+      calendarScore += 0.5;
+    }
+
+    // Event noun + future temporal → calendar signal.
+    // Guarded by: future temporal (not past like "last week") AND
+    // not a past-tense question (not "What meeting did I have?").
+    if (_eventNounPattern.hasMatch(trimmed) &&
+        _futureTemporalPattern.hasMatch(trimmed) &&
+        !_questionPastPattern.hasMatch(trimmed)) {
+      calendarScore += 0.4;
+    }
+
+    // Time specification boosts calendar (guarded by !questionPast).
+    if (_timeSpecPattern.hasMatch(trimmed) &&
+        !_questionPastPattern.hasMatch(trimmed)) {
+      calendarScore += 0.15;
+    }
+
+    // === Reminder signals ===
+
+    if (_reminderPattern.hasMatch(trimmed)) {
+      reminderScore += 0.5;
+    }
+
+    // === Temporal modifier (context-dependent) ===
+    //
+    // Temporal references are ambiguous — they could indicate recall
+    // (past-tense question) or scheduling (future-tense action).
+    // We assign the temporal boost based on what other signals are present.
+    if (_temporalPattern.hasMatch(trimmed)) {
+      if (calendarScore > 0 || reminderScore > 0) {
+        // Calendar/reminder context: temporal boosts the dominant intent.
+        if (calendarScore >= reminderScore) {
+          calendarScore += 0.25;
+        } else {
+          reminderScore += 0.25;
+        }
+      } else if (_isQuestionStructure(trimmed)) {
+        // Past-tense question context: temporal boosts recall.
+        queryScore += 0.3;
+      } else if (_hasFutureActionContext(trimmed)) {
+        // Future imperative without explicit calendar/reminder verb.
+        calendarScore += 0.25;
+      } else {
+        // Narrative context: minimal recall signal.
+        queryScore += 0.05;
+      }
+    }
+
+    // === Build ranked results ===
+    //
+    // Primary intents must reach the 0.5 threshold to be actionable.
+    // Sub-threshold intents are appended for multi-intent visibility
+    // (e.g., collision detection) but don't drive routing.
+
+    final results = <IntentResult>[];
+
+    final clampedQuery = queryScore.clamp(0.0, 1.0);
+    final clampedCalendar = calendarScore.clamp(0.0, 1.0);
+    final clampedReminder = reminderScore.clamp(0.0, 1.0);
+
+    // Add intents that reached the active threshold (>= 0.5).
+    if (clampedQuery >= 0.5) {
       final uniqueTerms = searchTerms.toSet().toList();
-      return IntentResult(
-        type: IntentType.query,
-        confidence: clampedScore,
-        searchTerms: uniqueTerms.isEmpty ? [trimmed] : uniqueTerms,
+      results.add(
+        IntentResult(
+          type: IntentType.query,
+          confidence: clampedQuery,
+          searchTerms: uniqueTerms.isEmpty ? [trimmed] : uniqueTerms,
+        ),
       );
     }
 
-    return IntentResult(
-      type: IntentType.journal,
-      confidence: 1.0 - clampedScore,
-    );
+    if (clampedCalendar >= 0.5) {
+      results.add(
+        IntentResult(
+          type: IntentType.calendarEvent,
+          confidence: clampedCalendar,
+        ),
+      );
+    }
+
+    if (clampedReminder >= 0.5) {
+      results.add(
+        IntentResult(type: IntentType.reminder, confidence: clampedReminder),
+      );
+    }
+
+    // Sort primary intents by confidence descending.
+    results.sort((a, b) => b.confidence.compareTo(a.confidence));
+
+    // If no intent reached threshold, journal is primary.
+    if (results.isEmpty) {
+      final maxOther = [
+        clampedQuery,
+        clampedCalendar,
+        clampedReminder,
+      ].reduce((a, b) => a > b ? a : b);
+      results.add(
+        IntentResult(type: IntentType.journal, confidence: 1.0 - maxOther),
+      );
+    }
+
+    // Append sub-threshold intents for multi-intent visibility.
+    // These are secondary — routing uses results.first as primary.
+    if (clampedQuery > 0 && clampedQuery < 0.5) {
+      final uniqueTerms = searchTerms.toSet().toList();
+      results.add(
+        IntentResult(
+          type: IntentType.query,
+          confidence: clampedQuery,
+          searchTerms: uniqueTerms.isEmpty ? [trimmed] : uniqueTerms,
+        ),
+      );
+    }
+    if (clampedCalendar > 0 && clampedCalendar < 0.5) {
+      results.add(
+        IntentResult(
+          type: IntentType.calendarEvent,
+          confidence: clampedCalendar,
+        ),
+      );
+    }
+    if (clampedReminder > 0 && clampedReminder < 0.5) {
+      results.add(
+        IntentResult(type: IntentType.reminder, confidence: clampedReminder),
+      );
+    }
+
+    return results;
   }
 
   // =========================================================================
@@ -157,9 +306,24 @@ class IntentClassifier {
     caseSensitive: false,
   );
 
-  /// Temporal references: days, weeks, months, specific dates.
+  /// Temporal references: past and future days, weeks, months, dates.
+  ///
+  /// Includes both past references (yesterday, last week, 3 days ago) and
+  /// future references (tomorrow, next week, this evening) for calendar
+  /// intent detection (ADR-0020 §3).
   static final _temporalPattern = RegExp(
-    r'\b(yesterday|last (week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(\d+ )?(days?|weeks?|months?) ago|in (january|february|march|april|may|june|july|august|september|october|november|december)|this (week|month|year)|the other day|recently)\b',
+    r'\b(yesterday|'
+    r'last (week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
+    r'(\d+ )?(days?|weeks?|months?) ago|'
+    r'in (january|february|march|april|may|june|july|august|september|october|november|december)|'
+    r'this (week|month|year)|'
+    r'the other day|'
+    r'recently|'
+    r'tomorrow|'
+    r'next (week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
+    r'tonight|'
+    r'this (evening|afternoon|morning)|'
+    r'on (monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b',
     caseSensitive: false,
   );
 
@@ -177,20 +341,84 @@ class IntentClassifier {
     caseSensitive: false,
   );
 
+  /// Explicit calendar intent phrases.
+  ///
+  /// Matches imperative scheduling commands and calendar references:
+  /// - "Schedule a meeting", "Book dinner", "Set up a call"
+  /// - "Add to my calendar", "Put on calendar"
+  /// - "I want to schedule", "Can you book"
+  /// - "Add a meeting/event/appointment"
+  static final _calendarIntentPattern = RegExp(
+    r'^(schedule|book|set up|plan|arrange)\b|'
+    r'\b(add|put)\b.{0,40}\b(to|on)\s+(my\s+|the\s+)?calendar\b|'
+    r'\b(want to|need to|going to|let.?s|can you|could you)\s+(schedule|book|set up|plan|arrange)\b|'
+    r'^add\b.{0,15}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b',
+    caseSensitive: false,
+  );
+
+  /// Future temporal references only (subset of _temporalPattern).
+  ///
+  /// Used to guard eventNoun+temporal scoring so that "I had a meeting
+  /// last week" (past narrative) doesn't score as calendar intent.
+  static final _futureTemporalPattern = RegExp(
+    r'\b(tomorrow|'
+    r'next (week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
+    r'tonight|'
+    r'this (evening|afternoon|morning)|'
+    r'on (monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b',
+    caseSensitive: false,
+  );
+
+  /// Event nouns that suggest calendar context when combined with temporal.
+  static final _eventNounPattern = RegExp(
+    r'\b(meeting|appointment|event|dinner|lunch|breakfast|brunch|call|date|party|interview|reservation|conference|hangout)\b',
+    caseSensitive: false,
+  );
+
+  /// Time specification pattern: "at 3pm", "from 2 to 4", "3:30".
+  static final _timeSpecPattern = RegExp(
+    r'\bat\s+\d{1,2}(:\d{2})?\s*(am|pm)?\b|'
+    r'\bfrom\s+\d{1,2}(:\d{2})?\s*(am|pm)?\s+(to|until|till)\b|'
+    r'\b\d{1,2}:\d{2}\s*(am|pm)?\b',
+    caseSensitive: false,
+  );
+
+  /// Reminder intent phrases.
+  ///
+  /// Matches explicit reminder requests. "Remember to" is distinguished
+  /// from "remember when" (recall) by the preposition.
+  static final _reminderPattern = RegExp(
+    r'\bremind me\b|'
+    r'\bdon.?t (let me )?forget\b|'
+    r'\bremember to\b|'
+    r'\bmake sure i\b|'
+    r'^remind\b',
+    caseSensitive: false,
+  );
+
   // =========================================================================
   // Helper methods
   // =========================================================================
 
-  /// Check if a short message contains a strong enough signal to override
-  /// the short-message journal default.
-  ///
-  /// Only a few short patterns are strong enough:
-  /// "Find X", "Search X", "What did I X?"
+  /// Check if a short message has a strong query signal.
   static bool _hasStrongQuerySignal(String text) {
     return RegExp(
       r'^(find|search|look up|look for)\b',
       caseSensitive: false,
     ).hasMatch(text);
+  }
+
+  /// Check if a short message has a strong calendar signal.
+  static bool _hasStrongCalendarSignal(String text) {
+    return RegExp(
+      r'^(schedule|book|set up|plan|arrange)\b',
+      caseSensitive: false,
+    ).hasMatch(text);
+  }
+
+  /// Check if a short message has a strong reminder signal.
+  static bool _hasStrongReminderSignal(String text) {
+    return RegExp(r'^remind\b', caseSensitive: false).hasMatch(text);
   }
 
   /// Check if the message has question structure (starts with question word
@@ -201,6 +429,28 @@ class IntentClassifier {
       r'^(what|when|where|who|how|why|did|have|has|do|does|can|could|is|was|were)\b',
       caseSensitive: false,
     ).hasMatch(text);
+  }
+
+  /// Check if the message has future-tense imperative/action context.
+  ///
+  /// Used for temporal disambiguation: temporal references in imperative
+  /// sentences suggest scheduling intent rather than recall.
+  static bool _hasFutureActionContext(String text) {
+    // Imperative action verbs at the start of the sentence.
+    if (RegExp(
+      r'^(schedule|book|add|create|set up|put|plan|arrange|remind|meet)\b',
+      caseSensitive: false,
+    ).hasMatch(text)) {
+      return true;
+    }
+    // Intent expression: "I want to schedule", "going to add".
+    if (RegExp(
+      r'\b(want to|need to|going to|let.?s)\s+(schedule|book|add|create|set up|plan|meet|arrange)\b',
+      caseSensitive: false,
+    ).hasMatch(text)) {
+      return true;
+    }
+    return false;
   }
 
   /// Distinguish "I remember feeling happy" (journal) from

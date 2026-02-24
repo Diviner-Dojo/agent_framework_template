@@ -59,6 +59,11 @@ dependencies:
   geolocator: ^13.0.2
   geocoding: ^3.0.0
 
+  # Google Calendar integration (Phase 11 — ADR-0020)
+  google_sign_in: ^6.2.2
+  googleapis: ^13.2.0
+  extension_google_sign_in_as_googleapis_auth: ^2.0.13
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

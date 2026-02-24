@@ -12,6 +12,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/app_database.dart';
+import '../database/daos/calendar_event_dao.dart';
 import '../database/daos/message_dao.dart';
 import '../database/daos/photo_dao.dart';
 import '../database/daos/session_dao.dart';
@@ -59,4 +60,12 @@ final messageDaoProvider = Provider<MessageDao>((ref) {
 /// rather than creating its own PhotoDao instance.
 final photoDaoProvider = Provider<PhotoDao>((ref) {
   return PhotoDao(ref.watch(databaseProvider));
+});
+
+/// Provides a CalendarEventDao backed by the singleton database.
+///
+/// Any provider that needs to read/write calendar events should depend on
+/// this rather than creating its own CalendarEventDao instance.
+final calendarEventDaoProvider = Provider<CalendarEventDao>((ref) {
+  return CalendarEventDao(ref.watch(databaseProvider));
 });

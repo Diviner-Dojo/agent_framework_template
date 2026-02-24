@@ -141,6 +141,53 @@ class JournalMessages extends Table {
   Set<Column> get primaryKey => {messageId};
 }
 
+/// Calendar events extracted from conversation (Phase 11 — ADR-0020).
+///
+/// Each event is associated with a session and tracks both its lifecycle
+/// state (pending/confirmed/failed/cancelled) and cloud sync state
+/// (pending/synced/failed) as independent state machines.
+class CalendarEvents extends Table {
+  /// Client-generated UUID — primary key.
+  TextColumn get eventId => text()();
+
+  /// Foreign key to JournalSessions — links this event to its session.
+  TextColumn get sessionId => text().references(JournalSessions, #sessionId)();
+
+  /// User ID for RLS and cloud sync.
+  TextColumn get userId => text().nullable()();
+
+  /// Event title extracted by the AI.
+  TextColumn get title => text()();
+
+  /// Event start time (ISO 8601 UTC).
+  DateTimeColumn get startTime => dateTime()();
+
+  /// Event end time (nullable — reminders may not have an end time).
+  DateTimeColumn get endTime => dateTime().nullable()();
+
+  /// Google Calendar event ID — set after successful creation.
+  TextColumn get googleEventId => text().nullable()();
+
+  /// Event lifecycle state (ADR-0020 §5).
+  /// Values: 'PENDING_CREATE' | 'CONFIRMED' | 'FAILED' | 'CANCELLED'
+  TextColumn get status =>
+      text().withDefault(const Constant('PENDING_CREATE'))();
+
+  /// Cloud sync state — independent from lifecycle status (ADR-0020 §5).
+  /// Values: 'PENDING' | 'SYNCED' | 'FAILED'
+  TextColumn get syncStatus => text().withDefault(const Constant('PENDING'))();
+
+  /// The raw user message that triggered this event extraction.
+  TextColumn get rawUserMessage => text().nullable()();
+
+  /// Standard timestamps.
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {eventId};
+}
+
 /// Photos attached to journal sessions (Phase 9 — ADR-0018).
 ///
 /// Each photo is associated with a session and optionally linked to a

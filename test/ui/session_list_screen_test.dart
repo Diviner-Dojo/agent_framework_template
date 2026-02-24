@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agentic_journal/database/app_database.dart';
+import 'package:agentic_journal/providers/calendar_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
@@ -425,6 +426,126 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.search), findsNothing);
+    });
+
+    group('pending calendar events banner', () {
+      testWidgets('hidden when no pending events', (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value(<JournalSession>[]),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              pendingCalendarEventsCountProvider.overrideWith(
+                (ref) => Future.value(0),
+              ),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.byIcon(Icons.event_note), findsNothing);
+        expect(find.text('Tap to connect Google Calendar'), findsNothing);
+      });
+
+      testWidgets('shows banner for 1 pending event', (tester) async {
+        final now = DateTime.utc(2026, 2, 25, 10, 0);
+        final sessions = [
+          JournalSession(
+            sessionId: 's1',
+            startTime: now,
+            timezone: 'UTC',
+            syncStatus: 'PENDING',
+            isResumed: false,
+            resumeCount: 0,
+            createdAt: now,
+            updatedAt: now,
+            summary: 'Test session',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value(sessions),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              pendingCalendarEventsCountProvider.overrideWith(
+                (ref) => Future.value(1),
+              ),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.text('1 pending calendar event'), findsOneWidget);
+        expect(find.text('Tap to connect Google Calendar'), findsOneWidget);
+        expect(find.byIcon(Icons.event_note), findsOneWidget);
+      });
+
+      testWidgets('shows plural text for multiple pending events', (
+        tester,
+      ) async {
+        final now = DateTime.utc(2026, 2, 25, 10, 0);
+        final sessions = [
+          JournalSession(
+            sessionId: 's1',
+            startTime: now,
+            timezone: 'UTC',
+            syncStatus: 'PENDING',
+            isResumed: false,
+            resumeCount: 0,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value(sessions),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              pendingCalendarEventsCountProvider.overrideWith(
+                (ref) => Future.value(3),
+              ),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.text('3 pending calendar events'), findsOneWidget);
+      });
+
+      testWidgets('hidden on provider error', (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value(<JournalSession>[]),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              pendingCalendarEventsCountProvider.overrideWith(
+                (ref) => Future<int>.error('fail'),
+              ),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.byIcon(Icons.event_note), findsNothing);
+      });
     });
   });
 }

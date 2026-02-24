@@ -32,6 +32,7 @@ import 'package:record/record.dart';
 
 import 'package:uuid/uuid.dart';
 
+import '../../providers/calendar_providers.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/session_providers.dart';
@@ -39,6 +40,7 @@ import '../../providers/voice_providers.dart';
 import '../../services/model_download_service.dart';
 import '../../services/photo_service.dart';
 import '../../services/voice_session_orchestrator.dart';
+import '../widgets/calendar_event_card.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/model_download_dialog.dart';
 import '../widgets/photo_capture_sheet.dart';
@@ -133,6 +135,13 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     orchestrator.onDiscardSession = () => sessionNotifier.discardSession();
     orchestrator.onResumeSession = (sessionId) =>
         sessionNotifier.resumeSession(sessionId);
+    orchestrator.onConfirmCalendarEvent = () =>
+        sessionNotifier.confirmCalendarEvent();
+    orchestrator.onDismissCalendarEvent = () {
+      sessionNotifier.dismissCalendarEvent();
+      sessionNotifier.dismissReminder();
+      return Future.value();
+    };
 
     // Keep orchestrator's session ID in sync for undo support.
     final sessionId = ref.read(sessionNotifierProvider).activeSessionId;
@@ -217,6 +226,30 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
           }
 
           orchestrator.onAssistantMessage(lastMsg.content);
+        }
+      }
+    });
+
+    // Listen for pending calendar events during voice mode — trigger
+    // verbal confirmation or deferral when extraction completes.
+    ref.listen<SessionState>(sessionNotifierProvider, (previous, next) {
+      if (!voiceEnabled) return;
+      if (orchestrator.state.phase == VoiceLoopPhase.idle) return;
+
+      // Only trigger when extraction just completed (transition from
+      // isExtracting=true to false with a non-null extractedEvent).
+      final wasExtracting = previous?.isExtracting ?? false;
+      if (wasExtracting &&
+          !next.isExtracting &&
+          next.pendingExtractedEvent != null) {
+        final isConnected = ref.read(isGoogleConnectedProvider);
+        if (isConnected) {
+          orchestrator.confirmCalendarEvent(next.pendingExtractedEvent!);
+        } else {
+          // Defer: save event locally and inform user via TTS (ADR-0020 §8).
+          final notifier = ref.read(sessionNotifierProvider.notifier);
+          notifier.deferCalendarEvent();
+          orchestrator.speakDeferral();
         }
       }
     });
@@ -351,6 +384,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
               ),
             ),
 
+            // Calendar event confirmation card — shown when a pending
+            // calendar/reminder intent is detected (ADR-0020 §7).
+            if (sessionState.pendingCalendarEvent != null ||
+                sessionState.pendingReminder != null)
+              _buildCalendarEventCard(sessionState),
+
             // "Session ending..." indicator when wrapping up.
             if (sessionState.isSessionEnding && !sessionState.isClosingComplete)
               const Padding(
@@ -385,6 +424,39 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
           child: const Text('Done'),
         ),
       ),
+    );
+  }
+
+  /// Build the inline calendar event confirmation card.
+  Widget _buildCalendarEventCard(SessionState sessionState) {
+    final isReminder = sessionState.pendingReminder != null;
+    final isConnected = ref.watch(isGoogleConnectedProvider);
+
+    return CalendarEventCard(
+      extractedEvent: sessionState.pendingExtractedEvent,
+      isExtracting: sessionState.isExtracting,
+      extractionError: sessionState.extractionError,
+      isReminder: isReminder,
+      isGoogleConnected: isConnected,
+      onConfirm: () {
+        ref.read(sessionNotifierProvider.notifier).confirmCalendarEvent();
+      },
+      onDismiss: () {
+        if (isReminder) {
+          ref.read(sessionNotifierProvider.notifier).dismissReminder();
+        } else {
+          ref.read(sessionNotifierProvider.notifier).dismissCalendarEvent();
+        }
+      },
+      onConnect: () async {
+        final connected = await ref
+            .read(isGoogleConnectedProvider.notifier)
+            .connect();
+        if (connected && mounted) {
+          // After connecting, the card will show "Add to Calendar"
+          // because isGoogleConnectedProvider updates automatically.
+        }
+      },
     );
   }
 
