@@ -175,7 +175,7 @@ class LlamadartLlmService implements LocalLlmService {
       //
       // return buffer.toString().trim();
       return '';
-    } catch (e) {
+    } on Exception catch (e) {
       if (e is LocalLlmException) rethrow;
       throw InferenceException('Inference failed', cause: e);
     }

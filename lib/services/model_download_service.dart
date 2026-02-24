@@ -104,28 +104,32 @@ class ModelDownloadService {
       name: 'encoder',
       url:
           'https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17/resolve/main/encoder-epoch-99-avg-1.int8.onnx',
-      sha256: '', // Populated after first verified download
+      sha256:
+          '3810755ce7c3ab26b42a8bcf39d191308fa27fb0f53358823ba46141d03b7eb3',
       expectedSize: 42845182,
     ),
     ModelFileInfo(
       name: 'decoder',
       url:
           'https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17/resolve/main/decoder-epoch-99-avg-1.onnx',
-      sha256: '',
+      sha256:
+          '45a7f940ecfb53d89fa270ad11b88b961e53a317203eb24b1c8e95ed208b0f30',
       expectedSize: 2092272,
     ),
     ModelFileInfo(
       name: 'joiner',
       url:
           'https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17/resolve/main/joiner-epoch-99-avg-1.int8.onnx',
-      sha256: '',
+      sha256:
+          'e085d73b593cf9b0707f370dbd656d58327d3fe36d80d849202ef81df02cb01e',
       expectedSize: 259572,
     ),
     ModelFileInfo(
       name: 'tokens',
       url:
           'https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17/resolve/main/tokens.txt',
-      sha256: '',
+      sha256:
+          '49e3c2646595fd907228b3c6787069658f67b17377c60aeb8619c4551b2316fb',
       expectedSize: 5048,
     ),
   ];

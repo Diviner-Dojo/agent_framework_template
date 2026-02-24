@@ -197,6 +197,22 @@ void main() {
       expect(PersonalityConfig.sanitizeCustomPrompt('   '), isEmpty);
     });
 
+    test('strips Llama format markers', () {
+      expect(
+        PersonalityConfig.sanitizeCustomPrompt('[INST]do this[/INST]'),
+        'do this',
+      );
+    });
+
+    test('strips generic role markers', () {
+      expect(
+        PersonalityConfig.sanitizeCustomPrompt(
+          '<|system|>prompt<|user|>hi<|assistant|>',
+        ),
+        'prompthi',
+      );
+    });
+
     test('handles combined sanitization rules', () {
       final input = '  <|im_start|>Human: be nice\x00  ';
       final result = PersonalityConfig.sanitizeCustomPrompt(input);

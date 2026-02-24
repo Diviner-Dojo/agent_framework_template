@@ -301,7 +301,7 @@ void main() {
   group('Journal-only mode', () {
     test('skip greeting, skip follow-up, Layer A summary', () async {
       final agent = AgentRepository();
-      agent.journalOnlyMode = true;
+      agent.setJournalOnlyMode(true);
 
       final greeting = await agent.getGreeting(
         now: DateTime(2026, 2, 23, 10, 0),
@@ -369,6 +369,47 @@ void main() {
       () async {
         final response = await agent.getResumeGreeting();
         expect(response.layer, AgentLayer.ruleBasedLocal);
+      },
+    );
+  });
+
+  group('getResumeGreeting fallback', () {
+    test('getResumeGreeting exception falls back to ruleBasedLocal', () async {
+      final agent = AgentRepository(localLlmLayer: ThrowingLocalLlmLayer());
+      final response = await agent.getResumeGreeting();
+      expect(response.layer, AgentLayer.ruleBasedLocal);
+      expect(
+        response.content,
+        "Welcome back! Let's continue where you left off.",
+      );
+    });
+  });
+
+  group('Layer priority with local LLM and Claude', () {
+    test(
+      'prefer-Claude OFF + local LLM + Claude available → local LLM wins',
+      () async {
+        final env = Environment.custom(
+          supabaseUrl: 'https://test.supabase.co',
+          supabaseAnonKey: 'test-key',
+        );
+        final dio = Dio();
+        dio.httpClientAdapter = _SuccessDioAdapter();
+        final claudeService = ClaudeApiService(environment: env, dio: dio);
+        final connectivity = AlwaysOnlineConnectivityService();
+
+        final agent = AgentRepository(
+          claudeService: claudeService,
+          connectivityService: connectivity,
+          localLlmLayer: FakeLocalLlmLayer(),
+        );
+        // preferClaude defaults to false — local LLM should win.
+
+        final response = await agent.getGreeting(
+          now: DateTime(2026, 2, 23, 10, 0),
+        );
+        expect(response.layer, AgentLayer.llmLocal);
+        expect(response.content, 'Local LLM greeting');
       },
     );
   });

@@ -107,9 +107,7 @@ final llmModelReadyProvider = FutureProvider<bool>((ref) async {
 
   if (!modelDir.existsSync()) return false;
 
-  final fileName = Uri.parse(
-    LlmModelDownloadService.modelFile.url,
-  ).pathSegments.last;
+  final fileName = LlmModelDownloadService.modelFileName;
   final file = File('${modelDir.path}/$fileName');
   return file.existsSync() &&
       file.lengthSync() == LlmModelDownloadService.modelFile.expectedSize;
@@ -122,9 +120,7 @@ final llmModelReadyProvider = FutureProvider<bool>((ref) async {
 // coverage:ignore-start
 final llmModelPathProvider = FutureProvider<String>((ref) async {
   final dir = await getApplicationSupportDirectory();
-  final fileName = Uri.parse(
-    LlmModelDownloadService.modelFile.url,
-  ).pathSegments.last;
+  final fileName = LlmModelDownloadService.modelFileName;
   return '${dir.path}/llm/$fileName';
 });
 // coverage:ignore-end

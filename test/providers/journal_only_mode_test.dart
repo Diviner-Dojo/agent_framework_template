@@ -16,7 +16,7 @@ void main() {
 
     // Create an AgentRepository with journal-only mode ON.
     final journalOnlyAgent = AgentRepository();
-    journalOnlyAgent.journalOnlyMode = true;
+    journalOnlyAgent.setJournalOnlyMode(true);
 
     container = ProviderContainer(
       overrides: [
@@ -143,7 +143,7 @@ void main() {
 
     setUp(() {
       agent = AgentRepository();
-      agent.journalOnlyMode = true;
+      agent.setJournalOnlyMode(true);
     });
 
     test('getGreeting returns minimal message', () async {

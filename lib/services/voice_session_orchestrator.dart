@@ -389,7 +389,7 @@ class VoiceSessionOrchestrator {
         _onSpeechResult,
         onError: _onSttError,
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _onSttError(e);
     }
   }
@@ -473,7 +473,7 @@ class VoiceSessionOrchestrator {
     if (onSendMessage != null) {
       try {
         await onSendMessage!(text, inputMethod: 'VOICE');
-      } catch (e) {
+      } on Exception catch (e) {
         debugPrint('[VoiceOrchestrator] sendMessage error: $e');
         if (state.isContinuousMode) {
           await _handleError(VoiceRecoveryMessages.processingError);
@@ -614,7 +614,7 @@ class VoiceSessionOrchestrator {
         _lastClosedSessionId = currentSessionId;
         await onEndSession!();
         currentSessionId = null;
-      } catch (e) {
+      } on Exception catch (e) {
         debugPrint('[VoiceOrchestrator] endSession error: $e');
         await _handleError(VoiceRecoveryMessages.processingError);
         return;
@@ -638,7 +638,7 @@ class VoiceSessionOrchestrator {
         if (state.phase != VoiceLoopPhase.speaking) return;
 
         await _speak(VoiceRecoveryMessages.discardComplete);
-      } catch (e) {
+      } on Exception catch (e) {
         debugPrint('[VoiceOrchestrator] discardSession error: $e');
         await _handleError(VoiceRecoveryMessages.processingError);
         return;
@@ -679,7 +679,7 @@ class VoiceSessionOrchestrator {
           }
           return;
         }
-      } catch (e) {
+      } on Exception catch (e) {
         debugPrint('[VoiceOrchestrator] resumeSession error: $e');
       }
     }
@@ -750,7 +750,7 @@ class VoiceSessionOrchestrator {
         await _ttsService.stop();
       }
       await _ttsService.speak(message);
-    } catch (e) {
+    } on Exception catch (e) {
       debugPrint('[VoiceOrchestrator] TTS error during recovery: $e');
     }
 
@@ -806,7 +806,7 @@ class VoiceSessionOrchestrator {
         await _ttsService.stop();
       }
       await _ttsService.speak(text);
-    } catch (e) {
+    } on Exception catch (e) {
       debugPrint('[VoiceOrchestrator] TTS error: $e');
     }
   }
@@ -828,7 +828,7 @@ class VoiceSessionOrchestrator {
                   debugPrint('[VoiceOrchestrator] TTS async error: $e'),
             ),
       );
-    } catch (e) {
+    } on Exception catch (e) {
       debugPrint('[VoiceOrchestrator] TTS error: $e');
     }
   }
@@ -851,7 +851,7 @@ class VoiceSessionOrchestrator {
           await _ttsService.stop();
         }
         await _ttsService.speak(sentence);
-      } catch (e) {
+      } on Exception catch (e) {
         debugPrint('[VoiceOrchestrator] TTS sentence error: $e');
         return;
       }
