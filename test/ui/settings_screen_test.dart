@@ -168,11 +168,27 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
+      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      await tester.scrollUntilVisible(
+        find.text('Cloud Sync'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
+      await tester.pumpAndSettle();
+
       expect(find.text('Cloud Sync'), findsOneWidget);
     });
 
     testWidgets('shows sign in prompt when not authenticated', (tester) async {
       await tester.pumpWidget(buildTestWidget(isAuthenticated: false));
+      await tester.pumpAndSettle();
+
+      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      await tester.scrollUntilVisible(
+        find.text('Cloud Sync'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -186,6 +202,14 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(buildTestWidget(isAuthenticated: true));
+      await tester.pumpAndSettle();
+
+      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      await tester.scrollUntilVisible(
+        find.text('Cloud Sync'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('All sessions synced'), findsOneWidget);
@@ -226,6 +250,14 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        // Scroll down past AI Assistant card to make Cloud Sync visible.
+        await tester.scrollUntilVisible(
+          find.text('Cloud Sync'),
+          200,
+          scrollable: find.byType(Scrollable),
+        );
+        await tester.pumpAndSettle();
+
         expect(find.text('3 sessions pending sync'), findsOneWidget);
       },
     );
@@ -258,6 +290,14 @@ void main() {
             routes: {'/auth': (context) => const Scaffold()},
           ),
         ),
+      );
+      await tester.pumpAndSettle();
+
+      // Scroll down past AI Assistant card to make Cloud Sync visible.
+      await tester.scrollUntilVisible(
+        find.text('Cloud Sync'),
+        200,
+        scrollable: find.byType(Scrollable),
       );
       await tester.pumpAndSettle();
 

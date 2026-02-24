@@ -164,14 +164,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     // Watch orchestrator state for UI rebuilds.
     final orchestrator = ref.watch(voiceOrchestratorProvider);
 
-    // Listen for auto-discard signal and show SnackBar + auto-pop.
+    // Listen for empty-session-closed signal and show SnackBar + auto-pop.
     ref.listen<bool>(wasAutoDiscardedProvider, (previous, wasDiscarded) {
       if (wasDiscarded) {
         // Reset the flag immediately so it doesn't re-trigger.
         ref.read(wasAutoDiscardedProvider.notifier).state = false;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Session discarded \u2014 nothing was recorded.'),
+            content: Text('Session closed \u2014 nothing was recorded.'),
           ),
         );
         // Auto-pop back to the list after a brief delay.

@@ -47,6 +47,7 @@ import '../utils/uuid_generator.dart';
 import '../utils/timestamp_utils.dart';
 import 'auth_providers.dart';
 import 'database_provider.dart';
+import 'llm_providers.dart';
 import 'search_providers.dart';
 import 'sync_providers.dart';
 
@@ -76,10 +77,11 @@ final paginatedSessionsProvider = StreamProvider<List<JournalSession>>((ref) {
   return sessionDao.watchSessionsPaginated(pageSize);
 });
 
-/// True when a session was auto-discarded (empty, no USER messages).
+/// True when an empty session was closed (no USER messages).
 ///
-/// The UI watches this to show a SnackBar notification. The UI resets it
-/// to false after displaying the message.
+/// The session is preserved in the database but closed immediately without
+/// generating a summary. The UI watches this to show a SnackBar notification
+/// and auto-pop back to the list. The UI resets it to false after displaying.
 final wasAutoDiscardedProvider = StateProvider<bool>((ref) => false);
 
 /// Holds the active session ID (null when no session is in progress).
@@ -266,6 +268,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Using 'UTC' as timezone for Phase 1 — Phase 2 adds flutter_timezone.
     await _sessionDao.createSession(sessionId, now, 'UTC');
 
+    // Lock the conversation layer for this session's duration (ADR-0017).
+    _agent.lockLayerForSession();
+
     // Set loading state BEFORE the agent call (spec requirement: immediate flag).
     state = SessionState(activeSessionId: sessionId, isWaitingForAgent: true);
     _ref.read(activeSessionIdProvider.notifier).state = sessionId;
@@ -329,6 +334,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
       {'role': 'user', 'content': text},
     ];
     state = state.copyWith(conversationMessages: updatedMessages);
+
+    // Journal-only mode: save message silently, no follow-up or classification.
+    if (_agent.journalOnlyMode) return;
 
     // Phase 5: Intent classification — detect recall queries before routing
     // to the normal journaling follow-up (ADR-0013 §3).
@@ -430,16 +438,20 @@ class SessionNotifier extends StateNotifier<SessionState> {
     final sessionId = state.activeSessionId;
     if (sessionId == null) return;
 
-    // Phase 6: Empty session guard (ADR-0014).
-    // If the user hasn't sent any messages, auto-discard instead of
-    // generating a summary. Only the greeting exists.
+    // Empty session guard: if the user hasn't sent any messages, close the
+    // session quietly without generating a summary. The session is preserved
+    // in the database (not deleted) so no data is ever lost without explicit
+    // user action. The UI shows a brief "nothing recorded" notification.
     final userMessageCount = await _messageDao.getMessageCountByRole(
       sessionId,
       'USER',
     );
     if (userMessageCount == 0) {
+      await _sessionDao.endSession(sessionId, nowUtc());
+      _agent.unlockLayer();
       _ref.read(wasAutoDiscardedProvider.notifier).state = true;
-      await discardSession();
+      state = const SessionState();
+      _ref.read(activeSessionIdProvider.notifier).state = null;
       return;
     }
 
@@ -498,6 +510,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
       topicTags: topicTagsJson,
     );
 
+    // Unlock the conversation layer now that the session is ending.
+    _agent.unlockLayer();
+
     // Signal that the closing summary is ready for the user to read.
     // Keep activeSessionId set so the message stream stays live.
     // The UI shows a "Done" button; dismissSession() clears state when tapped.
@@ -548,6 +563,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // one follow-up round. Using USER count avoids miscounting closing and
     // bridging ASSISTANT messages (greeting, summary, bridging) as follow-ups.
     final followUpCount = messages.where((m) => m.role == 'USER').length;
+
+    // Lock the conversation layer for this resumed session (ADR-0017).
+    _agent.lockLayerForSession();
 
     // Set state before getting greeting.
     state = SessionState(
@@ -606,6 +624,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
     final sessionId = state.activeSessionId;
     if (sessionId == null) return;
 
+    // Unlock the conversation layer.
+    _agent.unlockLayer();
+
     // Clear state immediately so the UI doesn't wait for DB operations.
     state = const SessionState();
     _ref.read(activeSessionIdProvider.notifier).state = null;
@@ -620,6 +641,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// "Done". This is the only path that clears activeSessionId after a
   /// session ends.
   void dismissSession() {
+    _agent.unlockLayer();
     state = const SessionState();
     _ref.read(activeSessionIdProvider.notifier).state = null;
   }
@@ -939,14 +961,21 @@ final claudeApiServiceProvider = Provider<ClaudeApiService>((ref) {
 /// Provider for the AgentRepository.
 ///
 /// Injects ClaudeApiService and ConnectivityService for Layer B support.
+/// Reads user preferences (preferClaude, journalOnlyMode) and applies them.
 /// When either service is unavailable, the repository falls back to Layer A.
 final agentRepositoryProvider = Provider<AgentRepository>((ref) {
   final claudeService = ref.watch(claudeApiServiceProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
-  return AgentRepository(
+  final preferClaude = ref.watch(preferClaudeProvider);
+  final journalOnlyMode = ref.watch(journalOnlyModeProvider);
+
+  final repo = AgentRepository(
     claudeService: claudeService,
     connectivityService: connectivityService,
   );
+  repo.setPreferClaude(preferClaude);
+  repo.journalOnlyMode = journalOnlyMode;
+  return repo;
 });
 
 /// Provider for the SessionNotifier.

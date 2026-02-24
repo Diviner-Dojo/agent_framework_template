@@ -21,8 +21,11 @@ enum AgentLayer {
   /// Layer A: Rule-based agent (offline, always available)
   ruleBasedLocal,
 
-  /// Layer B: Claude API via Edge Function proxy (online)
+  /// Layer B remote: Claude API via Edge Function proxy (online)
   llmRemote,
+
+  /// Layer B local: On-device LLM inference (Phase 8B)
+  llmLocal,
 }
 
 /// Structured metadata extracted by Claude at the end of a session.
