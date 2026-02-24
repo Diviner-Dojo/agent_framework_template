@@ -9,6 +9,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_secure_storage_windows
   flutter_timezone
   flutter_tts
+  geolocator_windows
   record_windows
   sqlite3_flutter_libs
   url_launcher_windows

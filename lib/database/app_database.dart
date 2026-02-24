@@ -49,7 +49,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -102,6 +102,13 @@ class AppDatabase extends _$AppDatabase {
                 'ON photos (session_id)',
           ),
         );
+      }
+      if (from < 4) {
+        // Phase 10: Location awareness (ADR-0019).
+        await m.addColumn(journalSessions, journalSessions.latitude);
+        await m.addColumn(journalSessions, journalSessions.longitude);
+        await m.addColumn(journalSessions, journalSessions.locationAccuracy);
+        await m.addColumn(journalSessions, journalSessions.locationName);
       }
     },
   );

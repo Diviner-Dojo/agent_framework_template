@@ -94,7 +94,7 @@ class SessionCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
 
-              // Bottom row: message count and sync status.
+              // Bottom row: message count, location indicator, and sync status.
               Row(
                 children: [
                   Text(
@@ -103,6 +103,15 @@ class SessionCard extends StatelessWidget {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  // Location indicator (Phase 10 — ADR-0019).
+                  if (session.locationName != null) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.location_on_outlined,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
                   const Spacer(),
                   SyncStatusIndicator(
                     status: SyncStatus.fromString(session.syncStatus),

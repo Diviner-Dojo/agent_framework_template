@@ -136,6 +136,24 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
               ),
             ),
 
+          // Location pill (Phase 10 — ADR-0019).
+          if (session.locationName != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Chip(
+                  avatar: Icon(
+                    Icons.location_on_outlined,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  label: Text(session.locationName!),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
+
           // Message list — the full conversation transcript.
           Expanded(
             child: messages.isEmpty
