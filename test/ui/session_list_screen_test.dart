@@ -239,6 +239,7 @@ void main() {
           createdAt: now,
           updatedAt: now,
           summary: 'Had a good day',
+          locationName: 'Denver, Colorado',
         ),
       ];
 

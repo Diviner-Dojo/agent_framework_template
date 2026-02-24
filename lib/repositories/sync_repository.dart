@@ -149,22 +149,9 @@ class SyncRepository {
     if (userId == null) return;
 
     // UPSERT session (ON CONFLICT DO UPDATE for idempotency)
-    await client.from('journal_sessions').upsert({
-      'session_id': session.sessionId,
-      'user_id': userId,
-      'start_time': session.startTime.toUtc().toIso8601String(),
-      'end_time': session.endTime?.toUtc().toIso8601String(),
-      'timezone': session.timezone,
-      'summary': session.summary,
-      'mood_tags': session.moodTags,
-      'people': session.people,
-      'topic_tags': session.topicTags,
-      'is_resumed': session.isResumed,
-      'resume_count': session.resumeCount,
-      'sync_status': 'SYNCED',
-      'created_at': session.createdAt.toUtc().toIso8601String(),
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    });
+    await client
+        .from('journal_sessions')
+        .upsert(buildSessionUpsertMap(session, userId));
 
     // UPSERT all messages for this session
     final messages = await _messageDao.getMessagesForSession(session.sessionId);
@@ -189,6 +176,36 @@ class SyncRepository {
 
       await client.from('journal_messages').upsert(messageRows);
     }
+  }
+
+  /// Build the upsert map for a session row in Supabase.
+  ///
+  /// Extracted as a testable method so unit tests can assert the map's keys.
+  /// Per ADR-0019 §3: `location_name` is included; `latitude`, `longitude`,
+  /// and `location_accuracy` are intentionally excluded (coordinates stay local).
+  @visibleForTesting
+  static Map<String, dynamic> buildSessionUpsertMap(
+    JournalSession session,
+    String userId,
+  ) {
+    return {
+      'session_id': session.sessionId,
+      'user_id': userId,
+      'start_time': session.startTime.toUtc().toIso8601String(),
+      'end_time': session.endTime?.toUtc().toIso8601String(),
+      'timezone': session.timezone,
+      'summary': session.summary,
+      'mood_tags': session.moodTags,
+      'people': session.people,
+      'topic_tags': session.topicTags,
+      'is_resumed': session.isResumed,
+      'resume_count': session.resumeCount,
+      // Location: name only — coordinates stay local (ADR-0019 §3).
+      'location_name': session.locationName,
+      'sync_status': 'SYNCED',
+      'created_at': session.createdAt.toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
   }
 
   /// Upload photos for a session to Supabase Storage.

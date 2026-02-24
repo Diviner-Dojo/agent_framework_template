@@ -17,8 +17,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/config/environment.dart';
+import 'package:geolocator/geolocator.dart';
+
 import 'package:agentic_journal/providers/auth_providers.dart';
 import 'package:agentic_journal/providers/llm_providers.dart';
+import 'package:agentic_journal/providers/location_providers.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
@@ -27,8 +30,27 @@ import 'package:agentic_journal/providers/settings_providers.dart';
 import 'package:agentic_journal/providers/sync_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/services/assistant_registration_service.dart';
+import 'package:agentic_journal/services/location_service.dart';
 import 'package:agentic_journal/services/supabase_service.dart';
 import 'package:agentic_journal/ui/screens/settings_screen.dart';
+
+/// Creates a [LocationService] with faked permission responses for testing.
+LocationService _fakeLocationService({
+  LocationPermission checkResult = LocationPermission.denied,
+  LocationPermission requestResult = LocationPermission.denied,
+}) {
+  return LocationService(
+    checkPermission: () async => checkResult,
+    requestPermission: () async => requestResult,
+    isLocationServiceEnabled: () async => true,
+    getLastKnownPosition: () async => null,
+    getCurrentPosition:
+        ({desiredAccuracy = LocationAccuracy.low, timeLimit}) async {
+          throw Exception('not available');
+        },
+    reverseGeocode: (lat, lng) async => [],
+  );
+}
 
 /// A mock assistant service that tracks method calls.
 class MockAssistantService extends AssistantRegistrationService {
@@ -61,7 +83,10 @@ void main() {
       prefs = await SharedPreferences.getInstance();
     });
 
-    Widget buildTestWidget({bool isAuthenticated = false}) {
+    Widget buildTestWidget({
+      bool isAuthenticated = false,
+      LocationService? locationService,
+    }) {
       return ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
@@ -77,6 +102,8 @@ void main() {
               ),
             ),
           ),
+          if (locationService != null)
+            locationServiceProvider.overrideWithValue(locationService),
           isAuthenticatedProvider.overrideWithValue(isAuthenticated),
           currentUserProvider.overrideWithValue(null),
           pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
@@ -323,6 +350,170 @@ void main() {
 
       expect(find.text('1 session pending sync'), findsOneWidget);
     });
+
+    // Location card tests (Phase 10 — ADR-0019)
+    testWidgets('shows Location card with toggle', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      // Scroll to Location card.
+      await tester.scrollUntilVisible(
+        find.text('Location'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Location'), findsOneWidget);
+      expect(find.text('Enable location'), findsOneWidget);
+      expect(find.text('Record where you journal'), findsOneWidget);
+    });
+
+    testWidgets('location toggle defaults to off', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Enable location'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      // SwitchListTile should be off by default (no preference set).
+      final switchWidget = tester.widget<SwitchListTile>(
+        find.byType(SwitchListTile).last,
+      );
+      expect(switchWidget.value, false);
+    });
+
+    testWidgets('shows Clear Location Data button', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Clear Location Data'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Clear Location Data'), findsOneWidget);
+    });
+
+    testWidgets('shows privacy disclosure text', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Location'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('which may contact Google'), findsOneWidget);
+    });
+
+    testWidgets('toggle on requests permission and enables when granted', (
+      tester,
+    ) async {
+      final service = _fakeLocationService(
+        checkResult: LocationPermission.denied,
+        requestResult: LocationPermission.whileInUse,
+      );
+      await tester.pumpWidget(buildTestWidget(locationService: service));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Enable location'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      // Toggle should be off initially.
+      var switchTile = tester.widget<SwitchListTile>(
+        find.byType(SwitchListTile).last,
+      );
+      expect(switchTile.value, false);
+
+      // Tap the toggle to turn it on.
+      await tester.tap(find.byType(Switch).last);
+      await tester.pumpAndSettle();
+
+      // Toggle should now be on (permission was granted).
+      switchTile = tester.widget<SwitchListTile>(
+        find.byType(SwitchListTile).last,
+      );
+      expect(switchTile.value, true);
+    });
+
+    testWidgets('toggle on shows SnackBar when permission denied', (
+      tester,
+    ) async {
+      final service = _fakeLocationService(
+        checkResult: LocationPermission.denied,
+        requestResult: LocationPermission.denied,
+      );
+      await tester.pumpWidget(buildTestWidget(locationService: service));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Enable location'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      // Tap the toggle.
+      await tester.tap(find.byType(Switch).last);
+      await tester.pumpAndSettle();
+
+      // SnackBar should appear.
+      expect(
+        find.text('Location permission is required to record location.'),
+        findsOneWidget,
+      );
+
+      // Toggle should remain off.
+      final switchTile = tester.widget<SwitchListTile>(
+        find.byType(SwitchListTile).last,
+      );
+      expect(switchTile.value, false);
+    });
+
+    testWidgets(
+      'toggle on shows settings prompt when permission deniedForever',
+      (tester) async {
+        final service = _fakeLocationService(
+          checkResult: LocationPermission.deniedForever,
+        );
+        await tester.pumpWidget(buildTestWidget(locationService: service));
+        await tester.pumpAndSettle();
+
+        await tester.scrollUntilVisible(
+          find.text('Enable location'),
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+
+        // Tap the toggle.
+        await tester.tap(find.byType(Switch).last);
+        await tester.pumpAndSettle();
+
+        // SnackBar with settings action should appear.
+        expect(find.textContaining('permanently denied'), findsOneWidget);
+        expect(find.text('Open Settings'), findsOneWidget);
+
+        // Toggle should remain off.
+        final switchTile = tester.widget<SwitchListTile>(
+          find.byType(SwitchListTile).last,
+        );
+        expect(switchTile.value, false);
+      },
+    );
 
     testWidgets('sign in button navigates to /auth', (tester) async {
       var navigated = false;

@@ -241,6 +241,66 @@ class SessionDao {
   }
 
   // =========================================================================
+  // Location methods (Phase 10 — ADR-0019)
+  // =========================================================================
+
+  /// Update a session's location data after fire-and-forget capture.
+  ///
+  /// Coordinates should already be reduced to 2 decimal places before calling.
+  /// Sets syncStatus to 'PENDING' so the session re-enters the sync queue
+  /// and [locationName] eventually reaches Supabase (coordinates are excluded
+  /// from sync per ADR-0019).
+  Future<int> updateSessionLocation(
+    String sessionId, {
+    required double latitude,
+    required double longitude,
+    double? locationAccuracy,
+    String? locationName,
+  }) async {
+    return (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        latitude: Value(latitude),
+        longitude: Value(longitude),
+        locationAccuracy: Value(locationAccuracy),
+        locationName: Value(locationName),
+        syncStatus: const Value('PENDING'),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
+  /// Nullify all location columns across all sessions.
+  ///
+  /// Called by the "Clear Location Data" button in Settings. Also sets
+  /// syncStatus to 'PENDING' on affected sessions so the next sync uploads
+  /// null locationName to Supabase, overwriting previously synced values.
+  ///
+  /// Note: This does not trigger re-sync automatically — the existing sync
+  /// machinery picks up PENDING sessions on the next sync cycle.
+  /// Non-location columns (summary, moodTags, etc.) are left untouched.
+  Future<int> clearAllLocationData() async {
+    return (_db.update(_db.journalSessions)..where(
+          (s) =>
+              s.latitude.isNotNull() |
+              s.longitude.isNotNull() |
+              s.locationAccuracy.isNotNull() |
+              s.locationName.isNotNull(),
+        ))
+        .write(
+          JournalSessionsCompanion(
+            latitude: const Value(null),
+            longitude: const Value(null),
+            locationAccuracy: const Value(null),
+            locationName: const Value(null),
+            syncStatus: const Value('PENDING'),
+            updatedAt: Value(DateTime.now().toUtc()),
+          ),
+        );
+  }
+
+  // =========================================================================
   // Sync methods (Phase 4)
   // =========================================================================
 

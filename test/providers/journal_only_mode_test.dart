@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/native.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/models/agent_response.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
+import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
 
@@ -11,7 +13,9 @@ void main() {
   late ProviderContainer container;
   late AppDatabase database;
 
-  setUp(() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
     database = AppDatabase.forTesting(NativeDatabase.memory());
 
     // Create an AgentRepository with journal-only mode ON.
@@ -22,6 +26,7 @@ void main() {
       overrides: [
         databaseProvider.overrideWithValue(database),
         agentRepositoryProvider.overrideWithValue(journalOnlyAgent),
+        sharedPreferencesProvider.overrideWithValue(prefs),
       ],
     );
   });

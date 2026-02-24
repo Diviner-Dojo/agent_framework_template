@@ -50,6 +50,7 @@ import '../utils/timestamp_utils.dart';
 import 'auth_providers.dart';
 import 'database_provider.dart';
 import 'llm_providers.dart';
+import 'location_providers.dart';
 import 'photo_providers.dart';
 import 'search_providers.dart';
 import 'sync_providers.dart';
@@ -270,6 +271,15 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Create the session record in the database.
     // Using 'UTC' as timezone for Phase 1 — Phase 2 adds flutter_timezone.
     await _sessionDao.createSession(sessionId, now, 'UTC');
+
+    // Fire-and-forget location capture (Phase 10 — ADR-0019).
+    // Must occur AFTER createSession so the session row exists for
+    // updateSessionLocation. Read preference imperatively (not watched).
+    // The unawaited future runs in the background — never blocks the greeting.
+    final locationEnabled = _ref.read(locationEnabledProvider);
+    if (locationEnabled) {
+      _captureLocationAsync(sessionId);
+    }
 
     // Lock the conversation layer for this session's duration (ADR-0017).
     _agent.lockLayerForSession();
@@ -528,6 +538,44 @@ class SessionNotifier extends StateNotifier<SessionState> {
 
   /// Trigger background sync for a completed session.
   ///
+  /// Fire-and-forget location capture for a session (Phase 10 — ADR-0019).
+  ///
+  /// Called from [startSession] after the session row is created. Runs
+  /// asynchronously — never blocks the greeting or session flow. If
+  /// location capture fails for any reason (permission denied, timeout,
+  /// service disabled), the session continues normally without location.
+  ///
+  /// Coordinates are reduced to 2 decimal places by [LocationService]
+  /// before being passed to the DAO.
+  void _captureLocationAsync(String sessionId) {
+    Future<void>(() async {
+      try {
+        final locationService = _ref.read(locationServiceProvider);
+        final result = await locationService.getLocation();
+        if (result == null) return;
+
+        // Verify session still exists (user may have discarded it).
+        if (state.activeSessionId != sessionId) return;
+
+        await _sessionDao.updateSessionLocation(
+          sessionId,
+          latitude: result.latitude,
+          longitude: result.longitude,
+          locationAccuracy: result.accuracy,
+          locationName: result.locationName,
+        );
+      } on Exception catch (e) {
+        if (kDebugMode) {
+          debugPrint('Location capture failed for $sessionId: $e');
+        }
+      } on Error catch (e) {
+        if (kDebugMode) {
+          debugPrint('Location capture error for $sessionId: $e');
+        }
+      }
+    });
+  }
+
   /// Non-blocking: runs asynchronously without awaiting. If sync fails,
   /// the session's syncStatus stays PENDING/FAILED for later retry.
   void _triggerSyncAfterEnd(String sessionId) {

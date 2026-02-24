@@ -68,6 +68,15 @@ class JournalSessions extends Table {
   // Incremented by SessionDao.resumeSession() each time.
   IntColumn get resumeCount => integer().withDefault(const Constant(0))();
 
+  // Location data (Phase 10 — ADR-0019).
+  // Coordinates are reduced to 2 decimal places (~1.1km) before storage
+  // as a deliberate privacy tradeoff. Only locationName syncs to cloud;
+  // raw coordinates remain local-only.
+  RealColumn get latitude => real().nullable()();
+  RealColumn get longitude => real().nullable()();
+  RealColumn get locationAccuracy => real().nullable()();
+  TextColumn get locationName => text().nullable()();
+
   // Standard timestamps — createdAt defaults to current time,
   // updatedAt should be set manually whenever the record is modified.
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

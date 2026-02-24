@@ -17,6 +17,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../models/personality_config.dart';
 import '../../providers/auth_providers.dart';
@@ -25,6 +26,7 @@ import '../../providers/llm_providers.dart';
 import '../../providers/personality_providers.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
+import '../../providers/location_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
 import '../../providers/voice_providers.dart';
@@ -40,6 +42,8 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with WidgetsBindingObserver {
+  bool _isClearingLocation = false;
+
   @override
   void initState() {
     super.initState();
@@ -79,6 +83,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           _buildAiAssistantCard(context),
           const SizedBox(height: 16),
           _buildCloudSyncCard(context),
+          const SizedBox(height: 16),
+          _buildLocationCard(context),
           const SizedBox(height: 16),
           _buildDataManagementCard(context),
           const SizedBox(height: 16),
@@ -568,6 +574,164 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   }
 
   /// Build the "Data Management" card with storage info and clear all.
+  /// Build the "Location" settings card (Phase 10 — ADR-0019).
+  Widget _buildLocationCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final locationEnabled = ref.watch(locationEnabledProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Location', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Location names are looked up using your device\'s location '
+              'service, which may contact Google. Raw coordinates are not '
+              'stored in your journal\'s cloud backup.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              title: const Text('Enable location'),
+              subtitle: const Text('Record where you journal'),
+              value: locationEnabled,
+              onChanged: (value) async {
+                if (value) {
+                  // Request permission at toggle-on time (B4 — review finding).
+                  await _requestLocationPermission(context);
+                } else {
+                  ref.read(locationEnabledProvider.notifier).setEnabled(false);
+                }
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 4),
+            OutlinedButton.icon(
+              onPressed: _isClearingLocation
+                  ? null
+                  : () => _showClearLocationDialog(context),
+              icon: _isClearingLocation
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(Icons.location_off, color: theme.colorScheme.error),
+              label: Text(
+                _isClearingLocation ? 'Clearing...' : 'Clear Location Data',
+                style: TextStyle(
+                  color: _isClearingLocation
+                      ? theme.colorScheme.onSurfaceVariant
+                      : theme.colorScheme.error,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(
+                  color: _isClearingLocation
+                      ? theme.colorScheme.onSurfaceVariant
+                      : theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Request location permission when the user toggles location on.
+  ///
+  /// If permission is granted (whileInUse or always), enables the toggle.
+  /// If denied, shows a SnackBar and leaves the toggle off.
+  /// If deniedForever, directs the user to app settings.
+  Future<void> _requestLocationPermission(BuildContext context) async {
+    final locationService = ref.read(locationServiceProvider);
+    final permission = await locationService.checkAndRequestPermission();
+
+    if (!context.mounted) return;
+
+    if (permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.always) {
+      ref.read(locationEnabledProvider.notifier).setEnabled(true);
+    } else if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Location permission is permanently denied. '
+            'Please enable it in app settings.',
+          ),
+          action: SnackBarAction(
+            label: 'Open Settings',
+            onPressed: () => Geolocator.openAppSettings(),
+          ),
+        ),
+      );
+    } else {
+      // denied — user dismissed the prompt
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location permission is required to record location.'),
+        ),
+      );
+    }
+  }
+
+  /// Show a confirmation dialog for clearing all location data.
+  Future<void> _showClearLocationDialog(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear location data?'),
+        content: const Text(
+          'This will remove location information from all journal entries. '
+          'Previously synced location names will be cleared on next sync.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      setState(() => _isClearingLocation = true);
+      try {
+        final sessionDao = ref.read(sessionDaoProvider);
+        final cleared = await sessionDao.clearAllLocationData();
+        // Also disable location tracking (per ADR-0019 spec).
+        await ref.read(locationEnabledProvider.notifier).setEnabled(false);
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                cleared > 0
+                    ? 'Location data cleared from $cleared session${cleared == 1 ? '' : 's'}.'
+                    : 'No location data to clear.',
+              ),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isClearingLocation = false);
+      }
+    }
+  }
+
   Widget _buildDataManagementCard(BuildContext context) {
     final theme = Theme.of(context);
     final sessionCountAsync = ref.watch(sessionCountProvider);
