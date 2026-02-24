@@ -97,48 +97,50 @@ class _ModelDownloadDialogState extends State<_ModelDownloadDialog> {
 
     return AlertDialog(
       title: const Text('Speech Model Required'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!_hasStarted) ...[
-            const Text(
-              'Voice mode requires a speech recognition model (~71 MB). '
-              'This is a one-time download.',
-            ),
-            const SizedBox(height: 16),
-            if (!_isOnWifi)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.signal_cellular_alt,
-                      color: theme.colorScheme.onErrorContainer,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'You are on cellular data. '
-                        'WiFi is recommended for this download.',
-                        style: TextStyle(
-                          color: theme.colorScheme.onErrorContainer,
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!_hasStarted) ...[
+              const Text(
+                'Voice mode requires a speech recognition model (~43 MB). '
+                'This is a one-time download.',
+              ),
+              const SizedBox(height: 16),
+              if (!_isOnWifi)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.signal_cellular_alt,
+                        color: theme.colorScheme.onErrorContainer,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You are on cellular data. '
+                          'WiFi is recommended for this download.',
+                          style: TextStyle(
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-          ] else ...[
-            // Download in progress.
-            _buildProgressContent(theme),
+            ] else ...[
+              // Download in progress.
+              _buildProgressContent(theme),
+            ],
           ],
-        ],
+        ),
       ),
       actions: [
         if (!_hasStarted) ...[

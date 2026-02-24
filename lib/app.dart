@@ -56,10 +56,11 @@ class AgenticJournalApp extends ConsumerStatefulWidget {
   ConsumerState<AgenticJournalApp> createState() => _AgenticJournalAppState();
 }
 
-class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp> {
-  /// Guard to ensure wasLaunchedAsAssistant() is called exactly once.
-  /// Without this, hot-reload or widget tree rebuilds could re-trigger
-  /// the assistant launch detection.
+class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
+    with WidgetsBindingObserver {
+  /// Guard to ensure wasLaunchedAsAssistant() is called exactly once
+  /// per cold start. Without this, hot-reload or widget tree rebuilds
+  /// could re-trigger the assistant launch detection.
   bool _assistantLaunchChecked = false;
 
   /// GlobalKey for the navigator so we can push routes from initState's
@@ -70,8 +71,51 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkAssistantLaunch();
   }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // coverage:ignore-start
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When the app resumes, re-check if it was brought to foreground
+    // via an assistant gesture (onNewIntent sets the flag in Kotlin).
+    if (state == AppLifecycleState.resumed) {
+      _checkAssistantRelaunch();
+    }
+  }
+
+  /// Re-check assistant launch flags when the app is already running
+  /// and brought to foreground via the assistant gesture.
+  Future<void> _checkAssistantRelaunch() async {
+    final service = ref.read(assistantServiceProvider);
+    final wasVoiceAssistant = await service.wasLaunchedAsVoiceAssistant();
+    final wasAssistant =
+        wasVoiceAssistant || await service.wasLaunchedAsAssistant();
+    if (!wasAssistant || !mounted) return;
+
+    final hasOnboarded = ref.read(onboardingNotifierProvider);
+    if (!hasOnboarded) return;
+
+    if (wasVoiceAssistant) {
+      ref.read(voiceModeEnabledProvider.notifier).setEnabled(true);
+    }
+
+    // Start a new session and navigate to it.
+    try {
+      await ref.read(sessionNotifierProvider.notifier).startSession();
+      _navigatorKey.currentState?.pushNamed('/session');
+    } catch (_) {
+      // startSession failed — stay on current screen.
+    }
+  }
+  // coverage:ignore-end
 
   /// Check if the app was launched via the assistant gesture.
   ///

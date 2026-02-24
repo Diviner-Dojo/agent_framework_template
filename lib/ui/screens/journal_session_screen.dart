@@ -28,6 +28,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:record/record.dart';
 
 import '../../providers/session_providers.dart';
 import '../../providers/voice_providers.dart';
@@ -60,6 +61,9 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   /// Whether the orchestrator callbacks have been wired.
   bool _orchestratorWired = false;
 
+  /// Whether continuous mode has been auto-started for this session.
+  bool _continuousModeAutoStarted = false;
+
   @override
   void initState() {
     super.initState();
@@ -72,7 +76,6 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     // Wire orchestrator callbacks after the first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _wireOrchestrator();
-      _maybeStartContinuousMode();
     });
   }
 
@@ -114,7 +117,11 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       await sessionNotifier.sendMessage(text, inputMethod: inputMethod);
       return null; // Response comes via message stream.
     };
-    orchestrator.onEndSession = () => sessionNotifier.endSession();
+    orchestrator.onEndSession = () async {
+      await sessionNotifier.endSession();
+      // Auto-dismiss after voice-initiated end session.
+      if (mounted) _dismissAndPop();
+    };
     orchestrator.onDiscardSession = () => sessionNotifier.discardSession();
     orchestrator.onResumeSession = (sessionId) =>
         sessionNotifier.resumeSession(sessionId);
@@ -122,22 +129,6 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     // Keep orchestrator's session ID in sync for undo support.
     final sessionId = ref.read(sessionNotifierProvider).activeSessionId;
     orchestrator.currentSessionId = sessionId;
-  }
-
-  /// If voice mode is enabled, auto-start continuous mode after greeting.
-  void _maybeStartContinuousMode() {
-    final voiceEnabled = ref.read(voiceModeEnabledProvider);
-    if (!voiceEnabled) return;
-
-    // Listen for the first assistant message (the greeting) to start
-    // continuous mode. Uses a one-shot listener.
-    final messages = ref.read(activeSessionMessagesProvider).valueOrNull;
-    if (messages != null && messages.isNotEmpty) {
-      final lastMsg = messages.last;
-      if (lastMsg.role == 'ASSISTANT') {
-        _startContinuousModeWithGreeting(lastMsg.content);
-      }
-    }
   }
 
   /// Start continuous mode with the greeting message.
@@ -204,6 +195,15 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
         final msgId = '${lastMsg.messageId}';
         if (msgId != _previousTranscriptId) {
           _previousTranscriptId = msgId;
+
+          // Auto-start continuous mode on the first greeting message.
+          if (!_continuousModeAutoStarted &&
+              orchestrator.state.phase == VoiceLoopPhase.idle) {
+            _continuousModeAutoStarted = true;
+            _startContinuousModeWithGreeting(lastMsg.content);
+            return; // Don't also call onAssistantMessage.
+          }
+
           orchestrator.onAssistantMessage(lastMsg.content);
         }
       }
@@ -364,8 +364,9 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     final isListening = voiceState.phase == VoiceLoopPhase.listening;
     final isSpeaking = voiceState.phase == VoiceLoopPhase.speaking;
 
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
       // Slight elevation to separate from the message list.
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
@@ -549,12 +550,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     }
 
     // 4. Idle + voice enabled + empty text → mic button.
+    //    Single tap starts continuous mode (hands-free conversation).
+    //    Long press starts push-to-talk (single utterance).
     if (voiceEnabled && _textController.text.isEmpty && !isWaiting) {
       return GestureDetector(
-        onLongPress: () => _startContinuousMode(),
+        onLongPress: () => _startPushToTalk(),
         child: IconButton.filled(
-          tooltip: 'Start voice input (long press for continuous)',
-          onPressed: () => _startPushToTalk(),
+          tooltip: 'Start voice conversation',
+          onPressed: () => _startContinuousMode(),
           icon: const Icon(Icons.mic),
         ),
       );
@@ -593,8 +596,29 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   /// Returns true if STT is ready, false if not (user cancelled download
   /// or initialization failed).
   Future<bool> _ensureSttReady() async {
-    // Check if model is downloaded.
-    final modelReady = ref.read(sttModelReadyProvider).valueOrNull ?? false;
+    // Request microphone permission before anything else.
+    final recorder = AudioRecorder();
+    try {
+      final hasPermission = await recorder.hasPermission();
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Microphone permission is required for voice mode.',
+              ),
+            ),
+          );
+        }
+        return false;
+      }
+    } finally {
+      await recorder.dispose();
+    }
+    if (!mounted) return false;
+
+    // Check if model is downloaded (await the async check).
+    final modelReady = await ref.read(sttModelReadyProvider.future);
     if (!modelReady) {
       // Trigger model download dialog.
       final downloadService = ModelDownloadService();

@@ -136,9 +136,9 @@ final sttModelReadyProvider = FutureProvider<bool>((ref) async {
 
   // All four model files must be present.
   final requiredFiles = [
-    'encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
-    'decoder-epoch-99-avg-1-chunk-16-left-128.onnx',
-    'joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
+    'encoder-epoch-99-avg-1.int8.onnx',
+    'decoder-epoch-99-avg-1.onnx',
+    'joiner-epoch-99-avg-1.int8.onnx',
     'tokens.txt',
   ];
 
