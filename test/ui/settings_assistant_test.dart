@@ -58,6 +58,7 @@ void main() {
           pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
           sessionCountProvider.overrideWith((ref) => Future.value(0)),
           sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
+          llmModelReadyProvider.overrideWith((ref) => Future.value(false)),
         ],
         child: MaterialApp(
           home: const SettingsScreen(),
@@ -79,12 +80,10 @@ void main() {
       expect(find.text('Prefer Claude when online'), findsOneWidget);
       expect(find.text('Journal only mode'), findsOneWidget);
 
-      // Placeholder status
+      // Model status and personality section
       expect(find.text('Local AI: Not downloaded'), findsOneWidget);
-      expect(
-        find.text('Personality settings coming in a future update'),
-        findsOneWidget,
-      );
+      expect(find.text('Personality'), findsOneWidget);
+      expect(find.text('Download'), findsOneWidget);
     });
 
     testWidgets('Prefer Claude toggle defaults to off', (
@@ -143,7 +142,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll down to make the Journal only toggle visible.
-      await tester.scrollUntilVisible(find.text('Journal only mode'), 200);
+      await tester.scrollUntilVisible(
+        find.text('Journal only mode'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       final switchFinder = find.widgetWithText(

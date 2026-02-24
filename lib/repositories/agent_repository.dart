@@ -23,7 +23,7 @@
 // See: ADR-0017 (Local LLM Layer Architecture)
 // ===========================================================================
 
-import '../layers/conversation_layer.dart';
+import '../layers/conversation_layer.dart' show ConversationLayer;
 import '../layers/rule_based_layer.dart';
 import '../layers/claude_api_layer.dart';
 import '../models/agent_response.dart';
@@ -39,8 +39,12 @@ class AgentRepository {
   final ClaudeApiLayer? _claudeApiLayer;
   final ConnectivityService? _connectivityService;
 
-  /// Slot for local LLM layer — set by Phase 8B when model is loaded.
-  ConversationLayer? localLlmLayer;
+  /// Local LLM layer — injected via constructor when model is loaded.
+  ///
+  /// Injected as a constructor parameter (not a mutable field) so that
+  /// provider rebuilds correctly propagate the layer availability.
+  /// Null when no local LLM model is loaded.
+  final ConversationLayer? _localLlmLayer;
 
   /// The layer locked for the current session (null when no session active).
   ConversationLayer? _sessionLockedLayer;
@@ -57,18 +61,21 @@ class AgentRepository {
   /// [connectivityService] — optional connectivity checker.
   /// [ruleBasedLayer] — injectable for testing. Defaults to standard instance.
   /// [claudeApiLayer] — injectable for testing. Built from claudeService if null.
+  /// [localLlmLayer] — optional local LLM layer. Null when model not loaded.
   AgentRepository({
     ClaudeApiService? claudeService,
     ConnectivityService? connectivityService,
     RuleBasedLayer? ruleBasedLayer,
     ClaudeApiLayer? claudeApiLayer,
+    ConversationLayer? localLlmLayer,
   }) : _ruleBasedLayer = ruleBasedLayer ?? RuleBasedLayer(),
        _claudeApiLayer =
            claudeApiLayer ??
            (claudeService != null
                ? ClaudeApiLayer(claudeService: claudeService)
                : null),
-       _connectivityService = connectivityService;
+       _connectivityService = connectivityService,
+       _localLlmLayer = localLlmLayer;
 
   // =========================================================================
   // Layer selection
@@ -81,7 +88,7 @@ class AgentRepository {
   /// Select the best available layer based on preference and availability.
   ConversationLayer _selectLayer() {
     if (_preferClaude && _isClaudeAvailable) return _claudeApiLayer!;
-    if (localLlmLayer != null) return localLlmLayer!;
+    if (_localLlmLayer != null) return _localLlmLayer;
     if (_isClaudeAvailable) return _claudeApiLayer!;
     return _ruleBasedLayer;
   }
@@ -135,15 +142,9 @@ class AgentRepository {
         now: now,
         sessionCount: sessionCount,
       );
-    } on ClaudeApiException {
-      return _ruleBasedLayer.getGreeting(
-        lastSessionDate: lastSessionDate,
-        now: now,
-        sessionCount: sessionCount,
-      );
     } on Exception {
-      // Catch any layer failure (e.g., future LocalLlmLayer exceptions)
-      // and fall back to rule-based per ADR-0017 §4.
+      // Catches ClaudeApiException, LocalLlmException, and any layer
+      // failure — falls back to rule-based per ADR-0017 §4.
       return _ruleBasedLayer.getGreeting(
         lastSessionDate: lastSessionDate,
         now: now,
@@ -180,14 +181,9 @@ class AgentRepository {
         followUpCount: followUpCount,
         allMessages: allMessages,
       );
-    } on ClaudeApiException {
-      return _ruleBasedLayer.getFollowUp(
-        latestUserMessage: latestUserMessage,
-        conversationHistory: conversationHistory,
-        followUpCount: followUpCount,
-        allMessages: allMessages,
-      );
     } on Exception {
+      // Catches ClaudeApiException, LocalLlmException, and any layer
+      // failure — falls back to rule-based per ADR-0017 §4.
       return _ruleBasedLayer.getFollowUp(
         latestUserMessage: latestUserMessage,
         conversationHistory: conversationHistory,
@@ -214,9 +210,9 @@ class AgentRepository {
         userMessages: userMessages,
         allMessages: allMessages,
       );
-    } on ClaudeApiException {
-      return _ruleBasedLayer.generateSummary(userMessages: userMessages);
     } on Exception {
+      // Catches ClaudeApiException, LocalLlmException, and any layer
+      // failure — falls back to rule-based per ADR-0017 §4.
       return _ruleBasedLayer.generateSummary(userMessages: userMessages);
     }
   }
@@ -232,9 +228,9 @@ class AgentRepository {
 
     try {
       return await _activeLayer.getResumeGreeting();
-    } on ClaudeApiException {
-      return _ruleBasedLayer.getResumeGreeting();
     } on Exception {
+      // Catches ClaudeApiException, LocalLlmException, and any layer
+      // failure — falls back to rule-based per ADR-0017 §4.
       return _ruleBasedLayer.getResumeGreeting();
     }
   }

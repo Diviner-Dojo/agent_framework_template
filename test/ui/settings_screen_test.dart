@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/config/environment.dart';
 import 'package:agentic_journal/providers/auth_providers.dart';
+import 'package:agentic_journal/providers/llm_providers.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
@@ -80,6 +81,7 @@ void main() {
           pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
           sessionCountProvider.overrideWith((ref) => Future.value(0)),
           sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
+          llmModelReadyProvider.overrideWith((ref) => Future.value(false)),
         ],
         child: MaterialApp(
           home: const SettingsScreen(),
@@ -129,7 +131,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('About'),
         200,
-        scrollable: find.byType(Scrollable),
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
@@ -172,7 +174,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,
-        scrollable: find.byType(Scrollable),
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
@@ -187,7 +189,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,
-        scrollable: find.byType(Scrollable),
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
@@ -208,7 +210,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,
-        scrollable: find.byType(Scrollable),
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
@@ -241,6 +243,7 @@ void main() {
               pendingSyncCountProvider.overrideWith((ref) => Stream.value(3)),
               sessionCountProvider.overrideWith((ref) => Future.value(0)),
               sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
+              llmModelReadyProvider.overrideWith((ref) => Future.value(false)),
             ],
             child: MaterialApp(
               home: const SettingsScreen(),
@@ -254,7 +257,7 @@ void main() {
         await tester.scrollUntilVisible(
           find.text('Cloud Sync'),
           200,
-          scrollable: find.byType(Scrollable),
+          scrollable: find.byType(Scrollable).first,
         );
         await tester.pumpAndSettle();
 
@@ -284,6 +287,7 @@ void main() {
             pendingSyncCountProvider.overrideWith((ref) => Stream.value(1)),
             sessionCountProvider.overrideWith((ref) => Future.value(0)),
             sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
+            llmModelReadyProvider.overrideWith((ref) => Future.value(false)),
           ],
           child: MaterialApp(
             home: const SettingsScreen(),
@@ -297,7 +301,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Cloud Sync'),
         200,
-        scrollable: find.byType(Scrollable),
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
@@ -327,6 +331,7 @@ void main() {
             pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
             sessionCountProvider.overrideWith((ref) => Future.value(0)),
             sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
+            llmModelReadyProvider.overrideWith((ref) => Future.value(false)),
           ],
           child: MaterialApp(
             home: const SettingsScreen(),
@@ -345,7 +350,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.widgetWithText(FilledButton, 'Sign In'),
         200,
-        scrollable: find.byType(Scrollable),
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 

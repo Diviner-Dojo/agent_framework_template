@@ -12,6 +12,7 @@ import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/sync_providers.dart';
+import 'package:agentic_journal/providers/llm_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/ui/screens/settings_screen.dart';
@@ -52,6 +53,7 @@ void main() {
               pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
               sessionCountProvider.overrideWith((ref) => Future.value(0)),
               sttModelReadyProvider.overrideWith((ref) => Future.value(false)),
+              llmModelReadyProvider.overrideWith((ref) => Future.value(false)),
             ],
           ),
           child: const MaterialApp(home: SettingsScreen()),
@@ -64,7 +66,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Data Management'),
         200,
-        scrollable: find.byType(Scrollable),
+        scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
@@ -114,8 +116,14 @@ void main() {
       final button = tester.widget<FilledButton>(clearAllButton);
       expect(button.onPressed, isNull);
 
-      // Type "DELETE".
-      await tester.enterText(find.byType(TextField), 'DELETE');
+      // Type "DELETE" in the dialog's TextField.
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextField),
+        ),
+        'DELETE',
+      );
       await tester.pump();
 
       // Button should now be enabled.
@@ -167,7 +175,13 @@ void main() {
       await tester.pumpAndSettle();
 
       // Type DELETE and confirm.
-      await tester.enterText(find.byType(TextField), 'DELETE');
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextField),
+        ),
+        'DELETE',
+      );
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'Clear All'));
       await tester.pumpAndSettle();

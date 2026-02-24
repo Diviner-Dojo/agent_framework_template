@@ -16,7 +16,7 @@
 
 import '../models/agent_response.dart';
 import '../services/claude_api_service.dart';
-import 'conversation_layer.dart';
+import 'conversation_layer.dart' show ConversationLayer, getTimeOfDay;
 
 /// Claude API conversation layer (Layer B remote).
 ///
@@ -43,7 +43,7 @@ class ClaudeApiLayer implements ConversationLayer {
     final daysSinceLast = lastSessionDate != null
         ? currentTime.difference(lastSessionDate).inDays
         : null;
-    final timeOfDay = _getTimeOfDay(currentTime);
+    final timeOfDay = getTimeOfDay(currentTime);
 
     final response = await _claudeService.chat(
       messages: [
@@ -113,15 +113,6 @@ class ClaudeApiLayer implements ConversationLayer {
   // =========================================================================
   // Private helpers
   // =========================================================================
-
-  /// Get a time-of-day string for Claude context.
-  String _getTimeOfDay(DateTime time) {
-    final hour = time.hour;
-    if (hour >= 5 && hour < 12) return 'morning';
-    if (hour >= 12 && hour < 17) return 'afternoon';
-    if (hour >= 17 && hour < 22) return 'evening';
-    return 'late_night';
-  }
 
   /// Simple first-sentence summary as fallback when Claude's summary is null.
   String _generateFallbackSummary(List<String> userMessages) {

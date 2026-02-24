@@ -960,18 +960,24 @@ final claudeApiServiceProvider = Provider<ClaudeApiService>((ref) {
 
 /// Provider for the AgentRepository.
 ///
-/// Injects ClaudeApiService and ConnectivityService for Layer B support.
-/// Reads user preferences (preferClaude, journalOnlyMode) and applies them.
-/// When either service is unavailable, the repository falls back to Layer A.
+/// Injects ClaudeApiService, ConnectivityService, and LocalLlmLayer for
+/// Layer B support (both remote and local). Reads user preferences
+/// (preferClaude, journalOnlyMode) and applies them.
+/// When services are unavailable, the repository falls back to Layer A.
+///
+/// The localLlmLayer is injected via constructor (not mutable field) so
+/// that provider rebuilds correctly propagate layer availability (ADR-0017).
 final agentRepositoryProvider = Provider<AgentRepository>((ref) {
   final claudeService = ref.watch(claudeApiServiceProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
   final preferClaude = ref.watch(preferClaudeProvider);
   final journalOnlyMode = ref.watch(journalOnlyModeProvider);
+  final localLlmLayer = ref.watch(localLlmLayerProvider);
 
   final repo = AgentRepository(
     claudeService: claudeService,
     connectivityService: connectivityService,
+    localLlmLayer: localLlmLayer,
   );
   repo.setPreferClaude(preferClaude);
   repo.journalOnlyMode = journalOnlyMode;
