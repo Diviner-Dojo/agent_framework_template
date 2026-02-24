@@ -30,6 +30,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'audio_focus_service.dart';
+import 'event_extraction_service.dart';
 import 'speech_recognition_service.dart';
 import 'text_to_speech_service.dart';
 import 'voice_command_classifier.dart';
@@ -122,6 +123,12 @@ class VoiceSessionOrchestrator {
   SessionActionCallback? onEndSession;
   SessionActionCallback? onDiscardSession;
   ResumeSessionCallback? onResumeSession;
+
+  /// Callback for confirming a calendar event (verbal "yes").
+  SessionActionCallback? onConfirmCalendarEvent;
+
+  /// Callback for dismissing a calendar event (verbal "no").
+  SessionActionCallback? onDismissCalendarEvent;
 
   /// The current orchestrator state.
   final ValueNotifier<VoiceOrchestratorState> stateNotifier = ValueNotifier(
@@ -456,6 +463,168 @@ class VoiceSessionOrchestrator {
     }
 
     return description;
+  }
+
+  /// Speak extracted calendar event details and capture verbal confirmation.
+  ///
+  /// Called when a calendar/reminder intent is detected during voice mode.
+  /// Reads the extracted event aloud, then listens for yes/no.
+  ///
+  /// Returns true if the user confirmed, false if dismissed or timed out.
+  Future<bool> confirmCalendarEvent(ExtractedEvent event) async {
+    if (!_sttService.isInitialized) return false;
+
+    final wasInContinuousMode = state.isContinuousMode;
+    final previousPhase = state.phase;
+
+    // Pause normal listening if active.
+    if (_sttService.isListening) {
+      await _stopListening();
+    }
+    _silenceTimer?.cancel();
+
+    // Build the confirmation prompt.
+    final timeStr = _formatTimeForSpeech(event.startTime);
+    final prompt = "Add '${event.title}' $timeStr to your calendar?";
+
+    // Speak the prompt.
+    _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+    await _speak(prompt);
+
+    if (state.phase != VoiceLoopPhase.speaking) return false;
+
+    // Listen for yes/no with a timeout.
+    _updateState(
+      state.copyWith(phase: VoiceLoopPhase.listening, transcriptPreview: ''),
+    );
+
+    String? response;
+    final completer = Completer<String?>();
+    await _recognitionSubscription?.cancel();
+
+    try {
+      final stream = _sttService.startListening();
+      Timer? responseTimer;
+
+      _recognitionSubscription = stream.listen(
+        (result) {
+          _updateState(state.copyWith(transcriptPreview: result.text));
+          responseTimer?.cancel();
+          responseTimer = Timer(const Duration(seconds: 5), () {
+            if (!completer.isCompleted) completer.complete(null);
+          });
+
+          if (result.isFinal) {
+            responseTimer?.cancel();
+            if (!completer.isCompleted) completer.complete(result.text);
+          }
+        },
+        onError: (error) {
+          responseTimer?.cancel();
+          if (!completer.isCompleted) completer.complete(null);
+        },
+      );
+
+      responseTimer = Timer(const Duration(seconds: 8), () {
+        if (!completer.isCompleted) completer.complete(null);
+      });
+
+      response = await completer.future;
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('Calendar confirmation capture failed: $e');
+      }
+    } finally {
+      await _stopListening();
+    }
+
+    // Process the response.
+    final confirmed = response != null && _isAffirmative(response);
+
+    if (confirmed) {
+      _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+      await _speak("Adding it to your calendar.");
+      if (onConfirmCalendarEvent != null) {
+        await onConfirmCalendarEvent!();
+      }
+    } else {
+      _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+      // Distinct feedback for timeout (silence) vs active decline.
+      final feedback = response == null
+          ? "Okay, I'll leave that for now."
+          : "Okay, I won't add that.";
+      await _speak(feedback);
+      if (onDismissCalendarEvent != null) {
+        await onDismissCalendarEvent!();
+      }
+    }
+
+    // Resume previous state.
+    if (wasInContinuousMode &&
+        previousPhase != VoiceLoopPhase.idle &&
+        state.phase != VoiceLoopPhase.idle) {
+      await _startListening();
+    } else {
+      _updateState(state.copyWith(phase: previousPhase));
+    }
+
+    return confirmed;
+  }
+
+  /// Speak a deferral message when Google Calendar is not connected.
+  ///
+  /// Called when a calendar intent is detected in voice mode but the user
+  /// is not signed in to Google. The event is saved locally and the user
+  /// is informed they can connect after the session (ADR-0020 §8).
+  Future<void> speakDeferral() async {
+    final wasInContinuousMode = state.isContinuousMode;
+    final previousPhase = state.phase;
+
+    // Pause normal listening if active.
+    if (_sttService.isListening) {
+      await _stopListening();
+    }
+    _silenceTimer?.cancel();
+
+    _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+    await _speak(
+      "I'd need to connect to your Google Calendar first. "
+      "I'll remind you when we're done.",
+    );
+
+    // Resume previous state.
+    if (wasInContinuousMode &&
+        previousPhase != VoiceLoopPhase.idle &&
+        state.phase != VoiceLoopPhase.idle) {
+      await _startListening();
+    } else {
+      _updateState(state.copyWith(phase: previousPhase));
+    }
+  }
+
+  /// Format a DateTime for spoken output.
+  static String _formatTimeForSpeech(DateTime dt) {
+    final local = dt.toLocal();
+    final weekdays = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    final dayName = weekdays[local.weekday - 1];
+    final hour = local.hour > 12
+        ? local.hour - 12
+        : local.hour == 0
+        ? 12
+        : local.hour;
+    final amPm = local.hour >= 12 ? 'PM' : 'AM';
+    final minute = local.minute > 0
+        ? ':${local.minute.toString().padLeft(2, '0')}'
+        : '';
+    return 'on $dayName at $hour$minute $amPm';
   }
 
   /// Clean up all resources.

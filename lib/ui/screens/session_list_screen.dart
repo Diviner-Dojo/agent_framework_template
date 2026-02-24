@@ -14,10 +14,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/app_database.dart';
+import '../../database/daos/calendar_event_dao.dart';
+import '../../providers/calendar_providers.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/session_providers.dart';
+import '../../services/google_calendar_service.dart';
 import '../widgets/session_card.dart';
 
 /// Home screen showing all past journal sessions with month-year grouping.
@@ -128,6 +131,9 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
 
     return CustomScrollView(
       slivers: [
+        // Pending calendar events banner (ADR-0020 §8 deferral).
+        _PendingEventsBanner(),
+
         // Build a sliver per month group.
         for (final entry in groups.entries) ...[
           // Sticky month-year header.
@@ -327,6 +333,149 @@ class _SearchIconButton extends ConsumerWidget {
       },
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// Banner shown when pending calendar events exist from voice-mode deferral.
+///
+/// When a calendar intent fires during voice mode but Google is not
+/// connected, the event is saved locally. This banner prompts the user
+/// to connect and create the deferred events (ADR-0020 §8).
+class _PendingEventsBanner extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countAsync = ref.watch(pendingCalendarEventsCountProvider);
+
+    return countAsync.when(
+      data: (count) {
+        if (count < 1)
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
+        return SliverToBoxAdapter(
+          child: _PendingEventsBannerCard(count: count),
+        );
+      },
+      loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      error: (_, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+    );
+  }
+}
+
+/// The Material card content for the pending events banner.
+class _PendingEventsBannerCard extends ConsumerWidget {
+  final int count;
+
+  const _PendingEventsBannerCard({required this.count});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.3)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _connectAndCreateEvents(context, ref),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Icon(Icons.event_note, color: colorScheme.primary, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      count == 1
+                          ? '1 pending calendar event'
+                          : '$count pending calendar events',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Tap to connect Google Calendar',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Connect to Google Calendar and create all pending events.
+  Future<void> _connectAndCreateEvents(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    // Check if already connected.
+    var isConnected = ref.read(isGoogleConnectedProvider);
+    if (!isConnected) {
+      isConnected = await ref
+          .read(isGoogleConnectedProvider.notifier)
+          .connect();
+    }
+
+    if (!isConnected || !context.mounted) return;
+
+    // Get all pending events and create them in Google Calendar.
+    final calendarEventDao = ref.read(calendarEventDaoProvider);
+    final authService = ref.read(googleAuthServiceProvider);
+    final pending = await calendarEventDao.getPendingEvents();
+
+    final authClient = await authService.getAuthClient();
+    if (authClient == null) return;
+
+    final calendarService = GoogleCalendarService.withClient(authClient);
+    var successCount = 0;
+
+    for (final event in pending) {
+      try {
+        final result = await calendarService.createEvent(
+          title: event.title,
+          startTime: event.startTime,
+          endTime: event.endTime,
+        );
+        await calendarEventDao.updateGoogleEventId(
+          event.eventId,
+          result.googleEventId,
+        );
+        successCount++;
+      } on CalendarServiceException {
+        await calendarEventDao.updateStatus(event.eventId, EventStatus.failed);
+      } on Exception {
+        await calendarEventDao.updateStatus(event.eventId, EventStatus.failed);
+      }
+    }
+
+    // Refresh the pending count.
+    ref.invalidate(pendingCalendarEventsCountProvider);
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          successCount == pending.length
+              ? 'Added $successCount ${successCount == 1 ? 'event' : 'events'} to Google Calendar.'
+              : 'Added $successCount of ${pending.length} events. Some failed.',
+        ),
+      ),
     );
   }
 }

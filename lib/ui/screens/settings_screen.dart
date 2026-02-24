@@ -26,6 +26,7 @@ import '../../providers/llm_providers.dart';
 import '../../providers/personality_providers.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
+import '../../providers/calendar_providers.dart';
 import '../../providers/location_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
@@ -85,6 +86,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           _buildCloudSyncCard(context),
           const SizedBox(height: 16),
           _buildLocationCard(context),
+          const SizedBox(height: 16),
+          _buildCalendarCard(context),
           const SizedBox(height: 16),
           _buildDataManagementCard(context),
           const SizedBox(height: 16),
@@ -549,6 +552,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     onPressed: () async {
                       final syncRepo = ref.read(syncRepositoryProvider);
                       await syncRepo.syncPendingSessions();
+                      await syncRepo.syncPendingPhotos();
+                      await syncRepo.syncPendingCalendarEvents();
                       // Invalidate to refresh the count
                       ref.invalidate(pendingSyncCountProvider);
                     },
@@ -730,6 +735,98 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         if (mounted) setState(() => _isClearingLocation = false);
       }
     }
+  }
+
+  /// Build the "Calendar" settings card (Phase 11 — ADR-0020).
+  Widget _buildCalendarCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final isConnected = ref.watch(isGoogleConnectedProvider);
+    final autoSuggest = ref.watch(calendarAutoSuggestProvider);
+    final requireConfirmation = ref.watch(calendarConfirmationProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Calendar', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
+            // Connection status.
+            Row(
+              children: [
+                Icon(
+                  isConnected ? Icons.check_circle : Icons.link_off,
+                  color: isConnected
+                      ? Colors.green
+                      : theme.colorScheme.onSurfaceVariant,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isConnected
+                        ? 'Google Calendar: Connected'
+                        : 'Google Calendar: Not connected',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Connect/Disconnect button.
+            if (isConnected)
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await ref
+                      .read(isGoogleConnectedProvider.notifier)
+                      .disconnect();
+                },
+                icon: const Icon(Icons.link_off),
+                label: const Text('Disconnect'),
+              )
+            else
+              FilledButton.icon(
+                onPressed: () async {
+                  await ref.read(isGoogleConnectedProvider.notifier).connect();
+                },
+                icon: const Icon(Icons.calendar_month),
+                label: const Text('Connect Google Calendar'),
+              ),
+            const SizedBox(height: 12),
+            // Auto-suggest toggle.
+            SwitchListTile(
+              title: const Text('Auto-suggest calendar events'),
+              subtitle: const Text(
+                'Detect dates and reminders in conversation',
+              ),
+              value: autoSuggest,
+              onChanged: (value) {
+                ref
+                    .read(calendarAutoSuggestProvider.notifier)
+                    .setEnabled(value);
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+            // Confirmation toggle (always on in v1).
+            SwitchListTile(
+              title: const Text('Require confirmation'),
+              subtitle: const Text('Always confirm before creating events'),
+              value: requireConfirmation,
+              onChanged: null, // Non-disableable in v1 — always confirm.
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Confirmation is always required in this version',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildDataManagementCard(BuildContext context) {

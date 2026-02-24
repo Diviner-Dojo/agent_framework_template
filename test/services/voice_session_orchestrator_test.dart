@@ -733,6 +733,28 @@ void main() {
       });
     });
 
+    group('calendar deferral', () {
+      test('speakDeferral speaks message and resumes listening', () async {
+        orchestrator.onSendMessage =
+            (text, {String inputMethod = 'TEXT'}) async => null;
+
+        await orchestrator.startContinuousMode('Hello');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Speak the deferral message.
+        await orchestrator.speakDeferral();
+
+        // Should have spoken the deferral text.
+        expect(
+          mockTts.spokenTexts.any((t) => t.contains('Google Calendar')),
+          isTrue,
+        );
+
+        // Should resume listening after deferral.
+        expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+      });
+    });
+
     group('silence timeout in continuous mode', () {
       test('announces and restarts listening on silence', () async {
         // Use a very short silence timeout for testing.
