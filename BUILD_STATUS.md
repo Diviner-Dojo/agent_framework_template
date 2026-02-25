@@ -1,77 +1,34 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-25 ~11:30 UTC
+> Last updated: 2026-02-25 ~20:00 UTC
 
 ## Current Task
 
-**Status:** Phase 11 ready for commit. Build complete, review complete (4 blocking fixes applied), education gate deferred to tech debt.
+**Status:** Phase 12 complete, retros done, CLAUDE.md updates applied. Between phases.
 **Branch:** `main`
-**Build Discussion:** `DISC-20260224-210800-build-phase11-google-calendar` (CLOSED, 22 turns)
-**Review Discussion:** `DISC-20260224-224524-phase11-calendar-review` (CLOSED, 6 turns)
-**Review Report:** `docs/reviews/REV-20260225-110000.md` — APPROVE-WITH-CHANGES, 4 blocking fixed
-**Spec:** `docs/sprints/SPEC-20260225-120000-phase11-google-calendar-reminders.md`
 
 ### In Progress
-- Commit and PR for Phase 11
-
-### Phase 11 Task Summary (All Complete)
-- Task 1: ADR-0020 ✅ (checkpoint bypass — docs exempt)
-- Task 2: Intent Classifier Redesign ✅ (checkpoint: arch-consultant APPROVE, qa-specialist APPROVE)
-- Task 3: Google Auth Service ✅ (checkpoint bypass — new module, injectable pattern)
-- Task 6: Schema v5 + CalendarEventDao ✅ (checkpoint: perf-analyst APPROVE, security-specialist REVISE→APPROVE R2)
-- Tasks 4+5: Calendar Service + Event Extraction ✅ (checkpoint: security-specialist REVISE→APPROVE R2, arch-consultant REVISE→APPROVE R2)
-- Task 9: Calendar Settings Card ✅ (checkpoint bypass — single file UI mod)
-- Task 7: Confirmation Flow UI ✅ (checkpoint: ux-evaluator REVISE→APPROVE R2, qa-specialist APPROVE)
-- Task 8: OAuth voice deferral ✅ (checkpoint bypass — incremental additions)
-- Task 10: Supabase migration + sync ✅ (checkpoint bypass — established UPSERT pattern)
-- Review blocking fixes ✅ (timezone, error sanitization, pending cap, TOCTOU guard)
+- Nothing active
 
 ### Recently Completed
-- **Phase 10: Location Awareness** — PR #27, merged
-- **Phase 9: Photo Integration** — PR #26, merged
-- **Debt Cleanup: Phases 7-8 Advisory Findings** — PR #25, merged
-- **Phase 8B: Local LLM Integration** — PR #24, merged
-- **Phase 8A: ConversationLayer Architecture + Journal-Only Mode** — PR #23, merged
-
-### Modified Files (Phase 11)
-**New files (lib):**
-- `lib/services/google_auth_service.dart` (Task 3)
-- `lib/services/google_calendar_service.dart` (Task 4)
-- `lib/services/event_extraction_service.dart` (Task 5)
-- `lib/providers/calendar_providers.dart` (Task 3)
-- `lib/ui/widgets/calendar_event_card.dart` (Task 7)
-- `lib/database/daos/calendar_event_dao.dart` (Task 6)
-
-**New files (docs):**
-- `docs/adr/ADR-0020-google-calendar-integration.md` (Task 1)
-- `supabase/migrations/005_calendar_events.sql` (Task 10)
-
-**New files (test):**
-- `test/services/intent_classifier_test.dart` (Task 2)
-- `test/services/event_extraction_service_test.dart` (Task 5)
-- `test/services/google_calendar_service_test.dart` (Task 4)
-- `test/database/calendar_event_dao_test.dart` (Task 6)
-- `test/ui/widgets/calendar_event_card_test.dart` (Task 7)
-- `test/ui/settings_screen_calendar_test.dart` (Task 9)
-
-**Modified files:**
-- `lib/services/intent_classifier.dart` (Task 2 — multi-intent redesign)
-- `lib/providers/session_providers.dart` (Tasks 2, 7, 8, review fixes — routing, confirmation, deferral, TOCTOU guard, pending cap)
-- `lib/database/tables.dart` (Task 6 — CalendarEvents table)
-- `lib/database/app_database.dart` (Task 6 — schema v5 migration)
-- `lib/providers/database_provider.dart` (Task 6 — calendarEventDao provider)
-- `lib/ui/screens/settings_screen.dart` (Tasks 9, 10 — calendar card, sync)
-- `lib/ui/screens/journal_session_screen.dart` (Task 7 — confirmation UI)
-- `lib/services/voice_session_orchestrator.dart` (Tasks 7, 8 — voice confirmation, deferral)
-- `lib/repositories/sync_repository.dart` (Task 10 — calendar event sync)
-- `lib/providers/sync_providers.dart` (Task 10 — calendarEventDao wiring)
+- **Phase 12: Video Capture** — PR #29, merged to main (ADR-0021)
+- **Phase 12 retro** — RETRO-20260225b.md, discussion sealed, PR #30 merged
+- **Phase 11 retro** — RETRO-20260225.md, discussion sealed, PR #30 merged
+- **CLAUDE.md updates** — Principle 6 deferral clause + capture pipeline yield limitation (from Phase 11 retro, applied in PR #30)
+- **Phase 11: Google Calendar + Reminders** — PR #28, merged (ADR-0020)
+- **Phase 10: Location Awareness** — PR #27, merged (ADR-0019)
+- **Phase 9: Photo Integration** — PR #26, merged (ADR-0018)
 
 ## Tech Debt
 
-- **Phase 11 education gate** — `/walkthrough` and `/quiz` deferred. Scope: Google Calendar OAuth flow, dual state machine, intent classifier scoring, sealed ExtractionResult, voice confirmation flow. Tier 2.
-- **Phase 11 coverage** — 77.6% (below 80% target). Phase 11 added significant new UI/state code. SessionNotifier calendar methods and VoiceSessionOrchestrator calendar flow lack unit tests.
-- **Phase 11 advisory findings** — 12 non-blocking items from REV-20260225-110000.md (batch UPSERTs, cancelEventsForSession DAO, composite index, rawUserMessage privacy, past-tense intent guard, etc.)
+- **Coverage** — 77.2% (below 80% target). Phases 11+12 add platform-dependent code that requires device mocks.
+- **Education gates deferred** — Phase 11 (OAuth, dual state machine, sealed patterns) + Phase 12 (video pipeline, metadata stripping, STT pause/resume). Two consecutive deferrals = Principle 6 violation. Must complete before Phase 13.
+- **Phase 12 advisory findings** — 10 non-blocking items from REV-20260225-170000.md.
+- **Phase 11 advisory findings** — 12 non-blocking items from REV-20260225-110000.md.
+- **Path documentation mismatch** — ADR-0018 and ADR-0021 document localPath as relative, but actual stored values are absolute. DAO doc comments also say relative. Needs Known Issue notes on both ADRs.
+- **review_gates.md updates needed** — advisory lifecycle tracking section + visible-data-correctness blocking rule (from RETRO-20260225b).
+- **PENDING adoptions** — 9 patterns from 2026-02-19, approaching 14-day stale threshold on 2026-03-05. Recommend `/batch-evaluate`.
 
 ## Open Discussions
 
@@ -79,10 +36,10 @@
 
 ## Key Decisions (Recent)
 
-- ADR-0020: Google Calendar Integration (direct-from-device OAuth, scope minimization, multi-intent classifier, event lifecycle vs sync state)
+- ADR-0021: Video Capture Architecture (separate Videos table, FFmpegKit metadata strip, 60s duration cap, journal-videos bucket, feature-flagged sync)
+- ADR-0020: Google Calendar Integration
 - ADR-0019: Location Privacy Architecture
 - ADR-0018: Photo Storage Architecture
-- ADR-0017: ConversationLayer strategy pattern
 
 ## Blockers
 
@@ -90,8 +47,14 @@
 
 ## Resume Instructions
 
-Phase 11 is ready for commit and PR. All blocking review findings have been addressed.
-Tech debt items above should be addressed in a future debt cleanup sprint.
+All phases (9-12) merged to main. Both retros complete. CLAUDE.md updated. Next actions from retros:
+1. Complete education gates for Phase 11 + Phase 12 (hard prerequisite per Principle 6)
+2. Coverage recovery sprint (target 80%+)
+3. Fix path documentation (ADR-0018, ADR-0021 Known Issue notes, DAO doc comments)
+4. Update review_gates.md (advisory lifecycle, visible-data-correctness rule)
+5. Run `/batch-evaluate` for PENDING adoption patterns before 2026-03-05
+
+Uncommitted working tree changes exist from earlier device testing (Gradle files, lib/ UI tweaks, test fixes). These are not part of any completed phase — review before committing.
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
