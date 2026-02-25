@@ -1,24 +1,23 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-25 ~20:00 UTC
+> Last updated: 2026-02-25 ~21:30 UTC
 
 ## Current Task
 
-**Status:** Phase 12 complete, retros done, CLAUDE.md updates applied. Between phases.
+**Status:** Device-testing fixes committed and merged. Between phases.
 **Branch:** `main`
 
 ### In Progress
 - Nothing active
 
 ### Recently Completed
-- **Phase 12: Video Capture** — PR #29, merged to main (ADR-0021)
-- **Phase 12 retro** — RETRO-20260225b.md, discussion sealed, PR #30 merged
-- **Phase 11 retro** — RETRO-20260225.md, discussion sealed, PR #30 merged
-- **CLAUDE.md updates** — Principle 6 deferral clause + capture pipeline yield limitation (from Phase 11 retro, applied in PR #30)
+- **Device-testing fixes** — PR #33, merged. Real llamadart wiring, Google Services Gradle plugin, GoogleAuthException, llmAutoLoadProvider, lint fixes. REV-20260225-210000.md (0 blocking, 17 advisory).
+- **review_gates.md updates** — PR #32, merged. Visible-data-correctness rule + advisory lifecycle section.
+- **BUILD_STATUS.md update** — PR #31, merged.
+- **Phase 11+12 retros + CLAUDE.md updates** — PR #30, merged.
+- **Phase 12: Video Capture** — PR #29, merged (ADR-0021)
 - **Phase 11: Google Calendar + Reminders** — PR #28, merged (ADR-0020)
-- **Phase 10: Location Awareness** — PR #27, merged (ADR-0019)
-- **Phase 9: Photo Integration** — PR #26, merged (ADR-0018)
 
 ## Tech Debt
 
@@ -27,7 +26,7 @@
 - **Phase 12 advisory findings** — 10 non-blocking items from REV-20260225-170000.md.
 - **Phase 11 advisory findings** — 12 non-blocking items from REV-20260225-110000.md.
 - **Path documentation mismatch** — ADR-0018 and ADR-0021 document localPath as relative, but actual stored values are absolute. DAO doc comments also say relative. Needs Known Issue notes on both ADRs.
-- **review_gates.md updates needed** — advisory lifecycle tracking section + visible-data-correctness blocking rule (from RETRO-20260225b).
+- **Device-testing advisory findings** — 17 non-blocking items from REV-20260225-210000.md (missing tests, ADR-0017 amendment, Riverpod anti-pattern, duplicated model loading).
 - **PENDING adoptions** — 9 patterns from 2026-02-19, approaching 14-day stale threshold on 2026-03-05. Recommend `/batch-evaluate`.
 
 ## Open Discussions
@@ -47,14 +46,13 @@
 
 ## Resume Instructions
 
-All phases (9-12) merged to main. Both retros complete. CLAUDE.md updated. Next actions from retros:
+All phases (9-12) merged to main. Retros, CLAUDE.md updates, review_gates.md updates, and device-testing fixes all committed. Next actions:
 1. Complete education gates for Phase 11 + Phase 12 (hard prerequisite per Principle 6)
 2. Coverage recovery sprint (target 80%+)
 3. Fix path documentation (ADR-0018, ADR-0021 Known Issue notes, DAO doc comments)
-4. Update review_gates.md (advisory lifecycle, visible-data-correctness rule)
-5. Run `/batch-evaluate` for PENDING adoption patterns before 2026-03-05
+4. Run `/batch-evaluate` for PENDING adoption patterns before 2026-03-05
 
-Uncommitted working tree changes exist from earlier device testing (Gradle files, lib/ UI tweaks, test fixes). These are not part of any completed phase — review before committing.
+Remaining uncommitted files: integration_test/, spike-models/, test/helpers/, test/providers/, logcat dumps, docs/framework-enhancements-inventory.md, device-testing-fixes.diff. These are test helpers, spike artifacts, and debug output — not part of any committed phase.
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
