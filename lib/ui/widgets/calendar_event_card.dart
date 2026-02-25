@@ -15,7 +15,6 @@
 // See: ADR-0020 §7 (Event Confirmation Policy)
 // ===========================================================================
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/event_extraction_service.dart';

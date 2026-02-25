@@ -56,10 +56,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     final password = _passwordController.text;
 
     try {
-      if (_isSignUp) {
-        await service.signUp(email: email, password: password);
-      } else {
-        await service.signIn(email: email, password: password);
+      final user = _isSignUp
+          ? await service.signUp(email: email, password: password)
+          : await service.signIn(email: email, password: password);
+
+      if (user == null) {
+        // Supabase is not configured (missing --dart-define flags).
+        setState(() {
+          _errorMessage =
+              'Cloud sync is not configured. Launch the app with '
+              'SUPABASE_URL and SUPABASE_ANON_KEY to enable sign-in.';
+        });
+        return;
       }
 
       // Auth state change will be picked up by providers.

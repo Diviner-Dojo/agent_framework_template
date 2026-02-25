@@ -58,7 +58,8 @@ class GoogleConnectionNotifier extends StateNotifier<bool> {
 
   /// Trigger the Google sign-in consent flow.
   ///
-  /// Returns true if sign-in succeeded.
+  /// Returns true if sign-in succeeded. Rethrows [GoogleAuthException]
+  /// for configuration/network errors so the UI can display them.
   Future<bool> connect() async {
     final account = await _authService.signIn();
     state = account != null;

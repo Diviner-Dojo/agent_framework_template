@@ -41,10 +41,11 @@ class AgentRepository {
 
   /// Local LLM layer — injected via constructor when model is loaded.
   ///
-  /// Injected as a constructor parameter (not a mutable field) so that
-  /// provider rebuilds correctly propagate the layer availability.
+  /// Mutable so that async model loading (llmAutoLoadProvider) can update
+  /// the layer without triggering a provider rebuild cascade that would
+  /// destroy any active SessionNotifier state.
   /// Null when no local LLM model is loaded.
-  final ConversationLayer? _localLlmLayer;
+  ConversationLayer? _localLlmLayer;
 
   /// The layer locked for the current session (null when no session active).
   ConversationLayer? _sessionLockedLayer;
@@ -96,7 +97,7 @@ class AgentRepository {
   /// Select the best available layer based on preference and availability.
   ConversationLayer _selectLayer() {
     if (_preferClaude && _isClaudeAvailable) return _claudeApiLayer!;
-    if (_localLlmLayer != null) return _localLlmLayer;
+    if (_localLlmLayer != null) return _localLlmLayer!;
     if (_isClaudeAvailable) return _claudeApiLayer!;
     return _ruleBasedLayer;
   }
@@ -122,6 +123,15 @@ class AgentRepository {
   /// Called by SessionNotifier at session end/dismiss/discard.
   void unlockLayer() {
     _sessionLockedLayer = null;
+  }
+
+  /// Update the local LLM layer without rebuilding the provider chain.
+  ///
+  /// Called by [agentRepositoryProvider]'s listen callback when the LLM
+  /// finishes loading asynchronously. Does not affect the session-locked
+  /// layer (active sessions keep their locked layer per ADR-0017 §3).
+  void updateLocalLlmLayer(ConversationLayer? layer) {
+    _localLlmLayer = layer;
   }
 
   // =========================================================================

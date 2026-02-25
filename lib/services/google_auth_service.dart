@@ -41,6 +41,22 @@ typedef GoogleAuthClientFn = Future<googleapis_auth.AuthClient?> Function();
 /// Callback type for silently refreshing the sign-in.
 typedef GoogleSignInSilentlyFn = Future<GoogleSignInAccount?> Function();
 
+/// Exception thrown when Google Sign-In fails due to a configuration
+/// or network issue (as opposed to user cancellation).
+class GoogleAuthException implements Exception {
+  /// Human-readable error message.
+  final String message;
+
+  /// Optional underlying exception.
+  final Object? cause;
+
+  /// Creates a Google auth exception.
+  const GoogleAuthException(this.message, {this.cause});
+
+  @override
+  String toString() => 'GoogleAuthException: $message';
+}
+
 /// Google Calendar API scope — create and edit events.
 const _calendarEventsScope = 'https://www.googleapis.com/auth/calendar.events';
 
@@ -90,7 +106,7 @@ class GoogleAuthService {
   /// Trigger the Google OAuth2 consent flow.
   ///
   /// Returns the signed-in account, or null if the user cancelled.
-  /// Throws on network errors or configuration issues.
+  /// Throws [GoogleAuthException] on configuration or network errors.
   Future<GoogleSignInAccount?> signIn() async {
     try {
       return await _signIn();
@@ -98,7 +114,12 @@ class GoogleAuthService {
       if (kDebugMode) {
         debugPrint('GoogleAuthService.signIn failed: $e');
       }
-      return null;
+      throw GoogleAuthException(
+        'Google Sign-In failed. Check that google-services.json is '
+        'configured and your debug SHA-1 fingerprint is registered '
+        'in the Google Cloud Console.',
+        cause: e,
+      );
     }
   }
 

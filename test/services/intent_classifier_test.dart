@@ -230,5 +230,33 @@ void main() {
         expect(result.confidence, greaterThanOrEqualTo(0.7));
       });
     });
+
+    group('temporal modifier with future action context', () {
+      test(
+        'future action verb + temporal gives sub-threshold calendar signal',
+        () {
+          // "I need to create something awesome for tomorrow" has:
+          //   - No explicit calendar intent pattern ("create" is not in the
+          //     calendar intent verb list)
+          //   - Temporal pattern ("tomorrow")
+          //   - Future action context ("need to create" matches
+          //     _hasFutureActionContext's intent expression pattern)
+          // This should give a sub-threshold calendar signal via the temporal
+          // modifier's _hasFutureActionContext branch.
+          final results = classifier.classifyMulti(
+            'I need to create something awesome for tomorrow',
+          );
+          // Primary intent is journal (calendar sub-threshold).
+          expect(results.first.type, IntentType.journal);
+          // Should include a sub-threshold calendar intent.
+          final calendarResults = results.where(
+            (r) => r.type == IntentType.calendarEvent,
+          );
+          expect(calendarResults, isNotEmpty);
+          expect(calendarResults.first.confidence, lessThan(0.5));
+          expect(calendarResults.first.confidence, greaterThan(0.0));
+        },
+      );
+    });
   });
 }

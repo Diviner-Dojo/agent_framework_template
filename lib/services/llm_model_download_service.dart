@@ -15,6 +15,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart';
@@ -45,8 +46,8 @@ class LlmModelDownloadService {
     name: 'qwen2.5-0.5b-instruct-q4_k_m',
     url:
         'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf',
-    sha256: 'a6f181e74910a5e47e1aaa17720bcc7a8e0e62914c4ffce3b1a0bd6a93e10388',
-    expectedSize: 397820416,
+    sha256: '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db',
+    expectedSize: 491400032,
   );
 
   /// Creates an LLM model download service.
@@ -107,7 +108,7 @@ class LlmModelDownloadService {
             const ModelDownloadProgress(
               status: ModelDownloadStatus.failed,
               error:
-                  'WiFi required for model download (~380 MB). '
+                  'WiFi required for model download (~490 MB). '
                   'Connect to WiFi or choose "Download Now" to use cellular.',
             ),
           );
@@ -253,11 +254,14 @@ class LlmModelDownloadService {
     return Uri.parse(url).pathSegments.last;
   }
 
-  /// Chunked SHA-256 verification.
+  /// Chunked SHA-256 verification in a background isolate.
   ///
   /// Reads the file in chunks via [openRead] and feeds them to the SHA-256
   /// digest incrementally. This avoids allocating the entire file (~380MB)
   /// on the Dart heap, preventing OOM on mobile devices.
+  ///
+  /// Runs in [Isolate.run] so the main UI thread stays responsive during
+  /// the ~400MB hash computation.
   ///
   /// Returns true if the computed hash matches [expected].
   static Future<bool> _verifyChunkedSha256(File file, String expected) async {
@@ -266,16 +270,21 @@ class LlmModelDownloadService {
       return true;
     }
 
-    final output = AccumulatorSink<Digest>();
-    final input = sha256.startChunkedConversion(output);
+    final filePath = file.path;
+    final result = await Isolate.run(() async {
+      final f = File(filePath);
+      final output = AccumulatorSink<Digest>();
+      final input = sha256.startChunkedConversion(output);
 
-    await for (final chunk in file.openRead()) {
-      input.add(chunk);
-    }
-    input.close();
+      await for (final chunk in f.openRead()) {
+        input.add(chunk);
+      }
+      input.close();
 
-    final digest = output.events.single;
-    return digest.toString() == expected.toLowerCase();
+      return output.events.single.toString();
+    });
+
+    return result == expected.toLowerCase();
   }
 
   /// Emit a progress update.

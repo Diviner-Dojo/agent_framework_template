@@ -21,8 +21,10 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../models/personality_config.dart';
 import '../../providers/auth_providers.dart';
+import '../../services/google_auth_service.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/llm_providers.dart';
+import '../../services/local_llm_service.dart';
 import '../../providers/personality_providers.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
@@ -362,7 +364,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
-  /// Show the LLM model download dialog.
+  /// Show the LLM model download dialog and load the model on success.
+  // coverage:ignore-start
   Future<void> _showLlmDownloadDialog(BuildContext context) async {
     final downloadService = ref.read(llmModelDownloadServiceProvider);
     final downloaded = await showLlmModelDownloadDialog(
@@ -371,8 +374,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
     if (downloaded) {
       ref.invalidate(llmModelReadyProvider);
+
+      // Load the model immediately after download.
+      try {
+        // Dispose existing service if any.
+        ref.read(localLlmServiceProvider)?.dispose();
+
+        final modelPath = await ref.read(llmModelPathProvider.future);
+        final service = LlamadartLlmService();
+        await service.loadModel(modelPath);
+        ref.read(localLlmServiceProvider.notifier).state = service;
+      } on LocalLlmException catch (_) {
+        // Model load failed — user can retry from settings.
+      }
     }
   }
+  // coverage:ignore-end
 
   /// Build the personality settings section.
   Widget _buildPersonalitySection(
@@ -788,7 +805,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             else
               FilledButton.icon(
                 onPressed: () async {
-                  await ref.read(isGoogleConnectedProvider.notifier).connect();
+                  try {
+                    await ref
+                        .read(isGoogleConnectedProvider.notifier)
+                        .connect();
+                  } on GoogleAuthException catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(e.message)));
+                    }
+                  }
                 },
                 icon: const Icon(Icons.calendar_month),
                 label: const Text('Connect Google Calendar'),

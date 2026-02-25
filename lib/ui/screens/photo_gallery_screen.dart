@@ -92,7 +92,7 @@ class PhotoGalleryScreen extends ConsumerWidget {
                     child: Image.file(
                       File(photo.localPath),
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
+                      errorBuilder: (_, _, _) => Container(
                         color: Theme.of(
                           context,
                         ).colorScheme.surfaceContainerHighest,

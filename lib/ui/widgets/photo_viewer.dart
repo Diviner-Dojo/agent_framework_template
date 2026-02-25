@@ -65,7 +65,7 @@ class PhotoViewer extends StatelessWidget {
                 child: Image.file(
                   File(photoPath),
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Center(
+                  errorBuilder: (_, _, _) => const Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
