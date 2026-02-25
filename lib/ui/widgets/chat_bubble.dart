@@ -44,6 +44,9 @@ class RecallCitation {
 /// [photoPath] if set, renders a photo thumbnail above the text content.
 /// [photoCaption] optional caption displayed below the photo thumbnail.
 /// [onPhotoTap] callback when the photo thumbnail is tapped (opens viewer).
+/// [videoThumbnailPath] if set, renders a video thumbnail with play overlay.
+/// [videoDuration] the video duration in seconds (shown as overlay badge).
+/// [onVideoTap] callback when the video thumbnail is tapped (opens player).
 class ChatBubble extends StatelessWidget {
   final String content;
   final String role;
@@ -55,6 +58,9 @@ class ChatBubble extends StatelessWidget {
   final String? photoPath;
   final String? photoCaption;
   final VoidCallback? onPhotoTap;
+  final String? videoThumbnailPath;
+  final int? videoDuration;
+  final VoidCallback? onVideoTap;
 
   /// Prefix for the Hero animation tag. Each screen must use a unique prefix
   /// to avoid duplicate Hero tags when multiple screens are in the widget tree.
@@ -73,10 +79,20 @@ class ChatBubble extends StatelessWidget {
     this.photoCaption,
     this.onPhotoTap,
     this.photoHeroPrefix = 'photo-chat',
+    this.videoThumbnailPath,
+    this.videoDuration,
+    this.onVideoTap,
   });
 
   /// Whether this message was sent by the user.
   bool get isUser => role == 'USER';
+
+  /// Format seconds as mm:ss for the duration badge.
+  static String _formatSeconds(int seconds) {
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -153,7 +169,7 @@ class ChatBubble extends StatelessWidget {
                               child: Image.file(
                                 File(photoPath!),
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const SizedBox(
+                                errorBuilder: (_, _, _) => const SizedBox(
                                   width: 200,
                                   height: 100,
                                   child: Center(
@@ -177,6 +193,87 @@ class ChatBubble extends StatelessWidget {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 4),
+                  ],
+
+                  // Video thumbnail with play overlay (Phase 12 — ADR-0021).
+                  if (videoThumbnailPath != null) ...[
+                    Semantics(
+                      label:
+                          'Video${videoDuration != null ? ', ${videoDuration}s' : ''}. Tap to play.',
+                      button: true,
+                      child: GestureDetector(
+                        onTap: onVideoTap,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              maxWidth: 200,
+                              maxHeight: 150,
+                            ),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Image.file(
+                                  File(videoThumbnailPath!),
+                                  fit: BoxFit.cover,
+                                  width: 200,
+                                  errorBuilder: (_, _, _) => Container(
+                                    width: 200,
+                                    height: 112,
+                                    color: Colors.black26,
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.videocam_off,
+                                        size: 40,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                // Play button overlay.
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.play_arrow,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
+                                // Duration badge.
+                                if (videoDuration != null && videoDuration! > 0)
+                                  Positioned(
+                                    bottom: 4,
+                                    right: 4,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black54,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        _formatSeconds(videoDuration!),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 4),
                   ],
 

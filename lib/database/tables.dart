@@ -137,6 +137,10 @@ class JournalMessages extends Table {
   // When set, this message represents a photo entry in the conversation.
   TextColumn get photoId => text().nullable()();
 
+  // Reference to a video attached to this message (Phase 12 — ADR-0021).
+  // When set, this message represents a video entry in the conversation.
+  TextColumn get videoId => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {messageId};
 }
@@ -234,4 +238,57 @@ class Photos extends Table {
 
   @override
   Set<Column> get primaryKey => {photoId};
+}
+
+/// Videos attached to journal sessions (Phase 12 — ADR-0021).
+///
+/// Each video is associated with a session and optionally linked to a
+/// message via [messageId]. Videos are stored on-device as MP4 files
+/// with container metadata stripped for privacy. Cloud sync is
+/// feature-flagged off at launch (local-only).
+class Videos extends Table {
+  // Client-generated UUID — primary key.
+  TextColumn get videoId => text()();
+
+  // Foreign key to JournalSessions — links this video to its session.
+  TextColumn get sessionId => text().references(JournalSessions, #sessionId)();
+
+  // Optional link to the JournalMessage that represents this video.
+  TextColumn get messageId => text().nullable()();
+
+  // Relative path within app support directory (e.g., "videos/uuid/uuid.mp4").
+  TextColumn get localPath => text()();
+
+  // Relative path to thumbnail JPEG (e.g., "videos/uuid/uuid_thumb.jpg").
+  TextColumn get thumbnailPath => text()();
+
+  // Supabase Storage URL — set after successful upload (deferred).
+  TextColumn get cloudUrl => text().nullable()();
+
+  // User-provided or voice-captured description of the video.
+  TextColumn get description => text().nullable()();
+
+  // Recording duration in seconds.
+  IntColumn get durationSeconds => integer()();
+
+  // When the video was recorded or added to the session.
+  DateTimeColumn get timestamp => dateTime()();
+
+  // Sync tracking — matches session sync pattern (ADR-0012).
+  // Values: 'PENDING' | 'SYNCED' | 'FAILED'
+  TextColumn get syncStatus => text().withDefault(const Constant('PENDING'))();
+
+  // Video dimensions after processing (nullable until processing completes).
+  IntColumn get width => integer().nullable()();
+  IntColumn get height => integer().nullable()();
+
+  // File size in bytes after processing.
+  IntColumn get fileSizeBytes => integer().nullable()();
+
+  // Standard timestamps.
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {videoId};
 }
