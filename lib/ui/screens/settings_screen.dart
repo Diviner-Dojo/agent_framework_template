@@ -375,18 +375,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     if (downloaded) {
       ref.invalidate(llmModelReadyProvider);
 
-      // Load the model immediately after download.
-      try {
-        // Dispose existing service if any.
-        ref.read(localLlmServiceProvider)?.dispose();
-
-        final modelPath = await ref.read(llmModelPathProvider.future);
-        final service = LlamadartLlmService();
-        await service.loadModel(modelPath);
-        ref.read(localLlmServiceProvider.notifier).state = service;
-      } on LocalLlmException catch (_) {
-        // Model load failed — user can retry from settings.
-      }
+      // Local LLM loading disabled: llamadart's native library crashes on
+      // Snapdragon 888 (SIGILL in ggml_graph_compute). See llmAutoLoadProvider.
+      // TODO(local-llm): Re-enable when compatible binary is available.
     }
   }
   // coverage:ignore-end

@@ -67,7 +67,7 @@ dependencies:
   # Video capture (Phase 12 — ADR-0021)
   video_player: ^2.9.1
   video_thumbnail: ^0.5.3
-  ffmpeg_kit_flutter_min_gpl: ^6.0.3
+  ffmpeg_kit_min_gpl: ^6.0.3
 
   googleapis_auth: any
 dev_dependencies:

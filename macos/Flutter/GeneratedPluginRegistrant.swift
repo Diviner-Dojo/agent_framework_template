@@ -7,7 +7,7 @@ import Foundation
 
 import app_links
 import connectivity_plus
-import ffmpeg_kit_flutter_min_gpl
+import ffmpeg_kit_min_gpl
 import file_selector_macos
 import flutter_secure_storage_macos
 import flutter_timezone
