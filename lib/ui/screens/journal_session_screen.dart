@@ -36,6 +36,7 @@ import '../../providers/calendar_providers.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/session_providers.dart';
+import '../../providers/video_providers.dart';
 import '../../providers/voice_providers.dart';
 import '../../services/model_download_service.dart';
 import '../../services/photo_service.dart';
@@ -46,6 +47,7 @@ import '../widgets/model_download_dialog.dart';
 import '../widgets/photo_capture_sheet.dart';
 import '../widgets/photo_preview_dialog.dart';
 import '../widgets/photo_viewer.dart';
+import '../widgets/video_player_widget.dart';
 
 /// The active journal conversation screen.
 class JournalSessionScreen extends ConsumerStatefulWidget {
@@ -180,6 +182,9 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     final sessionId = sessionState.activeSessionId;
     final photosAsync = sessionId != null
         ? ref.watch(sessionPhotosProvider(sessionId))
+        : const AsyncValue<List<dynamic>>.data([]);
+    final videosAsync = sessionId != null
+        ? ref.watch(sessionVideosProvider(sessionId))
         : const AsyncValue<List<dynamic>>.data([]);
 
     // Watch orchestrator state for UI rebuilds.
@@ -348,6 +353,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                       photoMap[photo.messageId as String] = photo;
                     }
                   }
+                  // Index videos by videoId for chat bubbles.
+                  final videos = videosAsync.valueOrNull ?? [];
+                  final videoMap = <String, dynamic>{};
+                  for (final video in videos) {
+                    videoMap[video.videoId as String] = video;
+                  }
 
                   return ListView.builder(
                     controller: _scrollController,
@@ -357,6 +368,9 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                       final msg = messages[index];
                       final photo = msg.photoId != null
                           ? photoMap[msg.messageId]
+                          : null;
+                      final video = msg.videoId != null
+                          ? videoMap[msg.videoId as String]
                           : null;
                       return ChatBubble(
                         content: msg.content,
@@ -373,6 +387,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                                     heroTag: 'photo-chat-${photo.localPath}',
                                   ),
                                 ),
+                              )
+                            : null,
+                        videoThumbnailPath: video?.thumbnailPath as String?,
+                        videoDuration: video?.durationSeconds as int?,
+                        onVideoTap: video != null
+                            ? () => showVideoPlayer(
+                                context: context,
+                                videoPath: video.localPath as String,
                               )
                             : null,
                       );
@@ -554,7 +576,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
               if (!isWaiting && !isListening && !isSpeaking)
                 IconButton(
                   tooltip: 'Add photo',
-                  onPressed: () => _capturePhoto(context),
+                  onPressed: () => _captureMedia(context),
                   icon: const Icon(Icons.camera_alt_outlined),
                 ),
               if (isWaiting || isListening || isSpeaking)
@@ -769,17 +791,34 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   /// Capture a photo and add it to the session.
   ///
   /// Flow: show source sheet → capture/pick → preview → process → save.
-  Future<void> _capturePhoto(BuildContext context) async {
+  Future<void> _captureMedia(BuildContext context) async {
     final sessionId = ref.read(sessionNotifierProvider).activeSessionId;
     if (sessionId == null) return;
 
-    // Step 1: Choose source (camera or gallery).
-    final source = await showPhotoCaptureSheet(context);
+    // Step 1: Choose source (photo/video, camera/gallery).
+    final source = await showMediaCaptureSheet(context);
     if (source == null || !mounted) return;
 
+    // Route to the appropriate handler.
+    switch (source) {
+      case MediaSource.photoCamera:
+      case MediaSource.photoGallery:
+        await _handlePhotoCapture(context, sessionId, source);
+      case MediaSource.videoCamera:
+      case MediaSource.videoGallery:
+        await _handleVideoCapture(context, sessionId, source);
+    }
+  }
+
+  /// Handle photo capture/pick flow.
+  Future<void> _handlePhotoCapture(
+    BuildContext context,
+    String sessionId,
+    MediaSource source,
+  ) async {
     // Step 2: Capture or pick the photo.
     final photoService = ref.read(photoServiceProvider);
-    final rawFile = source == PhotoSource.camera
+    final rawFile = source == MediaSource.photoCamera
         ? await photoService.takePhoto()
         : await photoService.pickFromGallery();
     if (rawFile == null || !mounted) return;
@@ -872,6 +911,83 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       if (description != null && description.trim().isNotEmpty) {
         await photoDao.updateDescription(photoId, description.trim());
       }
+    }
+  }
+
+  /// Handle video capture/pick flow (Phase 12 — ADR-0021).
+  ///
+  /// Pauses STT before camera access (audio focus conflict — ADR-0021 §7),
+  /// captures/picks the video, processes (metadata strip + thumbnail),
+  /// and saves to the session via SessionNotifier.attachVideo().
+  Future<void> _handleVideoCapture(
+    BuildContext context,
+    String sessionId,
+    MediaSource source,
+  ) async {
+    // Pause STT if voice mode is active (ADR-0021 §7).
+    final voiceEnabled = ref.read(voiceModeEnabledProvider);
+    final orchestrator = ref.read(voiceOrchestratorProvider);
+    final wasSttActive =
+        voiceEnabled && orchestrator.state.phase != VoiceLoopPhase.idle;
+    if (wasSttActive) {
+      orchestrator.pause();
+    }
+
+    // Capture or pick the video.
+    final videoService = ref.read(videoServiceProvider);
+    final rawFile = source == MediaSource.videoCamera
+        ? await videoService.recordVideo()
+        : await videoService.pickFromGallery();
+
+    if (rawFile == null || !mounted) {
+      // Resume STT if we paused it.
+      if (wasSttActive && mounted) {
+        orchestrator.resume();
+      }
+      return;
+    }
+
+    // Show processing indicator while metadata strip + thumbnail runs.
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Text('Processing video...'),
+            ],
+          ),
+          duration: Duration(seconds: 30),
+        ),
+      );
+    }
+
+    // Attach via SessionNotifier (processes, saves to DB, creates message).
+    final success = await ref
+        .read(sessionNotifierProvider.notifier)
+        .attachVideo(rawFile);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Failed to add video. File may be too large (100MB max).',
+          ),
+        ),
+      );
+    }
+
+    // Resume STT if we paused it.
+    if (wasSttActive && mounted) {
+      orchestrator.resume();
     }
   }
 

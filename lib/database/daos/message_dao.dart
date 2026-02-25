@@ -33,9 +33,11 @@ class MessageDao {
   /// [role] is one of: 'USER', 'ASSISTANT', 'SYSTEM'.
   /// [content] is the actual text of the message.
   /// [timestamp] should be UTC.
-  /// [inputMethod] defaults to 'TEXT' (Phase 2 adds 'VOICE', Phase 9 adds 'PHOTO').
+  /// [inputMethod] defaults to 'TEXT' (Phase 2 adds 'VOICE', Phase 9 adds
+  /// 'PHOTO', Phase 12 adds 'VIDEO').
   /// [entitiesJson] optional JSON metadata (used for recall metadata in Phase 5).
   /// [photoId] optional reference to a photo record (Phase 9 — ADR-0018).
+  /// [videoId] optional reference to a video record (Phase 12 — ADR-0021).
   Future<void> insertMessage(
     String messageId,
     String sessionId,
@@ -45,6 +47,7 @@ class MessageDao {
     String inputMethod = 'TEXT',
     String? entitiesJson,
     String? photoId,
+    String? videoId,
   }) async {
     await _db
         .into(_db.journalMessages)
@@ -58,6 +61,7 @@ class MessageDao {
             inputMethod: Value(inputMethod),
             entitiesJson: Value(entitiesJson),
             photoId: Value(photoId),
+            videoId: Value(videoId),
           ),
         );
   }

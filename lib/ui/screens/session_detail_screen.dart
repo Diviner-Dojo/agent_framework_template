@@ -17,11 +17,13 @@ import '../../database/app_database.dart';
 import '../../database/daos/message_dao.dart';
 import '../../database/daos/photo_dao.dart';
 import '../../database/daos/session_dao.dart';
+import '../../database/daos/video_dao.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/session_providers.dart';
 import '../../utils/timestamp_utils.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/photo_viewer.dart';
+import '../widgets/video_player_widget.dart';
 
 /// Read-only transcript view for a past session.
 class SessionDetailScreen extends ConsumerStatefulWidget {
@@ -38,6 +40,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   JournalSession? _session;
   List<JournalMessage>? _messages;
   Map<String, Photo> _photosByMessageId = {};
+  Map<String, Video> _videosByVideoId = {};
   bool _isLoading = true;
   bool _isResuming = false;
 
@@ -49,13 +52,16 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
 
   /// Load the session, messages, and photos from the database.
   Future<void> _loadData() async {
-    final sessionDao = SessionDao(ref.read(databaseProvider));
-    final messageDao = MessageDao(ref.read(databaseProvider));
-    final photoDao = PhotoDao(ref.read(databaseProvider));
+    final db = ref.read(databaseProvider);
+    final sessionDao = SessionDao(db);
+    final messageDao = MessageDao(db);
+    final photoDao = PhotoDao(db);
+    final videoDao = VideoDao(db);
 
     final session = await sessionDao.getSessionById(widget.sessionId);
     final messages = await messageDao.getMessagesForSession(widget.sessionId);
     final photos = await photoDao.getPhotosForSession(widget.sessionId);
+    final videos = await videoDao.getVideosForSession(widget.sessionId);
 
     // Index photos by messageId for fast lookup.
     final photoMap = <String, Photo>{};
@@ -65,11 +71,18 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       }
     }
 
+    // Index videos by videoId for fast lookup.
+    final videoMap = <String, Video>{};
+    for (final video in videos) {
+      videoMap[video.videoId] = video;
+    }
+
     if (mounted) {
       setState(() {
         _session = session;
         _messages = messages;
         _photosByMessageId = photoMap;
+        _videosByVideoId = videoMap;
         _isLoading = false;
       });
     }
@@ -166,6 +179,9 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                       final photo = msg.photoId != null
                           ? _photosByMessageId[msg.messageId]
                           : null;
+                      final video = msg.videoId != null
+                          ? _videosByVideoId[msg.videoId!]
+                          : null;
                       return ChatBubble(
                         content: msg.content,
                         role: msg.role,
@@ -175,6 +191,14 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                         photoHeroPrefix: 'photo-detail',
                         onPhotoTap: photo != null
                             ? () => _openPhotoViewer(photo)
+                            : null,
+                        videoThumbnailPath: video?.thumbnailPath,
+                        videoDuration: video?.durationSeconds,
+                        onVideoTap: video != null
+                            ? () => showVideoPlayer(
+                                context: context,
+                                videoPath: video.localPath,
+                              )
                             : null,
                       );
                     },

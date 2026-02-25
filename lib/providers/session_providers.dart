@@ -30,6 +30,7 @@
 // ===========================================================================
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
@@ -44,6 +45,8 @@ import '../database/daos/session_dao.dart';
 import '../services/event_extraction_service.dart';
 import '../services/google_calendar_service.dart';
 import '../services/photo_service.dart';
+import '../services/video_service.dart';
+import '../database/daos/video_dao.dart';
 import '../repositories/agent_repository.dart';
 import '../repositories/search_repository.dart';
 import '../services/claude_api_service.dart';
@@ -59,6 +62,7 @@ import 'location_providers.dart';
 import 'photo_providers.dart';
 import 'search_providers.dart';
 import 'sync_providers.dart';
+import 'video_providers.dart';
 
 /// Streams all sessions from the database for the session list screen.
 ///
@@ -718,7 +722,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
     state = const SessionState();
     _ref.read(activeSessionIdProvider.notifier).state = null;
 
-    // Delete photo files from disk first (file I/O cannot run in a
+    // Delete media files from disk first (file I/O cannot run in a
     // drift transaction). Best-effort: file cleanup failure must not
     // prevent the DB cascade from running.
     try {
@@ -733,11 +737,25 @@ class SessionNotifier extends StateNotifier<SessionState> {
         debugPrint('Photo file cleanup failed for $sessionId: $e');
       }
     }
+    try {
+      final videoService = _ref.read(videoServiceProvider);
+      await videoService.deleteSessionVideos(sessionId);
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('Video file cleanup failed for $sessionId: $e');
+      }
+    } on Error catch (e) {
+      if (kDebugMode) {
+        debugPrint('Video file cleanup failed for $sessionId: $e');
+      }
+    }
     final photoDao = _ref.read(photoDaoProvider);
+    final videoDao = _ref.read(videoDaoProvider);
     await _sessionDao.deleteSessionCascade(
       _messageDao,
       sessionId,
       photoDao: photoDao,
+      videoDao: videoDao,
     );
   }
 
@@ -1164,6 +1182,81 @@ class SessionNotifier extends StateNotifier<SessionState> {
     }
   }
 
+  // =========================================================================
+  // Phase 12: Video Attachment (ADR-0021)
+  // =========================================================================
+
+  /// Attach a video to the current session.
+  ///
+  /// Processes the raw video file (metadata strip + thumbnail generation),
+  /// creates a "[Video]" message with inputMethod=VIDEO, and links it via
+  /// videoId. Returns true if the video was attached, false on failure.
+  ///
+  /// The caller (UI) is responsible for pausing STT before invoking this
+  /// method and resuming after it returns (ADR-0021 §7).
+  Future<bool> attachVideo(File rawFile, {int durationSeconds = 0}) async {
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return false;
+
+    final videoService = _ref.read(videoServiceProvider);
+    final videoDao = _ref.read(videoDaoProvider);
+    final videoId = generateUuid();
+    final now = nowUtc();
+
+    // Process: strip metadata, generate thumbnail, save to canonical paths.
+    final result = await videoService.processAndSave(
+      rawFile,
+      sessionId,
+      videoId,
+    );
+    if (result == null) return false;
+
+    // Use the caller-provided duration (from image_picker) or the
+    // processAndSave result (currently 0).
+    final actualDuration = durationSeconds > 0
+        ? durationSeconds
+        : result.durationSeconds;
+
+    // Store absolute paths (matching photo pattern — see ADR-0018).
+    // Using absolute paths avoids resolution issues in the UI layer
+    // where File() needs the full path, not a relative one.
+
+    // Insert video record into database.
+    await videoDao.insertVideo(
+      videoId: videoId,
+      sessionId: sessionId,
+      localPath: result.file.path,
+      thumbnailPath: result.thumbnail.path,
+      durationSeconds: actualDuration,
+      timestamp: now,
+      fileSizeBytes: result.fileSizeBytes,
+      width: result.width,
+      height: result.height,
+    );
+
+    // Create a "[Video]" message linked via videoId.
+    final messageId = generateUuid();
+    await _messageDao.insertMessage(
+      messageId,
+      sessionId,
+      'USER',
+      '[Video]',
+      now,
+      inputMethod: 'VIDEO',
+      videoId: videoId,
+    );
+
+    // Track in conversation context.
+    state = state.copyWith(
+      conversationMessages: [
+        ...state.conversationMessages,
+        {'role': 'user', 'content': '[Video]'},
+      ],
+    );
+
+    return true;
+  }
+
   /// Cancel any PENDING_CREATE events for the session.
   Future<void> _cancelPendingEvents(String sessionId) async {
     final calendarEventDao = _ref.read(calendarEventDaoProvider);
@@ -1352,29 +1445,37 @@ class SessionNotifier extends StateNotifier<SessionState> {
   }
 }
 
-/// Deletes a completed session, its messages, and photos from the database.
+/// Deletes a completed session, its messages, photos, and videos from the
+/// database.
 ///
 /// Accepts DAOs and services directly so it can be called from both providers
 /// (Ref) and widgets (WidgetRef). The session list auto-updates via drift's
 /// stream because [allSessionsProvider] watches the table.
 ///
-/// Photo files on disk are deleted first (file I/O cannot run inside a drift
-/// transaction), then the DB cascade runs: photos → messages → session.
+/// Media files on disk are deleted first (file I/O cannot run inside a drift
+/// transaction), then the DB cascade runs: videos → photos → messages →
+/// session.
 Future<void> deleteSessionCascade(
   SessionDao sessionDao,
   MessageDao messageDao,
   String sessionId, {
   PhotoDao? photoDao,
   PhotoService? photoService,
+  VideoDao? videoDao,
+  VideoService? videoService,
 }) async {
-  // Delete photo files from disk before the DB transaction.
+  // Delete media files from disk before the DB transaction.
   if (photoService != null) {
     await photoService.deleteSessionPhotos(sessionId);
+  }
+  if (videoService != null) {
+    await videoService.deleteSessionVideos(sessionId);
   }
   await sessionDao.deleteSessionCascade(
     messageDao,
     sessionId,
     photoDao: photoDao,
+    videoDao: videoDao,
   );
 }
 
@@ -1419,14 +1520,17 @@ final claudeApiServiceProvider = Provider<ClaudeApiService>((ref) {
 /// (preferClaude, journalOnlyMode) and applies them.
 /// When services are unavailable, the repository falls back to Layer A.
 ///
-/// The localLlmLayer is injected via constructor (not mutable field) so
-/// that provider rebuilds correctly propagate layer availability (ADR-0017).
+/// The localLlmLayer uses ref.listen (not ref.watch) so that async model
+/// loading updates the layer WITHOUT rebuilding this provider — which would
+/// cascade to sessionNotifierProvider and destroy any active session state.
 final agentRepositoryProvider = Provider<AgentRepository>((ref) {
   final claudeService = ref.watch(claudeApiServiceProvider);
   final connectivityService = ref.watch(connectivityServiceProvider);
   final preferClaude = ref.watch(preferClaudeProvider);
   final journalOnlyMode = ref.watch(journalOnlyModeProvider);
-  final localLlmLayer = ref.watch(localLlmLayerProvider);
+
+  // Read the initial value (may be null if model not yet loaded).
+  final localLlmLayer = ref.read(localLlmLayerProvider);
 
   final repo = AgentRepository(
     claudeService: claudeService,
@@ -1435,6 +1539,13 @@ final agentRepositoryProvider = Provider<AgentRepository>((ref) {
   );
   repo.setPreferClaude(preferClaude);
   repo.setJournalOnlyMode(journalOnlyMode);
+
+  // Listen for async LLM layer changes and update the mutable field
+  // without triggering a provider rebuild cascade.
+  ref.listen(localLlmLayerProvider, (_, next) {
+    repo.updateLocalLlmLayer(next);
+  });
+
   return repo;
 });
 

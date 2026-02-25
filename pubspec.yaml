@@ -64,8 +64,16 @@ dependencies:
   googleapis: ^13.2.0
   extension_google_sign_in_as_googleapis_auth: ^2.0.13
 
+  # Video capture (Phase 12 — ADR-0021)
+  video_player: ^2.9.1
+  video_thumbnail: ^0.5.3
+  ffmpeg_kit_flutter_min_gpl: ^6.0.3
+
+  googleapis_auth: any
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
 
@@ -81,5 +89,7 @@ dev_dependencies:
   # Testing utilities
   mockito: ^5.4.5
 
+  path_provider_platform_interface: any
+  plugin_platform_interface: any
 flutter:
   uses-material-design: true

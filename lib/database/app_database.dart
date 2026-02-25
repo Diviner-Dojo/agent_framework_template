@@ -35,7 +35,7 @@ part 'app_database.g.dart';
 ///   final db = AppDatabase();          // production (file-based)
 ///   final db = AppDatabase.forTesting(NativeDatabase.memory());  // tests
 @DriftDatabase(
-  tables: [JournalSessions, JournalMessages, Photos, CalendarEvents],
+  tables: [JournalSessions, JournalMessages, Photos, CalendarEvents, Videos],
 )
 class AppDatabase extends _$AppDatabase {
   /// Default constructor — uses a file-based SQLite database.
@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -82,6 +82,14 @@ class AppDatabase extends _$AppDatabase {
           'calendar_events',
           'CREATE INDEX IF NOT EXISTS idx_calendar_events_session_id '
               'ON calendar_events (session_id)',
+        ),
+      );
+      // Index for efficient video retrieval by session (Phase 12).
+      await m.createIndex(
+        Index(
+          'videos',
+          'CREATE INDEX IF NOT EXISTS idx_videos_session_id '
+              'ON videos (session_id)',
         ),
       );
     },
@@ -129,6 +137,19 @@ class AppDatabase extends _$AppDatabase {
             'calendar_events',
             'CREATE INDEX IF NOT EXISTS idx_calendar_events_session_id '
                 'ON calendar_events (session_id)',
+          ),
+        );
+      }
+      if (from < 6) {
+        // Phase 12: Video capture (ADR-0021).
+        await m.createTable(videos);
+        await m.addColumn(journalMessages, journalMessages.videoId);
+        // Index for efficient video retrieval by session.
+        await m.createIndex(
+          Index(
+            'videos',
+            'CREATE INDEX IF NOT EXISTS idx_videos_session_id '
+                'ON videos (session_id)',
           ),
         );
       }

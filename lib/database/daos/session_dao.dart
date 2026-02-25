@@ -20,6 +20,7 @@ import '../app_database.dart';
 import '../search_query_utils.dart';
 import 'message_dao.dart';
 import 'photo_dao.dart';
+import 'video_dao.dart';
 
 /// Provides all database operations for journal sessions.
 ///
@@ -189,8 +190,12 @@ class SessionDao {
     MessageDao messageDao,
     String sessionId, {
     PhotoDao? photoDao,
+    VideoDao? videoDao,
   }) async {
     return _db.transaction(() async {
+      if (videoDao != null) {
+        await videoDao.deleteVideosBySession(sessionId);
+      }
       if (photoDao != null) {
         await photoDao.deletePhotosBySession(sessionId);
       }
@@ -199,16 +204,21 @@ class SessionDao {
     });
   }
 
-  /// Delete all sessions, messages, and photos atomically.
+  /// Delete all sessions, messages, photos, and videos atomically.
   ///
   /// Wraps the cascade in a transaction to prevent orphaned data.
-  /// When [photoDao] is provided, all photo records are deleted from the DB.
-  /// Photo files on disk must be deleted separately before calling this.
+  /// When [photoDao]/[videoDao] are provided, all records are deleted from
+  /// the DB. Media files on disk must be deleted separately before calling
+  /// this.
   Future<void> deleteAllCascade(
     MessageDao messageDao, {
     PhotoDao? photoDao,
+    VideoDao? videoDao,
   }) async {
     await _db.transaction(() async {
+      if (videoDao != null) {
+        await videoDao.deleteAllVideos();
+      }
       if (photoDao != null) {
         await photoDao.deleteAllPhotos();
       }
