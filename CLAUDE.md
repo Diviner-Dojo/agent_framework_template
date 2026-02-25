@@ -16,7 +16,7 @@
 3. **Collaboration precedes adversarial rigor.** Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review (red-teaming), fault injection/stress testing, anti-groupthink checks.
 4. **Independence prevents confirmation loops.** The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review.
 5. **ADRs are never deleted.** Only superseded with references to the replacing decision. This creates an immutable decision history.
-6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk.
+6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk. Deferrals require developer acknowledgment and must be logged in the retro. Deferred gates must be completed before the next phase begins, or formally re-deferred with documented rationale.
 7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
 8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
 
@@ -178,6 +178,8 @@ When a `/review`, `/deliberate`, `/analyze-project`, `/build_module`, `/retro`, 
 5. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
 
 **Known data quality**: Pre-migration discussions (before 2026-02-22) have NULL `duration_minutes` — backfill via `created_at`/`closed_at` is pending. The `protocol_yield` table had a duplicate-recording bug prior to the dedup guard added to `record_yield.py`.
+
+**Known limitation**: The `protocol_yield` table records blocking/advisory findings but not REVISE-resolved rounds. Checkpoint value from iterative improvement is currently undercounted.
 
 ## Agent Invocation Pattern
 
