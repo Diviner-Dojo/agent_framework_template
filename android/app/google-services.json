@@ -1,21 +1,30 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "agentic-journal-placeholder",
-    "storage_bucket": "agentic-journal-placeholder.appspot.com"
+    "project_number": "774019106928",
+    "project_id": "agenticjournal",
+    "storage_bucket": "agenticjournal.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+        "mobilesdk_app_id": "1:774019106928:android:0000000000000000",
         "android_client_info": {
           "package_name": "com.divinerdojo.agentic_journal"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "774019106928-211ougkvc63dm0lbare5qbq0it12huk7.apps.googleusercontent.com",
+          "client_type": 1
+        },
+        {
+          "client_id": "774019106928-0v541sgb13qnma44v3g35l4if5tes3k6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "placeholder-not-configured"
+          "current_key": "placeholder"
         }
       ],
       "services": {}
