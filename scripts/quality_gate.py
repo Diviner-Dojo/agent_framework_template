@@ -1,37 +1,30 @@
-"""Run all quality checks for the Flutter/Dart project.
+"""Run all quality checks defined in the framework's rules files.
 
-Validates formatting (dart format), linting (dart analyze), tests (flutter test),
-coverage (>= 80%), ADR completeness, review existence for code changes, and
-regression guard (verifying regression test files exist for known-bug files).
+Converts the documented standards from .claude/rules/ (coding_standards.md,
+testing_requirements.md, review_gates.md) into executable validation.
 
 Usage:
     python scripts/quality_gate.py            # run all checks
     python scripts/quality_gate.py --fix      # auto-fix then check
     python scripts/quality_gate.py --skip-tests --skip-coverage
-    python scripts/quality_gate.py --skip-reviews     # bypass review check
-    python scripts/quality_gate.py --skip-regression  # bypass regression guard
+    python scripts/quality_gate.py --skip-reviews  # bypass review check
 
 Exit code 0 if all checks pass, 1 if any fail.
-
-Note: Requires Flutter SDK on PATH. If running from Git Bash on Windows,
-ensure 'flutter' and 'dart' are accessible (e.g., C:\\src\\flutter\\bin on PATH).
 """
 
 import argparse
-import os
 import subprocess
 import sys
-from datetime import UTC
 from pathlib import Path
 
 import yaml
 
 PROJECT_ROOT = Path(__file__).parent.parent
-SRC_DIR = PROJECT_ROOT / "lib"
-TESTS_DIR = PROJECT_ROOT / "test"
+SRC_DIR = PROJECT_ROOT / "src"
+TESTS_DIR = PROJECT_ROOT / "tests"
 ADR_DIR = PROJECT_ROOT / "docs" / "adr"
 REVIEWS_DIR = PROJECT_ROOT / "docs" / "reviews"
-REGRESSION_LEDGER = PROJECT_ROOT / "memory" / "bugs" / "regression-ledger.md"
+QUALITY_GATE_LOG = PROJECT_ROOT / "metrics" / "quality_gate_log.jsonl"
 
 # ANSI color codes (no-op on terminals that don't support them)
 GREEN = "\033[92m"
@@ -41,88 +34,27 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 
-def _find_flutter() -> str:
-    """Find the flutter executable, checking PATH and common install locations."""
-    # Check if flutter is already on PATH
-    for cmd in ["flutter", "flutter.bat"]:
-        try:
-            result = subprocess.run(
-                [cmd, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0:
-                return cmd
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
-
-    # Check common install location on Windows
-    common_path = Path("C:/src/flutter/bin")
-    if common_path.exists():
-        flutter_bat = common_path / "flutter.bat"
-        if flutter_bat.exists():
-            return str(flutter_bat)
-
-    print(f"  {RED}ERROR{RESET}  Flutter SDK not found on PATH.")
-    print('         Add Flutter to PATH: export PATH="$PATH:/c/src/flutter/bin"')
-    sys.exit(1)
-
-
-def _find_dart(flutter_cmd: str) -> str:
-    """Derive the dart command from the flutter command location."""
-    flutter_path = Path(flutter_cmd).resolve()
-    # Check the same directory as flutter
-    for candidate_dir in [flutter_path.parent, Path("C:/src/flutter/bin")]:
-        for name in ["dart.bat", "dart", "dart.exe"]:
-            dart_path = candidate_dir / name
-            if dart_path.exists():
-                return str(dart_path)
-    # Fallback: try running dart directly (might be on PATH)
-    try:
-        result = subprocess.run(["dart", "--version"], capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            return "dart"
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    print(f"  {RED}ERROR{RESET}  Dart SDK not found.")
-    sys.exit(1)
-
-
-# Resolve Flutter and Dart commands once at module level
-FLUTTER_CMD = _find_flutter()
-DART_CMD = _find_dart(FLUTTER_CMD)
-
-
 def validate_directories() -> list[str]:
-    """Validate that SRC_DIR and TESTS_DIR exist and contain Dart files.
+    """Validate that SRC_DIR and TESTS_DIR exist and contain Python files.
 
     Returns a list of error messages (empty if all valid).
     """
     errors: list[str] = []
-    for label, directory in [("Source (lib/)", SRC_DIR), ("Tests (test/)", TESTS_DIR)]:
+    for label, directory in [("Source", SRC_DIR), ("Tests", TESTS_DIR)]:
         if not directory.is_dir():
             errors.append(f"{label} directory does not exist: {directory}")
-        elif not list(directory.rglob("*.dart")):
-            errors.append(f"{label} directory contains no .dart files: {directory}")
+        elif not list(directory.glob("*.py")):
+            errors.append(f"{label} directory contains no .py files: {directory}")
     return errors
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run a command and return the result without raising on failure."""
-    # Ensure Flutter SDK is on PATH for subprocesses
-    env = os.environ.copy()
-    flutter_bin = str(Path(FLUTTER_CMD).parent)
-    if flutter_bin not in env.get("PATH", ""):
-        env["PATH"] = flutter_bin + os.pathsep + env.get("PATH", "")
-
     return subprocess.run(
         cmd,
         cwd=cwd or PROJECT_ROOT,
         capture_output=True,
         text=True,
-        encoding="utf-8",
-        env=env,
     )
 
 
@@ -142,41 +74,28 @@ def _skip(name: str) -> None:
 
 
 def check_formatting(fix: bool = False) -> bool:
-    """Check 1: dart format compliance."""
+    """Check 1: ruff format compliance."""
     if fix:
-        _run([DART_CMD, "format", str(SRC_DIR), str(TESTS_DIR)])
-        _run([DART_CMD, "fix", "--apply"])
-
-    result = _run([DART_CMD, "format", "--set-exit-if-changed", str(SRC_DIR), str(TESTS_DIR)])
+        _run(["python", "-m", "ruff", "format", str(SRC_DIR), str(TESTS_DIR)])
+    result = _run(["python", "-m", "ruff", "format", "--check", str(SRC_DIR), str(TESTS_DIR)])
     if result.returncode == 0:
-        _pass("Formatting (dart format)")
+        _pass("Formatting (ruff format)")
         return True
-    _fail("Formatting (dart format)", "run: dart format lib/ test/")
-    if result.stdout:
-        lines = result.stdout.strip().split("\n")
-        for line in lines[:5]:
-            print(f"         {line}")
-        if len(lines) > 5:
-            print(f"         ... and {len(lines) - 5} more")
+    _fail("Formatting (ruff format)", "run: python -m ruff format src/ tests/")
     return False
 
 
 def check_linting(fix: bool = False) -> bool:
-    """Check 2: dart analyze compliance."""
+    """Check 2: ruff lint compliance."""
     if fix:
-        _run([DART_CMD, "fix", "--apply"])
-
-    result = _run([DART_CMD, "analyze", str(SRC_DIR), str(TESTS_DIR)])
+        _run(["python", "-m", "ruff", "check", "--fix", str(SRC_DIR), str(TESTS_DIR)])
+    result = _run(["python", "-m", "ruff", "check", str(SRC_DIR), str(TESTS_DIR)])
     if result.returncode == 0:
-        # dart analyze returns 0 even with infos — check output for errors
-        output = result.stdout + result.stderr
-        if "error" in output.lower() and "0 errors" not in output.lower():
-            _fail("Linting (dart analyze)")
-            return False
-        _pass("Linting (dart analyze)")
+        _pass("Linting (ruff check)")
         return True
-    _fail("Linting (dart analyze)", "run: dart analyze lib/ test/")
+    _fail("Linting (ruff check)", "run: python -m ruff check src/ tests/")
     if result.stdout:
+        # Show first few lines of lint output for context
         lines = result.stdout.strip().split("\n")
         for line in lines[:5]:
             print(f"         {line}")
@@ -186,75 +105,16 @@ def check_linting(fix: bool = False) -> bool:
 
 
 def check_tests() -> bool:
-    """Check 3: flutter test passes."""
-    result = _run([FLUTTER_CMD, "test"])
+    """Check 3: pytest passes."""
+    result = _run(["python", "-m", "pytest", str(TESTS_DIR), "-x", "-q"])
     if result.returncode == 0:
-        _pass("Tests (flutter test)")
+        _pass("Tests (pytest)")
         return True
-    _fail("Tests (flutter test)")
-    output = result.stdout or result.stderr
-    if output:
-        lines = output.strip().split("\n")
+    _fail("Tests (pytest)")
+    if result.stdout:
+        lines = result.stdout.strip().split("\n")
         for line in lines[-10:]:
             print(f"         {line}")
-    return False
-
-
-def check_coverage() -> bool:
-    """Check 4: coverage meets >= 80% threshold.
-
-    Runs flutter test --coverage, then parses coverage/lcov.info
-    to compute the overall line coverage percentage.
-    """
-    result = _run([FLUTTER_CMD, "test", "--coverage"])
-    if result.returncode != 0:
-        _fail("Coverage (tests failed — cannot compute coverage)")
-        return False
-
-    lcov_path = PROJECT_ROOT / "coverage" / "lcov.info"
-    if not lcov_path.exists():
-        _fail("Coverage (no lcov.info generated)")
-        return False
-
-    # Parse lcov.info to compute coverage.
-    # Exclude generated files (*.g.dart, *.freezed.dart) and files with
-    # '// coverage:ignore-file' which inflate the denominator without
-    # reflecting hand-written code quality.
-    total_lines = 0
-    hit_lines = 0
-    current_file = ""
-    skip_file = False
-    text = lcov_path.read_text(encoding="utf-8")
-    for line in text.split("\n"):
-        if line.startswith("SF:"):
-            current_file = line[3:]
-            skip_file = current_file.endswith(".g.dart") or current_file.endswith(".freezed.dart")
-            # Also skip files with // coverage:ignore-file directive.
-            if not skip_file:
-                try:
-                    source_path = Path(current_file)
-                    if source_path.exists():
-                        first_line = source_path.read_text(encoding="utf-8").split("\n", 1)[0]
-                        if "coverage:ignore-file" in first_line:
-                            skip_file = True
-                except OSError:
-                    pass
-        elif skip_file:
-            continue
-        elif line.startswith("LF:"):
-            total_lines += int(line[3:])
-        elif line.startswith("LH:"):
-            hit_lines += int(line[3:])
-
-    if total_lines == 0:
-        _fail("Coverage (no lines found in lcov.info)")
-        return False
-
-    percentage = (hit_lines / total_lines) * 100
-    if percentage >= 80:
-        _pass(f"Coverage ({percentage:.1f}% >= 80%)")
-        return True
-    _fail(f"Coverage ({percentage:.1f}% < 80%)", "target: >= 80%")
     return False
 
 
@@ -320,12 +180,38 @@ def check_adrs() -> bool:
     return True
 
 
+def check_coverage() -> bool:
+    """Check 4: coverage meets threshold (configured in pyproject.toml)."""
+    result = _run(
+        [
+            "python",
+            "-m",
+            "pytest",
+            str(TESTS_DIR),
+            f"--cov={SRC_DIR}",
+            "--cov-report=term-missing:skip-covered",
+            "--cov-fail-under=80",
+            "-q",
+        ]
+    )
+    if result.returncode == 0:
+        _pass("Coverage (>= 80%)")
+        return True
+    _fail("Coverage (>= 80%)", "run: pytest --cov=src --cov-fail-under=80")
+    if result.stdout:
+        lines = result.stdout.strip().split("\n")
+        # Show coverage summary lines
+        for line in lines:
+            if "TOTAL" in line or "FAIL" in line or "%" in line:
+                print(f"         {line}")
+    return False
+
+
 # --- Review existence helpers ---
 
 # Directories whose files count as "code changes" requiring review
-_CODE_PREFIXES = ("lib/", "test/", "scripts/")
-_CODE_EXTENSIONS = (".dart", ".py")
-_GENERATED_SUFFIXES = (".g.dart", ".freezed.dart")
+_CODE_PREFIXES = ("src/", "tests/", "scripts/")
+_CODE_EXTENSIONS = (".py",)
 
 # Framework infrastructure directories — .md files here are reviewable
 _FRAMEWORK_PREFIXES = (".claude/agents/", ".claude/commands/", ".claude/rules/")
@@ -336,7 +222,7 @@ def _get_staged_code_files() -> list[str]:
     """Return staged files that count as reviewable code changes.
 
     Runs ``git diff --cached --name-only`` and filters for code files
-    under known source directories, excluding generated files.
+    under known source directories.
     Returns an empty list if git is unavailable (fails safe).
     """
     try:
@@ -357,11 +243,9 @@ def _get_staged_code_files() -> list[str]:
         f = line.strip()
         if not f:
             continue
-        # Check code directories (lib/, test/, scripts/)
-        is_code = (
-            any(f.startswith(p) for p in _CODE_PREFIXES)
-            and any(f.endswith(ext) for ext in _CODE_EXTENSIONS)
-            and not any(f.endswith(s) for s in _GENERATED_SUFFIXES)
+        # Check code directories (src/, tests/, scripts/)
+        is_code = any(f.startswith(p) for p in _CODE_PREFIXES) and any(
+            f.endswith(ext) for ext in _CODE_EXTENSIONS
         )
         # Check framework directories (.claude/agents/, commands/, rules/)
         is_framework = any(f.startswith(p) for p in _FRAMEWORK_PREFIXES) and any(
@@ -412,235 +296,19 @@ def check_review_existence() -> bool:
     return False
 
 
-def _parse_regression_ledger() -> dict[str, str]:
-    """Parse the regression ledger into a map of source basename → test path.
-
-    Returns a dict where keys are source file basenames (e.g. 'elevenlabs_tts_service.dart')
-    and values are the corresponding regression test paths. Entries with 'N/A' test paths
-    are excluded.
-    """
-    if not REGRESSION_LEDGER.exists():
-        return {}
-
-    text = REGRESSION_LEDGER.read_text(encoding="utf-8")
-    source_to_test: dict[str, str] = {}
-
-    for line in text.split("\n"):
-        line = line.strip()
-        # Skip non-table rows (no pipes, header row, separator row)
-        if not line.startswith("|") or line.startswith("| Bug") or line.startswith("|---"):
-            continue
-
-        cols = [c.strip() for c in line.split("|")]
-        # Split produces empty strings at start/end from leading/trailing pipes
-        # Expected columns: ['', Bug, File(s), Root Cause, Fix, Regression Test, Date, '']
-        if len(cols) < 7:
-            continue
-
-        files_col = cols[2]  # File(s)
-        test_col = cols[5]  # Regression Test
-
-        # Skip process-only entries and TODO entries (tests not yet written)
-        if "N/A" in test_col or test_col.upper().startswith("TODO"):
-            continue
-
-        # Extract just the file path (strip method/test name references like ':test name')
-        test_path = test_col.split(":")[0].strip()
-
-        # Map each source file basename to the test path
-        for src_file in files_col.split(", "):
-            src_file = src_file.strip()
-            if src_file:
-                source_to_test[src_file] = test_path
-
-    return source_to_test
-
-
-def check_regression_guard() -> bool:
-    """Check 7: verify regression test files exist for staged files with known bugs.
-
-    Parses the regression ledger and checks that for every staged file matching
-    a ledger entry, the corresponding regression test file exists on disk.
-    """
-    source_to_test = _parse_regression_ledger()
-    if not source_to_test:
-        _pass("Regression guard (no ledger entries)")
-        return True
-
-    staged = _get_staged_code_files()
-    if not staged:
-        _pass("Regression guard (no files staged)")
-        return True
-
-    # Build set of staged basenames for matching
-    staged_basenames = {Path(f).name for f in staged}
-
-    missing: list[str] = []
-    checked = 0
-    for src_basename, test_path in source_to_test.items():
-        if src_basename in staged_basenames:
-            checked += 1
-            full_test_path = PROJECT_ROOT / test_path
-            if not full_test_path.exists():
-                missing.append(f"{src_basename} -> {test_path}")
-
-    if not checked:
-        _pass("Regression guard (no staged files match ledger)")
-        return True
-
-    if missing:
-        _fail(f"Regression guard ({len(missing)} missing test file(s))")
-        for entry in missing:
-            print(f"         {entry}")
-        return False
-
-    _pass(f"Regression guard ({checked} file(s) verified)")
-    return True
-
-
-CAPABILITY_STATUS = PROJECT_ROOT / "CAPABILITY_STATUS.md"
-
-# Patterns that indicate a provider default return value (CPP C2 check).
-# Matches lines like: `return SttEngine.deepgram;` or `return TtsEngine.elevenlabs;`
-_DEFAULT_RETURN_PATTERN = r"^\s*return\s+(Stt|Tts)Engine\.\w+"
-
-
-def _parse_capability_status() -> dict[str, str]:
-    """Parse CAPABILITY_STATUS.md and return a dict of {capability_key: status}.
-
-    Capability keys are lowercased strings like 'stt: speech_to_text'.
-    Status is one of PROVEN, EXPERIMENTAL, BROKEN, DEPRECATED.
-    Returns empty dict if the file does not exist.
-    """
-    if not CAPABILITY_STATUS.exists():
-        return {}
-
-    import re
-
-    capabilities: dict[str, str] = {}
-    # Match table rows: | Capability | Status | ...
-    row_re = re.compile(r"^\|\s*([^|]+)\|\s*\*?\*?(\w+)\*?\*?\s*\|")
-    for line in CAPABILITY_STATUS.read_text(encoding="utf-8").splitlines():
-        m = row_re.match(line.strip())
-        if m:
-            cap = m.group(1).strip().lower()
-            status = m.group(2).strip().upper()
-            if status in ("PROVEN", "EXPERIMENTAL", "BROKEN", "DEPRECATED"):
-                capabilities[cap] = status
-    return capabilities
-
-
-def check_capability_gate() -> bool:
-    """CPP C2: Warn when a staged provider default changes to an EXPERIMENTAL capability.
-
-    Detects changes to lines matching `return SttEngine.*` or `return TtsEngine.*`
-    in *_providers.dart files. If the new default is listed as EXPERIMENTAL (or BROKEN)
-    in CAPABILITY_STATUS.md, emits a WARNING. This is a WARNING check (not a hard
-    block) because the Two-PR convention (C5 in ADR-0035) is the primary control.
-
-    See: ADR-0035, .claude/rules/capability_protection.md
-    """
-    import re
-
-    default_re = re.compile(_DEFAULT_RETURN_PATTERN)
-
-    # Get diff of staged *_providers.dart files.
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--cached", "-U0", "--", "lib/**/*_providers.dart"],
-            capture_output=True,
-            text=True,
-            cwd=PROJECT_ROOT,
-            timeout=15,
-        )
-        diff_text = result.stdout
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        _skip("Capability gate (git unavailable)")
-        return True
-
-    if not diff_text.strip():
-        _pass("Capability gate (no provider default changes)")
-        return True
-
-    # Extract added lines (start with '+', not '+++').
-    added_defaults: list[str] = []
-    for line in diff_text.splitlines():
-        if line.startswith("+") and not line.startswith("+++"):
-            if default_re.search(line):
-                added_defaults.append(line[1:].strip())  # strip the leading '+'
-
-    if not added_defaults:
-        _pass("Capability gate (no default return changes detected)")
-        return True
-
-    # Check each new default against CAPABILITY_STATUS.md.
-    capabilities = _parse_capability_status()
-    warnings: list[str] = []
-
-    for line in added_defaults:
-        m = re.search(r"return\s+(Stt|Tts)Engine\.(\w+)", line)
-        if not m:
-            continue
-        engine_type = m.group(1).lower()  # 'stt' or 'tts'
-        engine_name = m.group(2)  # e.g. 'deepgram', 'speechToText'
-
-        # Convert camelCase to lowercase search key (e.g. speechToText → speech_to_text)
-        snake = re.sub(r"([A-Z])", r"_\1", engine_name).lower().lstrip("_")
-        search_key = f"{engine_type}: {snake}"  # e.g. 'stt: speech_to_text'
-
-        # Look for a matching entry in CAPABILITY_STATUS.md
-        status = None
-        for cap_key, cap_status in capabilities.items():
-            if snake in cap_key and engine_type in cap_key:
-                status = cap_status
-                break
-
-        if status in ("EXPERIMENTAL", "BROKEN"):
-            warnings.append(
-                f"{engine_type.upper()}Engine.{engine_name} is {status} in CAPABILITY_STATUS.md"
-            )
-
-    if warnings:
-        print(f"  {YELLOW}⚠  Capability gate — WARNING (not blocking){RESET}")
-        for w in warnings:
-            print(f"     {YELLOW}→ {w}{RESET}")
-        print(
-            f"     {YELLOW}Add '# CAPABILITY-GATE: approved by <name> <reason>' to commit message,{RESET}"
-        )
-        print(
-            f"     {YELLOW}or update CAPABILITY_STATUS.md to PROVEN after device testing.{RESET}"
-        )
-        print(f"     {YELLOW}See: ADR-0035, .claude/rules/capability_protection.md{RESET}")
-        # Return True — this is a WARNING, not a hard block.
-        return True
-
-    _pass(f"Capability gate ({len(added_defaults)} default change(s) verified PROVEN)")
-    return True
-
-
-QUALITY_GATE_LOG = PROJECT_ROOT / "metrics" / "quality_gate_log.jsonl"
-
-_CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
+_CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews"]
 
 
 def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, total: int) -> None:
     """Append a JSONL record of the quality gate outcome for trend analysis."""
     import json
-    from datetime import datetime
+    from datetime import UTC, datetime
 
     check_results = {}
     idx = 0
     for name, skip_attr in zip(
         _CHECK_NAMES,
-        [
-            "skip_format",
-            "skip_lint",
-            "skip_tests",
-            "skip_coverage",
-            "skip_adrs",
-            "skip_reviews",
-            "skip_regression",
-        ],
+        ["skip_format", "skip_lint", "skip_tests", "skip_coverage", "skip_adrs", "skip_reviews"],
     ):
         if getattr(args, skip_attr, False):
             check_results[name] = "skipped"
@@ -679,11 +347,6 @@ def main() -> int:
         action="store_true",
         help="Skip review existence check",
     )
-    parser.add_argument(
-        "--skip-regression",
-        action="store_true",
-        help="Skip regression guard check",
-    )
     args = parser.parse_args()
 
     print(f"\n{BOLD}Quality Gate{RESET}")
@@ -705,21 +368,21 @@ def main() -> int:
 
     # Check 1: Formatting
     if args.skip_format:
-        _skip("Formatting (dart format)")
+        _skip("Formatting (ruff format)")
     else:
         total += 1
         results.append(check_formatting(fix=args.fix))
 
     # Check 2: Linting
     if args.skip_lint:
-        _skip("Linting (dart analyze)")
+        _skip("Linting (ruff check)")
     else:
         total += 1
         results.append(check_linting(fix=args.fix))
 
     # Check 3: Tests
     if args.skip_tests:
-        _skip("Tests (flutter test)")
+        _skip("Tests (pytest)")
     else:
         total += 1
         results.append(check_tests())
@@ -744,16 +407,6 @@ def main() -> int:
     else:
         total += 1
         results.append(check_review_existence())
-
-    # Check 7: Regression guard
-    if args.skip_regression:
-        _skip("Regression guard")
-    else:
-        total += 1
-        results.append(check_regression_guard())
-
-    # Check 8: Capability gate (CPP C2 — warning only, never fails the gate)
-    check_capability_gate()
 
     # Summary
     passed = sum(results)

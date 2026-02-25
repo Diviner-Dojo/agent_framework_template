@@ -13,7 +13,7 @@ You are acting as the Facilitator. Build code against an approved spec with inte
 These rules are pass/fail. Violating any of them is a workflow failure.
 
 1. **NEVER skip tests**: Every module MUST have tests before declaring completion. No untested code passes this gate.
-2. **NEVER skip the linter**: `dart analyze` and `dart format` MUST run and pass before triggering review.
+2. **NEVER skip the linter**: `ruff check` and `ruff format` MUST run and pass before triggering review.
 3. **NEVER declare completion with failing tests**: If tests fail, fix the implementation and re-run. Do NOT move to the review step with failing tests.
 4. **ALWAYS follow the spec**: Implementation must satisfy all acceptance criteria in the spec. If the spec is ambiguous, ask the developer — do not guess.
 5. **ALWAYS recommend the education gate**: Every build MUST end with an education gate recommendation.
@@ -29,7 +29,7 @@ Before starting the build, verify prerequisites:
 python -c "
 import pathlib, sys
 errors = []
-for d in ['lib', 'test']:
+for d in ['src', 'tests']:
     if not pathlib.Path(d).exists():
         errors.append(f'Missing required directory: {d}')
 for script in ['scripts/create_discussion.py', 'scripts/write_event.py', 'scripts/close_discussion.py']:
@@ -63,29 +63,7 @@ python scripts/create_discussion.py "build-<module-slug>" --risk medium --mode s
 
 Store the returned `discussion_id` — all subsequent capture calls reference it.
 
-Capture the context-brief as the first event (turn_id=1), before the build plan.
-
-Summarise the developer's request from the current session. Populate all four fields;
-write "(none stated)" if a field was not addressed. Strip business context (deadlines,
-client names, regulatory pressures) — record structural intent only.
-
-```bash
-# INVARIANT: This must be the first write_event.py call in this workflow.
-# turn_id=1 is required for extraction pipeline integrity. Any reordering
-# silently breaks context-brief capture. See DISC-20260302-231156.
-python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
-  "## Request Context
-- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
-- **Files/scope**: [which spec is being implemented; module name and location]
-- **Developer-stated motivation**: [why this module is being built, if stated; or 'none stated']
-- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
-  --tags "context-brief"
-# If invoked without prior conversational context (cold start), populate all four
-# fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
-# invocations are queryable: --tags "context-brief,context-brief-cold-start"
-```
-
-Capture the build plan as the second event:
+Capture the build plan as the first event:
 ```bash
 python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Build plan: <N tasks from spec>" --tags "build-plan"
 ```
@@ -97,23 +75,24 @@ For each task in the spec, execute Steps 3a and 3b:
 ### Step 3a: Generate Code
 
 Based on the current task:
-1. Create or modify source files in `lib/`
+1. Create or modify source files in `src/`
 2. Follow the coding standards in `.claude/rules/coding_standards.md`
 3. Follow the security baseline in `.claude/rules/security_baseline.md`
-4. Use Dart's type system with sound null safety
-5. Follow existing patterns in the codebase (Riverpod, drift, etc.)
+4. Include type annotations on all public functions
+5. Include Google-style docstrings
+6. Follow existing patterns in the codebase
 
 ### Step 3b: Checkpoint Evaluation
 
 After generating code for the task, evaluate whether it triggers a checkpoint per `.claude/rules/build_review_protocol.md`:
 
 **Check trigger categories:**
-- New module (2+ new files under `lib/`)
+- New module (2+ new files under `src/`)
 - Architecture choice (pattern selection, abstraction decisions)
-- Database schema (drift tables, migrations, DAOs)
+- Database schema (SQLAlchemy models, Alembic migrations)
 - Security-relevant code (auth, encryption, tokens, validation)
-- State management (Riverpod providers, state notifiers)
-- External API integration (dio, Supabase, Edge Functions)
+- API routes (FastAPI endpoints, middleware, dependency injection)
+- External API integration (HTTP clients, third-party services)
 
 **Check exemptions:**
 - Scaffolding, dependency config, pure test writing, theme/style-only, docs, final verification
@@ -123,7 +102,7 @@ After generating code for the task, evaluate whether it triggers a checkpoint pe
 1. Select 2 specialists from the trigger table in the rule file.
 2. Dispatch both specialists in parallel:
    ```
-   Task(subagent_type="<specialist>", model="sonnet", prompt="Build Checkpoint Review: <discussion_id>\nTask: <N> - <title>\nTrigger: <category>\n\n## Developer Context\n[Paste the four-field content from the context-brief event written in Step 2]\n\nReview this code from your specialist perspective. This is a mid-build checkpoint, not a full review.\n\nFocus on:\n- Whether the implementation approach is sound\n- Whether it aligns with existing ADRs and patterns\n- Any risks that would be expensive to fix later\n\n<code content or file paths>\n\nRespond with APPROVE or REVISE (under 200 words).")
+   Task(subagent_type="<specialist>", model="sonnet", prompt="Build Checkpoint Review: <discussion_id>\nTask: <N> - <title>\nTrigger: <category>\n\nReview this code from your specialist perspective. This is a mid-build checkpoint, not a full review.\n\nFocus on:\n- Whether the implementation approach is sound\n- Whether it aligns with existing ADRs and patterns\n- Any risks that would be expensive to fix later\n\n<code content or file paths>\n\nRespond with APPROVE or REVISE (under 200 words).")
    ```
 3. Capture each specialist's response:
    ```bash
@@ -144,7 +123,7 @@ Continue to the next task.
 
 ## Step 4: Generate Tests
 
-After all tasks are complete, create tests in `test/` that cover:
+After all tasks are complete, create tests in `tests/` that cover:
 1. All acceptance criteria from the spec
 2. Edge cases (empty inputs, boundary values, error states)
 3. At least one integration-level test per major component
@@ -153,14 +132,14 @@ After all tasks are complete, create tests in `test/` that cover:
 ## Step 5: Run Tests and Linter
 
 ```bash
-flutter test --reporter expanded
+pytest tests/ -v --tb=short
 ```
 
 If tests fail, fix the implementation and re-run until all pass.
 
 ```bash
-dart analyze lib/ test/
-dart format --set-exit-if-changed lib/ test/
+ruff check src/ tests/
+ruff format --check src/ tests/
 ```
 
 Fix any issues found.
@@ -189,23 +168,10 @@ python scripts/record_yield.py "<discussion_id>" checkpoint <outcome> --blocking
 
 Where `<outcome>` is: approve, revise-resolved, or revise-unresolved.
 
-### Step 7b: Request Agent Reflections
-
-After recording yield, request reflections from each checkpoint specialist who participated (non-blocking). For each specialist who gave a REVISE verdict:
-
-Dispatch a reflection request (sonnet tier, 150-word cap):
-```
-Task(subagent_type="<agent-name>", model="sonnet", prompt="Reflection Request: <discussion_id>\n\nYou reviewed a build checkpoint. Reflect briefly (under 150 words):\n1. What did you miss?\n2. What improvement rule would you propose?\n3. Was your confidence appropriate?\n\nFormat:\n## What I Missed\n<text>\n## Candidate Improvement Rule\n<text>\n## Confidence Calibration\nDelta: ±Z.Z")
-```
-
-Capture via `write_event.py` with intent=reflection, tags=reflection. If a specialist fails to produce a reflection, log the gap and continue.
-
 Seal the discussion:
 ```bash
 python scripts/close_discussion.py "<discussion_id>"
 ```
-
-Note: `close_discussion.py` now automatically extracts findings, surfaces promotion candidates, and computes agent effectiveness.
 
 ## Step 8: Present Build Summary
 

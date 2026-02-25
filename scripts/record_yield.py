@@ -53,7 +53,9 @@ def record_yield(
     ).fetchone()
     if existing:
         print(
-            f"WARNING: Yield already recorded for {discussion_id} / {protocol_type} (row {existing[0]}). Skipping duplicate."
+            f"WARNING: Yield already recorded for "
+            f"{discussion_id} / {protocol_type} "
+            f"(row {existing[0]}). Skipping duplicate."
         )
         conn.close()
         return
@@ -77,11 +79,13 @@ def record_yield(
     conn.commit()
     conn.close()
     print(
-        f"Recorded yield: {protocol_type} -> {outcome} (blocking={findings_blocking}, advisory={findings_advisory})"
+        f"Recorded yield: {protocol_type} -> {outcome} "
+        f"(blocking={findings_blocking}, advisory={findings_advisory})"
     )
 
 
 def main() -> None:
+    """CLI entry point for recording protocol yield metrics."""
     parser = argparse.ArgumentParser(description="Record protocol yield metrics")
     parser.add_argument("discussion_id", help="Discussion ID")
     parser.add_argument("protocol_type", choices=VALID_PROTOCOL_TYPES)

@@ -37,6 +37,23 @@ def init_db(db_path: Path = DB_PATH) -> None:
             duration_minutes REAL
         );
 
+        CREATE TABLE IF NOT EXISTS protocol_yield (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
+            protocol_type   TEXT NOT NULL CHECK(protocol_type IN (
+                'review', 'checkpoint', 'education_gate', 'quality_gate', 'retro'
+            )),
+            findings_blocking   INTEGER NOT NULL DEFAULT 0,
+            findings_advisory   INTEGER NOT NULL DEFAULT 0,
+            findings_false_positive INTEGER NOT NULL DEFAULT 0,
+            agent_turns_used    INTEGER NOT NULL DEFAULT 0,
+            outcome         TEXT NOT NULL CHECK(outcome IN (
+                'approve', 'approve-with-changes', 'request-changes', 'reject',
+                'pass', 'fail', 'revise-resolved', 'revise-unresolved'
+            )),
+            timestamp       DATETIME NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS turns (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
@@ -89,128 +106,6 @@ def init_db(db_path: Path = DB_PATH) -> None:
             timestamp       DATETIME NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS protocol_yield (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
-            protocol_type   TEXT NOT NULL CHECK(protocol_type IN (
-                'review', 'checkpoint', 'education_gate', 'quality_gate', 'retro'
-            )),
-            findings_blocking   INTEGER NOT NULL DEFAULT 0,
-            findings_advisory   INTEGER NOT NULL DEFAULT 0,
-            findings_false_positive INTEGER NOT NULL DEFAULT 0,
-            agent_turns_used    INTEGER NOT NULL DEFAULT 0,
-            outcome         TEXT NOT NULL CHECK(outcome IN (
-                'approve', 'approve-with-changes', 'request-changes', 'reject',
-                'pass', 'fail', 'revise-resolved', 'revise-unresolved'
-            )),
-            timestamp       DATETIME NOT NULL
-        );
-
-        -- Phase 4: Structured findings extraction
-        CREATE TABLE IF NOT EXISTS findings (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            finding_id      TEXT NOT NULL UNIQUE,
-            discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
-            turn_id         INTEGER NOT NULL,
-            agent           TEXT NOT NULL,
-            severity        TEXT NOT NULL CHECK(severity IN (
-                'critical', 'high', 'medium', 'low', 'info'
-            )),
-            category        TEXT NOT NULL CHECK(category IN (
-                'security', 'architecture', 'performance', 'testing',
-                'correctness', 'ux', 'documentation', 'process'
-            )),
-            summary         TEXT NOT NULL,
-            content_excerpt TEXT NOT NULL,
-            disposition     TEXT NOT NULL DEFAULT 'open' CHECK(disposition IN (
-                'open', 'resolved', 'accepted-risk', 'carried-forward', 'promoted'
-            )),
-            resolution_ref  TEXT,
-            tags            TEXT,
-            created_at      DATETIME NOT NULL,
-            promoted_at     DATETIME
-        );
-
-        -- Phase 4: Promotion candidate pipeline
-        CREATE TABLE IF NOT EXISTS promotion_candidates (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            candidate_id    TEXT NOT NULL UNIQUE,
-            candidate_type  TEXT NOT NULL CHECK(candidate_type IN (
-                'pattern', 'decision', 'reflection', 'rule', 'lesson'
-            )),
-            source_type     TEXT NOT NULL CHECK(source_type IN (
-                'finding', 'reflection', 'retro', 'meta_review', 'adoption_log'
-            )),
-            source_refs     TEXT NOT NULL,
-            title           TEXT NOT NULL,
-            summary         TEXT NOT NULL,
-            evidence_count  INTEGER NOT NULL DEFAULT 1,
-            target_path     TEXT NOT NULL,
-            status          TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
-                'pending', 'approved', 'rejected', 'deferred'
-            )),
-            human_verdict   TEXT,
-            created_at      DATETIME NOT NULL,
-            reviewed_at     DATETIME,
-            promoted_at     DATETIME,
-            last_referenced_at DATETIME
-        );
-
-        -- Phase 5: Pattern mining and Rule of Three
-        CREATE TABLE IF NOT EXISTS pattern_sightings (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            pattern_key     TEXT NOT NULL,
-            finding_id      TEXT REFERENCES findings(finding_id),
-            discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
-            agent           TEXT NOT NULL,
-            source_type     TEXT NOT NULL CHECK(source_type IN (
-                'finding', 'reflection', 'retro', 'adoption_log'
-            )),
-            sighted_at      DATETIME NOT NULL
-        );
-
-        -- Phase 5: Agent effectiveness tracking
-        CREATE TABLE IF NOT EXISTS agent_effectiveness (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
-            agent           TEXT NOT NULL,
-            findings_produced   INTEGER NOT NULL DEFAULT 0,
-            findings_unique     INTEGER NOT NULL DEFAULT 0,
-            findings_survived   INTEGER NOT NULL DEFAULT 0,
-            findings_dropped    INTEGER NOT NULL DEFAULT 0,
-            confidence_avg      REAL,
-            confidence_accuracy REAL,
-            computed_at     DATETIME NOT NULL,
-            UNIQUE(discussion_id, agent)
-        );
-
-        -- Phase 5: Rule of Three view
-        CREATE VIEW IF NOT EXISTS v_rule_of_three AS
-        SELECT pattern_key,
-               COUNT(DISTINCT discussion_id) AS discussion_count,
-               COUNT(DISTINCT agent) AS agent_count,
-               MIN(sighted_at) AS first_seen,
-               MAX(sighted_at) AS last_seen,
-               GROUP_CONCAT(DISTINCT discussion_id) AS discussions
-        FROM pattern_sightings
-        GROUP BY pattern_key
-        HAVING COUNT(DISTINCT discussion_id) >= 3;
-
-        -- Phase 5: Agent dashboard view
-        CREATE VIEW IF NOT EXISTS v_agent_dashboard AS
-        SELECT agent,
-               COUNT(*) AS discussions,
-               SUM(findings_produced) AS total_findings,
-               SUM(findings_unique) AS total_unique,
-               ROUND(CAST(SUM(findings_unique) AS REAL) /
-                   NULLIF(SUM(findings_produced), 0) * 100, 1) AS uniqueness_pct,
-               ROUND(CAST(SUM(findings_survived) AS REAL) /
-                   NULLIF(SUM(findings_produced), 0) * 100, 1) AS survival_pct,
-               ROUND(AVG(confidence_avg), 3) AS avg_confidence,
-               ROUND(AVG(confidence_accuracy), 3) AS avg_calibration
-        FROM agent_effectiveness
-        GROUP BY agent;
-
         -- Indexes for common query patterns
         CREATE INDEX IF NOT EXISTS idx_turns_discussion ON turns(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_turns_agent ON turns(agent);
@@ -224,37 +119,23 @@ def init_db(db_path: Path = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_discussions_created ON discussions(created_at);
         CREATE INDEX IF NOT EXISTS idx_protocol_yield_discussion ON protocol_yield(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_protocol_yield_type ON protocol_yield(protocol_type);
-        CREATE INDEX IF NOT EXISTS idx_findings_discussion ON findings(discussion_id);
-        CREATE INDEX IF NOT EXISTS idx_findings_agent ON findings(agent);
-        CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
-        CREATE INDEX IF NOT EXISTS idx_findings_category ON findings(category);
-        CREATE INDEX IF NOT EXISTS idx_findings_disposition ON findings(disposition);
-        CREATE INDEX IF NOT EXISTS idx_promotion_candidates_status ON promotion_candidates(status);
-        CREATE INDEX IF NOT EXISTS idx_pattern_sightings_key ON pattern_sightings(pattern_key);
-        CREATE INDEX IF NOT EXISTS idx_pattern_sightings_discussion ON pattern_sightings(discussion_id);
-        CREATE INDEX IF NOT EXISTS idx_agent_effectiveness_discussion ON agent_effectiveness(discussion_id);
-        CREATE INDEX IF NOT EXISTS idx_agent_effectiveness_agent ON agent_effectiveness(agent);
     """)
 
     conn.commit()
 
-    # Migration: add new columns to existing databases (safe — SQLite ignores if already present)
-    for col, col_type in [("command_type", "TEXT"), ("duration_minutes", "REAL")]:
+    # Migration guards: add new columns to existing databases that lack them.
+    # Each ALTER TABLE is wrapped in try/except so it's safe to run repeatedly.
+    _migrations = [
+        ("discussions", "command_type", "TEXT"),
+        ("discussions", "duration_minutes", "REAL"),
+    ]
+    for table, column, col_type in _migrations:
         try:
-            conn.execute(f"ALTER TABLE discussions ADD COLUMN {col} {col_type}")
-            print(f"  Migration: added discussions.{col}")
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            conn.commit()
         except sqlite3.OperationalError:
             pass  # Column already exists
 
-    # Migration: add searchable content columns to turns table (Phase 4.2)
-    for col, col_type in [("content_excerpt", "TEXT"), ("tags", "TEXT")]:
-        try:
-            conn.execute(f"ALTER TABLE turns ADD COLUMN {col} {col_type}")
-            print(f"  Migration: added turns.{col}")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-
-    conn.commit()
     conn.close()
     print(f"Database initialized at {db_path}")
 

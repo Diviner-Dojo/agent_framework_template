@@ -3,11 +3,9 @@
 ## Minimum Quality Thresholds
 - Test coverage >= 80% for new and modified code
 - No critical or high-severity security findings left unaddressed
-- All public classes and functions must have doc comments (`///`)
-- All new modules must have file-level doc comments
+- All public functions must have docstrings
+- All new modules must have module-level docstrings
 - No failing tests in the test suite
-- `dart analyze` reports zero errors
-- Data displayed in the UI that is provably incorrect at implementation time (not hypothetically incorrect under edge conditions) must be classified as blocking regardless of whether it affects core functionality
 
 ## Architectural Gates
 - Any architectural change requires an ADR in `docs/adr/`
@@ -28,7 +26,7 @@
 
 | Risk | Mode | Agent Count | Mandatory Agents | Examples |
 |---|---|---|---|---|
-| Low | Ensemble | 2-3 | qa-specialist + 1 domain specialist | Docs, config, simple fixes, theme changes |
+| Low | Ensemble | 2-3 | qa-specialist + 1 domain specialist | Docs, config, simple fixes |
 | Medium | Structured Dialogue | 3-4 | qa-specialist, architecture-consultant + 1-2 domain | New features, refactoring, dependency updates |
 | High | Dialectic or Adversarial | 4-5 | qa-specialist, architecture-consultant, security-specialist, independent-perspective | Security code, architecture changes, API contracts |
 | Critical | Adversarial | 5-6 | Full panel | Auth, payments, data migration, infrastructure |
@@ -37,16 +35,12 @@
 
 | Change Type | Specialist to Include |
 |---|---|
-| Database schema, migrations, DAOs | performance-analyst |
-| State management, Riverpod providers | architecture-consultant |
-| Network, API calls, auth | security-specialist |
+| Database, ORM, migrations | performance-analyst |
+| API routes, middleware | architecture-consultant |
+| Network, auth, API security | security-specialist |
 | New module or significant feature | architecture-consultant, docs-knowledge |
-| UI/UX with accessibility concerns | qa-specialist |
-| External API integration (Supabase, Claude) | security-specialist, performance-analyst |
+| UI/UX with accessibility concerns | ux-evaluator, qa-specialist |
+| External API integration | security-specialist, performance-analyst |
 | Framework infrastructure (.claude/, scripts/) | docs-knowledge |
 
 The facilitator assesses risk and selects specialists per the table above.
-
-## Advisory Lifecycle
-
-Advisory findings must be carried forward in the next review report as "open advisories" until either resolved or formally accepted as known limitations. Each review report must include a tally of open advisories from prior phases.

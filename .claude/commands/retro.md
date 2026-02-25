@@ -44,16 +44,6 @@ else:
 
 If pre-flight fails, tell the developer what's missing. The metrics database is essential — suggest running `python scripts/init_db.py` if it's missing.
 
-## Step 0: Knowledge Pipeline Dashboard
-
-Run the knowledge pipeline dashboard to gather baseline metrics:
-
-```bash
-python scripts/knowledge_dashboard.py --no-log
-```
-
-Include the pipeline health score and any gaps in the retro data gathering. This provides context on whether knowledge is being captured and amplified effectively.
-
 ## Step 1: Gather Data
 
 Query SQLite for the sprint period:
@@ -166,75 +156,15 @@ Protocols with consistently zero blocking findings are relaxation candidates.
 Present data; do NOT recommend automatic relaxation (Principle #7 — human decides).
 ```
 
-## Step 4: Review Adoption Log + Knowledge Pipeline
-
-### 4a. Adoption Log Review
+## Step 4: Review Adoption Log
 
 Check `memory/lessons/adoption-log.md` for:
 1. Patterns with 3+ sightings that haven't been adopted yet (Rule of Three trigger)
 2. Recently deferred patterns that may warrant re-evaluation
 3. Whether adopted patterns from external analyses are actually being used in the codebase
-4. **PENDING adoption age**: Run the stale adoption checker:
+4. **PENDING adoption age**: For each PENDING pattern, compute days since its `Adopted` date. Report stale-pending count (patterns PENDING for >14 days). If stale count > 5, recommend the developer run `/batch-evaluate` to clear the backlog.
 
-```bash
-python scripts/check_stale_adoptions.py
-```
-
-If stale count > 5 (exit code 2), recommend the developer run `/batch-evaluate` to clear the backlog.
-
-### 4b. Rule of Three (Discussion-Derived Patterns)
-
-Query the unified Rule of Three view for patterns crossing the 3-discussion threshold:
-
-```bash
-python -c "
-import sqlite3
-conn = sqlite3.connect('metrics/evaluation.db')
-try:
-    rows = conn.execute('SELECT * FROM v_rule_of_three ORDER BY discussion_count DESC').fetchall()
-    if rows:
-        print('=== Rule of Three Hits ===')
-        for pattern_key, disc_count, agent_count, first_seen, last_seen, discussions in rows:
-            print(f'  {pattern_key}: {disc_count} discussions, {agent_count} agents')
-    else:
-        print('No patterns have crossed the Rule of Three threshold yet.')
-except sqlite3.OperationalError as e:
-    print(f'Rule of Three view not available: {e}')
-conn.close()
-"
-```
-
-### 4c. Agent Effectiveness Summary
-
-Query the agent dashboard for effectiveness trends:
-
-```bash
-python -c "
-import sqlite3
-conn = sqlite3.connect('metrics/evaluation.db')
-try:
-    rows = conn.execute('SELECT * FROM v_agent_dashboard ORDER BY total_findings DESC').fetchall()
-    if rows:
-        print('=== Agent Effectiveness ===')
-        for agent, disc, total, unique, uniq_pct, surv_pct, avg_conf, avg_cal in rows:
-            print(f'  {agent}: {disc} discussions, {total} findings, {uniq_pct or 0}% unique, {surv_pct or 0}% survived')
-    else:
-        print('No agent effectiveness data yet.')
-except sqlite3.OperationalError as e:
-    print(f'Agent dashboard not available: {e}')
-conn.close()
-"
-```
-
-### 4d. Forgetting Curve Check
-
-Run a dry-run staleness check on promoted knowledge:
-
-```bash
-python scripts/enforce_forgetting_curve.py --dry-run
-```
-
-Add all findings to the draft under "## Knowledge Pipeline Health" and "## External Learning" sections. Include a PENDING age summary:
+Add findings to the draft under a "## External Learning" section. Include a PENDING age summary:
 
 ```markdown
 ### PENDING Adoption Age
@@ -253,32 +183,6 @@ python scripts/create_discussion.py "retro-YYYYMMDD" --risk low --mode ensemble
 ```
 
 Use the actual date. Save the returned `discussion_id` — you will need it for all subsequent capture calls.
-
-### 5.1. Write Context-Brief (Before Specialist Dispatch)
-
-Immediately after creating the discussion, capture a context-brief event. This must be
-written before any specialist is dispatched — it produces `turn_id=1` in the discussion
-and injects developer framing into specialist prompts.
-
-Summarise the developer's request from the current session. Populate all four fields;
-write "(none stated)" if a field was not addressed. Strip business context (deadlines,
-client names, regulatory pressures) — record structural intent only.
-
-```bash
-# INVARIANT: This must be the first write_event.py call in this workflow.
-# turn_id=1 is required for extraction pipeline integrity. Any reordering
-# silently breaks context-brief capture. See DISC-20260302-231156.
-python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
-  "## Request Context
-- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
-- **Files/scope**: [sprint period and discussions being analyzed]
-- **Developer-stated motivation**: [why this retro is being run, if stated; or 'none stated']
-- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
-  --tags "context-brief"
-# If invoked without prior conversational context (cold start), populate all four
-# fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
-# invocations are queryable: --tags "context-brief,context-brief-cold-start"
-```
 
 ### 5b. Capture Draft as Proposal Event
 
@@ -336,23 +240,6 @@ python scripts/write_event.py <discussion_id> \
 
 Review both specialist responses and incorporate their feedback into the final retrospective. Note which findings were challenged, which documentation updates are needed, and which proposed adjustments were validated or rejected.
 
-## Step 5.5: Developer Input Capture Gate (SPEC-20260302-192548)
-
-Evaluate developer-input capture effectiveness before writing the final retrospective. This gate runs every sprint until Step 3 is formally initiated or abandoned.
-
-**Assess the following three signals** (all are observable from sprint discussions and retro analysis):
-
-- **Signal A — Specialist echo**: Are specialists repeating findings already stated as explicit developer constraints in context-brief sections this sprint? (Inspect context-brief events in sprint discussions and compare to specialist critique events.)
-- **Signal B — Framing drift**: Has framing drift been observed this sprint? (Facilitator synthesis diverges from what the developer actually asked for — noted in retro or review feedback.)
-- **Signal C — Disposition activity** (pending implementation): `SELECT COUNT(*) FROM findings WHERE disposition != 'open'` — expected to return 0 until ADR-0030 ships. If non-zero: dispositions are being captured and the mechanism is live.
-
-**Decision rule**:
-- If Signal A or Signal B is Yes → recommend initiating Step 3 (ADR-0030 + `agent="developer"` schema extension) and include in the retro document.
-- If both Signal A and Signal B are No (and Signal C = 0) → formally defer Step 3 with a one-line rationale in the retro document.
-- Once Signal C > 0, retire Signal C from the gate and re-evaluate the others.
-
-Remove this step once Step 3 is either shipped or formally abandoned.
-
 ## Step 6: Finalize and Close
 
 ### 6a. Write Final Retrospective
@@ -388,4 +275,3 @@ python scripts/close_discussion.py <discussion_id>
 ## Step 7: Present
 
 Present the retrospective to the developer with specific recommended actions, noting which recommendations were validated by specialist review.
-

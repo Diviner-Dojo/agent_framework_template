@@ -1,7 +1,6 @@
 # Build Review Protocol
 
 Enforces Principle #4 (independence prevents confirmation loops) within `/build_module` execution.
-See: ADR-0010, DISC-20260219-211818-build-checkpoint-review-protocol.
 
 Mid-build checkpoint reviews ensure that the agent generating code is not the sole evaluator during builds, not just at commit time.
 
@@ -11,13 +10,13 @@ After generating code for a build task, the facilitator evaluates whether the ta
 
 | Trigger Category | Condition | Specialists (2 max) |
 |---|---|---|
-| **New module** | 2+ new files created under `lib/` | architecture-consultant, qa-specialist |
+| **New module** | 2+ new files created under `src/` | architecture-consultant, qa-specialist |
 | **Architecture choice** | Pattern selection, abstraction layer, dependency direction | architecture-consultant, independent-perspective |
-| **Database schema** | New/modified drift tables, migrations, or DAOs | performance-analyst, security-specialist |
+| **Database schema** | New/modified SQLAlchemy models, Alembic migrations | performance-analyst, security-specialist |
 | **Security-relevant** | Auth, encryption, token handling, input validation | security-specialist, architecture-consultant |
-| **State management** | New Riverpod providers, state notifiers, dependency wiring | architecture-consultant, qa-specialist |
-| **External API** | dio clients, Supabase calls, Edge Function integrations | security-specialist, performance-analyst |
-| **UI flow / navigation** | New screens, navigation changes, state feedback, user-facing flows | ux-evaluator, qa-specialist |
+| **API routes** | New FastAPI endpoints, middleware, dependency injection | architecture-consultant, qa-specialist |
+| **External API** | HTTP clients, third-party service integrations | security-specialist, performance-analyst |
+| **UI flow / user-facing changes** | New user-facing pages, navigation changes, state feedback | ux-evaluator, qa-specialist |
 
 If a task matches multiple categories, the facilitator selects the **two most relevant specialists** — never more than two per checkpoint. Priority order when categories overlap: security-relevant always claims one slot; the other slot goes to the highest-specificity remaining category.
 
@@ -26,7 +25,7 @@ If a task matches multiple categories, the facilitator selects the **two most re
 ## Exempt Tasks (No Checkpoint)
 
 - Project scaffolding (directory creation, initial config)
-- Dependency configuration (`pubspec.yaml` changes only)
+- Dependency configuration (pyproject.toml, requirements.txt changes only)
 - Pure test writing (no production code changes)
 - Theme, style, or cosmetic UI-only changes
 - Documentation and comment updates
@@ -67,7 +66,6 @@ Focus on:
 - Whether the implementation approach is sound
 - Whether it aligns with existing ADRs and patterns
 - Any risks that would be expensive to fix later
-- Whether regression tests exist for any bug fixes in modified files (check memory/bugs/regression-ledger.md)
 
 <code content or file paths>
 

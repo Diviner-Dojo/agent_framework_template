@@ -3,11 +3,11 @@
 ## Project Identity
 
 - **Framework**: AI-Native Agentic Development Framework v2.1
-- **Tech Stack**: Flutter 3.x + Dart, Riverpod, drift, Supabase, dio
-- **Formatting**: `dart format`
-- **Typing**: Dart's built-in type system (strict, sound null safety)
-- **Testing**: `flutter test` with >=80% coverage target
-- **Dependencies**: managed via `pubspec.yaml`
+- **Tech Stack**: Python 3.11+, FastAPI, SQLite, pytest
+- **Formatting**: ruff
+- **Typing**: strict (all public functions have type annotations)
+- **Testing**: pytest with >=80% coverage target
+- **Dependencies**: managed via pyproject.toml + requirements.txt
 
 ## Non-Negotiable Principles
 
@@ -16,30 +16,9 @@
 3. **Collaboration precedes adversarial rigor.** Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review (red-teaming), fault injection/stress testing, anti-groupthink checks.
 4. **Independence prevents confirmation loops.** The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review.
 5. **ADRs are never deleted.** Only superseded with references to the replacing decision. This creates an immutable decision history.
-6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk. Deferrals require developer acknowledgment and must be logged in the retro. Deferred gates must be completed before the next phase begins, or formally re-deferred with documented rationale.
+6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk.
 7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
 8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
-
-## Autonomous Execution Authorization
-
-When implementing work tracked against `develop/adhd-roadmap` (SPEC-20260302-adhd-informed-feature-roadmap):
-
-- **Proceed without asking permission** before commits, pushes, PRs, or merges — execute the full workflow and present results afterward.
-- **All work stays in `develop/adhd-roadmap`**: every feature branch PRs into `develop/adhd-roadmap`, never directly into `main`. `main` is the rollback point — do NOT merge `develop/adhd-roadmap` → `main` without explicit developer instruction.
-- **Run all framework gates automatically** (quality gate, `/review`, specialist checkpoints) as part of the workflow. Do not pause for approval before running them — only halt if a review returns **request-changes** or **reject**, then present findings before proceeding.
-- **Education gates**: defer by default for ADHD roadmap work and log the deferral in BUILD_STATUS.md. Do not block implementation on education gates unless the developer explicitly requests them.
-- **This authorization does not extend to**: pushing to `main`, deleting branches, modifying `.claude/settings.json`, or any action outside `develop/adhd-roadmap` and its feature branches.
-
-## Clinical UX Constraints
-
-Features touching greeting/microcopy, AI response framing, reminder/notification logic, session-gap tracking, or any feature that references session history to motivate behavior must comply with ADHD clinical UX constraints defined in `docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md` under `## Design Principles`.
-
-Key constraints (violations are **blocking findings** in any review):
-- Never mention missed days, gaps, or absence duration — not even implicitly
-- No streaks, streak counters, or gap-shaming calendars
-- Reminders must not escalate after dismissal; auto-disable after 3 consecutive dismissals
-- AI correlation outputs use epistemic humility framing ("possible relationship"), never diagnostic language
-- Voice reliability is part of the "effortless capture" contract (see Voice Capture Prerequisites in that spec)
 
 ## Architectural Boundaries
 
@@ -96,16 +75,10 @@ Content here.
 ```
 .claude/
   agents/       — Specialist agent definitions (10 core, including project-analyst and ux-evaluator)
-  commands/     — Slash command workflows (13 commands, including /knowledge-health)
+  commands/     — Slash command workflows (13 commands)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
   rules/        — Auto-loaded standards (all agents inherit)
   skills/       — Reference knowledge (playbooks, checklists)
-android/        — Android platform code (Kotlin, manifest, assistant registration)
-ios/            — iOS platform code
-lib/            — Application source code (Flutter/Dart)
-test/           — Test suite (Flutter tests)
-integration_test/ — Integration tests
-supabase/       — Supabase migrations and Edge Functions
 docs/
   adr/          — Architecture Decision Records
   reviews/      — Structured review reports
@@ -119,8 +92,10 @@ memory/         — Layer 3: Curated promoted knowledge
   patterns/     — Promoted code and process patterns
   reflections/  — Promoted agent reflections
   rules/        — Promoted rules (graduated to .claude/rules/)
-metrics/        — Layer 2: SQLite relational index + quality_gate_log.jsonl + knowledge_pipeline_log.jsonl (trend data)
-scripts/        — Capture pipeline utilities + quality gate + knowledge pipeline (Python dev tools)
+metrics/        — Layer 2: SQLite relational index + quality_gate_log.jsonl (trend data)
+scripts/        — Capture pipeline utilities + quality gate
+src/            — Application source code
+tests/          — Test suite
 BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
 
@@ -136,15 +111,13 @@ Before declaring work complete, run the quality gate to verify all documented st
 ```
 python scripts/quality_gate.py
 ```
-This checks: formatting (`dart format`), linting (`dart analyze`), tests (`flutter test`), coverage (>= 80%), ADR completeness, and review existence (for code changes). Use `--fix` to auto-fix issues via `dart fix --apply`. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass review existence).
+This checks: formatting (ruff format), linting (ruff check), tests (pytest), coverage (>= 80%), ADR completeness, and review existence (for code changes). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass the review existence check).
 
-Each run appends a result record to `metrics/quality_gate_log.jsonl` for trend analysis at retro and meta-review time.
-
-**Known limitation**: The review existence check verifies that a review report exists for today, not that it covers the specific files being committed.
+Each run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis. The independent-perspective agent uses this data during retro and meta-review to assess protocol marginal value.
 
 ## Error Handling
 
-Error handling patterns TBD — will be defined during Phase 1 implementation. General principles: use Dart's typed exception system, catch specific exception types (never bare `catch`), and provide user-friendly error messages at the UI layer.
+The application uses a structured exception hierarchy (`src/exceptions.py`) with centralized error handling (`src/error_handlers.py`). All application errors inherit from `AppError` and carry `(message, error_code, details, status_code)`. New projects extend the hierarchy with domain-specific subclasses. Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the centralized handler converts them to consistent JSON responses.
 
 ## Hooks
 
@@ -156,7 +129,7 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 - **Pre-Push Main Blocker** (`.claude/hooks/pre-push-main-blocker.sh`): On `git push` — blocks direct pushes to main/master branch with remediation instructions for branch-based workflow.
 
 ### PostToolUse Hooks
-- **Auto-Format** (`.claude/hooks/auto-format.sh`): Runs `dart format` on any Dart file after every Edit or Write.
+- **Auto-Format** (`.claude/hooks/auto-format.sh`): Runs `ruff format` + `ruff check --fix` on any Python file after every Edit or Write.
 - **Lock Release** (`.claude/hooks/post-tool-use-unlock.sh` → `release_lock.py`): Releases file locks after Write/Edit completes.
 
 ### Session Hooks
@@ -169,65 +142,29 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 
 Every commit must pass two gates:
 
-1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting (`dart format`), linting (`dart analyze`), tests (`flutter test`), or coverage fail, the commit is blocked.
+1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting, linting, tests, or coverage fail, the commit is blocked.
 2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`.
 
-For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching more than 5 files require `/review` — large framework changes are medium-risk regardless of whether they touch product code.
+For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first.
 
 ## Build Review Protocol
 
-The `/build_module` command integrates mid-build checkpoint reviews to enforce Principle #4 (independence) during code generation, not just at commit time. After each build task, the facilitator evaluates whether a checkpoint triggers based on trigger categories defined in `.claude/rules/build_review_protocol.md`:
+During `/build_module`, mid-build checkpoint reviews enforce Principle #4 (independence) within the build itself — not just at commit time. When a build task matches a trigger category (new module, architecture choice, database schema, security-relevant code, API routes, external API integration, UI flow changes), the facilitator dispatches exactly 2 specialists for a focused checkpoint review.
 
-- **Triggers**: new module, architecture choice, database schema, security-relevant code, state management wiring, external API integration, UI flow / navigation
-- **Exempt**: scaffolding, dependency config, pure test writing, theme/style-only, docs, final verification
-- **Protocol**: 2 specialists dispatched per checkpoint, APPROVE or REVISE (under 200 words), max 2 rounds — build continues after Round 2 regardless of outcome
-- **Capture**: All checkpoint events go into the build's discussion via `write_event.py`
-- **Unresolved concerns**: Flagged with `risk_flags: ["unresolved-checkpoint"]` and surfaced in the build summary
-- **Plan mode boundary**: Multi-file builds executed via plan mode (3+ new files under `lib/`) must use `/build_module` — plan mode continuation does not substitute for checkpoint coverage
+Checkpoints are capped at 2 iterations per task (Round 1 → optional Round 2). Unresolved concerns after Round 2 are captured and surfaced in the build summary but do not block the build. See `.claude/rules/build_review_protocol.md` for trigger categories, exempt tasks, and the specialist prompt template.
 
 ## Capture Pipeline
 
-When a `/review`, `/deliberate`, `/analyze-project`, `/build_module`, `/retro`, or `/meta-review` command runs:
+When a `/review`, `/deliberate`, or `/analyze-project` command runs:
 1. `scripts/create_discussion.py` creates the discussion directory and registers it in SQLite
 2. Each agent turn is captured via `scripts/write_event.py` to events.jsonl
 3. `scripts/close_discussion.py` seals the discussion:
    - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
-   - `scripts/ingest_events.py` inserts events into SQLite (Layer 2), including searchable `content_excerpt` and `tags`
+   - `scripts/ingest_events.py` inserts events into SQLite (Layer 2)
    - Updates discussion status to `closed` in SQLite
-   - `scripts/extract_findings.py` parses events for structured findings (severity, category, summary)
-   - `scripts/surface_candidates.py` identifies recurring patterns for promotion queue
-   - `scripts/compute_agent_effectiveness.py` computes per-agent uniqueness/survival metrics
    - Sets discussion directory to read-only
-4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table. Called at synthesis time in `/review`, `/build_module`, and `/retro`.
-5. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
-6. `/knowledge-health` runs `scripts/knowledge_dashboard.py` to report on all pipeline layers and append to `metrics/knowledge_pipeline_log.jsonl`.
-
-**Known data quality**: Pre-migration discussions (before 2026-02-22) have NULL `duration_minutes` — backfill via `created_at`/`closed_at` is pending. The `protocol_yield` table had a duplicate-recording bug prior to the dedup guard added to `record_yield.py`.
-
-**Known limitation**: The `protocol_yield` table records blocking/advisory findings but not REVISE-resolved rounds. Checkpoint value from iterative improvement is currently undercounted.
-
-**Known limitation**: `extract_findings.py` extraction rate baseline is 20.0% (61 findings from 305 eligible turns as of 2026-03-02). FINDING_PATTERN regex coverage improvement is tracked in SPEC-20260302-192548 Parallel P2.
-
-**Context-brief events** (turn_id=1, agent="facilitator", tags="context-brief") are emitted by: /review, /deliberate, /build_module, /plan, /retro. Excluded: /analyze-project (outward-facing scouting, no developer request context), /meta-review (aggregate analysis, no single request context). (Advisory A3 from REV-20260302-232244.)
-
-**Known limitation**: Developer input (verbatim requests, overrides, domain context corrections, approval caveats) is not captured in Layer 1. Facilitator synthesis templates include a `## Request Context` section as a partial mitigation. ADR-0030 (deferred, conditional on Step 3 trigger) will define `agent="developer"` as a reserved turn author if facilitator-mediated capture proves insufficient. See `DISC-20260302-192548-developer-input-capture-design` and `SPEC-20260302-192548-developer-input-capture.md`.
-
-## Knowledge Amplification Pipeline
-
-The knowledge pipeline transforms captured discussion data into reusable patterns:
-
-1. **Findings Extraction** (`scripts/extract_findings.py`): Parses critique/proposal events into structured findings with severity and category. Stored in `findings` table.
-2. **Pattern Mining** (`scripts/mine_patterns.py`): Clusters similar findings using Jaccard similarity. Records sightings in `pattern_sightings` table. The `v_rule_of_three` view surfaces patterns appearing in 3+ discussions.
-3. **Agent Effectiveness** (`scripts/compute_agent_effectiveness.py`): Tracks per-agent uniqueness, survival rate, and confidence calibration. `v_agent_dashboard` view provides aggregated metrics.
-4. **Promotion Pipeline** (`scripts/surface_candidates.py`): Recurring findings/reflections become promotion candidates. Queue reviewed via `/promote`. Human gate preserved (Principle #7).
-5. **Forgetting Curve** (`scripts/enforce_forgetting_curve.py`): 90-day review flag, 180-day auto-archive for stale promoted knowledge.
-6. **Unified Rule of Three** (`scripts/unify_sightings.py`): Combines adoption-log patterns with discussion-derived patterns in `pattern_sightings`.
-
-**Backfill scripts** (one-time): `scripts/backfill_findings.py` and `scripts/backfill_turn_content.py` populate historical data.
-
-**New SQLite tables**: `findings`, `promotion_candidates`, `pattern_sightings`, `agent_effectiveness`
-**New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`
-**New columns**: `turns.content_excerpt`, `turns.tags`
+4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table for trend analysis
+5. `scripts/quality_gate.py` appends a JSONL record to `metrics/quality_gate_log.jsonl` on every run, enabling the independent-perspective agent to assess protocol marginal value during retros and meta-reviews
 
 ## Agent Invocation Pattern
 

@@ -31,7 +31,7 @@ For each PENDING pattern, check if the artifact at the `Location` field actually
 ls -la <location_path>
 ```
 
-If the location references a concept rather than a specific file (e.g., "Riverpod providers"), search for evidence:
+If the location references a concept rather than a specific file (e.g., "dependency injection pattern"), search for evidence:
 
 ```bash
 # Search for pattern usage in codebase
