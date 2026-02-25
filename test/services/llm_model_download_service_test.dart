@@ -48,15 +48,15 @@ void main() {
       expect(LlmModelDownloadService.modelFile.url, contains('.gguf'));
     });
 
-    test('has expected size around 380MB', () {
-      // Expected size should be in the 350-420MB range.
+    test('has expected size around 490MB', () {
+      // Expected size should be in the 450-550MB range.
       expect(
         LlmModelDownloadService.modelFile.expectedSize,
-        greaterThan(350000000),
+        greaterThan(450000000),
       );
       expect(
         LlmModelDownloadService.modelFile.expectedSize,
-        lessThan(420000000),
+        lessThan(550000000),
       );
     });
   });

@@ -33,7 +33,7 @@ void main() {
       expect(result, isNull);
     });
 
-    test('signIn returns null on exception (never throws)', () async {
+    test('signIn throws GoogleAuthException on exception', () async {
       final service = GoogleAuthService(
         signIn: () async => throw Exception('network error'),
         signOut: () async => null,
@@ -43,8 +43,7 @@ void main() {
         signInSilently: () async => null,
       );
 
-      final result = await service.signIn();
-      expect(result, isNull);
+      expect(() => service.signIn(), throwsA(isA<GoogleAuthException>()));
     });
 
     test('signOut completes without error', () async {

@@ -31,6 +31,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'providers/llm_providers.dart';
 import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
 import 'providers/settings_providers.dart';
@@ -74,6 +75,11 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkAssistantLaunch();
+    // Non-blocking: load local LLM model in the background if downloaded.
+    // App renders immediately; model ready in ~1-3s.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(llmAutoLoadProvider.future);
+    });
   }
 
   @override
@@ -136,14 +142,16 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
     final service = ref.read(assistantServiceProvider);
     // Check voice-specific launch BEFORE generic (both clear flags).
     final wasVoiceAssistant = await service.wasLaunchedAsVoiceAssistant();
+    if (!mounted) return;
     final wasAssistant =
         wasVoiceAssistant || await service.wasLaunchedAsAssistant();
+    if (!mounted) return;
     // Only auto-start a session if onboarding is already complete.
     // On first-ever launch via assistant gesture, onboarding must finish
     // first — otherwise /session gets pushed on top of /onboarding,
     // creating a broken back-stack.
     final hasOnboarded = ref.read(onboardingNotifierProvider);
-    if (wasAssistant && hasOnboarded && mounted) {
+    if (wasAssistant && hasOnboarded) {
       // If launched via VOICE_ASSIST, enable voice mode so the session
       // screen starts in continuous mode.
       if (wasVoiceAssistant) {

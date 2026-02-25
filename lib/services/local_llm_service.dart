@@ -5,7 +5,7 @@
 //          as SpeechRecognitionService (ADR-0015).
 //
 // The abstract class defines the contract; the real implementation wraps
-// llamadart's LlamaEngine + ChatSession. Tests use MockLocalLlmService.
+// llamadart's LlamaEngine. Tests use MockLocalLlmService.
 //
 // Exception hierarchy:
 //   LocalLlmException (base)
@@ -14,6 +14,8 @@
 //
 // See: ADR-0017 (Local LLM Layer Architecture)
 // ===========================================================================
+
+import 'package:llamadart/llamadart.dart';
 
 /// Base exception for local LLM operations.
 ///
@@ -90,8 +92,9 @@ abstract class LocalLlmService {
 // coverage:ignore-start
 /// Real llamadart-based implementation.
 ///
-/// Wraps [LlamaEngine] + [ChatSession] for on-device inference.
-/// Runs inference in a background isolate internally (llamadart feature).
+/// Wraps [LlamaEngine] for on-device inference using the stateless chat
+/// completion API. Runs inference in a background isolate internally
+/// (llamadart feature).
 ///
 /// This class is excluded from test coverage because it requires native
 /// FFI bindings that are not available in the Dart test environment.
@@ -101,6 +104,7 @@ class LlamadartLlmService implements LocalLlmService {
   final double topP;
   final int maxTokens;
 
+  LlamaEngine? _engine;
   bool _isLoaded = false;
 
   /// Creates a llamadart LLM service.
@@ -119,18 +123,23 @@ class LlamadartLlmService implements LocalLlmService {
   @override
   Future<void> loadModel(String modelPath) async {
     try {
-      // TODO: Initialize LlamaEngine + LlamaBackend, load GGUF model.
-      // final engine = LlamaEngine(LlamaBackend());
-      // await engine.loadModel(modelPath);
-      // await engine.setLogLevel(LlamaLogLevel.none); // suppress in release
-      //
-      // NOTE: When wiring the real llamadart calls, narrow the catch clause
-      // to the specific exception types thrown by llamadart. Let Dart `Error`
-      // types (e.g., OutOfMemoryError) propagate unhandled — they are not
-      // recoverable and should not be wrapped as LocalLlmException.
+      _engine = LlamaEngine(LlamaBackend());
+      await _engine!.setLogLevel(LlamaLogLevel.none);
+      await _engine!.loadModel(
+        modelPath,
+        modelParams: const ModelParams(
+          gpuLayers: 0,
+          preferredBackend: GpuBackend.cpu,
+        ),
+      );
       _isLoaded = true;
+    } on LlamaException catch (e) {
+      _isLoaded = false;
+      _engine = null;
+      throw LocalLlmException('Failed to load model', cause: e);
     } on Exception catch (e) {
       _isLoaded = false;
+      _engine = null;
       throw LocalLlmException('Failed to load model', cause: e);
     }
   }
@@ -138,10 +147,11 @@ class LlamadartLlmService implements LocalLlmService {
   @override
   Future<void> unloadModel() async {
     try {
-      // TODO: Dispose LlamaEngine to free RAM.
-      // await _engine?.dispose();
+      await _engine?.dispose();
+      _engine = null;
       _isLoaded = false;
     } on Exception catch (e) {
+      _engine = null;
       _isLoaded = false;
       throw LocalLlmException('Failed to unload model', cause: e);
     }
@@ -152,39 +162,62 @@ class LlamadartLlmService implements LocalLlmService {
     required List<Map<String, String>> messages,
     String? systemPrompt,
   }) async {
-    if (!_isLoaded) {
+    if (!_isLoaded || _engine == null) {
       throw const ModelNotLoadedException();
     }
 
     try {
-      // TODO: Create ChatSession with systemPrompt, stream tokens,
-      // collect into a single string.
-      //
-      // final session = ChatSession(
-      //   _engine!,
-      //   systemPrompt: systemPrompt,
-      // );
-      //
-      // final buffer = StringBuffer();
-      // await for (final chunk in session.create(
-      //   messages.map((m) => LlamaTextContent(m['content'] ?? '')).toList(),
-      // )) {
-      //   final content = chunk.choices.first.delta.content;
-      //   if (content != null) buffer.write(content);
-      // }
-      //
-      // return buffer.toString().trim();
-      return '';
+      final chatMessages = <LlamaChatMessage>[];
+
+      // Add system prompt as the first message if provided.
+      if (systemPrompt != null) {
+        chatMessages.add(
+          LlamaChatMessage.fromText(
+            role: LlamaChatRole.system,
+            text: systemPrompt,
+          ),
+        );
+      }
+
+      // Convert role/content maps to LlamaChatMessage objects.
+      for (final msg in messages) {
+        final role = switch (msg['role']) {
+          'user' => LlamaChatRole.user,
+          'assistant' => LlamaChatRole.assistant,
+          'system' => LlamaChatRole.system,
+          _ => LlamaChatRole.user,
+        };
+        chatMessages.add(
+          LlamaChatMessage.fromText(role: role, text: msg['content'] ?? ''),
+        );
+      }
+
+      final buffer = StringBuffer();
+      await for (final chunk in _engine!.create(
+        chatMessages,
+        params: GenerationParams(
+          temp: temperature,
+          topP: topP,
+          maxTokens: maxTokens,
+        ),
+        enableThinking: false,
+      )) {
+        final content = chunk.choices.first.delta.content;
+        if (content != null) buffer.write(content);
+      }
+
+      return buffer.toString().trim();
+    } on LlamaException catch (e) {
+      throw InferenceException('Inference failed', cause: e);
     } on Exception catch (e) {
-      if (e is LocalLlmException) rethrow;
       throw InferenceException('Inference failed', cause: e);
     }
   }
 
   @override
   void dispose() {
-    // TODO: Dispose engine.
-    // _engine?.dispose();
+    _engine?.dispose();
+    _engine = null;
     _isLoaded = false;
   }
 }

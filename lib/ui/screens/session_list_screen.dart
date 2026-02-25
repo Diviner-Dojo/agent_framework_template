@@ -349,8 +349,9 @@ class _PendingEventsBanner extends ConsumerWidget {
 
     return countAsync.when(
       data: (count) {
-        if (count < 1)
+        if (count < 1) {
           return const SliverToBoxAdapter(child: SizedBox.shrink());
+        }
         return SliverToBoxAdapter(
           child: _PendingEventsBannerCard(count: count),
         );

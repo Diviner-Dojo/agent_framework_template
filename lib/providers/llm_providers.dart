@@ -145,6 +145,32 @@ final llmModelDownloadServiceProvider = Provider<LlmModelDownloadService>((
 /// then injected here. Null when model is not loaded or not downloaded.
 final localLlmServiceProvider = StateProvider<LocalLlmService?>((ref) => null);
 
+/// Auto-loads the local LLM model at startup if the GGUF file exists.
+///
+/// This is a fire-and-forget provider — failure means the app continues
+/// without a local LLM (falls back to rule-based layer). The model load
+/// takes ~1-3s on modern devices.
+// coverage:ignore-start
+final llmAutoLoadProvider = FutureProvider<void>((ref) async {
+  final isReady = await ref.watch(llmModelReadyProvider.future);
+  if (!isReady) return;
+
+  final modelPath = await ref.watch(llmModelPathProvider.future);
+  final service = LlamadartLlmService();
+
+  try {
+    await service.loadModel(modelPath);
+    ref.read(localLlmServiceProvider.notifier).state = service;
+    ref.onDispose(() {
+      service.dispose();
+    });
+  } on LocalLlmException catch (_) {
+    // Model load failed — app continues without local LLM.
+    service.dispose();
+  }
+});
+// coverage:ignore-end
+
 /// The local LLM conversation layer (null when model not loaded).
 ///
 /// Depends on [localLlmServiceProvider] and [personalityConfigProvider].

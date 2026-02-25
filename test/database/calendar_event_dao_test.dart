@@ -23,7 +23,7 @@ void main() {
   });
 
   /// Helper to create a standard CalendarEventsCompanion.
-  CalendarEventsCompanion _makeEvent({
+  CalendarEventsCompanion makeEvent({
     required String eventId,
     String sessionId = 's1',
     String title = 'Test Event',
@@ -46,7 +46,7 @@ void main() {
   group('insertEvent and getEventById', () {
     test('inserts and retrieves an event', () async {
       await eventDao.insertEvent(
-        _makeEvent(
+        makeEvent(
           eventId: 'e1',
           title: 'Team standup',
           startTime: DateTime.utc(2026, 2, 26, 14, 0),
@@ -74,14 +74,14 @@ void main() {
     });
 
     test('inserts event with userId', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2', userId: 'user-123'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2', userId: 'user-123'));
 
       final event = await eventDao.getEventById('e2');
       expect(event!.userId, 'user-123');
     });
 
     test('inserts event without endTime', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e3'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e3'));
 
       final event = await eventDao.getEventById('e3');
       expect(event!.endTime, isNull);
@@ -90,8 +90,8 @@ void main() {
 
   group('getEventsForSession', () {
     test('returns events ordered by createdAt ascending', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1', title: 'First'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2', title: 'Second'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1', title: 'First'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2', title: 'Second'));
 
       final events = await eventDao.getEventsForSession('s1');
       expect(events.length, 2);
@@ -106,8 +106,8 @@ void main() {
 
     test('does not return events from other sessions', () async {
       await sessionDao.createSession('s2', DateTime.utc(2026, 2, 26), 'UTC');
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1', sessionId: 's1'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2', sessionId: 's2'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1', sessionId: 's1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2', sessionId: 's2'));
 
       final events = await eventDao.getEventsForSession('s1');
       expect(events.length, 1);
@@ -122,13 +122,13 @@ void main() {
       // First emission: empty. Second after insert.
       expect(stream, emitsInOrder([isEmpty, hasLength(1)]));
 
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
     });
   });
 
   group('updateStatus', () {
     test('updates event lifecycle status', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
 
       final updated = await eventDao.updateStatus('e1', 'CONFIRMED');
       expect(updated, 1);
@@ -138,7 +138,7 @@ void main() {
     });
 
     test('sets updatedAt on status change', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
       final before = (await eventDao.getEventById('e1'))!.updatedAt;
 
       // Small delay to ensure timestamp difference.
@@ -155,19 +155,19 @@ void main() {
     });
 
     test('transitions through lifecycle states', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
       expect((await eventDao.getEventById('e1'))!.status, 'PENDING_CREATE');
 
       await eventDao.updateStatus('e1', 'CONFIRMED');
       expect((await eventDao.getEventById('e1'))!.status, 'CONFIRMED');
 
       // CANCELLED is also a valid terminal state.
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2'));
       await eventDao.updateStatus('e2', 'CANCELLED');
       expect((await eventDao.getEventById('e2'))!.status, 'CANCELLED');
 
       // FAILED is also a valid terminal state.
-      await eventDao.insertEvent(_makeEvent(eventId: 'e3'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e3'));
       await eventDao.updateStatus('e3', 'FAILED');
       expect((await eventDao.getEventById('e3'))!.status, 'FAILED');
     });
@@ -175,7 +175,7 @@ void main() {
 
   group('updateGoogleEventId', () {
     test('sets googleEventId and status to CONFIRMED', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
 
       final updated = await eventDao.updateGoogleEventId('e1', 'gcal-abc123');
       expect(updated, 1);
@@ -193,9 +193,9 @@ void main() {
 
   group('getPendingEvents', () {
     test('returns only PENDING_CREATE events', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e3'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e3'));
 
       // Move e2 to CONFIRMED, e3 to CANCELLED.
       await eventDao.updateStatus('e2', 'CONFIRMED');
@@ -214,9 +214,9 @@ void main() {
 
   group('getEventsToSync', () {
     test('returns CONFIRMED events with PENDING syncStatus', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e3'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e3'));
 
       // e1: PENDING_CREATE + PENDING sync → NOT returned (not CONFIRMED)
       // e2: CONFIRMED + PENDING sync → returned
@@ -238,7 +238,7 @@ void main() {
 
   group('updateSyncStatus', () {
     test('updates sync status', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
 
       await eventDao.updateSyncStatus('e1', 'SYNCED');
 
@@ -247,7 +247,7 @@ void main() {
     });
 
     test('can set sync status to FAILED', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
 
       await eventDao.updateSyncStatus('e1', 'FAILED');
 
@@ -263,7 +263,7 @@ void main() {
 
   group('deleteEvent', () {
     test('deletes a single event', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
 
       final deleted = await eventDao.deleteEvent('e1');
       expect(deleted, 1);
@@ -280,8 +280,8 @@ void main() {
 
   group('deleteEventsBySession', () {
     test('deletes all events for a session', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2'));
 
       final deleted = await eventDao.deleteEventsBySession('s1');
       expect(deleted, 2);
@@ -292,8 +292,8 @@ void main() {
 
     test('does not affect events in other sessions', () async {
       await sessionDao.createSession('s2', DateTime.utc(2026, 2, 26), 'UTC');
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1', sessionId: 's1'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2', sessionId: 's2'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1', sessionId: 's1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2', sessionId: 's2'));
 
       await eventDao.deleteEventsBySession('s1');
 
@@ -306,9 +306,9 @@ void main() {
 
   group('countPendingForSession', () {
     test('counts only PENDING_CREATE events for session', () async {
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e3'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e3'));
 
       // Move e3 to CONFIRMED — should not be counted.
       await eventDao.updateStatus('e3', 'CONFIRMED');
@@ -324,8 +324,8 @@ void main() {
 
     test('does not count events from other sessions', () async {
       await sessionDao.createSession('s2', DateTime.utc(2026, 2, 26), 'UTC');
-      await eventDao.insertEvent(_makeEvent(eventId: 'e1', sessionId: 's1'));
-      await eventDao.insertEvent(_makeEvent(eventId: 'e2', sessionId: 's2'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e1', sessionId: 's1'));
+      await eventDao.insertEvent(makeEvent(eventId: 'e2', sessionId: 's2'));
 
       final count = await eventDao.countPendingForSession('s1');
       expect(count, 1);
