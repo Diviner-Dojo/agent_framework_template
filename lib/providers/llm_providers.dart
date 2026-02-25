@@ -152,22 +152,14 @@ final localLlmServiceProvider = StateProvider<LocalLlmService?>((ref) => null);
 /// takes ~1-3s on modern devices.
 // coverage:ignore-start
 final llmAutoLoadProvider = FutureProvider<void>((ref) async {
-  final isReady = await ref.watch(llmModelReadyProvider.future);
-  if (!isReady) return;
-
-  final modelPath = await ref.watch(llmModelPathProvider.future);
-  final service = LlamadartLlmService();
-
-  try {
-    await service.loadModel(modelPath);
-    ref.read(localLlmServiceProvider.notifier).state = service;
-    ref.onDispose(() {
-      service.dispose();
-    });
-  } on LocalLlmException catch (_) {
-    // Model load failed — app continues without local LLM.
-    service.dispose();
-  }
+  // Auto-load disabled: llamadart's libllama.so uses CPU instructions
+  // (likely i8mm/SVE) not supported on Snapdragon 888 (Galaxy S21 Ultra),
+  // causing SIGILL in ggml_graph_compute. Since native crashes bypass Dart
+  // exception handling, we skip auto-load entirely until a compatible
+  // llamadart binary is available. Claude API via Edge Function is the
+  // primary conversation layer.
+  // TODO(local-llm): Re-enable when llamadart ships arm64-v8a baseline build.
+  return;
 });
 // coverage:ignore-end
 
