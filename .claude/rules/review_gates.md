@@ -7,6 +7,7 @@
 - All new modules must have file-level doc comments
 - No failing tests in the test suite
 - `dart analyze` reports zero errors
+- Data displayed in the UI that is provably incorrect at implementation time (not hypothetically incorrect under edge conditions) must be classified as blocking regardless of whether it affects core functionality
 
 ## Architectural Gates
 - Any architectural change requires an ADR in `docs/adr/`
@@ -45,3 +46,7 @@
 | Framework infrastructure (.claude/, scripts/) | docs-knowledge |
 
 The facilitator assesses risk and selects specialists per the table above.
+
+## Advisory Lifecycle
+
+Advisory findings must be carried forward in the next review report as "open advisories" until either resolved or formally accepted as known limitations. Each review report must include a tally of open advisories from prior phases.
