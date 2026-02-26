@@ -216,7 +216,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               const SizedBox(height: 8),
               // TTS engine selector.
               DropdownButtonFormField<TtsEngine>(
-                value: ttsEngine,
+                initialValue: ttsEngine,
                 decoration: const InputDecoration(
                   labelText: 'Text-to-speech engine',
                   border: OutlineInputBorder(),
@@ -241,7 +241,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               const SizedBox(height: 12),
               // STT engine selector.
               DropdownButtonFormField<SttEngine>(
-                value: sttEngine,
+                initialValue: sttEngine,
                 decoration: const InputDecoration(
                   labelText: 'Speech recognition engine',
                   border: OutlineInputBorder(),

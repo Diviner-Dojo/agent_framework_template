@@ -182,6 +182,12 @@ class SessionState {
   /// Error message if extraction failed.
   final String? extractionError;
 
+  /// Recent session summaries for conversational continuity (ADR-0023).
+  ///
+  /// Each map has 'date' and 'summary' keys. Populated at session start
+  /// and passed to the agent on greeting and follow-up calls.
+  final List<Map<String, String>> sessionSummaries;
+
   const SessionState({
     this.activeSessionId,
     this.followUpCount = 0,
@@ -197,6 +203,7 @@ class SessionState {
     this.pendingExtractedEvent,
     this.isExtracting = false,
     this.extractionError,
+    this.sessionSummaries = const [],
   });
 
   /// Create a copy with updated fields.
@@ -219,6 +226,7 @@ class SessionState {
     Object? pendingExtractedEvent = _sentinel,
     bool? isExtracting,
     Object? extractionError = _sentinel,
+    List<Map<String, String>>? sessionSummaries,
   }) {
     return SessionState(
       activeSessionId: identical(activeSessionId, _sentinel)
@@ -247,6 +255,7 @@ class SessionState {
       extractionError: identical(extractionError, _sentinel)
           ? this.extractionError
           : extractionError as String?,
+      sessionSummaries: sessionSummaries ?? this.sessionSummaries,
     );
   }
 }
@@ -333,11 +342,30 @@ class SessionNotifier extends StateNotifier<SessionState> {
       _captureLocationAsync(sessionId);
     }
 
+    // Fetch recent session summaries for conversational continuity (ADR-0023).
+    final recentSessions = await _sessionDao.getRecentCompletedSessions(
+      limit: 5,
+    );
+    final summaries = recentSessions
+        .where((s) => s.summary != null && s.summary!.isNotEmpty)
+        .map((s) {
+          final date = s.startTime.toIso8601String().substring(0, 10);
+          final summary = s.summary!.length > 200
+              ? s.summary!.substring(0, 200)
+              : s.summary!;
+          return {'date': date, 'summary': summary};
+        })
+        .toList();
+
     // Lock the conversation layer for this session's duration (ADR-0017).
     _agent.lockLayerForSession();
 
     // Set loading state BEFORE the agent call (spec requirement: immediate flag).
-    state = SessionState(activeSessionId: sessionId, isWaitingForAgent: true);
+    state = SessionState(
+      activeSessionId: sessionId,
+      isWaitingForAgent: true,
+      sessionSummaries: summaries,
+    );
     _ref.read(activeSessionIdProvider.notifier).state = sessionId;
 
     // Get the greeting from the agent (async — may call Claude API).
@@ -345,6 +373,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
       lastSessionDate: lastSessionDate,
       now: now.toLocal(), // Agent uses local time for time-of-day greeting.
       sessionCount: sessions.length,
+      sessionSummaries: summaries,
     );
 
     // Save the greeting as the first ASSISTANT message.
@@ -428,6 +457,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
       conversationHistory: state.usedQuestions,
       followUpCount: state.followUpCount,
       allMessages: state.conversationMessages,
+      sessionSummaries: state.sessionSummaries,
     );
 
     // Stale response check: if the session ended while we were waiting,
@@ -1070,6 +1100,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
       conversationHistory: state.usedQuestions,
       followUpCount: state.followUpCount,
       allMessages: state.conversationMessages,
+      sessionSummaries: state.sessionSummaries,
     );
 
     // Stale response check: session may have ended during the async call.

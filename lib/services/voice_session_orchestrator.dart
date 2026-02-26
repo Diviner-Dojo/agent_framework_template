@@ -35,6 +35,7 @@ import 'speech_recognition_service.dart';
 import 'text_to_speech_service.dart';
 import 'voice_command_classifier.dart';
 import '../constants/voice_recovery_messages.dart';
+import '../utils/reusable_completer.dart';
 
 /// The phases of the voice orchestrator state machine.
 enum VoiceLoopPhase {
@@ -57,6 +58,39 @@ enum VoiceLoopPhase {
   paused,
 }
 
+/// Classification of voice session errors for typed error handling.
+///
+/// Each kind maps to a specific failure domain so the UI can display
+/// contextually appropriate messages and recovery actions.
+enum VoiceSessionErrorKind {
+  /// Speech-to-text engine failed (microphone, recognition).
+  sttFailure,
+
+  /// Text-to-speech engine failed (audio output).
+  ttsFailure,
+
+  /// LLM processing or message sending failed.
+  processingFailure,
+
+  /// Audio focus was lost to another app.
+  audioFocusLoss,
+}
+
+/// A typed error emitted by the voice orchestrator.
+///
+/// Carries both a machine-readable [kind] for UI branching and a
+/// human-readable [message] for display.
+class VoiceSessionError {
+  /// The error classification.
+  final VoiceSessionErrorKind kind;
+
+  /// Human-readable error message (suitable for display or TTS).
+  final String message;
+
+  /// Creates a typed voice session error.
+  const VoiceSessionError({required this.kind, required this.message});
+}
+
 /// Immutable state emitted by the voice orchestrator.
 class VoiceOrchestratorState {
   /// Current phase of the voice loop.
@@ -65,8 +99,8 @@ class VoiceOrchestratorState {
   /// Real-time STT text shown on screen during listening.
   final String transcriptPreview;
 
-  /// Error message when in error phase.
-  final String? errorMessage;
+  /// Typed error when in error phase.
+  final VoiceSessionError? error;
 
   /// True when in continuous mode (auto-loop), false for push-to-talk.
   final bool isContinuousMode;
@@ -74,21 +108,21 @@ class VoiceOrchestratorState {
   const VoiceOrchestratorState({
     this.phase = VoiceLoopPhase.idle,
     this.transcriptPreview = '',
-    this.errorMessage,
+    this.error,
     this.isContinuousMode = false,
   });
 
   VoiceOrchestratorState copyWith({
     VoiceLoopPhase? phase,
     String? transcriptPreview,
-    String? errorMessage,
+    VoiceSessionError? error,
     bool? isContinuousMode,
     bool clearError = false,
   }) {
     return VoiceOrchestratorState(
       phase: phase ?? this.phase,
       transcriptPreview: transcriptPreview ?? this.transcriptPreview,
-      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      error: clearError ? null : (error ?? this.error),
       isContinuousMode: isContinuousMode ?? this.isContinuousMode,
     );
   }
@@ -400,49 +434,33 @@ class VoiceSessionOrchestrator {
     );
 
     String? description;
-    final completer = Completer<String?>();
+    final completer = ReusableCompleter<String?>();
 
     // Cancel existing subscription temporarily.
     await _recognitionSubscription?.cancel();
 
     try {
       final stream = _sttService.startListening();
-      Timer? descriptionTimer;
 
       _recognitionSubscription = stream.listen(
         (result) {
           _updateState(state.copyWith(transcriptPreview: result.text));
 
           // Reset the silence timer on each partial result.
-          descriptionTimer?.cancel();
-          descriptionTimer = Timer(const Duration(seconds: 5), () {
-            if (!completer.isCompleted) {
-              completer.complete(null); // Timeout → skip.
-            }
-          });
+          completer.setTimeout(const Duration(seconds: 5), null);
 
           if (result.isFinal) {
-            descriptionTimer?.cancel();
-            if (!completer.isCompleted) {
-              description = result.text;
-              completer.complete(result.text);
-            }
+            description = result.text;
+            completer.complete(result.text);
           }
         },
         onError: (error) {
-          descriptionTimer?.cancel();
-          if (!completer.isCompleted) {
-            completer.complete(null);
-          }
+          completer.complete(null);
         },
       );
 
       // Start the initial silence timeout.
-      descriptionTimer = Timer(const Duration(seconds: 5), () {
-        if (!completer.isCompleted) {
-          completer.complete(null);
-        }
-      });
+      completer.setTimeout(const Duration(seconds: 5), null);
 
       description = await completer.future;
     } on Exception catch (e) {
@@ -450,6 +468,7 @@ class VoiceSessionOrchestrator {
         debugPrint('Photo description capture failed: $e');
       }
     } finally {
+      completer.dispose();
       await _stopListening();
     }
 
@@ -499,35 +518,27 @@ class VoiceSessionOrchestrator {
     );
 
     String? response;
-    final completer = Completer<String?>();
+    final completer = ReusableCompleter<String?>();
     await _recognitionSubscription?.cancel();
 
     try {
       final stream = _sttService.startListening();
-      Timer? responseTimer;
 
       _recognitionSubscription = stream.listen(
         (result) {
           _updateState(state.copyWith(transcriptPreview: result.text));
-          responseTimer?.cancel();
-          responseTimer = Timer(const Duration(seconds: 5), () {
-            if (!completer.isCompleted) completer.complete(null);
-          });
+          completer.setTimeout(const Duration(seconds: 5), null);
 
           if (result.isFinal) {
-            responseTimer?.cancel();
-            if (!completer.isCompleted) completer.complete(result.text);
+            completer.complete(result.text);
           }
         },
         onError: (error) {
-          responseTimer?.cancel();
-          if (!completer.isCompleted) completer.complete(null);
+          completer.complete(null);
         },
       );
 
-      responseTimer = Timer(const Duration(seconds: 8), () {
-        if (!completer.isCompleted) completer.complete(null);
-      });
+      completer.setTimeout(const Duration(seconds: 8), null);
 
       response = await completer.future;
     } on Exception catch (e) {
@@ -535,6 +546,7 @@ class VoiceSessionOrchestrator {
         debugPrint('Calendar confirmation capture failed: $e');
       }
     } finally {
+      completer.dispose();
       await _stopListening();
     }
 
@@ -755,7 +767,12 @@ class VoiceSessionOrchestrator {
       } on Exception catch (e) {
         debugPrint('[VoiceOrchestrator] sendMessage error: $e');
         if (state.isContinuousMode) {
-          await _handleError(VoiceRecoveryMessages.processingError);
+          await _handleError(
+            const VoiceSessionError(
+              kind: VoiceSessionErrorKind.processingFailure,
+              message: VoiceRecoveryMessages.processingError,
+            ),
+          );
         }
       }
     }
@@ -895,7 +912,12 @@ class VoiceSessionOrchestrator {
         currentSessionId = null;
       } on Exception catch (e) {
         debugPrint('[VoiceOrchestrator] endSession error: $e');
-        await _handleError(VoiceRecoveryMessages.processingError);
+        await _handleError(
+          const VoiceSessionError(
+            kind: VoiceSessionErrorKind.processingFailure,
+            message: VoiceRecoveryMessages.processingError,
+          ),
+        );
         return;
       }
     }
@@ -919,7 +941,12 @@ class VoiceSessionOrchestrator {
         await _speak(VoiceRecoveryMessages.discardComplete);
       } on Exception catch (e) {
         debugPrint('[VoiceOrchestrator] discardSession error: $e');
-        await _handleError(VoiceRecoveryMessages.processingError);
+        await _handleError(
+          const VoiceSessionError(
+            kind: VoiceSessionErrorKind.processingFailure,
+            message: VoiceRecoveryMessages.processingError,
+          ),
+        );
         return;
       }
     }
@@ -988,7 +1015,12 @@ class VoiceSessionOrchestrator {
   /// Handle STT stream errors.
   void _onSttError(Object error) {
     debugPrint('[VoiceOrchestrator] STT error: $error');
-    _handleError(VoiceRecoveryMessages.sttFailure);
+    _handleError(
+      const VoiceSessionError(
+        kind: VoiceSessionErrorKind.sttFailure,
+        message: VoiceRecoveryMessages.sttFailure,
+      ),
+    );
   }
 
   /// Handle silence timeout (no final result within timeout period).
@@ -1011,16 +1043,14 @@ class VoiceSessionOrchestrator {
   }
 
   /// Handle an error by speaking a recovery message.
-  Future<void> _handleError(String message) async {
+  Future<void> _handleError(VoiceSessionError error) async {
     _silenceTimer?.cancel();
 
     if (_sttService.isListening) {
       await _stopListening();
     }
 
-    _updateState(
-      state.copyWith(phase: VoiceLoopPhase.error, errorMessage: message),
-    );
+    _updateState(state.copyWith(phase: VoiceLoopPhase.error, error: error));
 
     // Speak the error message.
     try {
@@ -1028,7 +1058,7 @@ class VoiceSessionOrchestrator {
       if (_ttsService.isSpeaking) {
         await _ttsService.stop();
       }
-      await _ttsService.speak(message);
+      await _ttsService.speak(error.message);
     } on Exception catch (e) {
       debugPrint('[VoiceOrchestrator] TTS error during recovery: $e');
     }
@@ -1116,6 +1146,7 @@ class VoiceSessionOrchestrator {
   ///
   /// Splits the response into sentences and speaks the first one immediately.
   /// The remaining sentences are queued and spoken sequentially.
+  /// `[PAUSE]` markers are rendered as 2-second silences instead of TTS.
   Future<void> _speakInSentences(String text) async {
     final sentences = splitIntoSentences(text);
     if (sentences.isEmpty) return;
@@ -1123,6 +1154,12 @@ class VoiceSessionOrchestrator {
     for (final sentence in sentences) {
       // Check if we've been interrupted or paused.
       if (state.phase != VoiceLoopPhase.speaking) return;
+
+      // [PAUSE] markers become 2-second silences.
+      if (sentence == '[PAUSE]') {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        continue;
+      }
 
       try {
         await _ensureTtsInitialized();
@@ -1139,13 +1176,33 @@ class VoiceSessionOrchestrator {
 
   /// Split text into sentences for streaming TTS.
   ///
-  /// Uses sentence-ending punctuation as split points. Keeps the
+  /// Splits on `[PAUSE]` markers first (preserved as standalone segments),
+  /// then splits remaining text on sentence-ending punctuation. Keeps the
   /// punctuation with the sentence. Filters out empty segments.
   @visibleForTesting
   static List<String> splitIntoSentences(String text) {
-    // Split on sentence boundaries but keep the delimiter with the sentence.
-    final segments = text.split(RegExp(r'(?<=[.!?])\s+'));
-    return segments.map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final result = <String>[];
+
+    // Split on [PAUSE] first, preserving it as a standalone segment.
+    final pauseParts = text.split('[PAUSE]');
+
+    for (var i = 0; i < pauseParts.length; i++) {
+      // Split non-pause parts into sentences.
+      final part = pauseParts[i].trim();
+      if (part.isNotEmpty) {
+        final sentences = part.split(RegExp(r'(?<=[.!?])\s+'));
+        result.addAll(
+          sentences.map((s) => s.trim()).where((s) => s.isNotEmpty),
+        );
+      }
+
+      // Add [PAUSE] between parts (not after the last one).
+      if (i < pauseParts.length - 1) {
+        result.add('[PAUSE]');
+      }
+    }
+
+    return result;
   }
 
   // ===========================================================================
