@@ -195,7 +195,7 @@ void main() {
         expect(orchestrator.state.phase, VoiceLoopPhase.idle);
         expect(orchestrator.state.isContinuousMode, isFalse);
         expect(orchestrator.state.transcriptPreview, isEmpty);
-        expect(orchestrator.state.errorMessage, isNull);
+        expect(orchestrator.state.error, isNull);
       });
     });
 
@@ -620,6 +620,61 @@ void main() {
         );
         expect(sentences, ['A.', 'B.', 'C.']);
       });
+
+      test('splits on [PAUSE] and preserves as standalone segment', () {
+        final sentences = VoiceSessionOrchestrator.splitIntoSentences(
+          'First sentence.[PAUSE]Second sentence.',
+        );
+        expect(sentences, ['First sentence.', '[PAUSE]', 'Second sentence.']);
+      });
+
+      test('handles [PAUSE] with surrounding spaces', () {
+        final sentences = VoiceSessionOrchestrator.splitIntoSentences(
+          'Hello. [PAUSE] How are you?',
+        );
+        expect(sentences, ['Hello.', '[PAUSE]', 'How are you?']);
+      });
+
+      test('handles multiple [PAUSE] markers', () {
+        final sentences = VoiceSessionOrchestrator.splitIntoSentences(
+          'A.[PAUSE]B.[PAUSE]C.',
+        );
+        expect(sentences, ['A.', '[PAUSE]', 'B.', '[PAUSE]', 'C.']);
+      });
+
+      test('handles [PAUSE] at start of text', () {
+        final sentences = VoiceSessionOrchestrator.splitIntoSentences(
+          '[PAUSE]Hello.',
+        );
+        expect(sentences, ['[PAUSE]', 'Hello.']);
+      });
+
+      test('handles [PAUSE] at end of text', () {
+        final sentences = VoiceSessionOrchestrator.splitIntoSentences(
+          'Hello.[PAUSE]',
+        );
+        expect(sentences, ['Hello.', '[PAUSE]']);
+      });
+
+      test('handles [PAUSE] only', () {
+        final sentences = VoiceSessionOrchestrator.splitIntoSentences(
+          '[PAUSE]',
+        );
+        expect(sentences, ['[PAUSE]']);
+      });
+
+      test('handles [PAUSE] with sentence splitting', () {
+        final sentences = VoiceSessionOrchestrator.splitIntoSentences(
+          'First. Second.[PAUSE]Third. Fourth.',
+        );
+        expect(sentences, [
+          'First.',
+          'Second.',
+          '[PAUSE]',
+          'Third.',
+          'Fourth.',
+        ]);
+      });
     });
 
     group('verbal close confirmation flow', () {
@@ -827,7 +882,10 @@ void main() {
       test('copyWith can clear error', () {
         const original = VoiceOrchestratorState(
           phase: VoiceLoopPhase.error,
-          errorMessage: 'something went wrong',
+          error: VoiceSessionError(
+            kind: VoiceSessionErrorKind.sttFailure,
+            message: 'something went wrong',
+          ),
         );
 
         final copy = original.copyWith(
@@ -835,7 +893,7 @@ void main() {
           clearError: true,
         );
 
-        expect(copy.errorMessage, isNull);
+        expect(copy.error, isNull);
       });
 
       test('default constructor has expected defaults', () {
@@ -843,8 +901,47 @@ void main() {
 
         expect(state.phase, VoiceLoopPhase.idle);
         expect(state.transcriptPreview, isEmpty);
-        expect(state.errorMessage, isNull);
+        expect(state.error, isNull);
         expect(state.isContinuousMode, isFalse);
+      });
+
+      test('copyWith preserves error when not clearing', () {
+        const original = VoiceOrchestratorState(
+          phase: VoiceLoopPhase.error,
+          error: VoiceSessionError(
+            kind: VoiceSessionErrorKind.processingFailure,
+            message: 'Processing failed',
+          ),
+        );
+
+        final copy = original.copyWith(transcriptPreview: 'test');
+
+        expect(copy.error, isNotNull);
+        expect(copy.error!.kind, VoiceSessionErrorKind.processingFailure);
+        expect(copy.error!.message, 'Processing failed');
+      });
+
+      test('VoiceSessionError carries kind and message', () {
+        const error = VoiceSessionError(
+          kind: VoiceSessionErrorKind.sttFailure,
+          message: 'STT failed',
+        );
+
+        expect(error.kind, VoiceSessionErrorKind.sttFailure);
+        expect(error.message, 'STT failed');
+      });
+
+      test('VoiceSessionErrorKind has all expected values', () {
+        expect(VoiceSessionErrorKind.values, hasLength(4));
+        expect(
+          VoiceSessionErrorKind.values,
+          containsAll([
+            VoiceSessionErrorKind.sttFailure,
+            VoiceSessionErrorKind.ttsFailure,
+            VoiceSessionErrorKind.processingFailure,
+            VoiceSessionErrorKind.audioFocusLoss,
+          ]),
+        );
       });
     });
   });

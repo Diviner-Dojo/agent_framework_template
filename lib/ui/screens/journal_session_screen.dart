@@ -82,6 +82,13 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   /// intent does not end the session mid-capture.
   bool _isCapturingMedia = false;
 
+  /// Timer for the 800ms delay before calling stopPushToTalk().
+  ///
+  /// Users trail off at the end of speech; immediate stop on button release
+  /// discards the last words. The delay gives STT time to capture trailing
+  /// audio. Double-tap cancels the timer for immediate stop.
+  Timer? _pttStopTimer;
+
   @override
   void initState() {
     super.initState();
@@ -99,6 +106,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
 
   @override
   void dispose() {
+    _pttStopTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     _scrollController.dispose();
@@ -154,6 +162,13 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     // Keep orchestrator's session ID in sync for undo support.
     final sessionId = ref.read(sessionNotifierProvider).activeSessionId;
     orchestrator.currentSessionId = sessionId;
+
+    // Cancel PTT stop timer when voice state leaves listening.
+    orchestrator.stateNotifier.addListener(() {
+      if (orchestrator.state.phase != VoiceLoopPhase.listening) {
+        _pttStopTimer?.cancel();
+      }
+    });
   }
 
   /// Start continuous mode with the greeting message.
@@ -678,7 +693,16 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
           if (voiceState.isContinuousMode) {
             orchestrator.stop();
           } else {
-            orchestrator.stopPushToTalk();
+            // 800ms delay before stopping PTT to capture trailing speech.
+            // Double-tap (timer already active) cancels and stops immediately.
+            if (_pttStopTimer?.isActive ?? false) {
+              _pttStopTimer?.cancel();
+              orchestrator.stopPushToTalk();
+            } else {
+              _pttStopTimer = Timer(const Duration(milliseconds: 800), () {
+                orchestrator.stopPushToTalk();
+              });
+            }
           }
         },
         style: IconButton.styleFrom(

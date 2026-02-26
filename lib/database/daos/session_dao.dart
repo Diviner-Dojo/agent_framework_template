@@ -257,6 +257,31 @@ class SessionDao {
   /// Update a session's location data after fire-and-forget capture.
   ///
   /// Coordinates should already be reduced to 2 decimal places before calling.
+  /// Update summary and metadata on an already-ended session.
+  ///
+  /// Called from background metadata extraction after the session has been
+  /// closed. Updates summary, mood tags, people, and topic tags without
+  /// touching endTime.
+  Future<void> updateSessionMetadata(
+    String sessionId, {
+    String? summary,
+    String? moodTags,
+    String? people,
+    String? topicTags,
+  }) async {
+    await (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        summary: Value(summary),
+        moodTags: Value(moodTags),
+        people: Value(people),
+        topicTags: Value(topicTags),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
   /// Sets syncStatus to 'PENDING' so the session re-enters the sync queue
   /// and [locationName] eventually reaches Supabase (coordinates are excluded
   /// from sync per ADR-0019).
@@ -308,6 +333,28 @@ class SessionDao {
             updatedAt: Value(DateTime.now().toUtc()),
           ),
         );
+  }
+
+  // =========================================================================
+  // Session history methods (ADR-0023)
+  // =========================================================================
+
+  /// Get recent completed sessions with summaries for conversational continuity.
+  ///
+  /// Returns up to [limit] sessions that have both an endTime (completed)
+  /// and a non-null summary. Ordered newest first. Each summary is truncated
+  /// to 200 characters for payload size control (ADR-0023).
+  Future<List<JournalSession>> getRecentCompletedSessions({
+    int limit = 5,
+  }) async {
+    return (_db.select(_db.journalSessions)
+          ..where((s) => s.endTime.isNotNull() & s.summary.isNotNull())
+          ..orderBy([
+            (s) =>
+                OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
+          ])
+          ..limit(limit))
+        .get();
   }
 
   // =========================================================================

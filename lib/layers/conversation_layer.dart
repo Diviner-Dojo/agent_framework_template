@@ -34,10 +34,12 @@ abstract class ConversationLayer {
   /// [lastSessionDate] — when the user's most recent session started.
   /// [now] — injectable for testing. Defaults to DateTime.now().
   /// [sessionCount] — total number of past sessions (for context).
+  /// [sessionSummaries] — recent session summaries for continuity (ADR-0023).
   Future<AgentResponse> getGreeting({
     DateTime? lastSessionDate,
     DateTime? now,
     int sessionCount = 0,
+    List<Map<String, String>>? sessionSummaries,
   });
 
   /// Get a follow-up question based on the user's message.
@@ -49,11 +51,13 @@ abstract class ConversationLayer {
   /// [conversationHistory] — previous follow-up questions (for dedup).
   /// [followUpCount] — how many follow-ups have been asked so far.
   /// [allMessages] — full conversation as role/content pairs.
+  /// [sessionSummaries] — recent session summaries for continuity (ADR-0023).
   Future<AgentResponse?> getFollowUp({
     required String latestUserMessage,
     required List<String> conversationHistory,
     required int followUpCount,
     List<Map<String, String>>? allMessages,
+    List<Map<String, String>>? sessionSummaries,
   });
 
   /// Generate a session summary and optionally extract metadata.

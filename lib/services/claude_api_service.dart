@@ -91,26 +91,18 @@ class ClaudeApiService {
   final Dio _dio;
   final Environment _environment;
 
-  /// Optional callback that returns the current JWT access token.
-  /// When provided and returns non-null, the JWT is sent as the Bearer
-  /// token instead of the anon key. This enables authenticated Edge
-  /// Function calls when the user is signed in (Phase 4).
-  final String? Function()? _accessTokenProvider;
-
   /// Creates a ClaudeApiService with the given environment configuration.
   ///
   /// [environment] — provides the Edge Function URL, anon key, and timeout.
   /// [dio] — injectable for testing. If not provided, creates a default
   ///   Dio instance with TLS enforcement and appropriate timeouts.
-  /// [accessTokenProvider] — optional callback returning the current JWT.
-  ///   When provided and returns non-null, the JWT replaces the anon key
-  ///   as the Bearer token for Edge Function auth.
+  /// [accessTokenProvider] — deprecated, kept for API compatibility but
+  ///   no longer used. Edge Functions always use the anon key.
   ClaudeApiService({
     required Environment environment,
     Dio? dio,
     String? Function()? accessTokenProvider,
   }) : _environment = environment,
-       _accessTokenProvider = accessTokenProvider,
        _dio = dio ?? _createDefaultDio(environment);
 
   /// Create a properly configured Dio instance.
@@ -282,35 +274,20 @@ class ClaudeApiService {
     }
   }
 
-  /// Resolve per-request auth options.
-  ///
-  /// When an access token is available (user is authenticated), returns
-  /// Options that override the Authorization header with the JWT.
-  /// When not authenticated, returns null (uses default headers from Dio).
-  Options? _resolveAuthOptions() {
-    final token = _accessTokenProvider?.call();
-    if (token != null && token.isNotEmpty) {
-      return Options(headers: {'Authorization': 'Bearer $token'});
-    }
-    return null;
-  }
-
   /// Make a POST request to the Edge Function.
   ///
   /// Handles all error translation from dio exceptions to typed
   /// [ClaudeApiException] subtypes.
   ///
-  /// When an [_accessTokenProvider] is set and returns a JWT, it overrides
-  /// the default Authorization header for this request.
+  /// Always uses the anon key for Edge Function authorization (set in
+  /// default Dio headers). The user JWT caused 401 errors because the
+  /// Supabase gateway couldn't verify ES256 auth tokens for Edge
+  /// Function access. The anon key (HS256) is the correct credential.
   Future<Map<String, dynamic>> _post(Map<String, dynamic> body) async {
     try {
-      // Build per-request headers. When authenticated, use JWT instead of anon key.
-      final Options? options = _resolveAuthOptions();
-
       final response = await _dio.post<Map<String, dynamic>>(
         _environment.claudeProxyUrl,
         data: body,
-        options: options,
       );
 
       final data = response.data;

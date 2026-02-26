@@ -187,9 +187,7 @@ void main() {
       expect(find.text('Session List'), findsOneWidget);
     });
 
-    testWidgets('overflow End Session ends and navigates back', (
-      tester,
-    ) async {
+    testWidgets('overflow End Session ends and navigates back', (tester) async {
       final container = await buildTestWidget(tester);
       addTearDown(container.dispose);
 

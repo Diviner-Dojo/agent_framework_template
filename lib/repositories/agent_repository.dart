@@ -160,10 +160,13 @@ class AgentRepository {
   /// In journal-only mode: returns a minimal "Session started." message.
   /// Otherwise: delegates to the active layer. Retries transient failures
   /// before falling back to rule-based.
+  ///
+  /// [sessionSummaries] — recent session summaries for continuity (ADR-0023).
   Future<AgentResponse> getGreeting({
     DateTime? lastSessionDate,
     DateTime? now,
     int sessionCount = 0,
+    List<Map<String, String>>? sessionSummaries,
   }) async {
     if (journalOnlyMode) {
       return const AgentResponse(
@@ -178,6 +181,7 @@ class AgentRepository {
         lastSessionDate: lastSessionDate,
         now: now,
         sessionCount: sessionCount,
+        sessionSummaries: sessionSummaries,
       ),
       fallback: () => _ruleBasedLayer.getGreeting(
         lastSessionDate: lastSessionDate,
@@ -192,11 +196,14 @@ class AgentRepository {
   /// In journal-only mode: always returns null (no follow-ups).
   /// Checks shouldEndSession first (layer-independent).
   /// Otherwise: delegates to active layer with retry before fallback.
+  ///
+  /// [sessionSummaries] — recent session summaries for continuity (ADR-0023).
   Future<AgentResponse?> getFollowUp({
     required String latestUserMessage,
     required List<String> conversationHistory,
     required int followUpCount,
     List<Map<String, String>>? allMessages,
+    List<Map<String, String>>? sessionSummaries,
   }) async {
     if (journalOnlyMode) return null;
 
@@ -215,6 +222,7 @@ class AgentRepository {
         conversationHistory: conversationHistory,
         followUpCount: followUpCount,
         allMessages: allMessages,
+        sessionSummaries: sessionSummaries,
       ),
       fallback: () => _ruleBasedLayer.getFollowUp(
         latestUserMessage: latestUserMessage,
