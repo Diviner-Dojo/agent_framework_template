@@ -1,23 +1,25 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-26 ~00:30 UTC
+> Last updated: 2026-02-25 ~22:15 UTC
 
 ## Current Task
 
-**Status:** Device activation in progress. Google Calendar OAuth nearly configured. Ready to rebuild + test.
+**Status:** Voice engine swap (ADR-0022) deployed and working. Fixing STT reliability + model switching.
 **Branch:** `main`
 
 ### In Progress
-- **Google Calendar OAuth setup** — Android + Web client IDs created in GCP. `google-services.json` updated with both. Needs rebuild and test.
+- **STT reliability** — Fixed `error_speech_timeout` auto-restart + audio focus fight between just_audio and speech_to_text. Rebuilt and deployed.
+- **Model switching** — User reports rule-based fallback triggers too often. Need to prevent silent fallback to Layer A.
+- **Assistant gesture** — Long-press home not opening new chat. User needs to set app as default assistant in Android Settings.
 
 ### Recently Completed
-- **Build fixes committed** — PR #35, merged. ffmpeg package swap, LLM auto-load disable, placeholder google-services.json.
+- **ADR-0022: Voice Engine Swap** — ElevenLabs TTS (via Supabase proxy) + speech_to_text STT. Old engines kept as offline fallbacks.
+- **Custom prompt bug fix** — `onFieldSubmitted` → `onChanged` in settings_screen.dart.
+- **elevenlabs-proxy Edge Function** — Deployed to Supabase, ELEVENLABS_API_KEY set as secret.
+- **Network security config** — Cleartext HTTP for localhost (just_audio internal server).
+- **Build fixes committed** — PR #35, merged.
 - **Device deployment** — App built and running on Galaxy S21 Ultra (Android 15, Snapdragon 888).
-- **Supabase backend** — Edge Function deployed, Claude API proxy verified working.
-- **Photo capture** — Confirmed working on device.
-- **Phase 12: Video Capture** — PR #29, merged (ADR-0021)
-- **Phase 11: Google Calendar + Reminders** — PR #28, merged (ADR-0020)
 
 ## Google Calendar OAuth Config (In Progress)
 
@@ -57,8 +59,8 @@ Other build fixes (ffmpeg swap, LLM disable) already committed in PR #35.
 |---------|--------|-------|
 | App launch | Working | No crash, Supabase init OK |
 | Photo capture | Working | Camera + gallery confirmed |
-| Google Calendar | Not working yet | OAuth config was wrong (Desktop client), now fixed, needs rebuild |
-| Supabase auth | Needs retest | User reported "invalid credentials" — may need fresh anon key |
+| Google Calendar | **Working** | OAuth connected via Firebase + GCP test user |
+| Supabase auth | Working | New account (evansarak@yahoo.com), new publishable key (sb_publishable_...) |
 | Claude AI | Needs test | Edge Function deployed + verified via curl, untested in-app |
 | Video capture | Needs test | ffmpeg fork compiles, untested on device |
 | Voice/STT | Needs test | Model download on first use |

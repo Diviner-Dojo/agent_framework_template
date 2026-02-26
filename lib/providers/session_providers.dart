@@ -1549,6 +1549,15 @@ final agentRepositoryProvider = Provider<AgentRepository>((ref) {
   return repo;
 });
 
+/// Human-readable label for the currently active conversation layer.
+///
+/// Returns "Claude", "Local LLM", or "Offline" based on the agent
+/// repository's current layer selection.
+final activeLayerLabelProvider = Provider<String>((ref) {
+  final repo = ref.watch(agentRepositoryProvider);
+  return repo.activeLayerLabel;
+});
+
 /// Provider for the SessionNotifier.
 ///
 /// This is a StateNotifierProvider because SessionNotifier manages

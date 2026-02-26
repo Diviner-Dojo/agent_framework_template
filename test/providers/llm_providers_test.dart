@@ -49,7 +49,7 @@ void main() {
       expect(container.read(preferClaudeProvider), isTrue);
     });
 
-    test('defaults to false when key not set', () async {
+    test('defaults to true when key not set', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
 
@@ -58,7 +58,7 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      expect(container.read(preferClaudeProvider), isFalse);
+      expect(container.read(preferClaudeProvider), isTrue);
     });
 
     test('setEnabled persists to SharedPreferences', () async {
@@ -70,12 +70,12 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      expect(container.read(preferClaudeProvider), isFalse);
-
-      await container.read(preferClaudeProvider.notifier).setEnabled(true);
-
       expect(container.read(preferClaudeProvider), isTrue);
-      expect(prefs.getBool(preferClaudeKey), isTrue);
+
+      await container.read(preferClaudeProvider.notifier).setEnabled(false);
+
+      expect(container.read(preferClaudeProvider), isFalse);
+      expect(prefs.getBool(preferClaudeKey), isFalse);
     });
   });
 

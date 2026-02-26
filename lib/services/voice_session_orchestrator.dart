@@ -644,6 +644,13 @@ class VoiceSessionOrchestrator {
 
   /// Transition to listening and start STT with silence timer.
   Future<void> _startListening() async {
+    // Ensure TTS player is fully stopped to release its audio session
+    // before starting STT. Without this, just_audio keeps reacting to
+    // audio focus events which fights with speech_to_text for the mic.
+    if (_ttsInitialized && _ttsService.isSpeaking) {
+      await _ttsService.stop();
+    }
+
     _updateState(
       state.copyWith(phase: VoiceLoopPhase.listening, transcriptPreview: ''),
     );

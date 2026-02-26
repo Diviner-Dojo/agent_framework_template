@@ -42,11 +42,13 @@ dependencies:
   path: ^1.9.1
   shared_preferences: ^2.5.4
 
-  # Voice (Phase 7A — ADR-0015)
+  # Voice (Phase 7A — ADR-0015, Phase 12B — ADR-0022)
   sherpa_onnx: ^1.12.25
   record: ^6.2.0
   flutter_tts: ^4.2.5
   crypto: ^3.0.6
+  speech_to_text: ^7.0.0
+  just_audio: ^0.9.0
 
   # Local LLM inference (Phase 8B — ADR-0017)
   llamadart: 0.6.2

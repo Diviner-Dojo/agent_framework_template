@@ -170,66 +170,24 @@ void main() {
       expect(state.activeSessionId, isNotNull);
     });
 
-    testWidgets('back button shows confirmation dialog', (tester) async {
+    testWidgets('back button ends session and navigates back', (tester) async {
       final container = await buildTestWidget(tester);
       addTearDown(container.dispose);
 
-      // Tap the back button.
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
-
-      // Confirmation dialog should appear.
-      expect(find.text('End this session?'), findsOneWidget);
-      expect(find.text('Cancel'), findsOneWidget);
-      expect(find.text('End'), findsOneWidget);
-    });
-
-    testWidgets('cancel in confirmation dialog keeps session active', (
-      tester,
-    ) async {
-      final container = await buildTestWidget(tester);
-      addTearDown(container.dispose);
-
-      // Show confirmation dialog.
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
-
-      // Tap Cancel.
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-
-      // Dialog should close, session still active.
-      expect(find.text('End this session?'), findsNothing);
-      expect(find.text('Journal Entry'), findsOneWidget);
-
-      final state = container.read(sessionNotifierProvider);
-      expect(state.activeSessionId, isNotNull);
-    });
-
-    testWidgets('confirm in dialog ends session and shows Done button', (
-      tester,
-    ) async {
-      final container = await buildTestWidget(tester);
-      addTearDown(container.dispose);
-
-      // Send a user message so the session is not empty.
+      // Send a user message so the session has content.
       await tester.enterText(find.byType(TextField), 'I feel great');
       await tester.tap(find.byIcon(Icons.send));
       await tester.pumpAndSettle();
 
-      // Show confirmation dialog.
+      // Tap the back button — ends session immediately (no dialog).
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
 
-      // Tap End.
-      await tester.tap(find.text('End'));
-      await tester.pumpAndSettle();
-
-      // Session should show closing complete state with Done button.
-      expect(find.text('Done'), findsOneWidget);
+      // Should navigate back to the session list.
+      expect(find.text('Session List'), findsOneWidget);
     });
 
-    testWidgets('overflow menu is hidden when session is ending', (
+    testWidgets('overflow End Session ends and navigates back', (
       tester,
     ) async {
       final container = await buildTestWidget(tester);
@@ -240,16 +198,14 @@ void main() {
       await tester.tap(find.byIcon(Icons.send));
       await tester.pumpAndSettle();
 
-      // Confirm exit via dialog.
-      await tester.tap(find.byIcon(Icons.arrow_back));
+      // End via overflow menu.
+      await tester.tap(find.byIcon(Icons.more_vert));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('End'));
+      await tester.tap(find.text('End Session'));
       await tester.pumpAndSettle();
 
-      // Overflow menu should be hidden when session is ending/complete.
-      expect(find.byIcon(Icons.more_vert), findsNothing);
-      // The "Done" button should be visible instead.
-      expect(find.text('Done'), findsOneWidget);
+      // Should navigate back to the session list.
+      expect(find.text('Session List'), findsOneWidget);
     });
 
     testWidgets('auto-discard shows SnackBar on empty session end', (
