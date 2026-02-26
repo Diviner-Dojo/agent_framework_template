@@ -67,6 +67,11 @@ class Environment {
   ///   {supabaseUrl}/functions/v1/{function-name}
   String get claudeProxyUrl => '$supabaseUrl/functions/v1/claude-proxy';
 
+  /// The full URL for the ElevenLabs TTS proxy Edge Function.
+  ///
+  /// See: ADR-0022 (Voice Engine Swap)
+  String get elevenlabsProxyUrl => '$supabaseUrl/functions/v1/elevenlabs-proxy';
+
   /// Whether the environment is fully configured for Claude API access.
   ///
   /// Returns false when --dart-define values are missing. When false,

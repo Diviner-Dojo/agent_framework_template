@@ -24,7 +24,6 @@ import '../../providers/auth_providers.dart';
 import '../../services/google_auth_service.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/llm_providers.dart';
-import '../../services/local_llm_service.dart';
 import '../../providers/personality_providers.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
@@ -32,6 +31,7 @@ import '../../providers/calendar_providers.dart';
 import '../../providers/location_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
+import '../../repositories/sync_repository.dart';
 import '../../providers/voice_providers.dart';
 import '../widgets/llm_model_download_dialog.dart';
 
@@ -46,6 +46,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with WidgetsBindingObserver {
   bool _isClearingLocation = false;
+  bool _isSyncing = false;
 
   @override
   void initState() {
@@ -174,11 +175,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
-  /// Build the "Voice" settings card with toggle and model status.
+  /// Build the "Voice" settings card with toggle, engine selection, and model status.
   Widget _buildVoiceCard(BuildContext context) {
     final voiceEnabled = ref.watch(voiceModeEnabledProvider);
     final autoSave = ref.watch(autoSaveOnExitProvider);
     final modelReadyAsync = ref.watch(sttModelReadyProvider);
+    final ttsEngine = ref.watch(ttsEngineProvider);
+    final sttEngine = ref.watch(sttEngineProvider);
     final theme = Theme.of(context);
 
     return Card(
@@ -210,45 +213,98 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 },
                 contentPadding: EdgeInsets.zero,
               ),
+              const SizedBox(height: 8),
+              // TTS engine selector.
+              DropdownButtonFormField<TtsEngine>(
+                value: ttsEngine,
+                decoration: const InputDecoration(
+                  labelText: 'Text-to-speech engine',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: TtsEngine.elevenlabs,
+                    child: Text('Natural (ElevenLabs)'),
+                  ),
+                  DropdownMenuItem(
+                    value: TtsEngine.flutterTts,
+                    child: Text('Basic (Offline)'),
+                  ),
+                ],
+                onChanged: (engine) {
+                  if (engine != null) {
+                    ref.read(ttsEngineProvider.notifier).setEngine(engine);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              // STT engine selector.
+              DropdownButtonFormField<SttEngine>(
+                value: sttEngine,
+                decoration: const InputDecoration(
+                  labelText: 'Speech recognition engine',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: SttEngine.speechToText,
+                    child: Text('Google (No download)'),
+                  ),
+                  DropdownMenuItem(
+                    value: SttEngine.sherpaOnnx,
+                    child: Text('Offline (71MB model)'),
+                  ),
+                ],
+                onChanged: (engine) {
+                  if (engine != null) {
+                    ref.read(sttEngineProvider.notifier).setEngine(engine);
+                  }
+                },
+              ),
             ],
             const SizedBox(height: 8),
-            // STT model download status.
-            modelReadyAsync.when(
-              data: (isReady) => Row(
-                children: [
-                  Icon(
-                    isReady ? Icons.check_circle : Icons.download,
-                    color: isReady ? Colors.green : theme.colorScheme.primary,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      isReady
-                          ? 'Speech model: Downloaded'
-                          : 'Speech model: Not downloaded',
-                      style: theme.textTheme.bodyMedium,
+            // STT model download status (only relevant for sherpa_onnx).
+            if (sttEngine == SttEngine.sherpaOnnx)
+              modelReadyAsync.when(
+                data: (isReady) => Row(
+                  children: [
+                    Icon(
+                      isReady ? Icons.check_circle : Icons.download,
+                      color: isReady ? Colors.green : theme.colorScheme.primary,
+                      size: 20,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isReady
+                            ? 'Speech model: Downloaded'
+                            : 'Speech model: Not downloaded',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                loading: () => const Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Checking model status...'),
+                  ],
+                ),
+                error: (_, _) => Text(
+                  'Could not check model status',
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
               ),
-              loading: () => const Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  SizedBox(width: 8),
-                  Text('Checking model status...'),
-                ],
-              ),
-              error: (_, _) => Text(
-                'Could not check model status',
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ),
-            if (voiceEnabled && modelReadyAsync.valueOrNull != true) ...[
+            if (voiceEnabled &&
+                sttEngine == SttEngine.sherpaOnnx &&
+                modelReadyAsync.valueOrNull != true) ...[
               const SizedBox(height: 8),
               Text(
                 'The speech model will be downloaded when you first use voice input.',
@@ -453,7 +509,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           ),
           maxLines: 3,
           maxLength: 500,
-          onFieldSubmitted: (value) {
+          onChanged: (value) {
             ref
                 .read(personalityConfigProvider.notifier)
                 .setCustomPrompt(value.isEmpty ? null : value);
@@ -557,16 +613,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 children: [
                   // Sync Now button
                   FilledButton.icon(
-                    onPressed: () async {
-                      final syncRepo = ref.read(syncRepositoryProvider);
-                      await syncRepo.syncPendingSessions();
-                      await syncRepo.syncPendingPhotos();
-                      await syncRepo.syncPendingCalendarEvents();
-                      // Invalidate to refresh the count
-                      ref.invalidate(pendingSyncCountProvider);
-                    },
-                    icon: const Icon(Icons.sync),
-                    label: const Text('Sync Now'),
+                    onPressed: _isSyncing ? null : () => _runSyncNow(context),
+                    icon: _isSyncing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.sync),
+                    label: Text(_isSyncing ? 'Syncing...' : 'Sync Now'),
                   ),
                   const SizedBox(width: 12),
                   // Sign out button
@@ -584,6 +642,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         ),
       ),
     );
+  }
+
+  /// Run all sync operations with loading state and user feedback.
+  Future<void> _runSyncNow(BuildContext context) async {
+    setState(() => _isSyncing = true);
+    try {
+      final syncRepo = ref.read(syncRepositoryProvider);
+      final List<SyncResult> results = [
+        await syncRepo.syncPendingSessions(),
+        await syncRepo.syncPendingPhotos(),
+        await syncRepo.syncPendingCalendarEvents(),
+      ];
+
+      final totalSynced = results.fold<int>(0, (sum, r) => sum + r.syncedCount);
+      final totalFailed = results.fold<int>(0, (sum, r) => sum + r.failedCount);
+
+      // Invalidate to refresh the count.
+      ref.invalidate(pendingSyncCountProvider);
+
+      if (!context.mounted) return;
+      final String message;
+      if (totalFailed > 0) {
+        message = 'Synced $totalSynced, $totalFailed failed';
+      } else if (totalSynced > 0) {
+        message = 'Synced $totalSynced item${totalSynced == 1 ? '' : 's'}';
+      } else {
+        message = 'Everything is up to date';
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } on Exception catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sync failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
   }
 
   /// Build the "Data Management" card with storage info and clear all.

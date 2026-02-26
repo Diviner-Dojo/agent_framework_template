@@ -76,6 +76,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   /// Whether continuous mode has been auto-started for this session.
   bool _continuousModeAutoStarted = false;
 
+  /// Whether the native camera/gallery picker is open.
+  ///
+  /// Guards [_autoSaveIfNeeded] so the lifecycle pause from the native
+  /// intent does not end the session mid-capture.
+  bool _isCapturingMedia = false;
+
   @override
   void initState() {
     super.initState();
@@ -163,7 +169,13 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   }
 
   /// Auto-save session on backgrounding if enabled.
+  ///
+  /// Skipped when [_isCapturingMedia] is true — the native camera/gallery
+  /// intent triggers [AppLifecycleState.paused] but the session should
+  /// remain active.
   void _autoSaveIfNeeded() {
+    if (_isCapturingMedia) return;
+
     final autoSave = ref.read(autoSaveOnExitProvider);
     final sessionState = ref.read(sessionNotifierProvider);
 
@@ -262,29 +274,43 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     return PopScope(
       canPop:
           sessionState.isClosingComplete ||
+          sessionState.isSessionEnding ||
           sessionState.activeSessionId == null,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
-          // If closing is complete, dismiss state on pop.
-          if (sessionState.isClosingComplete) {
+          // Dismiss state on pop.
+          if (sessionState.isClosingComplete || sessionState.isSessionEnding) {
             ref.read(sessionNotifierProvider.notifier).dismissSession();
           }
           // Stop orchestrator on navigation away.
           ref.read(voiceOrchestratorProvider).stop();
           return;
         }
-        _showExitConfirmation();
+        // Save and close immediately — no confirmation dialog.
+        _endSessionAndPop();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Journal Entry'),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Journal Entry'),
+              Text(
+                ref.watch(activeLayerLabelProvider),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                ),
+              ),
+            ],
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () {
-              if (sessionState.isClosingComplete) {
+              if (sessionState.isClosingComplete ||
+                  sessionState.isSessionEnding) {
                 _dismissAndPop();
               } else {
-                _showExitConfirmation();
+                _endSessionAndPop();
               }
             },
           ),
@@ -297,7 +323,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                 onSelected: (value) {
                   switch (value) {
                     case 'end':
-                      _endSession(context);
+                      _endSessionAndPop();
                     case 'discard':
                       _showDiscardConfirmation();
                   }
@@ -412,16 +438,6 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                 sessionState.pendingReminder != null)
               _buildCalendarEventCard(sessionState),
 
-            // "Session ending..." indicator when wrapping up.
-            if (sessionState.isSessionEnding && !sessionState.isClosingComplete)
-              const Padding(
-                padding: EdgeInsets.all(8),
-                child: Text('Wrapping up your session...'),
-              ),
-
-            // "Done" button — shown after closing summary is saved.
-            if (sessionState.isClosingComplete) _buildDoneButton(context),
-
             // Typing indicator — shown while waiting for agent response.
             if (sessionState.isWaitingForAgent && !sessionState.isSessionEnding)
               const _ThinkingIndicator(),
@@ -430,20 +446,6 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
             if (!sessionState.isSessionEnding)
               _buildInputField(context, voiceEnabled, orchestrator),
           ],
-        ),
-      ),
-    );
-  }
-
-  /// Build the "Done" button shown after the closing summary is ready.
-  Widget _buildDoneButton(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          onPressed: _dismissAndPop,
-          child: const Text('Done'),
         ),
       ),
     );
@@ -572,15 +574,13 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                   onSubmitted: isWaiting ? null : (_) => _sendMessage(),
                 ),
               ),
-              // Camera button — visible when not in active voice/waiting state.
-              if (!isWaiting && !isListening && !isSpeaking)
-                IconButton(
-                  tooltip: 'Add photo',
-                  onPressed: () => _captureMedia(context),
-                  icon: const Icon(Icons.camera_alt_outlined),
-                ),
-              if (isWaiting || isListening || isSpeaking)
-                const SizedBox(width: 8),
+              // Camera button — always visible so users can add media
+              // during voice mode.
+              IconButton(
+                tooltip: 'Add photo',
+                onPressed: () => _captureMedia(context),
+                icon: const Icon(Icons.camera_alt_outlined),
+              ),
               // Action button: mic, stop, interrupt, or send.
               _buildActionButton(isWaiting, voiceEnabled, orchestrator),
             ],
@@ -734,6 +734,9 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   ///
   /// Returns true if STT is ready, false if not (user cancelled download
   /// or initialization failed).
+  ///
+  /// When the speech_to_text engine is selected, skips model download
+  /// entirely — the system recognizer needs no local model files.
   Future<bool> _ensureSttReady() async {
     // Request microphone permission before anything else.
     final recorder = AudioRecorder();
@@ -756,20 +759,25 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     }
     if (!mounted) return false;
 
-    // Check if model is downloaded (await the async check).
-    final modelReady = await ref.read(sttModelReadyProvider.future);
-    if (!modelReady) {
-      // Trigger model download dialog.
-      final downloadService = ModelDownloadService();
-      final downloaded = await showModelDownloadDialog(
-        context: context,
-        downloadService: downloadService,
-      );
-      downloadService.dispose();
+    final engine = ref.read(sttEngineProvider);
 
-      if (!downloaded || !mounted) return false;
-      // Invalidate so the provider re-checks.
-      ref.invalidate(sttModelReadyProvider);
+    // speech_to_text uses the system recognizer — no model download needed.
+    // sherpa_onnx requires the 71MB Zipformer model.
+    if (engine == SttEngine.sherpaOnnx) {
+      final modelReady = await ref.read(sttModelReadyProvider.future);
+      if (!modelReady) {
+        // Trigger model download dialog.
+        final downloadService = ModelDownloadService();
+        final downloaded = await showModelDownloadDialog(
+          context: context,
+          downloadService: downloadService,
+        );
+        downloadService.dispose();
+
+        if (!downloaded || !mounted) return false;
+        // Invalidate so the provider re-checks.
+        ref.invalidate(sttModelReadyProvider);
+      }
     }
 
     // Initialize STT if needed.
@@ -791,125 +799,153 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   /// Capture a photo and add it to the session.
   ///
   /// Flow: show source sheet → capture/pick → preview → process → save.
+  /// Sets [_isCapturingMedia] around the native picker to prevent
+  /// [_autoSaveIfNeeded] from ending the session on lifecycle pause.
   Future<void> _captureMedia(BuildContext context) async {
     final sessionId = ref.read(sessionNotifierProvider).activeSessionId;
     if (sessionId == null) return;
 
     // Step 1: Choose source (photo/video, camera/gallery).
+    // The bottom sheet is in-app UI — no lifecycle pause yet.
     final source = await showMediaCaptureSheet(context);
     if (source == null || !mounted) return;
 
-    // Route to the appropriate handler.
-    switch (source) {
-      case MediaSource.photoCamera:
-      case MediaSource.photoGallery:
-        await _handlePhotoCapture(context, sessionId, source);
-      case MediaSource.videoCamera:
-      case MediaSource.videoGallery:
-        await _handleVideoCapture(context, sessionId, source);
+    // The native picker/camera launches next and triggers lifecycle pause.
+    _isCapturingMedia = true;
+    try {
+      // Route to the appropriate handler.
+      switch (source) {
+        case MediaSource.photoCamera:
+        case MediaSource.photoGallery:
+          await _handlePhotoCapture(context, sessionId, source);
+        case MediaSource.videoCamera:
+        case MediaSource.videoGallery:
+          await _handleVideoCapture(context, sessionId, source);
+      }
+    } finally {
+      _isCapturingMedia = false;
     }
   }
 
   /// Handle photo capture/pick flow.
+  ///
+  /// Pauses STT before camera access (audio focus conflict — matches
+  /// [_handleVideoCapture] pattern) and resumes after capture completes.
   Future<void> _handlePhotoCapture(
     BuildContext context,
     String sessionId,
     MediaSource source,
   ) async {
-    // Step 2: Capture or pick the photo.
-    final photoService = ref.read(photoServiceProvider);
-    final rawFile = source == MediaSource.photoCamera
-        ? await photoService.takePhoto()
-        : await photoService.pickFromGallery();
-    if (rawFile == null || !mounted) return;
-
-    // Step 3: Show preview and wait for user to confirm.
-    final confirmed = await showPhotoPreviewDialog(
-      context: context,
-      photoFile: rawFile,
-    );
-    if (!confirmed || !mounted) return;
-
-    // Step 4: Process and save (with user feedback).
-    final uuid = const Uuid();
-    final photoId = uuid.v4();
-    final messageId = uuid.v4();
-
-    // Show processing indicator while EXIF strip + resize runs.
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              SizedBox(width: 12),
-              Text('Processing photo...'),
-            ],
-          ),
-          duration: Duration(seconds: 10),
-        ),
-      );
-    }
-
-    ProcessedPhoto? processed;
-    try {
-      processed = await photoService.processAndSave(
-        rawFile,
-        sessionId,
-        photoId,
-      );
-    } on Exception {
-      processed = null;
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    if (processed == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to add photo. Please try again.')),
-      );
-      return;
-    }
-
-    // Step 5: Insert photo record and photo message.
-    final photoDao = ref.read(photoDaoProvider);
-    final messageDao = ref.read(messageDaoProvider);
-    final now = DateTime.now().toUtc();
-
-    await photoDao.insertPhoto(
-      photoId: photoId,
-      sessionId: sessionId,
-      localPath: processed.file.path,
-      timestamp: now,
-      messageId: messageId,
-      width: processed.width,
-      height: processed.height,
-      fileSizeBytes: processed.fileSizeBytes,
-    );
-
-    await messageDao.insertMessage(
-      messageId,
-      sessionId,
-      'USER',
-      '[Photo]',
-      now,
-      inputMethod: 'PHOTO',
-      photoId: photoId,
-    );
-
-    // If voice mode is active, prompt for a photo description.
-    if (!mounted) return;
-    final voiceEnabled = ref.read(voiceModeEnabledProvider);
+    // Pause STT if voice mode is active (same pattern as _handleVideoCapture).
     final orchestrator = ref.read(voiceOrchestratorProvider);
-    if (voiceEnabled && orchestrator.state.phase != VoiceLoopPhase.idle) {
-      final description = await orchestrator.capturePhotoDescription();
-      if (description != null && description.trim().isNotEmpty) {
-        await photoDao.updateDescription(photoId, description.trim());
+    final wasSttActive =
+        ref.read(voiceModeEnabledProvider) &&
+        orchestrator.state.phase != VoiceLoopPhase.idle;
+    if (wasSttActive) {
+      orchestrator.pause();
+    }
+
+    try {
+      // Step 2: Capture or pick the photo.
+      final photoService = ref.read(photoServiceProvider);
+      final rawFile = source == MediaSource.photoCamera
+          ? await photoService.takePhoto()
+          : await photoService.pickFromGallery();
+      if (rawFile == null || !mounted) return;
+
+      // Step 3: Show preview and wait for user to confirm.
+      final confirmed = await showPhotoPreviewDialog(
+        context: context,
+        photoFile: rawFile,
+      );
+      if (!confirmed || !mounted) return;
+
+      // Step 4: Process and save (with user feedback).
+      final uuid = const Uuid();
+      final photoId = uuid.v4();
+      final messageId = uuid.v4();
+
+      // Show processing indicator while EXIF strip + resize runs.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 12),
+                Text('Processing photo...'),
+              ],
+            ),
+            duration: Duration(seconds: 10),
+          ),
+        );
+      }
+
+      ProcessedPhoto? processed;
+      try {
+        processed = await photoService.processAndSave(
+          rawFile,
+          sessionId,
+          photoId,
+        );
+      } on Exception {
+        processed = null;
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      if (processed == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to add photo. Please try again.'),
+          ),
+        );
+        return;
+      }
+
+      // Step 5: Insert photo record and photo message.
+      final photoDao = ref.read(photoDaoProvider);
+      final messageDao = ref.read(messageDaoProvider);
+      final now = DateTime.now().toUtc();
+
+      await photoDao.insertPhoto(
+        photoId: photoId,
+        sessionId: sessionId,
+        localPath: processed.file.path,
+        timestamp: now,
+        messageId: messageId,
+        width: processed.width,
+        height: processed.height,
+        fileSizeBytes: processed.fileSizeBytes,
+      );
+
+      await messageDao.insertMessage(
+        messageId,
+        sessionId,
+        'USER',
+        '[Photo]',
+        now,
+        inputMethod: 'PHOTO',
+        photoId: photoId,
+      );
+
+      // If voice mode is active, prompt for a photo description.
+      if (!mounted) return;
+      if (wasSttActive && orchestrator.state.phase != VoiceLoopPhase.idle) {
+        final description = await orchestrator.capturePhotoDescription();
+        if (description != null && description.trim().isNotEmpty) {
+          await photoDao.updateDescription(photoId, description.trim());
+        }
+      }
+    } finally {
+      // Resume STT if we paused it.
+      if (wasSttActive && mounted) {
+        orchestrator.resume();
       }
     }
   }
@@ -1003,11 +1039,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
         .sendMessage(text, inputMethod: 'TEXT');
   }
 
-  /// End the session (summary will be generated; UI stays on screen).
-  Future<void> _endSession(BuildContext context) async {
-    // Stop orchestrator before ending session.
+  /// End the session and navigate back immediately.
+  Future<void> _endSessionAndPop() async {
     ref.read(voiceOrchestratorProvider).stop();
     await ref.read(sessionNotifierProvider.notifier).endSession();
+    if (mounted) {
+      ref.read(sessionNotifierProvider.notifier).dismissSession();
+      Navigator.of(context).pop();
+    }
   }
 
   /// Dismiss the completed session and navigate back to the list.
@@ -1048,32 +1087,6 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       if (mounted) {
         Navigator.of(context).pop();
       }
-    }
-  }
-
-  /// Show a confirmation dialog before ending and leaving the session.
-  Future<void> _showExitConfirmation() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('End this session?'),
-        content: const Text('Your conversation will be saved with a summary.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('End'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      ref.read(voiceOrchestratorProvider).stop();
-      await ref.read(sessionNotifierProvider.notifier).endSession();
     }
   }
 

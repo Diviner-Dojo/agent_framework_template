@@ -1,0 +1,12 @@
+{
+  "command": "analyze-project",
+  "discussion_id": "DISC-20260226-162548-analyze-sherpa-onnx",
+  "status": "in_progress",
+  "started_at": "2026-02-26T16:26:15.837544+00:00",
+  "current_phase": "project_analyst_dispatch",
+  "completed_phases": [
+    "target_resolved",
+    "discussion_created"
+  ],
+  "target": "k2-fsa/sherpa-onnx"
+}

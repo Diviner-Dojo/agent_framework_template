@@ -47,7 +47,9 @@ class PreferClaudeNotifier extends Notifier<bool> {
   @override
   bool build() {
     final prefs = ref.watch(sharedPreferencesProvider);
-    return prefs.getBool(preferClaudeKey) ?? false;
+    // Default to true — Claude API is the primary conversation engine
+    // since the local LLM is disabled (Snapdragon 888 SIGILL).
+    return prefs.getBool(preferClaudeKey) ?? true;
   }
 
   /// Set the "Prefer Claude" preference. Persists to SharedPreferences.

@@ -3,7 +3,8 @@
 // purpose: Tests for voice-related Riverpod providers.
 //
 // Tests the provider wiring, voice mode toggle state management,
-// and SharedPreferences persistence for voice settings.
+// SharedPreferences persistence for voice settings, and engine
+// selection (ADR-0022).
 // STT/TTS service providers are tested via their service tests.
 // ===========================================================================
 
@@ -131,6 +132,126 @@ void main() {
       addTearDown(container.dispose);
 
       expect(container.read(autoSaveOnExitProvider), isFalse);
+    });
+  });
+
+  group('ttsEngineProvider', () {
+    test('defaults to elevenlabs', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(ttsEngineProvider), TtsEngine.elevenlabs);
+    });
+
+    test('can be set to flutterTts', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(ttsEngineProvider.notifier)
+          .setEngine(TtsEngine.flutterTts);
+      expect(container.read(ttsEngineProvider), TtsEngine.flutterTts);
+      expect(prefs.getString(ttsEngineKey), 'flutterTts');
+    });
+
+    test('can be switched back to elevenlabs', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(ttsEngineProvider.notifier)
+          .setEngine(TtsEngine.flutterTts);
+      await container
+          .read(ttsEngineProvider.notifier)
+          .setEngine(TtsEngine.elevenlabs);
+      expect(container.read(ttsEngineProvider), TtsEngine.elevenlabs);
+    });
+
+    test('reads persisted value from SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({ttsEngineKey: 'flutterTts'});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(ttsEngineProvider), TtsEngine.flutterTts);
+    });
+  });
+
+  group('sttEngineProvider', () {
+    test('defaults to speechToText', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(sttEngineProvider), SttEngine.speechToText);
+    });
+
+    test('can be set to sherpaOnnx', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(sttEngineProvider.notifier)
+          .setEngine(SttEngine.sherpaOnnx);
+      expect(container.read(sttEngineProvider), SttEngine.sherpaOnnx);
+      expect(prefs.getString(sttEngineKey), 'sherpaOnnx');
+    });
+
+    test('can be switched back to speechToText', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(sttEngineProvider.notifier)
+          .setEngine(SttEngine.sherpaOnnx);
+      await container
+          .read(sttEngineProvider.notifier)
+          .setEngine(SttEngine.speechToText);
+      expect(container.read(sttEngineProvider), SttEngine.speechToText);
+    });
+
+    test('reads persisted value from SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({sttEngineKey: 'sherpaOnnx'});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(sttEngineProvider), SttEngine.sherpaOnnx);
     });
   });
 }

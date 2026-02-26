@@ -18,7 +18,13 @@
 //   - autoSaveOnExitProvider: persisted toggle for auto-save on backgrounding
 //   - voiceOrchestratorProvider: continuous voice loop state machine
 //
-// See: ADR-0015 (Voice Mode Architecture)
+// ADR-0022 additions:
+//   - TtsEngine/SttEngine enums for engine selection
+//   - Engine preference notifiers persisted in SharedPreferences
+//   - Service providers select implementation based on engine preference
+//   - sttModelReadyProvider returns true for speechToText engine
+//
+// See: ADR-0015 (Voice Mode Architecture), ADR-0022 (Voice Engine Swap)
 // ===========================================================================
 
 import 'dart:io';
@@ -26,8 +32,11 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../config/environment.dart';
 import '../services/audio_focus_service.dart';
+import '../services/elevenlabs_tts_service.dart';
 import '../services/speech_recognition_service.dart';
+import '../services/speech_to_text_stt_service.dart';
 import '../services/text_to_speech_service.dart';
 import '../services/voice_session_orchestrator.dart';
 import 'onboarding_providers.dart';
@@ -37,6 +46,38 @@ const voiceModeEnabledKey = 'voice_mode_enabled';
 
 /// SharedPreferences key for the auto-save on exit toggle.
 const autoSaveOnExitKey = 'auto_save_on_exit';
+
+/// SharedPreferences key for TTS engine preference.
+const ttsEngineKey = 'tts_engine';
+
+/// SharedPreferences key for STT engine preference.
+const sttEngineKey = 'stt_engine';
+
+// ---------------------------------------------------------------------------
+// Engine enums
+// ---------------------------------------------------------------------------
+
+/// Available text-to-speech engines.
+enum TtsEngine {
+  /// ElevenLabs natural voices via Supabase proxy (requires network).
+  elevenlabs,
+
+  /// Flutter TTS using Android system engine (offline, robotic).
+  flutterTts,
+}
+
+/// Available speech-to-text engines.
+enum SttEngine {
+  /// Google on-device recognizer via speech_to_text (no model download).
+  speechToText,
+
+  /// sherpa_onnx Zipformer (offline, requires 71MB model download).
+  sherpaOnnx,
+}
+
+// ---------------------------------------------------------------------------
+// Voice mode toggles
+// ---------------------------------------------------------------------------
 
 /// Controls whether voice mode is enabled for sessions.
 ///
@@ -90,26 +131,107 @@ final autoSaveOnExitProvider = NotifierProvider<AutoSaveOnExitNotifier, bool>(
   AutoSaveOnExitNotifier.new,
 );
 
-// coverage:ignore-start
-/// Provides the STT service singleton.
+// ---------------------------------------------------------------------------
+// Engine preference notifiers
+// ---------------------------------------------------------------------------
+
+/// Controls which TTS engine is used. Persisted in SharedPreferences.
 ///
-/// The service is created immediately but not initialized. Call
-/// `initialize(modelPath: ...)` before first use. Disposed when
-/// the provider container is disposed.
+/// Defaults to [TtsEngine.elevenlabs] for natural voices.
+class TtsEngineNotifier extends Notifier<TtsEngine> {
+  @override
+  TtsEngine build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final stored = prefs.getString(ttsEngineKey);
+    if (stored == 'flutterTts') return TtsEngine.flutterTts;
+    return TtsEngine.elevenlabs;
+  }
+
+  /// Set the TTS engine. Persists to SharedPreferences.
+  Future<void> setEngine(TtsEngine engine) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(ttsEngineKey, engine.name);
+    state = engine;
+  }
+}
+
+/// Provider for the TTS engine preference.
+final ttsEngineProvider = NotifierProvider<TtsEngineNotifier, TtsEngine>(
+  TtsEngineNotifier.new,
+);
+
+/// Controls which STT engine is used. Persisted in SharedPreferences.
+///
+/// Defaults to [SttEngine.speechToText] for zero-download experience.
+class SttEngineNotifier extends Notifier<SttEngine> {
+  @override
+  SttEngine build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final stored = prefs.getString(sttEngineKey);
+    if (stored == 'sherpaOnnx') return SttEngine.sherpaOnnx;
+    return SttEngine.speechToText;
+  }
+
+  /// Set the STT engine. Persists to SharedPreferences.
+  Future<void> setEngine(SttEngine engine) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(sttEngineKey, engine.name);
+    state = engine;
+  }
+}
+
+/// Provider for the STT engine preference.
+final sttEngineProvider = NotifierProvider<SttEngineNotifier, SttEngine>(
+  SttEngineNotifier.new,
+);
+
+// ---------------------------------------------------------------------------
+// Service providers
+// ---------------------------------------------------------------------------
+
+// coverage:ignore-start
+/// Provides the STT service singleton based on the current engine preference.
+///
+/// When [SttEngine.speechToText] is selected, returns the Google on-device
+/// recognizer. When [SttEngine.sherpaOnnx], returns the offline Zipformer.
+/// The service is created but not initialized — call `initialize()` first.
 final speechRecognitionServiceProvider = Provider<SpeechRecognitionService>((
   ref,
 ) {
-  final service = SherpaOnnxSpeechRecognitionService();
+  final engine = ref.watch(sttEngineProvider);
+  final SpeechRecognitionService service;
+
+  switch (engine) {
+    case SttEngine.speechToText:
+      service = SpeechToTextSttService();
+    case SttEngine.sherpaOnnx:
+      service = SherpaOnnxSpeechRecognitionService();
+  }
+
   ref.onDispose(() => service.dispose());
   return service;
 });
 
-/// Provides the TTS service singleton.
+/// Provides the TTS service singleton based on the current engine preference.
 ///
-/// Call `initialize()` before first use. Disposed when the provider
-/// container is disposed.
+/// When [TtsEngine.elevenlabs] is selected, returns the ElevenLabs proxy
+/// service. When [TtsEngine.flutterTts], returns the Android system TTS.
+/// Call `initialize()` before first use.
 final textToSpeechServiceProvider = Provider<TextToSpeechService>((ref) {
-  final service = FlutterTextToSpeechService();
+  final engine = ref.watch(ttsEngineProvider);
+  final TextToSpeechService service;
+
+  switch (engine) {
+    case TtsEngine.elevenlabs:
+      const env = Environment();
+      service = ElevenLabsTtsService(
+        proxyUrl: env.elevenlabsProxyUrl,
+        authToken: env.supabaseAnonKey,
+      );
+    case TtsEngine.flutterTts:
+      service = FlutterTextToSpeechService();
+  }
+
   ref.onDispose(() => service.dispose());
   return service;
 });
@@ -126,9 +248,16 @@ final audioFocusServiceProvider = Provider<AudioFocusService>((ref) {
 
 /// Whether the STT model has been downloaded and is ready.
 ///
-/// Checks for the existence of all four Zipformer model files in the
-/// app support directory. Returns false if any file is missing.
+/// When using [SttEngine.speechToText], always returns true (no model
+/// download needed). When using [SttEngine.sherpaOnnx], checks for the
+/// existence of all four Zipformer model files.
 final sttModelReadyProvider = FutureProvider<bool>((ref) async {
+  final engine = ref.watch(sttEngineProvider);
+
+  // speech_to_text uses the system recognizer — always ready.
+  if (engine == SttEngine.speechToText) return true;
+
+  // sherpa_onnx requires downloaded model files.
   final dir = await getApplicationSupportDirectory();
   final modelDir = Directory('${dir.path}/zipformer');
 

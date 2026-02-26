@@ -86,7 +86,7 @@ void main() {
       expect(find.text('Download'), findsOneWidget);
     });
 
-    testWidgets('Prefer Claude toggle defaults to off', (
+    testWidgets('Prefer Claude toggle defaults to on', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(buildSettingsScreen());
@@ -99,7 +99,7 @@ void main() {
       expect(switchFinder, findsOneWidget);
 
       final switchTile = tester.widget<SwitchListTile>(switchFinder);
-      expect(switchTile.value, isFalse);
+      expect(switchTile.value, isTrue);
     });
 
     testWidgets('Journal only toggle defaults to off', (
@@ -124,7 +124,7 @@ void main() {
       await tester.pumpWidget(buildSettingsScreen());
       await tester.pumpAndSettle();
 
-      // Tap the Prefer Claude switch.
+      // Tap the Prefer Claude switch (defaults to on, so toggling turns it off).
       final switchFinder = find.widgetWithText(
         SwitchListTile,
         'Prefer Claude when online',
@@ -132,7 +132,7 @@ void main() {
       await tester.tap(switchFinder);
       await tester.pumpAndSettle();
 
-      expect(prefs.getBool(preferClaudeKey), isTrue);
+      expect(prefs.getBool(preferClaudeKey), isFalse);
     });
 
     testWidgets('toggling Journal only persists value', (

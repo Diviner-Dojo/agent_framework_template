@@ -23,12 +23,17 @@
 // See: ADR-0017 (Local LLM Layer Architecture)
 // ===========================================================================
 
+import 'package:flutter/foundation.dart';
+
 import '../layers/conversation_layer.dart' show ConversationLayer;
 import '../layers/rule_based_layer.dart';
 import '../layers/claude_api_layer.dart';
 import '../models/agent_response.dart';
 import '../services/claude_api_service.dart';
 import '../services/connectivity_service.dart';
+
+/// Number of retry attempts for transient Claude API failures.
+const _maxRetries = 1;
 
 /// Conversation engine dispatcher with layer selection and fallback.
 ///
@@ -105,6 +110,18 @@ class AgentRepository {
   /// The currently active layer (locked or freshly selected).
   ConversationLayer get _activeLayer => _sessionLockedLayer ?? _selectLayer();
 
+  /// Human-readable label for the currently active layer.
+  ///
+  /// Returns "Claude", "Local LLM", or "Offline" depending on which
+  /// layer is active (locked or freshly selected).
+  String get activeLayerLabel {
+    final layer = _sessionLockedLayer ?? _selectLayer();
+    if (layer is ClaudeApiLayer) return 'Claude';
+    if (layer is RuleBasedLayer) return 'Offline';
+    if (_localLlmLayer != null && layer == _localLlmLayer) return 'Local LLM';
+    return 'Unknown';
+  }
+
   /// Set the "Prefer Claude" user preference.
   void setPreferClaude(bool prefer) {
     _preferClaude = prefer;
@@ -135,13 +152,14 @@ class AgentRepository {
   }
 
   // =========================================================================
-  // Public API — delegates to active layer with fallback
+  // Public API — delegates to active layer with retry before fallback
   // =========================================================================
 
   /// Get the opening greeting.
   ///
   /// In journal-only mode: returns a minimal "Session started." message.
-  /// Otherwise: delegates to the active layer with fallback to rule-based.
+  /// Otherwise: delegates to the active layer. Retries transient failures
+  /// before falling back to rule-based.
   Future<AgentResponse> getGreeting({
     DateTime? lastSessionDate,
     DateTime? now,
@@ -154,28 +172,26 @@ class AgentRepository {
       );
     }
 
-    try {
-      return await _activeLayer.getGreeting(
+    return _withRetryAndFallback(
+      label: 'getGreeting',
+      action: () => _activeLayer.getGreeting(
         lastSessionDate: lastSessionDate,
         now: now,
         sessionCount: sessionCount,
-      );
-    } on Exception {
-      // Catches ClaudeApiException, LocalLlmException, and any layer
-      // failure — falls back to rule-based per ADR-0017 §4.
-      return _ruleBasedLayer.getGreeting(
+      ),
+      fallback: () => _ruleBasedLayer.getGreeting(
         lastSessionDate: lastSessionDate,
         now: now,
         sessionCount: sessionCount,
-      );
-    }
+      ),
+    );
   }
 
   /// Get a follow-up question based on the user's message.
   ///
   /// In journal-only mode: always returns null (no follow-ups).
   /// Checks shouldEndSession first (layer-independent).
-  /// Otherwise: delegates to active layer with fallback.
+  /// Otherwise: delegates to active layer with retry before fallback.
   Future<AgentResponse?> getFollowUp({
     required String latestUserMessage,
     required List<String> conversationHistory,
@@ -192,29 +208,27 @@ class AgentRepository {
       return null;
     }
 
-    try {
-      return await _activeLayer.getFollowUp(
+    return _withRetryAndFallback(
+      label: 'getFollowUp',
+      action: () => _activeLayer.getFollowUp(
         latestUserMessage: latestUserMessage,
         conversationHistory: conversationHistory,
         followUpCount: followUpCount,
         allMessages: allMessages,
-      );
-    } on Exception {
-      // Catches ClaudeApiException, LocalLlmException, and any layer
-      // failure — falls back to rule-based per ADR-0017 §4.
-      return _ruleBasedLayer.getFollowUp(
+      ),
+      fallback: () => _ruleBasedLayer.getFollowUp(
         latestUserMessage: latestUserMessage,
         conversationHistory: conversationHistory,
         followUpCount: followUpCount,
         allMessages: allMessages,
-      );
-    }
+      ),
+    );
   }
 
   /// Generate a session summary and extract metadata.
   ///
   /// In journal-only mode: forces Layer A summary only, no metadata.
-  /// Otherwise: delegates to active layer with fallback.
+  /// Otherwise: delegates to active layer with retry before fallback.
   Future<AgentResponse> generateSummary({
     required List<String> userMessages,
     List<Map<String, String>>? allMessages,
@@ -223,16 +237,15 @@ class AgentRepository {
       return _ruleBasedLayer.generateSummary(userMessages: userMessages);
     }
 
-    try {
-      return await _activeLayer.generateSummary(
+    return _withRetryAndFallback(
+      label: 'generateSummary',
+      action: () => _activeLayer.generateSummary(
         userMessages: userMessages,
         allMessages: allMessages,
-      );
-    } on Exception {
-      // Catches ClaudeApiException, LocalLlmException, and any layer
-      // failure — falls back to rule-based per ADR-0017 §4.
-      return _ruleBasedLayer.generateSummary(userMessages: userMessages);
-    }
+      ),
+      fallback: () =>
+          _ruleBasedLayer.generateSummary(userMessages: userMessages),
+    );
   }
 
   /// Get a greeting for a resumed session.
@@ -244,13 +257,68 @@ class AgentRepository {
       );
     }
 
-    try {
-      return await _activeLayer.getResumeGreeting();
-    } on Exception {
-      // Catches ClaudeApiException, LocalLlmException, and any layer
-      // failure — falls back to rule-based per ADR-0017 §4.
-      return _ruleBasedLayer.getResumeGreeting();
+    return _withRetryAndFallback(
+      label: 'getResumeGreeting',
+      action: () => _activeLayer.getResumeGreeting(),
+      fallback: () => _ruleBasedLayer.getResumeGreeting(),
+    );
+  }
+
+  // =========================================================================
+  // Retry logic
+  // =========================================================================
+
+  /// Execute [action] with retry for transient errors before falling back.
+  ///
+  /// Retries up to [_maxRetries] times on transient Claude API failures
+  /// (timeouts, network errors). Only falls back to [fallback] when all
+  /// retries are exhausted or the error is permanent (not configured).
+  Future<T> _withRetryAndFallback<T>({
+    required String label,
+    required Future<T> Function() action,
+    required Future<T> Function() fallback,
+  }) async {
+    Exception? lastError;
+
+    for (var attempt = 0; attempt <= _maxRetries; attempt++) {
+      try {
+        return await action();
+      } on ClaudeApiNotConfiguredException {
+        // Permanent error — no retry, fall back immediately.
+        return fallback();
+      } on ClaudeApiTimeoutException catch (e) {
+        lastError = e;
+        if (kDebugMode) {
+          debugPrint('AgentRepository.$label: timeout (attempt $attempt)');
+        }
+        // Retry on timeout.
+      } on ClaudeApiNetworkException catch (e) {
+        lastError = e;
+        if (kDebugMode) {
+          debugPrint(
+            'AgentRepository.$label: network error (attempt $attempt)',
+          );
+        }
+        // Retry on network errors.
+      } on Exception catch (e) {
+        lastError = e;
+        if (kDebugMode) {
+          debugPrint(
+            'AgentRepository.$label: '
+            '${_activeLayer.runtimeType} failed: $e',
+          );
+        }
+        // Other errors (server 5xx, parse): retry once.
+      }
     }
+
+    if (kDebugMode) {
+      debugPrint(
+        'AgentRepository.$label: all retries exhausted, '
+        'falling back to rule-based. Last error: $lastError',
+      );
+    }
+    return fallback();
   }
 
   // =========================================================================

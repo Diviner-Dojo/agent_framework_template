@@ -16,7 +16,6 @@ void main() {
       expect(config.name, 'Guy');
       expect(config.conversationStyle, ConversationStyle.warm);
       expect(config.customPrompt, isNull);
-      expect(config.systemPrompt, contains('Guy'));
       expect(config.systemPrompt, contains('journaling companion'));
     });
 

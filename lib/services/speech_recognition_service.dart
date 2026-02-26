@@ -147,6 +147,11 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
       ),
       decodingMethod: 'greedy_search',
       enableEndpoint: true,
+      // Explicit endpoint rules tuned for natural journaling speech cadence.
+      // These match library defaults but are pinned here so upstream changes
+      // don't silently alter our endpoint behavior.
+      rule1MinTrailingSilence: 2.4, // long pause → utterance end
+      rule2MinTrailingSilence: 1.2, // short pause → clause end
     );
 
     _recognizer = sherpa.OnlineRecognizer(config);
@@ -250,8 +255,18 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
     await _audioSubscription?.cancel();
     _audioSubscription = null;
 
-    // Get any remaining text before stopping.
+    // Flush trailing audio by padding with 0.5s of silence.
+    // Without this, the recognizer drops partially-decoded frames when
+    // the mic stream ends abruptly. The silence lets the decoder finish
+    // processing any buffered audio before we read the final result.
     if (_recognizer != null && _stream != null && _resultController != null) {
+      final tailPadding = Float32List(8000); // 0.5s silence at 16 kHz
+      _stream!.acceptWaveform(samples: tailPadding, sampleRate: 16000);
+      while (_recognizer!.isReady(_stream!)) {
+        _recognizer!.decode(_stream!);
+      }
+
+      // Get any remaining text after flushing.
       final text = _toSentenceCase(
         _recognizer!.getResult(_stream!).text.trim(),
       );

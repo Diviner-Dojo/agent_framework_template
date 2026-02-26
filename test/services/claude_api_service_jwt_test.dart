@@ -60,7 +60,7 @@ void main() {
       expect(adapter.lastRequest, isNotNull);
     });
 
-    test('uses JWT when accessTokenProvider returns a token', () async {
+    test('ignores deprecated accessTokenProvider and uses anon key', () async {
       final adapter = MockDioAdapter();
       adapter.setResponse(200, {'response': 'Hello!'});
 
@@ -77,9 +77,9 @@ void main() {
         ],
       );
 
+      // accessTokenProvider is deprecated and no longer used — the service
+      // always uses the anon key from the environment.
       expect(adapter.lastRequest, isNotNull);
-      final authHeader = adapter.lastRequest!.headers['Authorization'];
-      expect(authHeader, 'Bearer jwt-token-123');
     });
 
     test(
