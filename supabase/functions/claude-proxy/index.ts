@@ -119,6 +119,7 @@ interface RequestBody {
     days_since_last?: number;
     session_count?: number;
     session_summaries?: SessionSummary[];
+    journaling_mode?: string;
   };
   context_entries?: ContextEntry[];
   mode: "chat" | "metadata" | "recall";
@@ -167,6 +168,22 @@ function buildChatSystemPrompt(context?: RequestBody["context"]): string {
   }
 
   let prompt = CHAT_SYSTEM_PROMPT;
+
+  // E14 (ADR-0025): Append journaling mode prompt fragment if present.
+  // Validated against server-side allowlist to prevent arbitrary mode injection.
+  const VALID_JOURNALING_MODES: Record<string, string> = {
+    gratitude: `\n\nJOURNALING MODE: Gratitude Practice\nGuide the user through these steps. Move to the next step after they respond.\n\nStep 1: Ask the user to name one specific thing they are grateful for today.\nStep 2: Ask them to describe why this matters to them and how it makes them feel.\nStep 3: Ask them to think about one small way they could express or share this gratitude.\n\nKeep responses warm and encouraging. Acknowledge what they share before prompting the next step.`,
+    dream_analysis: `\n\nJOURNALING MODE: Dream Analysis\nGuide the user through these steps. Move to the next step after they respond.\n\nStep 1: Ask the user to describe their dream in as much detail as they remember.\nStep 2: Ask about the emotions they felt during the dream and upon waking.\nStep 3: Ask if any elements of the dream connect to something happening in their waking life.\nStep 4: Help them reflect on what the dream might be telling them about their current state of mind.\n\nBe curious and non-judgmental. Avoid definitive dream interpretations — help them explore their own meaning.`,
+    mood_check_in: `\n\nJOURNALING MODE: Mood Check-In\nGuide the user through these steps. Move to the next step after they respond.\n\nStep 1: Ask the user to describe their current mood in a few words or a sentence.\nStep 2: Ask what they think is contributing most to this mood right now.\nStep 3: Ask what one thing might shift their mood — either to maintain it if positive, or to improve it if difficult.\n\nBe empathetic and validating. Reflect back what they share before moving to the next step.`,
+  };
+
+  if (
+    context.journaling_mode &&
+    context.journaling_mode !== "free" &&
+    VALID_JOURNALING_MODES[context.journaling_mode]
+  ) {
+    prompt += VALID_JOURNALING_MODES[context.journaling_mode];
+  }
 
   if (contextLines.length > 0) {
     prompt += `\n\nContext:\n${contextLines.join("\n")}`;

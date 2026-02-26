@@ -39,6 +39,7 @@ class ClaudeApiLayer implements ConversationLayer {
     DateTime? now,
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
+    String? journalingMode,
   }) async {
     final currentTime = now ?? DateTime.now();
 
@@ -60,6 +61,7 @@ class ClaudeApiLayer implements ConversationLayer {
         'session_count': sessionCount,
         if (sessionSummaries != null && sessionSummaries.isNotEmpty)
           'session_summaries': sessionSummaries,
+        'journaling_mode': journalingMode,
       },
     );
 
@@ -73,6 +75,7 @@ class ClaudeApiLayer implements ConversationLayer {
     required int followUpCount,
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
+    String? journalingMode,
   }) async {
     if (allMessages == null || allMessages.isEmpty) return null;
 
@@ -81,6 +84,7 @@ class ClaudeApiLayer implements ConversationLayer {
       context: {
         if (sessionSummaries != null && sessionSummaries.isNotEmpty)
           'session_summaries': sessionSummaries,
+        'journaling_mode': journalingMode,
       },
     );
     return AgentResponse(content: response, layer: AgentLayer.llmRemote);

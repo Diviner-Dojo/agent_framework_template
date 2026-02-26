@@ -91,6 +91,31 @@ void main() {
       expect(response.metadata, isNotNull);
       expect(response.metadata!.summary, 'test');
     });
+
+    test('telemetry fields default to null', () {
+      const response = AgentResponse(
+        content: 'Hello!',
+        layer: AgentLayer.llmLocal,
+      );
+
+      expect(response.prefillTps, isNull);
+      expect(response.decodeTps, isNull);
+      expect(response.timeToFirstTokenMs, isNull);
+    });
+
+    test('creates with telemetry fields (E28)', () {
+      const response = AgentResponse(
+        content: 'Hello!',
+        layer: AgentLayer.llmLocal,
+        prefillTps: 125.5,
+        decodeTps: 42.3,
+        timeToFirstTokenMs: 350,
+      );
+
+      expect(response.prefillTps, 125.5);
+      expect(response.decodeTps, 42.3);
+      expect(response.timeToFirstTokenMs, 350);
+    });
   });
 
   group('AgentLayer', () {

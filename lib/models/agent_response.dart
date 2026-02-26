@@ -97,9 +97,28 @@ class AgentResponse {
   /// Optional structured metadata (only populated by Layer B on session end).
   final AgentMetadata? metadata;
 
+  // =========================================================================
+  // LLM telemetry fields (E28 — on-device performance observability)
+  // =========================================================================
+
+  /// Prefill tokens per second (prompt processing speed).
+  /// Populated by LocalLlmLayer when available; null for other layers.
+  final double? prefillTps;
+
+  /// Decode tokens per second (generation speed).
+  /// Populated by LocalLlmLayer when available; null for other layers.
+  final double? decodeTps;
+
+  /// Time to first token in milliseconds.
+  /// Populated by LocalLlmLayer when available; null for other layers.
+  final int? timeToFirstTokenMs;
+
   const AgentResponse({
     required this.content,
     required this.layer,
     this.metadata,
+    this.prefillTps,
+    this.decodeTps,
+    this.timeToFirstTokenMs,
   });
 }

@@ -15,6 +15,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:agentic_journal/services/audio_file_service.dart';
 import 'package:agentic_journal/services/speech_recognition_service.dart';
 
 /// Mock implementation of SpeechRecognitionService for testing.
@@ -41,7 +42,7 @@ class MockSpeechRecognitionService implements SpeechRecognitionService {
   }
 
   @override
-  Stream<SpeechResult> startListening() {
+  Stream<SpeechResult> startListening({AudioFileService? audioFileService}) {
     if (!_isInitialized) {
       throw StateError('Not initialized');
     }

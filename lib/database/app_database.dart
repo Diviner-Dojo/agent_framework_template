@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -152,6 +152,14 @@ class AppDatabase extends _$AppDatabase {
                 'ON videos (session_id)',
           ),
         );
+      }
+      if (from < 7) {
+        // E7: Raw audio preservation (ADR-0024).
+        await m.addColumn(journalSessions, journalSessions.audioFilePath);
+      }
+      if (from < 8) {
+        // E14: Journaling mode templates (ADR-0025).
+        await m.addColumn(journalSessions, journalSessions.journalingMode);
       }
     },
   );

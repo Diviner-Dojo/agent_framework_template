@@ -14,6 +14,7 @@
 // ===========================================================================
 
 import '../models/agent_response.dart';
+import '../models/journaling_mode.dart';
 import '../utils/keyword_extractor.dart';
 import 'conversation_layer.dart';
 
@@ -68,8 +69,21 @@ class RuleBasedLayer implements ConversationLayer {
     DateTime? now,
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
+    String? journalingMode,
   }) async {
     final currentTime = now ?? DateTime.now();
+    final mode = JournalingMode.fromDbString(journalingMode);
+
+    // Use mode-specific greeting for guided sessions.
+    if (mode != null && mode != JournalingMode.free) {
+      return AgentResponse(
+        content:
+            "Let's start a ${mode.displayName} session. "
+            "Tell me when you're ready.",
+        layer: AgentLayer.ruleBasedLocal,
+      );
+    }
+
     return AgentResponse(
       content: _getLocalGreeting(
         lastSessionDate: lastSessionDate,
@@ -86,6 +100,7 @@ class RuleBasedLayer implements ConversationLayer {
     required int followUpCount,
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
+    String? journalingMode,
   }) async {
     final localFollowUp = _getLocalFollowUp(
       latestUserMessage: latestUserMessage,
