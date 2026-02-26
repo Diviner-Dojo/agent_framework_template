@@ -5,9 +5,9 @@ import 'package:agentic_journal/database/daos/session_dao.dart';
 
 void main() {
   group('Schema v4 migration', () {
-    test('schemaVersion is 6', () async {
+    test('schemaVersion is 8', () async {
       final database = AppDatabase.forTesting(NativeDatabase.memory());
-      expect(database.schemaVersion, 6);
+      expect(database.schemaVersion, 8);
       await database.close();
     });
 

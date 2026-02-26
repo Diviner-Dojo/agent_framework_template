@@ -8,12 +8,20 @@
 /// Tracks whether a journal session has been synced to the cloud.
 ///
 /// The sync_status column in journal_sessions stores these as uppercase
-/// strings ('PENDING', 'SYNCED', 'FAILED'). This enum provides type-safe
-/// conversion between Dart code and the SQLite string values.
+/// strings ('PENDING', 'SYNCED', 'FAILED', 'FATAL'). This enum provides
+/// type-safe conversion between Dart code and the SQLite string values.
 enum SyncStatus {
   pending,
   synced,
-  failed;
+  failed,
+
+  /// Non-retryable sync failure (E16 — see ADR-0012).
+  ///
+  /// Set when the Postgres error indicates the data itself is the problem
+  /// (data exception, integrity constraint violation, RLS violation).
+  /// Sessions with FATAL status are excluded from retry to prevent
+  /// infinite retry loops.
+  fatal;
 
   /// Convert from the string stored in SQLite (e.g., 'PENDING').
   ///
@@ -25,6 +33,8 @@ enum SyncStatus {
         return SyncStatus.synced;
       case 'FAILED':
         return SyncStatus.failed;
+      case 'FATAL':
+        return SyncStatus.fatal;
       case 'PENDING':
       default:
         return SyncStatus.pending;

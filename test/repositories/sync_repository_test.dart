@@ -8,6 +8,7 @@ import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/database/daos/message_dao.dart';
 import 'package:agentic_journal/repositories/sync_repository.dart';
 import 'package:agentic_journal/services/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 /// A mock SupabaseService that reports as authenticated but has no real client.
 ///
@@ -37,17 +38,23 @@ class _TestSyncRepository extends SyncRepository {
   final List<String> uploadedSessionIds = [];
   final Set<String> failOnSessionIds;
 
+  /// When set, failed sessions throw this exception instead of a generic one.
+  /// Used for E16 fatal sync error classification tests.
+  final Exception Function(String sessionId)? exceptionFactory;
+
   _TestSyncRepository({
     required super.supabaseService,
     required super.sessionDao,
     required super.messageDao,
     this.failOnSessionIds = const {},
+    this.exceptionFactory,
   });
 
   @override
   Future<void> uploadSession(JournalSession session) async {
     if (failOnSessionIds.contains(session.sessionId)) {
-      throw Exception('Simulated upload failure for ${session.sessionId}');
+      throw exceptionFactory?.call(session.sessionId) ??
+          Exception('Simulated upload failure for ${session.sessionId}');
     }
     uploadedSessionIds.add(session.sessionId);
   }
@@ -562,6 +569,159 @@ void main() {
       final toSync = await calendarEventDao.getEventsToSync();
       expect(toSync, hasLength(1));
       expect(toSync.first.eventId, 'evt-1');
+    });
+  });
+
+  group('Fatal sync error classification (E16)', () {
+    late AppDatabase fatalDb;
+    late SessionDao fatalSessionDao;
+    late MessageDao fatalMessageDao;
+
+    setUp(() {
+      fatalDb = AppDatabase.forTesting(NativeDatabase.memory());
+      fatalSessionDao = SessionDao(fatalDb);
+      fatalMessageDao = MessageDao(fatalDb);
+    });
+
+    tearDown(() async {
+      await fatalDb.close();
+    });
+
+    test('PostgrestException class 22 (data exception) → FATAL', () async {
+      final repo = _TestSyncRepository(
+        supabaseService: _FakeAuthenticatedSupabaseService(),
+        sessionDao: fatalSessionDao,
+        messageDao: fatalMessageDao,
+        failOnSessionIds: {'session-1'},
+        exceptionFactory: (_) =>
+            PostgrestException(message: 'invalid input syntax', code: '22P02'),
+      );
+
+      await fatalSessionDao.createSession(
+        'session-1',
+        DateTime.utc(2026, 2, 26),
+        'UTC',
+      );
+
+      await repo.syncPendingSessions();
+
+      final session = await fatalSessionDao.getSessionById('session-1');
+      expect(session!.syncStatus, 'FATAL');
+    });
+
+    test(
+      'PostgrestException class 23 (integrity constraint) → FATAL',
+      () async {
+        final repo = _TestSyncRepository(
+          supabaseService: _FakeAuthenticatedSupabaseService(),
+          sessionDao: fatalSessionDao,
+          messageDao: fatalMessageDao,
+          failOnSessionIds: {'session-1'},
+          exceptionFactory: (_) => PostgrestException(
+            message: 'violates foreign key constraint',
+            code: '23503',
+          ),
+        );
+
+        await fatalSessionDao.createSession(
+          'session-1',
+          DateTime.utc(2026, 2, 26),
+          'UTC',
+        );
+
+        await repo.syncPendingSessions();
+
+        final session = await fatalSessionDao.getSessionById('session-1');
+        expect(session!.syncStatus, 'FATAL');
+      },
+    );
+
+    test('PostgrestException 42501 (RLS violation) → FATAL', () async {
+      final repo = _TestSyncRepository(
+        supabaseService: _FakeAuthenticatedSupabaseService(),
+        sessionDao: fatalSessionDao,
+        messageDao: fatalMessageDao,
+        failOnSessionIds: {'session-1'},
+        exceptionFactory: (_) => PostgrestException(
+          message: 'permission denied for table',
+          code: '42501',
+        ),
+      );
+
+      await fatalSessionDao.createSession(
+        'session-1',
+        DateTime.utc(2026, 2, 26),
+        'UTC',
+      );
+
+      await repo.syncPendingSessions();
+
+      final session = await fatalSessionDao.getSessionById('session-1');
+      expect(session!.syncStatus, 'FATAL');
+    });
+
+    test('non-Postgrest exception → FAILED (retryable)', () async {
+      final repo = _TestSyncRepository(
+        supabaseService: _FakeAuthenticatedSupabaseService(),
+        sessionDao: fatalSessionDao,
+        messageDao: fatalMessageDao,
+        failOnSessionIds: {'session-1'},
+      );
+
+      await fatalSessionDao.createSession(
+        'session-1',
+        DateTime.utc(2026, 2, 26),
+        'UTC',
+      );
+
+      await repo.syncPendingSessions();
+
+      final session = await fatalSessionDao.getSessionById('session-1');
+      expect(session!.syncStatus, 'FAILED');
+    });
+
+    test('FATAL sessions are excluded from getSessionsToSync', () async {
+      await fatalSessionDao.createSession(
+        'session-1',
+        DateTime.utc(2026, 2, 26),
+        'UTC',
+      );
+      await fatalSessionDao.updateSyncStatus(
+        'session-1',
+        'FATAL',
+        DateTime.utc(2026, 2, 26),
+      );
+      await fatalSessionDao.createSession(
+        'session-2',
+        DateTime.utc(2026, 2, 26, 1),
+        'UTC',
+      );
+
+      final toSync = await fatalSessionDao.getSessionsToSync();
+      expect(toSync, hasLength(1));
+      expect(toSync.first.sessionId, 'session-2');
+    });
+
+    test('syncSession classifies fatal errors for single session', () async {
+      final repo = _TestSyncRepository(
+        supabaseService: _FakeAuthenticatedSupabaseService(),
+        sessionDao: fatalSessionDao,
+        messageDao: fatalMessageDao,
+        failOnSessionIds: {'session-1'},
+        exceptionFactory: (_) =>
+            PostgrestException(message: 'data exception', code: '22003'),
+      );
+
+      await fatalSessionDao.createSession(
+        'session-1',
+        DateTime.utc(2026, 2, 26),
+        'UTC',
+      );
+
+      await repo.syncSession('session-1');
+
+      final session = await fatalSessionDao.getSessionById('session-1');
+      expect(session!.syncStatus, 'FATAL');
     });
   });
 

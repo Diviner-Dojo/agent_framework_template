@@ -68,6 +68,16 @@ class JournalSessions extends Table {
   // Incremented by SessionDao.resumeSession() each time.
   IntColumn get resumeCount => integer().withDefault(const Constant(0))();
 
+  // Path to the raw audio WAV file for this session (E7 — ADR-0024).
+  // Stored as an absolute path to the app documents directory.
+  // Null when no audio was recorded (e.g., text-only sessions).
+  TextColumn get audioFilePath => text().nullable()();
+
+  // Journaling mode for this session (E14 — ADR-0025).
+  // Values: 'free', 'gratitude', 'dream_analysis', 'mood_check_in'.
+  // Null means free mode (backward compatible with pre-E14 sessions).
+  TextColumn get journalingMode => text().nullable()();
+
   // Location data (Phase 10 — ADR-0019).
   // Coordinates are reduced to 2 decimal places (~1.1km) before storage
   // as a deliberate privacy tradeoff. Only locationName syncs to cloud;

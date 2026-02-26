@@ -22,6 +22,7 @@ import '../database/daos/calendar_event_dao.dart';
 import '../database/daos/message_dao.dart';
 import '../database/daos/photo_dao.dart';
 import '../database/daos/session_dao.dart';
+import '../models/sync_status.dart';
 import '../services/supabase_service.dart';
 
 /// Result of a sync operation.
@@ -89,15 +90,20 @@ class SyncRepository {
         );
         synced++;
       } on Exception catch (e) {
+        final status = _isFatalSyncError(e)
+            ? SyncStatus.fatal.toDbString()
+            : SyncStatus.failed.toDbString();
         await _sessionDao.updateSyncStatus(
           session.sessionId,
-          'FAILED',
+          status,
           DateTime.now().toUtc(),
         );
         failed++;
         errors.add('Session ${session.sessionId}: $e');
         if (kDebugMode) {
-          debugPrint('Sync failed for session ${session.sessionId}: $e');
+          debugPrint(
+            'Sync ${status.toLowerCase()} for session ${session.sessionId}: $e',
+          );
         }
       }
     }
@@ -123,15 +129,45 @@ class SyncRepository {
         DateTime.now().toUtc(),
       );
     } on Exception catch (e) {
+      final status = _isFatalSyncError(e)
+          ? SyncStatus.fatal.toDbString()
+          : SyncStatus.failed.toDbString();
       await _sessionDao.updateSyncStatus(
         sessionId,
-        'FAILED',
+        status,
         DateTime.now().toUtc(),
       );
       if (kDebugMode) {
-        debugPrint('Sync failed for session $sessionId: $e');
+        debugPrint('Sync ${status.toLowerCase()} for session $sessionId: $e');
       }
     }
+  }
+
+  // =========================================================================
+  // Fatal error classification (E16)
+  // =========================================================================
+
+  /// Classify whether a sync error is fatal (non-retryable).
+  ///
+  /// Fatal errors indicate the data itself is the problem — retrying will
+  /// produce the same error. These Postgres error code classes are fatal:
+  ///   - Class 22: Data exception (e.g., invalid input syntax)
+  ///   - Class 23: Integrity constraint violation (e.g., FK violation)
+  ///   - Code 42501: Insufficient privilege (RLS policy violation)
+  ///
+  /// All other errors (network, timeout, server 5xx) are retryable.
+  static bool _isFatalSyncError(Exception e) {
+    if (e is PostgrestException) {
+      final code = e.code;
+      if (code == null) return false;
+      // Class 22: Data exception
+      if (code.startsWith('22')) return true;
+      // Class 23: Integrity constraint violation
+      if (code.startsWith('23')) return true;
+      // 42501: Insufficient privilege (RLS violation)
+      if (code == '42501') return true;
+    }
+    return false;
   }
 
   // =========================================================================
@@ -224,6 +260,10 @@ class SyncRepository {
       'resume_count': session.resumeCount,
       // Location: name only — coordinates stay local (ADR-0019 §3).
       'location_name': session.locationName,
+      // Journaling mode for guided sessions (ADR-0025).
+      'journaling_mode': session.journalingMode,
+      // Note: audioFilePath is intentionally excluded — audio files are
+      // local-only and not synced to cloud (ADR-0024).
       'sync_status': 'SYNCED',
       'created_at': session.createdAt.toUtc().toIso8601String(),
       'updated_at': DateTime.now().toUtc().toIso8601String(),
@@ -284,11 +324,16 @@ class SyncRepository {
         await _calendarEventDao.updateSyncStatus(event.eventId, 'SYNCED');
         synced++;
       } on Exception catch (e) {
-        await _calendarEventDao.updateSyncStatus(event.eventId, 'FAILED');
+        final eventStatus = _isFatalSyncError(e)
+            ? SyncStatus.fatal.toDbString()
+            : SyncStatus.failed.toDbString();
+        await _calendarEventDao.updateSyncStatus(event.eventId, eventStatus);
         failed++;
         errors.add('Event ${event.eventId}: $e');
         if (kDebugMode) {
-          debugPrint('Event sync failed for ${event.eventId}: $e');
+          debugPrint(
+            'Event sync ${eventStatus.toLowerCase()} for ${event.eventId}: $e',
+          );
         }
       }
     }

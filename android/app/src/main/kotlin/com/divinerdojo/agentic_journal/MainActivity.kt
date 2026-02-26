@@ -72,6 +72,17 @@ class MainActivity : FlutterActivity() {
             // Track specifically voice-assist launches for Phase 7B continuous mode.
             launchedAsVoiceAssistant =
                 intent?.action == "android.intent.action.VOICE_ASSIST"
+
+            // E17: Show app on lock screen when launched via assistant gesture.
+            // API 27+ (Android 8.1+) — setShowWhenLocked/setTurnScreenOn.
+            // Reverted in onStop() so we don't persist on the lock screen
+            // after the user leaves the app.
+            // Note: Lock screen sessions should avoid rendering sensitive text
+            // (deferred to E12 unified UI).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(true)
+                setTurnScreenOn(true)
+            }
         }
     }
 
@@ -97,6 +108,17 @@ class MainActivity : FlutterActivity() {
         if (now - lastAssistTimestamp < 100) return false
         lastAssistTimestamp = now
         return true
+    }
+
+    // E17: Revert lock screen flags when the activity stops.
+    // This ensures we don't remain on the lock screen after the user
+    // navigates away or the session ends.
+    override fun onStop() {
+        super.onStop()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

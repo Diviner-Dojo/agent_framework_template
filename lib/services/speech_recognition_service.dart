@@ -25,6 +25,8 @@ import 'dart:typed_data';
 import 'package:record/record.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
+import 'audio_file_service.dart';
+
 /// A single speech recognition result (partial or final).
 ///
 /// [text] contains the recognized text so far.
@@ -76,8 +78,11 @@ abstract class SpeechRecognitionService {
   ///   - `isFinal: false` for partial (in-progress) results
   ///   - `isFinal: true` when endpoint detection identifies an utterance end
   ///
+  /// [audioFileService] — optional service for raw audio preservation (ADR-0024).
+  /// When provided, PCM16 bytes are teed to the WAV file before STT processing.
+  ///
   /// Call [stopListening] to end the audio capture.
-  Stream<SpeechResult> startListening();
+  Stream<SpeechResult> startListening({AudioFileService? audioFileService});
 
   /// Stop listening and clean up the audio stream.
   Future<void> stopListening();
@@ -111,6 +116,7 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
   AudioRecorder? _recorder;
   StreamController<SpeechResult>? _resultController;
   StreamSubscription<List<int>>? _audioSubscription;
+  AudioFileService? _audioFileService;
   bool _isListening = false;
   bool _isInitialized = false;
 
@@ -160,7 +166,7 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
   }
 
   @override
-  Stream<SpeechResult> startListening() {
+  Stream<SpeechResult> startListening({AudioFileService? audioFileService}) {
     if (!_isInitialized) {
       throw StateError(
         'SpeechRecognitionService not initialized. Call initialize() first.',
@@ -170,6 +176,7 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
       throw StateError('Already listening. Call stopListening() first.');
     }
 
+    _audioFileService = audioFileService;
     _resultController = StreamController<SpeechResult>.broadcast();
     _recorder = AudioRecorder();
     _isListening = true;
@@ -213,6 +220,11 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
     if (_recognizer == null || _stream == null || _resultController == null) {
       return;
     }
+
+    // E7 (ADR-0024): Tee raw PCM16 bytes to WAV file before STT processing.
+    // This preserves audio even if STT fails mid-session.
+    // Async write dispatches to OS I/O thread pool — does not block STT.
+    _audioFileService?.writeChunk(data);
 
     // Convert PCM16 bytes to Float32 samples.
     // PCM16 is little-endian 16-bit signed integers; normalize to [-1.0, 1.0].
@@ -275,6 +287,10 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
       }
       _recognizer!.reset(_stream!);
     }
+
+    // E7 (ADR-0024): Finalize WAV header before closing recorder.
+    await _audioFileService?.stopRecording();
+    _audioFileService = null;
 
     await _recorder?.stop();
     await _recorder?.dispose();

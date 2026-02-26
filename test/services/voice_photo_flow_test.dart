@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:agentic_journal/services/voice_session_orchestrator.dart';
+import 'package:agentic_journal/services/audio_file_service.dart';
 import 'package:agentic_journal/services/speech_recognition_service.dart';
 import 'package:agentic_journal/services/text_to_speech_service.dart';
 import 'package:agentic_journal/services/audio_focus_service.dart';
@@ -25,7 +26,7 @@ class FakeSttService implements SpeechRecognitionService {
   }
 
   @override
-  Stream<SpeechResult> startListening() {
+  Stream<SpeechResult> startListening({AudioFileService? audioFileService}) {
     _listening = true;
     _controller = StreamController<SpeechResult>();
     return _controller!.stream;

@@ -6,6 +6,7 @@
 //   - SYNCED  → green cloud-done icon
 //   - PENDING → gray cloud-upload icon
 //   - FAILED  → red cloud-off icon
+//   - FATAL   → dark red error icon (non-retryable)
 //
 // See: ADR-0012 (Optional Auth with Upload-Only Cloud Sync)
 // ===========================================================================
@@ -34,6 +35,11 @@ class SyncStatusIndicator extends StatelessWidget {
         'Pending sync',
       ),
       SyncStatus.failed => (Icons.cloud_off, Colors.red, 'Sync failed'),
+      SyncStatus.fatal => (
+        Icons.error_outline,
+        Colors.red.shade900,
+        'Sync error (non-retryable)',
+      ),
     };
 
     return Tooltip(

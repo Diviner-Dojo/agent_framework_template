@@ -15,10 +15,15 @@ void main() {
       expect(SyncStatus.fromString('FAILED'), SyncStatus.failed);
     });
 
+    test('converts FATAL to SyncStatus.fatal (E16)', () {
+      expect(SyncStatus.fromString('FATAL'), SyncStatus.fatal);
+    });
+
     test('is case insensitive', () {
       expect(SyncStatus.fromString('pending'), SyncStatus.pending);
       expect(SyncStatus.fromString('Synced'), SyncStatus.synced);
       expect(SyncStatus.fromString('failed'), SyncStatus.failed);
+      expect(SyncStatus.fromString('fatal'), SyncStatus.fatal);
     });
 
     test('defaults to pending for unknown values', () {

@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260226-214042-review-sprint-n2",
+  "status": "complete",
+  "started_at": "2026-02-26T21:40:48.603850+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "medium",
+  "collaboration_mode": "structured-dialogue",
+  "report_path": "docs/reviews/REV-20260226-215500.md"
+}

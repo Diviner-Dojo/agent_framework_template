@@ -20,6 +20,7 @@ import 'dart:async';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import 'audio_file_service.dart';
 import 'speech_recognition_service.dart';
 
 /// speech_to_text (Google on-device) implementation of [SpeechRecognitionService].
@@ -57,7 +58,7 @@ class SpeechToTextSttService implements SpeechRecognitionService {
   }
 
   @override
-  Stream<SpeechResult> startListening() {
+  Stream<SpeechResult> startListening({AudioFileService? audioFileService}) {
     if (!_isInitialized || _speech == null) {
       throw StateError(
         'SpeechToTextSttService not initialized. Call initialize() first.',

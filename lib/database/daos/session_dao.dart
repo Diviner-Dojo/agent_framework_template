@@ -336,6 +336,25 @@ class SessionDao {
   }
 
   // =========================================================================
+  // Audio file methods (E7 — ADR-0024)
+  // =========================================================================
+
+  /// Update a session's audio file path after recording starts.
+  ///
+  /// Called by the voice session orchestrator after AudioFileService creates
+  /// the WAV file. The path is an absolute path to the app documents directory.
+  Future<void> updateAudioFilePath(String sessionId, String? path) async {
+    await (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        audioFilePath: Value(path),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
+  // =========================================================================
   // Session history methods (ADR-0023)
   // =========================================================================
 
@@ -365,6 +384,8 @@ class SessionDao {
   ///
   /// Returns sessions where syncStatus is 'PENDING' or 'FAILED',
   /// ordered by start time ascending (oldest first — sync in chronological order).
+  /// Sessions with 'FATAL' status are excluded — they failed due to
+  /// non-retryable errors (E16) and would fail again on retry.
   Future<List<JournalSession>> getSessionsToSync() async {
     return (_db.select(_db.journalSessions)
           ..where(

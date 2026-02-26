@@ -15,6 +15,7 @@
 // ===========================================================================
 
 import '../models/agent_response.dart';
+import '../models/journaling_mode.dart';
 import '../services/local_llm_service.dart';
 import 'conversation_layer.dart' show ConversationLayer, getTimeOfDay;
 
@@ -46,6 +47,7 @@ class LocalLlmLayer implements ConversationLayer {
     DateTime? now,
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
+    String? journalingMode,
   }) async {
     final currentTime = now ?? DateTime.now();
     final timeOfDay = getTimeOfDay(currentTime);
@@ -62,6 +64,12 @@ class LocalLlmLayer implements ConversationLayer {
       contextHint += ' This is the user\'s first session ever.';
     }
 
+    // Compose mode-specific prompt with personality prompt (ADR-0025).
+    final effectivePrompt = _composePromptWithMode(
+      _systemPrompt,
+      journalingMode,
+    );
+
     final response = await _llmService.generate(
       messages: [
         {
@@ -70,7 +78,7 @@ class LocalLlmLayer implements ConversationLayer {
               'Start a new journal session. Greet me appropriately. $contextHint',
         },
       ],
-      systemPrompt: _systemPrompt,
+      systemPrompt: effectivePrompt,
     );
 
     return AgentResponse(content: response, layer: AgentLayer.llmLocal);
@@ -83,12 +91,19 @@ class LocalLlmLayer implements ConversationLayer {
     required int followUpCount,
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
+    String? journalingMode,
   }) async {
     if (allMessages == null || allMessages.isEmpty) return null;
 
+    // Compose mode-specific prompt with personality prompt (ADR-0025).
+    final effectivePrompt = _composePromptWithMode(
+      _systemPrompt,
+      journalingMode,
+    );
+
     final response = await _llmService.generate(
       messages: allMessages,
-      systemPrompt: _systemPrompt,
+      systemPrompt: effectivePrompt,
     );
 
     return AgentResponse(content: response, layer: AgentLayer.llmLocal);
@@ -138,5 +153,19 @@ class LocalLlmLayer implements ConversationLayer {
     );
 
     return AgentResponse(content: response, layer: AgentLayer.llmLocal);
+  }
+
+  // =========================================================================
+  // Private helpers
+  // =========================================================================
+
+  /// Compose the personality prompt with a mode-specific prompt fragment.
+  ///
+  /// Returns the base prompt unmodified for free mode or null mode.
+  /// For other modes, appends the mode's system prompt fragment.
+  static String _composePromptWithMode(String basePrompt, String? modeStr) {
+    final mode = JournalingMode.fromDbString(modeStr);
+    if (mode == null || mode == JournalingMode.free) return basePrompt;
+    return basePrompt + mode.systemPromptFragment;
   }
 }
