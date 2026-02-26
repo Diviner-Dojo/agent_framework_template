@@ -133,4 +133,33 @@ void main() {
       expect(result, isEmpty);
     });
   });
+
+  group('updateJournalingMode', () {
+    test('persists mode on correct session', () async {
+      await sessionDao.createSession('sess-1', DateTime.utc(2026, 1, 1), 'UTC');
+      await sessionDao.updateJournalingMode('sess-1', 'onboarding');
+
+      final session = await sessionDao.getSessionById('sess-1');
+      expect(session?.journalingMode, 'onboarding');
+    });
+
+    test('on unknown session is a no-op', () async {
+      // Should not throw — just affects 0 rows.
+      await expectLater(
+        sessionDao.updateJournalingMode('nonexistent', 'onboarding'),
+        completes,
+      );
+    });
+
+    test('does not affect other sessions', () async {
+      await sessionDao.createSession('sess-1', DateTime.utc(2026, 1, 1), 'UTC');
+      await sessionDao.createSession('sess-2', DateTime.utc(2026, 1, 2), 'UTC');
+      await sessionDao.updateJournalingMode('sess-1', 'onboarding');
+
+      final session1 = await sessionDao.getSessionById('sess-1');
+      final session2 = await sessionDao.getSessionById('sess-2');
+      expect(session1?.journalingMode, 'onboarding');
+      expect(session2?.journalingMode, isNull);
+    });
+  });
 }

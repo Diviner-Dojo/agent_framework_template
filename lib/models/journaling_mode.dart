@@ -26,7 +26,10 @@ enum JournalingMode {
   dreamAnalysis,
 
   /// Mood assessment with 3 numbered steps.
-  moodCheckIn;
+  moodCheckIn,
+
+  /// Conversational onboarding — first-launch experience as a real session.
+  onboarding;
 
   /// Human-readable name for UI display.
   String get displayName => switch (this) {
@@ -34,6 +37,7 @@ enum JournalingMode {
     gratitude => 'Gratitude',
     dreamAnalysis => 'Dream Analysis',
     moodCheckIn => 'Mood Check-In',
+    onboarding => 'Onboarding',
   };
 
   /// System prompt fragment appended to the personality prompt.
@@ -45,6 +49,7 @@ enum JournalingMode {
     gratitude => _gratitudePrompt,
     dreamAnalysis => _dreamAnalysisPrompt,
     moodCheckIn => _moodCheckInPrompt,
+    onboarding => _onboardingPrompt,
   };
 
   /// Convert to the string stored in SQLite/Supabase.
@@ -55,6 +60,7 @@ enum JournalingMode {
     gratitude => 'gratitude',
     dreamAnalysis => 'dream_analysis',
     moodCheckIn => 'mood_check_in',
+    onboarding => 'onboarding',
   };
 
   /// Parse from a database string value.
@@ -68,6 +74,7 @@ enum JournalingMode {
       'gratitude' => JournalingMode.gratitude,
       'dream_analysis' => JournalingMode.dreamAnalysis,
       'mood_check_in' => JournalingMode.moodCheckIn,
+      'onboarding' => JournalingMode.onboarding,
       _ => null,
     };
   }
@@ -110,3 +117,15 @@ Step 2: Ask what they think is contributing most to this mood right now.
 Step 3: Ask what one thing might shift their mood — either to maintain it if positive, or to improve it if difficult.
 
 Be empathetic and validating. Reflect back what they share before moving to the next step.''';
+
+const _onboardingPrompt = '''
+
+JOURNALING MODE: Onboarding
+This is the user's very first journal session. Guide them through a warm welcome conversation.
+
+Step 1: Welcome them and ask what brings them to journaling — what are they hoping to get out of it?
+Step 2: Acknowledge their answer warmly. Mention they can journal by voice or text, whichever feels natural.
+Step 3: Ask about their journaling preferences — when do they usually like to reflect? Morning, evening, or whenever the mood strikes?
+Step 4: Wrap up with encouragement. Let them know this first entry is already saved, and they can come back anytime.
+
+Keep it conversational and brief. This is their first impression — be welcoming, not overwhelming.''';

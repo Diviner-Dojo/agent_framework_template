@@ -74,6 +74,17 @@ class RuleBasedLayer implements ConversationLayer {
     final currentTime = now ?? DateTime.now();
     final mode = JournalingMode.fromDbString(journalingMode);
 
+    // Use onboarding-specific greeting for first-launch experience.
+    if (mode == JournalingMode.onboarding) {
+      return const AgentResponse(
+        content:
+            "Hi there! Welcome to Agentic Journal — I'm your journaling "
+            "companion. What brings you to journaling? I'd love to hear "
+            "what you're hoping to get out of it.",
+        layer: AgentLayer.ruleBasedLocal,
+      );
+    }
+
     // Use mode-specific greeting for guided sessions.
     if (mode != null && mode != JournalingMode.free) {
       return AgentResponse(

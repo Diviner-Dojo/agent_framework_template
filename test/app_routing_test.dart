@@ -92,10 +92,12 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
 
       await buildApp(tester, prefs: prefs);
-      await tester.pumpAndSettle();
+      // Use pump() instead of pumpAndSettle() — the onboarding screen has
+      // a CircularProgressIndicator whose animation never settles.
+      await tester.pump();
 
-      // Should show onboarding content (page 1).
-      expect(find.text('Welcome to Agentic Journal'), findsOneWidget);
+      // Should show the conversational onboarding loading screen.
+      expect(find.text('Setting up your journal...'), findsOneWidget);
     });
 
     testWidgets('shows session list when onboarding is complete', (
@@ -144,10 +146,11 @@ void main() {
         // Assistant gesture fires, but onboarding is not complete.
         mockService.wasLaunchedReturnValue = true;
         await buildApp(tester, prefs: prefs);
-        await tester.pumpAndSettle();
+        // Use pump() — the onboarding screen has a spinner that never settles.
+        await tester.pump();
 
         // Should show onboarding, NOT navigate to /session.
-        expect(find.text('Welcome to Agentic Journal'), findsOneWidget);
+        expect(find.text('Setting up your journal...'), findsOneWidget);
       },
     );
 
