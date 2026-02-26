@@ -282,6 +282,24 @@ class SessionDao {
     );
   }
 
+  /// Set the journaling mode on a session.
+  ///
+  /// Called immediately after [createSession] when the session is started
+  /// with a specific mode (e.g., 'onboarding', 'gratitude').
+  Future<void> updateJournalingMode(
+    String sessionId,
+    String journalingMode,
+  ) async {
+    await (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        journalingMode: Value(journalingMode),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
   /// Sets syncStatus to 'PENDING' so the session re-enters the sync queue
   /// and [locationName] eventually reaches Supabase (coordinates are excluded
   /// from sync per ADR-0019).

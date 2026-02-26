@@ -79,6 +79,25 @@ void main() {
       expect(response.content, isNotEmpty);
       expect(response.layer, AgentLayer.ruleBasedLocal);
     });
+
+    test('returns onboarding greeting for onboarding mode', () async {
+      final response = await layer.getGreeting(
+        journalingMode: 'onboarding',
+        now: DateTime(2026, 2, 26, 10, 0),
+      );
+      expect(response.content, contains('Welcome'));
+      expect(response.content, contains('journaling'));
+      expect(response.layer, AgentLayer.ruleBasedLocal);
+    });
+
+    test('onboarding greeting takes priority over time-of-day', () async {
+      final response = await layer.getGreeting(
+        journalingMode: 'onboarding',
+        now: DateTime(2026, 2, 26, 23, 0),
+      );
+      // Should NOT return "Still up?" — onboarding greeting takes priority.
+      expect(response.content, contains('Welcome'));
+    });
   });
 
   group('RuleBasedLayer getFollowUp', () {

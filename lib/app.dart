@@ -14,7 +14,7 @@
 //   '/search'         → SearchScreen (keyword search + filter UI)
 //   '/settings'       → SettingsScreen (assistant status, app info)
 //   '/auth'           → AuthScreen (optional sign in/up for cloud sync)
-//   '/onboarding'     → OnboardingScreen (first-launch guide)
+//   '/onboarding'     → ConversationalOnboardingScreen (first-launch session)
 //
 // Intent Routing (Phase 2):
 //   When the app is launched via Android's assistant gesture (long-press Home),
@@ -37,7 +37,7 @@ import 'providers/session_providers.dart';
 import 'providers/settings_providers.dart';
 import 'providers/voice_providers.dart';
 import 'ui/screens/journal_session_screen.dart';
-import 'ui/screens/onboarding_screen.dart';
+import 'ui/screens/conversational_onboarding_screen.dart';
 import 'ui/screens/session_detail_screen.dart';
 import 'ui/screens/auth_screen.dart';
 import 'ui/screens/photo_gallery_screen.dart';
@@ -194,7 +194,7 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
         '/gallery': (context) => const PhotoGalleryScreen(),
         '/settings': (context) => const SettingsScreen(),
         '/auth': (context) => const AuthScreen(),
-        '/onboarding': (context) => const OnboardingScreen(),
+        '/onboarding': (context) => const ConversationalOnboardingScreen(),
       },
 
       // onGenerateRoute handles routes that need arguments (like session ID).

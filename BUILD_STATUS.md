@@ -1,23 +1,25 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-26 ~17:30 UTC
+> Last updated: 2026-02-26 ~23:10 UTC
 
 ## Current Task
 
-**Status:** Multi-project analysis complete. 7 external projects analyzed, consolidated enhancement plan produced.
+**Status:** E13 Conversational Onboarding built and reviewed. Ready to commit.
 **Branch:** `main`
 
 ### In Progress
-- **STT reliability** — Fixed `error_speech_timeout` auto-restart + audio focus fight between just_audio and speech_to_text. Rebuilt and deployed.
+- **Device testing** — P0 STT changes (silence padding, endpoint tuning) need on-device verification
 - **Model switching** — User reports rule-based fallback triggers too often. Need to prevent silent fallback to Layer A.
 - **Assistant gesture** — Long-press home not opening new chat. User needs to set app as default assistant in Android Settings.
 
 ### Recently Completed
-- **Multi-project analysis (7 projects)** — FlutterVoiceFriend, LiveKit, Sherpa ONNX, Cactus, PowerSync, Dicio, Porcupine. All discussions sealed, analysis reports written, adoption log updated.
+- **E13 Conversational Onboarding** — Replaces static wizard with conversational first session. Build: DISC-20260226-224410. Review: REV-20260226-230621 (approve-with-changes, 0 blocking, 13 advisory). ADR-0026.
+- **Sprint N+2 (E7, E14, E16, E17, E28)** — Merged via PR #39.
+- **Sprint N+1 (E6, E8, E9, E10, E11)** — Merged via PR #38.
+- **P0 Quick Wins (E1-E5)** — Merged via PR #37. Silence padding, endpoint tuning, manifest fix, intent dedup, test fixes. Build: DISC-20260226-185523. Review: REV-20260226-191743 (approve-with-changes, 0 blocking, 8 advisory).
+- **Multi-project analysis (7 projects)** — FlutterVoiceFriend, LiveKit, Sherpa ONNX, Cactus, PowerSync, Dicio, Porcupine.
 - **Consolidated enhancement plan** — `docs/consolidated-enhancement-plan.md` with 28 enhancements across 7 domains, prioritized P0-P4.
-- **Research synthesis** — 8 cross-project patterns scored and captured in discussion DISC-20260226-162806-research-synthesis-voice-journal-uplift.
-- **Adoption log update** — ~30 new pattern entries in `memory/lessons/adoption-log.md`. Total analyses: 15, patterns evaluated: 103.
 - **ADR-0022: Voice Engine Swap** — ElevenLabs TTS (via Supabase proxy) + speech_to_text STT.
 
 ## Multi-Project Analysis Summary (2026-02-26)
@@ -30,12 +32,12 @@
 | Analysis reports (7) | `docs/reviews/ANALYSIS-20260226-*` |
 | Discussions (8, all sealed) | `discussions/2026-02-26/DISC-*` |
 
-### P0 Quick Wins (Zero-Risk Fixes)
-1. **Silence padding** in stopListening() — 4-line fix, prevents dropped trailing audio
-2. **Endpoint rule tuning** — rule1: 2.4s, rule2: 1.2s for journaling cadence
-3. **ARM build flag fix** — `-march=armv8.2-a+dotprod+fp16` resolves SIGILL on Snapdragon 888
-4. **Manifest fix** — remove `foregroundServiceType` from `<activity>` element
-5. **Intent deduplication** — 100ms backoff for duplicate ACTION_ASSIST
+### P0 Quick Wins — SHIPPED (PR #37, commit 85735d8)
+1. ~~**Silence padding** in stopListening()~~ — DONE
+2. ~~**Endpoint rule tuning** — rule1: 2.4s, rule2: 1.2s~~ — DONE
+3. **ARM build flag fix** — `-march=armv8.2-a+dotprod+fp16` resolves SIGILL on Snapdragon 888 — DEFERRED (requires llamadart fork)
+4. ~~**Manifest fix** — remove `foregroundServiceType` from `<activity>`~~ — DONE
+5. ~~**Intent deduplication** — 100ms backoff for duplicate ACTION_ASSIST~~ — DONE
 
 ### Key Findings
 - **SIGILL root cause confirmed**: llamadart uses armv8.7-a, Snapdragon 888 only supports armv8.2-a
@@ -81,7 +83,7 @@
 | Supabase auth | Working | New account (evansarak@yahoo.com), new publishable key (sb_publishable_...) |
 | Claude AI | Needs test | Edge Function deployed + verified via curl, untested in-app |
 | Video capture | Needs test | ffmpeg fork compiles, untested on device |
-| Voice/STT | Needs test | Model download on first use |
+| Voice/STT | Needs test | Silence padding + endpoint tuning shipped, needs on-device verify |
 | Local LLM | Disabled | SIGILL on Snapdragon 888 (fix path identified: ARM build flag) |
 
 ## Tech Debt
@@ -95,6 +97,7 @@
 
 ## Key Decisions (Recent)
 
+- ADR-0026: Conversational Onboarding via Real Journal Session
 - ADR-0021: Video Capture Architecture
 - ADR-0020: Google Calendar Integration
 - FFmpegKit retired → `ffmpeg_kit_min_gpl` fork (drop-in)
@@ -104,11 +107,11 @@
 
 ## Resume Instructions
 
-1. **Implement P0 quick wins** — 5 zero-risk fixes from consolidated enhancement plan (silence padding, endpoint tuning, ARM flag, manifest fix, intent dedup)
-2. **Rebuild and deploy** — `google-services.json` is updated but not yet deployed to device
+1. **Rebuild and deploy** — P0 changes + `google-services.json` update need deployment to device
+2. **Verify P0 on device** — Test STT silence padding (say a word and stop immediately — should capture it)
 3. **Test remaining features** — Claude AI, video, voice (see testing table above)
-4. **Commit google-services.json update** — After confirming Google Sign-In works
-5. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1)
+4. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1)
+5. **Address review advisories** — JWT test assertions, Kotlin test coverage, bounded flush loop (REV-20260226-191743)
 6. **Education gates + coverage recovery** — After device features verified
 
 ---

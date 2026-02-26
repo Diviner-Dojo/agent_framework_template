@@ -59,6 +59,7 @@ import 'calendar_providers.dart';
 import 'database_provider.dart';
 import 'llm_providers.dart';
 import 'location_providers.dart';
+import 'onboarding_providers.dart';
 import 'photo_providers.dart';
 import 'search_providers.dart';
 import 'sync_providers.dart';
@@ -188,6 +189,12 @@ class SessionState {
   /// and passed to the agent on greeting and follow-up calls.
   final List<Map<String, String>> sessionSummaries;
 
+  /// The journaling mode for the active session (e.g., 'onboarding').
+  ///
+  /// Tracked in state so endSession() can check without a DB read-back.
+  /// Immutable once the session starts (ADR-0025).
+  final String? journalingMode;
+
   const SessionState({
     this.activeSessionId,
     this.followUpCount = 0,
@@ -204,6 +211,7 @@ class SessionState {
     this.isExtracting = false,
     this.extractionError,
     this.sessionSummaries = const [],
+    this.journalingMode,
   });
 
   /// Create a copy with updated fields.
@@ -227,6 +235,7 @@ class SessionState {
     bool? isExtracting,
     Object? extractionError = _sentinel,
     List<Map<String, String>>? sessionSummaries,
+    Object? journalingMode = _sentinel,
   }) {
     return SessionState(
       activeSessionId: identical(activeSessionId, _sentinel)
@@ -256,6 +265,9 @@ class SessionState {
           ? this.extractionError
           : extractionError as String?,
       sessionSummaries: sessionSummaries ?? this.sessionSummaries,
+      journalingMode: identical(journalingMode, _sentinel)
+          ? this.journalingMode
+          : journalingMode as String?,
     );
   }
 }
@@ -313,8 +325,11 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// sets isWaitingForAgent=true immediately so the UI can show a loading
   /// indicator during the greeting fetch.
   ///
+  /// [journalingMode] — optional mode string (e.g., 'onboarding', 'gratitude')
+  /// to set on the session and pass to the agent for mode-specific greeting.
+  ///
   /// Returns the session ID so the UI can navigate to the session screen.
-  Future<String> startSession() async {
+  Future<String> startSession({String? journalingMode}) async {
     // Guard: if a session is already active, return its ID instead of
     // creating a duplicate. Prevents orphaned sessions from rapid
     // assistant gestures or concurrent calls.
@@ -332,6 +347,11 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Create the session record in the database.
     // Using 'UTC' as timezone for Phase 1 — Phase 2 adds flutter_timezone.
     await _sessionDao.createSession(sessionId, now, 'UTC');
+
+    // Set journaling mode if provided (e.g., 'onboarding', 'gratitude').
+    if (journalingMode != null) {
+      await _sessionDao.updateJournalingMode(sessionId, journalingMode);
+    }
 
     // Fire-and-forget location capture (Phase 10 — ADR-0019).
     // Must occur AFTER createSession so the session row exists for
@@ -365,6 +385,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
       activeSessionId: sessionId,
       isWaitingForAgent: true,
       sessionSummaries: summaries,
+      journalingMode: journalingMode,
     );
     _ref.read(activeSessionIdProvider.notifier).state = sessionId;
 
@@ -374,6 +395,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
       now: now.toLocal(), // Agent uses local time for time-of-day greeting.
       sessionCount: sessions.length,
       sessionSummaries: summaries,
+      journalingMode: journalingMode,
     );
 
     // Save the greeting as the first ASSISTANT message.
@@ -532,6 +554,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
     if (userMessageCount == 0) {
       await _sessionDao.endSession(sessionId, nowUtc());
       _agent.unlockLayer();
+      // Mark onboarding complete even for empty sessions — the user chose
+      // to exit, so they shouldn't be shown onboarding again (QA finding).
+      await _completeOnboardingIfNeeded();
       _ref.read(wasAutoDiscardedProvider.notifier).state = true;
       state = const SessionState();
       _ref.read(activeSessionIdProvider.notifier).state = null;
@@ -596,6 +621,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Unlock the conversation layer now that the session is ending.
     _agent.unlockLayer();
 
+    // If this was an onboarding session, mark onboarding complete (ADR-0026).
+    await _completeOnboardingIfNeeded();
+
     // Signal that the closing summary is ready for the user to read.
     // Keep activeSessionId set so the message stream stays live.
     // The UI shows a "Done" button; dismissSession() clears state when tapped.
@@ -604,6 +632,17 @@ class SessionNotifier extends StateNotifier<SessionState> {
     // Phase 4: Trigger non-blocking sync after session ends.
     // This runs in the background — sync failure doesn't affect the session flow.
     _triggerSyncAfterEnd(sessionId);
+  }
+
+  /// Mark onboarding complete if the active session is an onboarding session.
+  ///
+  /// Uses in-memory state (not a DB read-back) to avoid a silent-null failure
+  /// path if the DB write didn't commit. Called from both the normal and
+  /// empty-session paths of endSession().
+  Future<void> _completeOnboardingIfNeeded() async {
+    if (state.journalingMode == 'onboarding') {
+      await _ref.read(onboardingNotifierProvider.notifier).completeOnboarding();
+    }
   }
 
   /// Trigger background sync for a completed session.

@@ -3,8 +3,8 @@ import 'package:agentic_journal/models/journaling_mode.dart';
 
 void main() {
   group('JournalingMode', () {
-    test('has four values', () {
-      expect(JournalingMode.values, hasLength(4));
+    test('has five values', () {
+      expect(JournalingMode.values, hasLength(5));
     });
 
     test('displayName returns human-readable names', () {
@@ -12,6 +12,7 @@ void main() {
       expect(JournalingMode.gratitude.displayName, 'Gratitude');
       expect(JournalingMode.dreamAnalysis.displayName, 'Dream Analysis');
       expect(JournalingMode.moodCheckIn.displayName, 'Mood Check-In');
+      expect(JournalingMode.onboarding.displayName, 'Onboarding');
     });
 
     test('systemPromptFragment is empty for free mode', () {
@@ -22,6 +23,7 @@ void main() {
       expect(JournalingMode.gratitude.systemPromptFragment, isNotEmpty);
       expect(JournalingMode.dreamAnalysis.systemPromptFragment, isNotEmpty);
       expect(JournalingMode.moodCheckIn.systemPromptFragment, isNotEmpty);
+      expect(JournalingMode.onboarding.systemPromptFragment, isNotEmpty);
     });
 
     test('gratitude prompt contains numbered steps', () {
@@ -45,6 +47,13 @@ void main() {
       expect(prompt, contains('Step 3'));
       expect(prompt, contains('Mood Check-In'));
     });
+
+    test('onboarding prompt contains four steps', () {
+      final prompt = JournalingMode.onboarding.systemPromptFragment;
+      expect(prompt, contains('Step 1'));
+      expect(prompt, contains('Step 4'));
+      expect(prompt, contains('Onboarding'));
+    });
   });
 
   group('JournalingMode.toDbString', () {
@@ -53,6 +62,7 @@ void main() {
       expect(JournalingMode.gratitude.toDbString(), 'gratitude');
       expect(JournalingMode.dreamAnalysis.toDbString(), 'dream_analysis');
       expect(JournalingMode.moodCheckIn.toDbString(), 'mood_check_in');
+      expect(JournalingMode.onboarding.toDbString(), 'onboarding');
     });
   });
 
@@ -70,6 +80,10 @@ void main() {
       expect(
         JournalingMode.fromDbString('mood_check_in'),
         JournalingMode.moodCheckIn,
+      );
+      expect(
+        JournalingMode.fromDbString('onboarding'),
+        JournalingMode.onboarding,
       );
     });
 
