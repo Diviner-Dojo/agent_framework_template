@@ -1,11 +1,11 @@
 ---
-last_updated: "2026-02-19"
-total_analyses: 7
-patterns_evaluated: 59
-patterns_adopted: 20
+last_updated: "2026-02-26"
+total_analyses: 15
+patterns_evaluated: 103
+patterns_adopted: 35
 patterns_confirmed: 5
-patterns_deferred: 16
-patterns_rejected: 18
+patterns_deferred: 27
+patterns_rejected: 22
 ---
 
 # Adoption Log (Learning Ledger)
@@ -40,6 +40,289 @@ Each entry records:
 
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
+
+### Pattern: Silence Padding on STT Stop
+- **First seen**: k2-fsa/sherpa-onnx (2026-02-26)
+- **Analysis**: DISC-20260226-162548-analyze-sherpa-onnx
+- **Score**: 24/25 (prevalence:5, elegance:5, evidence:5, fit:5, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/services/speech_recognition_service.dart` (stopListening method)
+- **Decision**: Append Float32List(8000) (0.5s silence at 16kHz) before stopping recognizer to flush trailing audio. All 3 specialists converged. Pattern confirmed in dart-api-examples but missing from Flutter examples and our code.
+- **Date**: 2026-02-26
+
+### Pattern: Endpoint Rule Tuning for Journaling
+- **First seen**: k2-fsa/sherpa-onnx (2026-02-26)
+- **Analysis**: DISC-20260226-162548-analyze-sherpa-onnx
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:4, fit:5, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/services/speech_recognition_service.dart`
+- **Decision**: Set rule1MinTrailingSilence: 2.4, rule2MinTrailingSilence: 1.2 for natural journaling speech cadence. Zero-cost config change. Architecture + performance specialists both flagged.
+- **Date**: 2026-02-26
+
+### Pattern: ARM Build Flag Fix (armv8.2-a)
+- **First seen**: cactus-compute/cactus (2026-02-26)
+- **Analysis**: DISC-20260226-162549-analyze-cactus
+- **Score**: 22/25 (prevalence:5, elegance:4, evidence:5, fit:5, maintenance:3)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: llamadart build config (external fork)
+- **Decision**: Change -march=armv8.7-a to -march=armv8.2-a+dotprod+fp16. Cactus android/CMakeLists.txt line 186 provides evidence. All 3 specialists converged: the SIGILL fix is a build flag, not a library swap.
+- **Date**: 2026-02-26
+
+### Pattern: Session History Injection (Cross-Session Memory)
+- **First seen**: jbpassot/flutter_voice_friend (2026-02-26)
+- **Also seen in**: kelivo (session_summaries), moodiary (mood_trends)
+- **Analysis**: DISC-20260226-162547-analyze-flutter-voice-friend
+- **Score**: 22/25 (prevalence:4, elegance:4, evidence:5, fit:5, maintenance:4) + **Rule of Three bonus: +2**
+- **Sightings**: 3
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/repositories/agent_repository.dart`, `lib/database/daos/session_dao.dart`
+- **Decision**: Query last 3-5 session summaries, inject into Claude system prompt. Rule of Three triggered (FlutterVoiceFriend + kelivo + moodiary). JournalSessions.summary column already exists.
+- **Date**: 2026-02-26
+
+### Pattern: ReusableCompleter (Safe Async Lifecycle)
+- **First seen**: livekit/client-sdk-flutter (2026-02-26)
+- **Analysis**: DISC-20260226-162547-analyze-livekit-components-flutter
+- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/utils/reusable_completer.dart` (new), `lib/services/voice_session_orchestrator.dart`
+- **Decision**: Drop-in fix for double-completion bugs in capturePhotoDescription() and confirmCalendarEvent(). All 3 LiveKit specialists converged. No framework dependency.
+- **Date**: 2026-02-26
+
+### Pattern: Typed Voice Session Error Taxonomy
+- **First seen**: livekit/client-sdk-flutter (2026-02-26)
+- **Analysis**: DISC-20260226-162547-analyze-livekit-components-flutter
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/services/voice_session_orchestrator.dart`
+- **Decision**: Replace errorMessage: String? with VoiceSessionError carrying VoiceSessionErrorKind enum. Makes error handling testable without string matching. Architecture + security specialists converged.
+- **Date**: 2026-02-26
+
+### Pattern: Stop-With-Delay on Push-to-Talk (800ms)
+- **First seen**: jbpassot/flutter_voice_friend (2026-02-26)
+- **Analysis**: DISC-20260226-162547-analyze-flutter-voice-friend
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/ui/journal_session_screen.dart`
+- **Decision**: 800ms delay before STT stop on button release. Prevents discarding trailing words. QA + UX specialists converged.
+- **Date**: 2026-02-26
+
+### Pattern: [PAUSE] Tag for Conversational Pacing
+- **First seen**: jbpassot/flutter_voice_friend (2026-02-26)
+- **Analysis**: DISC-20260226-162547-analyze-flutter-voice-friend
+- **Score**: 20/25 (prevalence:3, elegance:5, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/services/voice_session_orchestrator.dart` (_speakInSentences)
+- **Decision**: Insert 2s silence on [PAUSE] marker from Claude. Architecture + UX specialists converged. Low cost, high journaling UX impact.
+- **Date**: 2026-02-26
+
+### Pattern: Raw Audio Preservation Before STT
+- **First seen**: Research synthesis (2026-02-26)
+- **Source**: research-20260226 (Rosebud failure analysis)
+- **Score**: 24/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/services/voice_recording_service.dart`, `lib/database/tables.dart`
+- **Decision**: Save raw audio file BEFORE attempting transcription. Universal data preservation principle. Rosebud user reviews report voice entries not saving.
+- **Date**: 2026-02-26
+
+### Pattern: PowerSync + Drift Bridge (SqliteAsyncDriftConnection)
+- **First seen**: powersync-ja/powersync.dart (2026-02-26)
+- **Analysis**: DISC-20260226-162550-analyze-powersync-dart
+- **Score**: 21/25 (prevalence:4, elegance:4, evidence:5, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/database/app_database.dart`, `lib/services/powersync_connector.dart` (new)
+- **Decision**: PowerSync wraps Drift's SQLite connection. Three blocking conditions: background sync strategy ADR, forTesting() redesign, CalendarEvents as Table.localOnly(). All 3 specialists converged on adoption with caveats.
+- **Date**: 2026-02-26
+
+### Pattern: SupabaseConnector fatalResponseCodes
+- **First seen**: powersync-ja/powersync.dart (2026-02-26)
+- **Analysis**: DISC-20260226-162550-analyze-powersync-dart
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:5, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/services/powersync_connector.dart` (new)
+- **Decision**: Classify Postgres error codes (class 22, 23, 42501) as fatal — discard rather than retry. All 3 specialists converged. Prevents infinite retry loops on RLS violations.
+- **Date**: 2026-02-26
+
+### Pattern: Manifest Fix (foregroundServiceType on activity)
+- **First seen**: Stypox/dicio-android (2026-02-26)
+- **Analysis**: DISC-20260226-162550-analyze-dicio-android
+- **Score**: N/A (bug fix, not pattern adoption)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `android/app/src/main/AndroidManifest.xml`
+- **Decision**: Remove android:foregroundServiceType="microphone" from <activity> element. Only valid on <service>. Architecture + security specialists flagged.
+- **Date**: 2026-02-26
+
+### Pattern: Intent Deduplication Backoff (100ms)
+- **First seen**: Stypox/dicio-android (2026-02-26)
+- **Analysis**: DISC-20260226-162550-analyze-dicio-android
+- **Score**: N/A (bug fix for undocumented Android behavior)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `android/app/src/main/kotlin/.../MainActivity.kt`
+- **Decision**: 100ms timestamp-based backoff for ACTION_ASSIST. Documents real Android bug: "During testing Android would send the assist intent twice."
+- **Date**: 2026-02-26
+
+### Pattern: WakeWordService with PorcupineManager
+- **First seen**: Picovoice/porcupine (2026-02-26)
+- **Analysis**: DISC-20260226-162551-analyze-porcupine
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/services/wake_word_service.dart` (new)
+- **Decision**: WakeWordService wraps PorcupineManager, sits between UI and VoiceSessionOrchestrator. All 3 specialists converged on approach. Custom "Hey Journal" keyword has 90-day trial limit. ADR required for licensing decision.
+- **Date**: 2026-02-26
+
+### Pattern: Unified Voice-Plus-Text UI
+- **First seen**: Research synthesis (2026-02-26)
+- **Source**: research-20260226 (ChatGPT Nov 2025, Gemini Live, Pi)
+- **Score**: 22/25 (prevalence:5, elegance:4, evidence:5, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: High effort (L). Requires rethinking current separate recording overlay. Recommended for P2 sprint.
+- **Date**: 2026-02-26
+
+### Pattern: Conversational Onboarding
+- **First seen**: Research synthesis (2026-02-26)
+- **Source**: research-20260226 (Pi, Rosebud)
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:5)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Medium effort. Requires voice TTS for AI greeting and deferred permission flow. Recommended for P2 sprint.
+- **Date**: 2026-02-26
+
+### Pattern: Journaling Mode Templates (Activity-Scoped)
+- **First seen**: jbpassot/flutter_voice_friend (2026-02-26)
+- **Analysis**: DISC-20260226-162547-analyze-flutter-voice-friend
+- **Score**: 22/25 (prevalence:4, elegance:4, evidence:5, fit:4, maintenance:5)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Medium effort, ADR required. Depends on journaling mode enum + config design. Architecture + UX specialists both recommend.
+- **Date**: 2026-02-26
+
+### Pattern: Three-Tier STT Architecture
+- **First seen**: Research synthesis (2026-02-26)
+- **Source**: research-20260226 (synthesized from multiple projects)
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Large effort. Extends existing dual-engine to optimal design. Each tier independently well-proven.
+- **Date**: 2026-02-26
+
+### Pattern: Lock Screen Management (Scoped)
+- **First seen**: Stypox/dicio-android (2026-02-26)
+- **Analysis**: DISC-20260226-162550-analyze-dicio-android
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Low effort but needs security constraint (audio-only on lock screen). All 3 specialists converged with conditions.
+- **Date**: 2026-02-26
+
+### Pattern: VAD + Offline Recognizer Composition
+- **First seen**: k2-fsa/sherpa-onnx (2026-02-26)
+- **Analysis**: DISC-20260226-162548-analyze-sherpa-onnx
+- **Score**: 18/25 (prevalence:4, elegance:4, evidence:4, fit:3, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Architecture + performance split on urgency. Pending product decision on partial-vs-final result UX.
+- **Date**: 2026-02-26
+
+### Pattern: DisposableChangeNotifier (Async Dispose Guard)
+- **First seen**: livekit/client-sdk-flutter (2026-02-26)
+- **Analysis**: DISC-20260226-162547-analyze-livekit-components-flutter
+- **Score**: 19/25 (prevalence:3, elegance:5, evidence:4, fit:4, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Our VoiceSessionOrchestrator uses ValueNotifier, not ChangeNotifier. Extracting just the dispose-guard concept is lower cost.
+- **Date**: 2026-02-26
+
+### Pattern: AudioTrackState Machine (Four-State Audio Config)
+- **First seen**: livekit/client-sdk-flutter (2026-02-26)
+- **Analysis**: DISC-20260226-162547-analyze-livekit-components-flutter
+- **Score**: 19/25 (prevalence:3, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Performance vs architecture split. Validate against logcat dumps first — may explain iOS STT failures.
+- **Date**: 2026-02-26
+
+### Pattern: Concurrent Local+Cloud Inference (Entropy-Gated)
+- **First seen**: cactus-compute/cactus (2026-02-26)
+- **Analysis**: DISC-20260226-162549-analyze-cactus
+- **Score**: 18/25 (prevalence:3, elegance:4, evidence:4, fit:3, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Concept is sound but depends on stable on-device LLM. Implement in Dart/Riverpod, NOT via cactus.
+- **Date**: 2026-02-26
+
+### Pattern: CompletionResult Telemetry Fields
+- **First seen**: cactus-compute/cactus (2026-02-26)
+- **Analysis**: DISC-20260226-162549-analyze-cactus
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `lib/models/agent_response.dart`
+- **Decision**: Add prefillTps, decodeTps, timeToFirstToken, confidence to on-device LLM response type. Pure API design improvement. Applicable regardless of backend.
+- **Date**: 2026-02-26
+
+### Pattern: Cactus Full Library Adoption
+- **First seen**: cactus-compute/cactus (2026-02-26)
+- **Analysis**: DISC-20260226-162549-analyze-cactus
+- **Score**: 8/25 (prevalence:3, elegance:2, evidence:2, fit:0, maintenance:1)
+- **Sightings**: 1
+- **Status**: REJECTED
+- **Reason**: SSL-off-by-default, unconsented telemetry, proprietary .cact format, custom license with $2M ARR termination. All 3 specialists recommend against. Originally rejected in phases-6-11 plan — confirmed.
+- **Date**: 2026-02-26
+
+### Pattern: Soft Gradient Voice Visualization
+- **First seen**: Research synthesis (2026-02-26)
+- **Source**: research-20260226 (Gemini Live design language)
+- **Score**: 18/25 (prevalence:3, elegance:5, evidence:3, fit:4, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Beautiful but effort-heavy. Defer to UX polish phase. Custom animations require tuning across devices.
+- **Date**: 2026-02-26
+
+### Pattern: VoiceInteractionService (Full Implementation)
+- **First seen**: Research synthesis (2026-02-26)
+- **Also analyzed in**: Stypox/dicio-android (which does NOT use it)
+- **Score**: 18/25 (prevalence:3, elegance:4, evidence:3, fit:5, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Dicio analysis reveals VoiceInteractionService is NOT viable for third-party apps. Dicio uses WakeService (foreground service) instead. Phase 1 (ROLE_ASSISTANT) still recommended.
+- **Date**: 2026-02-26
+
+### Pattern: Dual Notification Channels (Persistent + Triggered)
+- **First seen**: Stypox/dicio-android (2026-02-26)
+- **Analysis**: DISC-20260226-162550-analyze-dicio-android
+- **Score**: 18/25 (prevalence:3, elegance:4, evidence:4, fit:4, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Bundled with WakeService implementation. Low effort when wake word is added.
+- **Date**: 2026-02-26
 
 ### Pattern: ADR Completeness Validator
 - **First seen**: sa4s-serc/AgenticAKM (2026-02-19)
