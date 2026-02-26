@@ -50,6 +50,11 @@ class MainActivity : FlutterActivity() {
     // Used by Phase 7B to distinguish voice launch from generic assistant launch.
     private var launchedAsVoiceAssistant = false
 
+    // Elapsed-time guard to prevent processing duplicate ACTION_ASSIST intents.
+    // Android can send the intent twice in rapid succession (undocumented but
+    // documented by Dicio — https://github.com/Stypox/dicio-android).
+    private var lastAssistTimestamp: Long = 0
+
     // Audio focus management for voice recording (Phase 7A).
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -60,10 +65,14 @@ class MainActivity : FlutterActivity() {
 
         // Check if this launch was triggered by the assistant gesture.
         // ACTION_ASSIST means the user long-pressed Home (or similar gesture).
-        launchedAsAssistant = intent?.action == Intent.ACTION_ASSIST ||
+        val isAssistIntent = intent?.action == Intent.ACTION_ASSIST ||
                 intent?.action == "android.intent.action.VOICE_ASSIST"
-        // Track specifically voice-assist launches for Phase 7B continuous mode.
-        launchedAsVoiceAssistant = intent?.action == "android.intent.action.VOICE_ASSIST"
+        if (isAssistIntent && shouldProcessAssistIntent()) {
+            launchedAsAssistant = true
+            // Track specifically voice-assist launches for Phase 7B continuous mode.
+            launchedAsVoiceAssistant =
+                intent?.action == "android.intent.action.VOICE_ASSIST"
+        }
     }
 
     // Handle the case where the app is already running (singleTop) and the
@@ -72,9 +81,22 @@ class MainActivity : FlutterActivity() {
     // intent action here.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        launchedAsAssistant = intent.action == Intent.ACTION_ASSIST ||
+        val isAssistIntent = intent.action == Intent.ACTION_ASSIST ||
                 intent.action == "android.intent.action.VOICE_ASSIST"
-        launchedAsVoiceAssistant = intent.action == "android.intent.action.VOICE_ASSIST"
+        if (isAssistIntent && shouldProcessAssistIntent()) {
+            launchedAsAssistant = true
+            launchedAsVoiceAssistant =
+                intent.action == "android.intent.action.VOICE_ASSIST"
+        }
+    }
+
+    /// 100ms debounce guard for assistant intents.
+    /// Android can fire ACTION_ASSIST twice in rapid succession on some devices.
+    private fun shouldProcessAssistIntent(): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastAssistTimestamp < 100) return false
+        lastAssistTimestamp = now
+        return true
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -93,9 +115,14 @@ class MainActivity : FlutterActivity() {
                     }
                     "wasLaunchedAsAssistant" -> {
                         // Return true if the app was launched via assistant gesture,
-                        // then clear the flag so it's only reported once.
+                        // then clear both flags so they're only reported once.
+                        // Voice flag is cleared here too because the Dart side
+                        // always calls wasLaunchedAsVoiceAssistant() first —
+                        // clearing here prevents stale flags when the voice
+                        // call short-circuits the assistant call.
                         val wasLaunched = launchedAsAssistant
                         launchedAsAssistant = false
+                        launchedAsVoiceAssistant = false
                         result.success(wasLaunched)
                     }
                     "wasLaunchedAsVoiceAssistant" -> {
