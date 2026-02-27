@@ -40,6 +40,7 @@ import '../../providers/video_providers.dart';
 import '../../providers/voice_providers.dart';
 import '../../services/model_download_service.dart';
 import '../../services/photo_service.dart';
+import '../../constants/voice_recovery_messages.dart';
 import '../../services/voice_session_orchestrator.dart';
 import '../widgets/calendar_event_card.dart';
 import '../widgets/chat_bubble.dart';
@@ -552,9 +553,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                   setState(() {
                     _isTextInputMode = selected.first;
                   });
-                  // Stop any active voice session when switching to text.
                   if (selected.first) {
+                    // Stop any active voice session when switching to text.
                     orchestrator.stop();
+                  } else {
+                    // Restart continuous voice mode when switching back.
+                    _startContinuousModeWithGreeting(
+                      VoiceRecoveryMessages.welcomeBack,
+                    );
                   }
                 },
                 showSelectedIcon: false,

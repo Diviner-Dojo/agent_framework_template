@@ -35,8 +35,10 @@ class _FakeClaudeApiService extends ClaudeApiService {
 
 void main() {
   // Use a fixed "now" for deterministic tests.
-  // Wednesday, February 25, 2026, 10:00 AM UTC.
-  final now = DateTime.utc(2026, 2, 25, 10, 0);
+  // Wednesday, February 25, 2026, 10:00 AM local.
+  // Regex fallback converts to local time internally, so use local here
+  // for consistent isPastTime comparisons.
+  final now = DateTime(2026, 2, 25, 10, 0);
 
   group('EventExtractionService — regex fallback (no LLM)', () {
     late EventExtractionService service;

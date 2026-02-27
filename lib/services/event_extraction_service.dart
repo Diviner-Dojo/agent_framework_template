@@ -307,15 +307,19 @@ Rules:
       );
     }
 
+    // Use local time for regex extraction — the user speaks in local time
+    // (e.g., "9 AM" means 9 AM local, not 9 AM UTC).
+    final localNow = now.toLocal();
+
     // Try to extract a datetime.
-    final dateTime = _extractDateTime(message, now);
+    final dateTime = _extractDateTime(message, localNow);
     if (dateTime == null) {
       return const ExtractionFailure(
         ExtractionError('Could not extract date/time from message'),
       );
     }
 
-    final isPastTime = dateTime.isBefore(now);
+    final isPastTime = dateTime.isBefore(localNow);
     return ExtractionSuccess(
       ExtractedEvent(title: title, startTime: dateTime, isPastTime: isPastTime),
     );
@@ -424,7 +428,7 @@ Rules:
     hour ??= 9;
     minute ??= 0;
 
-    return DateTime.utc(date.year, date.month, date.day, hour, minute);
+    return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
   /// Map day name to DateTime weekday (1=Monday, 7=Sunday).
