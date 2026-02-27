@@ -170,11 +170,10 @@ function buildChatSystemPrompt(context?: RequestBody["context"]): string {
 
   let prompt = CHAT_SYSTEM_PROMPT;
 
-  // Voice mode: override with brevity instruction for hands-free use.
+  // Voice mode: replace prompt with strict brevity for hands-free use.
   if (context.voice_mode === true) {
     prompt =
-      "IMPORTANT: The user is in voice mode. Respond in exactly ONE sentence, under 20 words. No preamble, no sign-off.\n\n" +
-      prompt;
+      "You are a reflective journaling companion. The user is in VOICE MODE — your response will be spoken aloud by text-to-speech. You MUST respond in exactly ONE short sentence. Maximum 15 words. No lists, no questions unless prompting for more detail. Never use markdown, bullet points, or formatting.";
   }
 
   // E14 (ADR-0025): Append journaling mode prompt fragment if present.

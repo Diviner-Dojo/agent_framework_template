@@ -701,9 +701,15 @@ class SessionNotifier extends StateNotifier<SessionState> {
     final connectivityService = _ref.read(connectivityServiceProvider);
     if (!connectivityService.isOnline) return;
 
-    // Fire-and-forget: don't await, don't block the session flow.
-    final syncRepo = _ref.read(syncRepositoryProvider);
-    syncRepo.syncSession(sessionId);
+    // Schedule as background microtask so the Future actually executes.
+    Future<void>(() async {
+      try {
+        final syncRepo = _ref.read(syncRepositoryProvider);
+        await syncRepo.syncSession(sessionId);
+      } on Exception catch (e) {
+        debugPrint('Background sync failed for $sessionId: $e');
+      }
+    });
   }
 
   /// Resume a past session for continued journaling (ADR-0014).

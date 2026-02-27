@@ -128,8 +128,11 @@ class ElevenLabsTtsService implements TextToSpeechService {
 
   @override
   Future<void> setSpeechRate(double rate) async {
-    // ElevenLabs rate is controlled server-side; no-op for this engine.
-    // just_audio's speed can be set but doesn't map cleanly to TTS rate.
+    // Use just_audio's playback speed to control perceived TTS rate.
+    // The rate range (0.5–1.5) maps directly to just_audio's speed.
+    if (_player != null) {
+      await _player!.setSpeed(rate);
+    }
   }
 
   @override

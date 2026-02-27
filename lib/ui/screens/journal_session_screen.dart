@@ -244,7 +244,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       previous,
       next,
     ) {
-      if (!voiceEnabled) return;
+      if (!voiceEnabled || _isTextInputMode) return;
       final messages = next.valueOrNull;
       if (messages == null || messages.isEmpty) return;
       final lastMsg = messages.last;
