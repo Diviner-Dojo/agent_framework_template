@@ -47,6 +47,9 @@ const voiceModeEnabledKey = 'voice_mode_enabled';
 /// SharedPreferences key for the auto-save on exit toggle.
 const autoSaveOnExitKey = 'auto_save_on_exit';
 
+/// SharedPreferences key for TTS playback speed.
+const ttsRateKey = 'tts_rate';
+
 /// SharedPreferences key for TTS engine preference.
 const ttsEngineKey = 'tts_engine';
 
@@ -160,6 +163,29 @@ final ttsEngineProvider = NotifierProvider<TtsEngineNotifier, TtsEngine>(
   TtsEngineNotifier.new,
 );
 
+/// Controls the TTS playback speed. Persisted in SharedPreferences.
+///
+/// Range: 0.5–1.5. Default: 0.85 (natural conversational speed).
+class TtsRateNotifier extends Notifier<double> {
+  @override
+  double build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getDouble(ttsRateKey) ?? 0.85;
+  }
+
+  /// Set the TTS rate. Persists to SharedPreferences.
+  Future<void> setRate(double rate) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setDouble(ttsRateKey, rate);
+    state = rate;
+  }
+}
+
+/// Provider for the TTS playback speed.
+final ttsRateProvider = NotifierProvider<TtsRateNotifier, double>(
+  TtsRateNotifier.new,
+);
+
 /// Controls which STT engine is used. Persisted in SharedPreferences.
 ///
 /// Defaults to [SttEngine.speechToText] for zero-download experience.
@@ -216,9 +242,12 @@ final speechRecognitionServiceProvider = Provider<SpeechRecognitionService>((
 ///
 /// When [TtsEngine.elevenlabs] is selected, returns the ElevenLabs proxy
 /// service. When [TtsEngine.flutterTts], returns the Android system TTS.
+/// Also watches [ttsRateProvider] and applies rate changes immediately
+/// for the flutter_tts engine.
 /// Call `initialize()` before first use.
 final textToSpeechServiceProvider = Provider<TextToSpeechService>((ref) {
   final engine = ref.watch(ttsEngineProvider);
+  final ttsRate = ref.watch(ttsRateProvider);
   final TextToSpeechService service;
 
   switch (engine) {
@@ -231,6 +260,10 @@ final textToSpeechServiceProvider = Provider<TextToSpeechService>((ref) {
     case TtsEngine.flutterTts:
       service = FlutterTextToSpeechService();
   }
+
+  // Apply the current TTS rate. For FlutterTts this sets the Android
+  // speech rate; for ElevenLabs it's a no-op (server-controlled).
+  service.setSpeechRate(ttsRate);
 
   ref.onDispose(() => service.dispose());
   return service;

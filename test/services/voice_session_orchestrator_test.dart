@@ -126,6 +126,9 @@ class MockTextToSpeechService implements TextToSpeechService {
   bool get isSpeaking => _isSpeaking;
 
   @override
+  Future<void> setSpeechRate(double rate) async {}
+
+  @override
   void dispose() {
     _isSpeaking = false;
     _speakCompleter?.complete();
@@ -398,7 +401,7 @@ void main() {
         await orchestrator.resume();
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
-        expect(mockTts.spokenTexts, contains('Welcome back. Go ahead.'));
+        expect(mockTts.spokenTexts, contains('Go ahead.'));
       });
 
       test('is no-op when resume called in non-paused state', () async {

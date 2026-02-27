@@ -22,11 +22,10 @@ class VoiceRecoveryMessages {
   // =========================================================================
 
   /// Spoken when continuous voice mode starts.
-  static const greeting =
-      "I'm listening. Go ahead and share what's on your mind.";
+  static const greeting = "What's on your mind?";
 
   /// Spoken when the user returns after audio focus loss.
-  static const welcomeBack = 'Welcome back. Go ahead.';
+  static const welcomeBack = 'Go ahead.';
 
   /// Spoken when the session ends via voice command.
   static const sessionEndConfirm = 'Saving your session. Take care!';
@@ -73,6 +72,10 @@ class VoiceRecoveryMessages {
 
   /// Spoken when no speech is detected within the silence timeout.
   static const sttEmpty = "I didn't catch anything. I'm still listening.";
+
+  /// Spoken after 3 consecutive STT timeouts (escalation).
+  static const sttEscalation =
+      'Having trouble hearing you. Try speaking louder, or switch to text.';
 
   /// Spoken when the LLM is taking longer than expected (non-blocking).
   static const llmThinking = 'Still thinking...';

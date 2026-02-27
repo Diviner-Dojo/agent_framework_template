@@ -89,6 +89,10 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   /// audio. Double-tap cancels the timer for immediate stop.
   Timer? _pttStopTimer;
 
+  /// When true, the text field is active instead of the mic button.
+  /// Defaults to false (voice input) when voice mode is enabled.
+  bool _isTextInputMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -330,28 +334,25 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
             },
           ),
           actions: [
-            // Overflow menu — hidden when session is already ending.
+            // "Done" button — promoted to AppBar for quick 1-tap end.
+            if (!sessionState.isSessionEnding &&
+                sessionState.activeSessionId != null)
+              TextButton(
+                onPressed: _endSessionAndPop,
+                child: const Text('Done'),
+              ),
+            // Overflow menu — only Discard (destructive = hidden).
             if (!sessionState.isSessionEnding)
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
                 tooltip: 'Session options',
                 onSelected: (value) {
                   switch (value) {
-                    case 'end':
-                      _endSessionAndPop();
                     case 'discard':
                       _showDiscardConfirmation();
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'end',
-                    child: ListTile(
-                      leading: Icon(Icons.stop_circle_outlined),
-                      title: Text('End Session'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
                   PopupMenuItem(
                     value: 'discard',
                     child: ListTile(
@@ -529,6 +530,41 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Voice/Text input toggle — visible when voice is enabled.
+          if (voiceEnabled)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment<bool>(
+                    value: false,
+                    label: Text('Voice'),
+                    icon: Icon(Icons.mic, size: 18),
+                  ),
+                  ButtonSegment<bool>(
+                    value: true,
+                    label: Text('Text'),
+                    icon: Icon(Icons.keyboard, size: 18),
+                  ),
+                ],
+                selected: {_isTextInputMode},
+                onSelectionChanged: (selected) {
+                  setState(() {
+                    _isTextInputMode = selected.first;
+                  });
+                  // Stop any active voice session when switching to text.
+                  if (selected.first) {
+                    orchestrator.stop();
+                  }
+                },
+                showSelectedIcon: false,
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
+
           // Phase indicator chip for continuous mode.
           if (voiceEnabled && voiceState.isContinuousMode)
             _buildPhaseIndicator(voiceState),
@@ -575,14 +611,17 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
           Row(
             children: [
               // Text field — expands to fill available width.
+              // In text input mode, always enabled (voice states don't block).
               Expanded(
                 child: TextField(
                   controller: _textController,
-                  enabled: !isWaiting && !isListening && !isSpeaking,
+                  enabled: _isTextInputMode
+                      ? !isWaiting
+                      : !isWaiting && !isListening && !isSpeaking,
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: null, // Allows multi-line input.
                   decoration: InputDecoration(
-                    hintText: isListening
+                    hintText: isListening && !_isTextInputMode
                         ? 'Listening...'
                         : 'Type your thoughts...',
                   ),
@@ -597,7 +636,15 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                 icon: const Icon(Icons.camera_alt_outlined),
               ),
               // Action button: mic, stop, interrupt, or send.
-              _buildActionButton(isWaiting, voiceEnabled, orchestrator),
+              // In text input mode, always show send button.
+              if (_isTextInputMode)
+                IconButton.filled(
+                  tooltip: 'Send message',
+                  onPressed: isWaiting ? null : _sendMessage,
+                  icon: const Icon(Icons.send),
+                )
+              else
+                _buildActionButton(isWaiting, voiceEnabled, orchestrator),
             ],
           ),
         ],
@@ -869,6 +916,8 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       orchestrator.pause();
     }
 
+    // Track whether the photo was actually saved (for silent vs normal resume).
+    var photoSaved = false;
     try {
       // Step 2: Capture or pick the photo.
       final photoService = ref.read(photoServiceProvider);
@@ -958,6 +1007,8 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
         photoId: photoId,
       );
 
+      photoSaved = true;
+
       // If voice mode is active, prompt for a photo description.
       if (!mounted) return;
       if (wasSttActive && orchestrator.state.phase != VoiceLoopPhase.idle) {
@@ -968,8 +1019,10 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       }
     } finally {
       // Resume STT if we paused it.
+      // Silent resume when photo was cancelled (no TTS interruption).
+      // Normal resume when photo was saved (speaks brief "Go ahead.").
       if (wasSttActive && mounted) {
-        orchestrator.resume();
+        orchestrator.resume(silent: !photoSaved);
       }
     }
   }
@@ -1000,9 +1053,9 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
         : await videoService.pickFromGallery();
 
     if (rawFile == null || !mounted) {
-      // Resume STT if we paused it.
+      // Resume STT silently if we paused it (video was cancelled).
       if (wasSttActive && mounted) {
-        orchestrator.resume();
+        orchestrator.resume(silent: true);
       }
       return;
     }
@@ -1045,7 +1098,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       );
     }
 
-    // Resume STT if we paused it.
+    // Resume STT if we paused it. Normal resume (video was saved/attempted).
     if (wasSttActive && mounted) {
       orchestrator.resume();
     }

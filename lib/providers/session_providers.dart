@@ -64,6 +64,7 @@ import 'photo_providers.dart';
 import 'search_providers.dart';
 import 'sync_providers.dart';
 import 'video_providers.dart';
+import 'voice_providers.dart';
 
 /// Streams all sessions from the database for the session list screen.
 ///
@@ -389,6 +390,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
     );
     _ref.read(activeSessionIdProvider.notifier).state = sessionId;
 
+    // Read voice mode imperatively (not watched) to pass to agent layers.
+    final isVoiceMode = _ref.read(voiceModeEnabledProvider);
+
     // Get the greeting from the agent (async — may call Claude API).
     final greetingResponse = await _agent.getGreeting(
       lastSessionDate: lastSessionDate,
@@ -396,6 +400,7 @@ class SessionNotifier extends StateNotifier<SessionState> {
       sessionCount: sessions.length,
       sessionSummaries: summaries,
       journalingMode: journalingMode,
+      isVoiceMode: isVoiceMode,
     );
 
     // Save the greeting as the first ASSISTANT message.
@@ -474,12 +479,14 @@ class SessionNotifier extends StateNotifier<SessionState> {
     state = state.copyWith(isWaitingForAgent: true);
 
     // Get a follow-up question from the agent (async — may call Claude API).
+    final isVoiceMode = _ref.read(voiceModeEnabledProvider);
     final followUpResponse = await _agent.getFollowUp(
       latestUserMessage: text,
       conversationHistory: state.usedQuestions,
       followUpCount: state.followUpCount,
       allMessages: state.conversationMessages,
       sessionSummaries: state.sessionSummaries,
+      isVoiceMode: isVoiceMode,
     );
 
     // Stale response check: if the session ended while we were waiting,
@@ -1134,12 +1141,14 @@ class SessionNotifier extends StateNotifier<SessionState> {
     }
 
     state = state.copyWith(isWaitingForAgent: true);
+    final isVoiceModeForFollowUp = _ref.read(voiceModeEnabledProvider);
     final followUpResponse = await _agent.getFollowUp(
       latestUserMessage: query,
       conversationHistory: state.usedQuestions,
       followUpCount: state.followUpCount,
       allMessages: state.conversationMessages,
       sessionSummaries: state.sessionSummaries,
+      isVoiceMode: isVoiceModeForFollowUp,
     );
 
     // Stale response check: session may have ended during the async call.

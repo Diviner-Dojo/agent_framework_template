@@ -49,6 +49,7 @@ class FakeLocalLlmLayer implements ConversationLayer {
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     return const AgentResponse(
       content: 'Local LLM greeting',
@@ -64,6 +65,7 @@ class FakeLocalLlmLayer implements ConversationLayer {
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     return const AgentResponse(
       content: 'Local LLM follow-up',
@@ -443,6 +445,7 @@ class ThrowingLocalLlmLayer implements ConversationLayer {
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     throw Exception('Local LLM failed');
   }
@@ -455,6 +458,7 @@ class ThrowingLocalLlmLayer implements ConversationLayer {
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     throw Exception('Local LLM failed');
   }

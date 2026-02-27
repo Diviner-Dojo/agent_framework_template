@@ -163,12 +163,14 @@ class AgentRepository {
   ///
   /// [sessionSummaries] — recent session summaries for continuity (ADR-0023).
   /// [journalingMode] — optional mode string for guided sessions (ADR-0025).
+  /// [isVoiceMode] — when true, instructs layers to produce brief responses.
   Future<AgentResponse> getGreeting({
     DateTime? lastSessionDate,
     DateTime? now,
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     if (journalOnlyMode) {
       return const AgentResponse(
@@ -185,12 +187,14 @@ class AgentRepository {
         sessionCount: sessionCount,
         sessionSummaries: sessionSummaries,
         journalingMode: journalingMode,
+        isVoiceMode: isVoiceMode,
       ),
       fallback: () => _ruleBasedLayer.getGreeting(
         lastSessionDate: lastSessionDate,
         now: now,
         sessionCount: sessionCount,
         journalingMode: journalingMode,
+        isVoiceMode: isVoiceMode,
       ),
     );
   }
@@ -203,6 +207,7 @@ class AgentRepository {
   ///
   /// [sessionSummaries] — recent session summaries for continuity (ADR-0023).
   /// [journalingMode] — optional mode string for guided sessions (ADR-0025).
+  /// [isVoiceMode] — when true, instructs layers to produce brief responses.
   Future<AgentResponse?> getFollowUp({
     required String latestUserMessage,
     required List<String> conversationHistory,
@@ -210,6 +215,7 @@ class AgentRepository {
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     if (journalOnlyMode) return null;
 
@@ -230,6 +236,7 @@ class AgentRepository {
         allMessages: allMessages,
         sessionSummaries: sessionSummaries,
         journalingMode: journalingMode,
+        isVoiceMode: isVoiceMode,
       ),
       fallback: () => _ruleBasedLayer.getFollowUp(
         latestUserMessage: latestUserMessage,
@@ -237,6 +244,7 @@ class AgentRepository {
         followUpCount: followUpCount,
         allMessages: allMessages,
         journalingMode: journalingMode,
+        isVoiceMode: isVoiceMode,
       ),
     );
   }

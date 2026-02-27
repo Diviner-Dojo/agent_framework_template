@@ -6,7 +6,7 @@
 //   - The screen renders with app bar and input field
 //   - The greeting message is displayed
 //   - The send button is present
-//   - Overflow menu has End Session and Discard options
+//   - AppBar has Done button and overflow menu has Discard option
 //   - Back button shows confirmation dialog (B1)
 //   - Discard confirmation works
 //   - Done button appears after session close (B2)
@@ -110,11 +110,14 @@ void main() {
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
     });
 
-    testWidgets('has overflow menu with End Session and Discard', (
+    testWidgets('has Done button in AppBar and Discard in overflow menu', (
       tester,
     ) async {
       final container = await buildTestWidget(tester);
       addTearDown(container.dispose);
+
+      // Done button should be visible in the AppBar.
+      expect(find.text('Done'), findsOneWidget);
 
       // Overflow menu icon should be present.
       expect(find.byIcon(Icons.more_vert), findsOneWidget);
@@ -123,8 +126,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_vert));
       await tester.pumpAndSettle();
 
-      // Menu items should appear.
-      expect(find.text('End Session'), findsOneWidget);
+      // Only Discard should be in the overflow menu.
       expect(find.text('Discard'), findsOneWidget);
     });
 
@@ -187,7 +189,7 @@ void main() {
       expect(find.text('Session List'), findsOneWidget);
     });
 
-    testWidgets('overflow End Session ends and navigates back', (tester) async {
+    testWidgets('Done button ends session and navigates back', (tester) async {
       final container = await buildTestWidget(tester);
       addTearDown(container.dispose);
 
@@ -196,10 +198,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.send));
       await tester.pumpAndSettle();
 
-      // End via overflow menu.
-      await tester.tap(find.byIcon(Icons.more_vert));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('End Session'));
+      // End via Done button in AppBar.
+      await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
 
       // Should navigate back to the session list.
@@ -213,10 +213,8 @@ void main() {
       addTearDown(container.dispose);
 
       // End session without sending any user messages (empty session guard).
-      // Use overflow menu End Session.
-      await tester.tap(find.byIcon(Icons.more_vert));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('End Session'));
+      // Use Done button in AppBar.
+      await tester.tap(find.text('Done'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 

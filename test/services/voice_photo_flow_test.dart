@@ -75,6 +75,9 @@ class FakeTtsService implements TextToSpeechService {
   }
 
   @override
+  Future<void> setSpeechRate(double rate) async {}
+
+  @override
   void dispose() {}
 }
 

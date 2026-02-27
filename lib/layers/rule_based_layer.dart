@@ -70,6 +70,7 @@ class RuleBasedLayer implements ConversationLayer {
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     final currentTime = now ?? DateTime.now();
     final mode = JournalingMode.fromDbString(journalingMode);
@@ -95,6 +96,14 @@ class RuleBasedLayer implements ConversationLayer {
       );
     }
 
+    // Voice mode: ultra-brief greeting for hands-free use.
+    if (isVoiceMode == true && (mode == null || mode == JournalingMode.free)) {
+      return const AgentResponse(
+        content: "What's on your mind?",
+        layer: AgentLayer.ruleBasedLocal,
+      );
+    }
+
     return AgentResponse(
       content: _getLocalGreeting(
         lastSessionDate: lastSessionDate,
@@ -112,6 +121,7 @@ class RuleBasedLayer implements ConversationLayer {
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     final localFollowUp = _getLocalFollowUp(
       latestUserMessage: latestUserMessage,

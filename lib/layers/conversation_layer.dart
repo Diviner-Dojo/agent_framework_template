@@ -36,12 +36,14 @@ abstract class ConversationLayer {
   /// [sessionCount] — total number of past sessions (for context).
   /// [sessionSummaries] — recent session summaries for continuity (ADR-0023).
   /// [journalingMode] — optional mode string for guided sessions (ADR-0025).
+  /// [isVoiceMode] — when true, responses should be maximally brief.
   Future<AgentResponse> getGreeting({
     DateTime? lastSessionDate,
     DateTime? now,
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   });
 
   /// Get a follow-up question based on the user's message.
@@ -55,6 +57,7 @@ abstract class ConversationLayer {
   /// [allMessages] — full conversation as role/content pairs.
   /// [sessionSummaries] — recent session summaries for continuity (ADR-0023).
   /// [journalingMode] — optional mode string for guided sessions (ADR-0025).
+  /// [isVoiceMode] — when true, responses should be maximally brief.
   Future<AgentResponse?> getFollowUp({
     required String latestUserMessage,
     required List<String> conversationHistory,
@@ -62,6 +65,7 @@ abstract class ConversationLayer {
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   });
 
   /// Generate a session summary and optionally extract metadata.

@@ -23,6 +23,15 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'audio_file_service.dart';
 import 'speech_recognition_service.dart';
 
+/// Thrown after [SpeechToTextSttService] hits 3 consecutive speech timeouts.
+///
+/// The orchestrator catches this to speak an escalation message and suggest
+/// switching to text input.
+class SttTimeoutEscalation implements Exception {
+  @override
+  String toString() => 'SttTimeoutEscalation: 3 consecutive speech timeouts';
+}
+
 /// speech_to_text (Google on-device) implementation of [SpeechRecognitionService].
 ///
 /// Wraps the `speech_to_text` package which uses Android's built-in speech
@@ -39,6 +48,10 @@ class SpeechToTextSttService implements SpeechRecognitionService {
   bool _isInitialized = false;
   bool _shouldContinueListening = false;
   final String _currentLocaleId = 'en_US';
+
+  /// Tracks consecutive `error_speech_timeout` errors for escalation.
+  /// Reset to 0 on any successful final result.
+  int _consecutiveTimeoutCount = 0;
 
   @override
   Future<void> initialize({required String modelPath}) async {
@@ -95,6 +108,11 @@ class SpeechToTextSttService implements SpeechRecognitionService {
   void _onResult(SpeechRecognitionResult result) {
     if (_resultController == null || _resultController!.isClosed) return;
 
+    // Reset timeout counter on any successful final result.
+    if (result.finalResult) {
+      _consecutiveTimeoutCount = 0;
+    }
+
     _resultController!.add(
       SpeechResult(text: result.recognizedWords, isFinal: result.finalResult),
     );
@@ -123,12 +141,27 @@ class SpeechToTextSttService implements SpeechRecognitionService {
     //   error_no_match: silence was detected, no speech recognized.
     //   error_speech_timeout: recognizer started but no audio input was
     //     captured (often caused by audio focus contention with just_audio).
+    final isSpeechTimeout = errorMsg.contains('error_speech_timeout');
     final isRecoverable =
-        errorMsg.contains('error_no_match') ||
-        errorMsg.contains('error_speech_timeout');
+        errorMsg.contains('error_no_match') || isSpeechTimeout;
 
     if (isRecoverable && _shouldContinueListening && _isListening) {
-      Future.delayed(const Duration(milliseconds: 300), () {
+      // Track consecutive speech timeouts for escalation.
+      if (isSpeechTimeout) {
+        _consecutiveTimeoutCount++;
+        if (_consecutiveTimeoutCount >= 3) {
+          _consecutiveTimeoutCount = 0;
+          _resultController?.addError(SttTimeoutEscalation());
+          return;
+        }
+      }
+
+      // Increased delay for speech_timeout (500ms) to reduce audio focus
+      // contention; shorter delay (300ms) for other recoverable errors.
+      final delay = isSpeechTimeout
+          ? const Duration(milliseconds: 500)
+          : const Duration(milliseconds: 300);
+      Future.delayed(delay, () {
         if (_shouldContinueListening && _isListening) {
           _startListenSession();
         }

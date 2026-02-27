@@ -32,6 +32,7 @@ import 'package:flutter/foundation.dart';
 import 'audio_focus_service.dart';
 import 'event_extraction_service.dart';
 import 'speech_recognition_service.dart';
+import 'speech_to_text_stt_service.dart' show SttTimeoutEscalation;
 import 'text_to_speech_service.dart';
 import 'voice_command_classifier.dart';
 import '../constants/voice_recovery_messages.dart';
@@ -327,7 +328,11 @@ class VoiceSessionOrchestrator {
   }
 
   /// Resume from paused state.
-  Future<void> resume() async {
+  ///
+  /// When [silent] is true, skips the welcome-back TTS and goes directly
+  /// to listening. Used when resuming after a cancelled photo/video capture
+  /// where speaking a message would be disruptive.
+  Future<void> resume({bool silent = false}) async {
     if (state.phase != VoiceLoopPhase.paused) return;
 
     final previousPhase = _phaseBeforePause ?? VoiceLoopPhase.idle;
@@ -340,15 +345,20 @@ class VoiceSessionOrchestrator {
       return;
     }
 
-    // Continuous mode: speak welcome back and resume listening.
+    // Continuous mode: optionally speak welcome back, then resume listening.
     await _audioFocusService.requestFocus();
 
     if (previousPhase == VoiceLoopPhase.listening ||
         previousPhase == VoiceLoopPhase.speaking) {
-      _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
-      await _speak(VoiceRecoveryMessages.welcomeBack);
-      if (state.phase == VoiceLoopPhase.speaking) {
+      if (silent) {
+        // Skip TTS — go directly to listening.
         await _startListening();
+      } else {
+        _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+        await _speak(VoiceRecoveryMessages.welcomeBack);
+        if (state.phase == VoiceLoopPhase.speaking) {
+          await _startListening();
+        }
       }
     } else {
       _updateState(state.copyWith(phase: previousPhase));
@@ -1015,6 +1025,18 @@ class VoiceSessionOrchestrator {
   /// Handle STT stream errors.
   void _onSttError(Object error) {
     debugPrint('[VoiceOrchestrator] STT error: $error');
+
+    // Escalation after 3 consecutive timeouts — speak suggestion and idle.
+    if (error is SttTimeoutEscalation) {
+      _handleError(
+        const VoiceSessionError(
+          kind: VoiceSessionErrorKind.sttFailure,
+          message: VoiceRecoveryMessages.sttEscalation,
+        ),
+      );
+      return;
+    }
+
     _handleError(
       const VoiceSessionError(
         kind: VoiceSessionErrorKind.sttFailure,

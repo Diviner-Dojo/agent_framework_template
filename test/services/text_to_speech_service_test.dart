@@ -72,6 +72,9 @@ class MockTextToSpeechService implements TextToSpeechService {
   bool get isSpeaking => _isSpeaking;
 
   @override
+  Future<void> setSpeechRate(double rate) async {}
+
+  @override
   void dispose() {
     stop();
     _initialized = false;

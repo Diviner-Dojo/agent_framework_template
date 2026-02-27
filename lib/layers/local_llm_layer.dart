@@ -48,6 +48,7 @@ class LocalLlmLayer implements ConversationLayer {
     int sessionCount = 0,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     final currentTime = now ?? DateTime.now();
     final timeOfDay = getTimeOfDay(currentTime);
@@ -92,6 +93,7 @@ class LocalLlmLayer implements ConversationLayer {
     List<Map<String, String>>? allMessages,
     List<Map<String, String>>? sessionSummaries,
     String? journalingMode,
+    bool? isVoiceMode,
   }) async {
     if (allMessages == null || allMessages.isEmpty) return null;
 

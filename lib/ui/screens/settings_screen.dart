@@ -239,6 +239,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 },
               ),
               const SizedBox(height: 12),
+              // TTS playback speed slider (only for flutter_tts engine).
+              if (ttsEngine == TtsEngine.flutterTts) ...[
+                Builder(
+                  builder: (context) {
+                    final ttsRate = ref.watch(ttsRateProvider);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Playback speed: ${ttsRate.toStringAsFixed(2)}x',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        Slider(
+                          value: ttsRate,
+                          min: 0.5,
+                          max: 1.5,
+                          divisions: 20,
+                          label: '${ttsRate.toStringAsFixed(2)}x',
+                          onChanged: (value) {
+                            ref.read(ttsRateProvider.notifier).setRate(value);
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 4),
+              ],
               // STT engine selector.
               DropdownButtonFormField<SttEngine>(
                 initialValue: sttEngine,
