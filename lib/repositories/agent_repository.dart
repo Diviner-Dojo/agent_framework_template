@@ -23,12 +23,11 @@
 // See: ADR-0017 (Local LLM Layer Architecture)
 // ===========================================================================
 
-import 'package:flutter/foundation.dart';
-
 import '../layers/conversation_layer.dart' show ConversationLayer;
 import '../layers/rule_based_layer.dart';
 import '../layers/claude_api_layer.dart';
 import '../models/agent_response.dart';
+import '../services/app_logger.dart';
 import '../services/claude_api_service.dart';
 import '../services/connectivity_service.dart';
 
@@ -76,17 +75,23 @@ class AgentRepository {
   /// [ruleBasedLayer] — injectable for testing. Defaults to standard instance.
   /// [claudeApiLayer] — injectable for testing. Built from claudeService if null.
   /// [localLlmLayer] — optional local LLM layer. Null when model not loaded.
+  /// [customInstructions] — optional user custom prompt from personality config.
+  ///   Passed to ClaudeApiLayer for inclusion in the Edge Function context.
   AgentRepository({
     ClaudeApiService? claudeService,
     ConnectivityService? connectivityService,
     RuleBasedLayer? ruleBasedLayer,
     ClaudeApiLayer? claudeApiLayer,
     ConversationLayer? localLlmLayer,
+    String? customInstructions,
   }) : _ruleBasedLayer = ruleBasedLayer ?? RuleBasedLayer(),
        _claudeApiLayer =
            claudeApiLayer ??
            (claudeService != null
-               ? ClaudeApiLayer(claudeService: claudeService)
+               ? ClaudeApiLayer(
+                   claudeService: claudeService,
+                   customInstructions: customInstructions,
+                 )
                : null),
        _connectivityService = connectivityService,
        _localLlmLayer = localLlmLayer;
@@ -101,9 +106,24 @@ class AgentRepository {
 
   /// Select the best available layer based on preference and availability.
   ConversationLayer _selectLayer() {
-    if (_preferClaude && _isClaudeAvailable) return _claudeApiLayer!;
-    if (_localLlmLayer != null) return _localLlmLayer!;
-    if (_isClaudeAvailable) return _claudeApiLayer!;
+    if (_preferClaude && _isClaudeAvailable) {
+      AppLogger.i('layer', 'Selected: Claude (preferClaude=true, online)');
+      return _claudeApiLayer!;
+    }
+    if (_localLlmLayer != null) {
+      AppLogger.i('layer', 'Selected: Local LLM');
+      return _localLlmLayer!;
+    }
+    if (_isClaudeAvailable) {
+      AppLogger.i('layer', 'Selected: Claude (online, no local LLM)');
+      return _claudeApiLayer!;
+    }
+    AppLogger.w(
+      'layer',
+      'Selected: Rule-based (claudeLayer=${_claudeApiLayer != null}, '
+          'online=${_connectivityService?.isOnline ?? false}, '
+          'localLlm=${_localLlmLayer != null})',
+    );
     return _ruleBasedLayer;
   }
 
@@ -133,6 +153,7 @@ class AgentRepository {
   /// for the session's duration to prevent mid-conversation quality changes.
   void lockLayerForSession() {
     _sessionLockedLayer = _selectLayer();
+    AppLogger.i('layer', 'Locked for session: $activeLayerLabel');
   }
 
   /// Unlock the session-locked layer.
@@ -149,6 +170,16 @@ class AgentRepository {
   /// layer (active sessions keep their locked layer per ADR-0017 §3).
   void updateLocalLlmLayer(ConversationLayer? layer) {
     _localLlmLayer = layer;
+  }
+
+  /// Update custom instructions on the Claude API layer.
+  ///
+  /// Called by [agentRepositoryProvider]'s listen callback when the
+  /// personality config changes. Updates are applied to the existing
+  /// layer object, so they take effect on the next API request
+  /// without rebuilding the provider chain.
+  void updateCustomInstructions(String? instructions) {
+    _claudeApiLayer?.updateCustomInstructions(instructions);
   }
 
   // =========================================================================
@@ -179,6 +210,9 @@ class AgentRepository {
       );
     }
 
+    // Voice greetings now go through the normal layer pipeline.
+    // The isVoiceMode flag tells Claude to be brief — no bypass needed.
+    // See regression ledger: "Voice mode bypasses Claude".
     return _withRetryAndFallback(
       label: 'getGreeting',
       action: () => _activeLayer.getGreeting(
@@ -309,39 +343,34 @@ class AgentRepository {
         return await action();
       } on ClaudeApiNotConfiguredException {
         // Permanent error — no retry, fall back immediately.
+        AppLogger.w(
+          'retry',
+          '$label: not configured, falling back immediately',
+        );
         return fallback();
       } on ClaudeApiTimeoutException catch (e) {
         lastError = e;
-        if (kDebugMode) {
-          debugPrint('AgentRepository.$label: timeout (attempt $attempt)');
-        }
+        AppLogger.w('retry', '$label: timeout (attempt $attempt)');
         // Retry on timeout.
       } on ClaudeApiNetworkException catch (e) {
         lastError = e;
-        if (kDebugMode) {
-          debugPrint(
-            'AgentRepository.$label: network error (attempt $attempt)',
-          );
-        }
+        AppLogger.w('retry', '$label: network error (attempt $attempt)');
         // Retry on network errors.
       } on Exception catch (e) {
         lastError = e;
-        if (kDebugMode) {
-          debugPrint(
-            'AgentRepository.$label: '
-            '${_activeLayer.runtimeType} failed: $e',
-          );
-        }
+        AppLogger.e(
+          'retry',
+          '$label: ${_activeLayer.runtimeType} failed (attempt $attempt): $e',
+        );
         // Other errors (server 5xx, parse): retry once.
       }
     }
 
-    if (kDebugMode) {
-      debugPrint(
-        'AgentRepository.$label: all retries exhausted, '
-        'falling back to rule-based. Last error: $lastError',
-      );
-    }
+    AppLogger.e(
+      'fallback',
+      '$label: all retries exhausted, falling back to rule-based. '
+          'Last error: $lastError',
+    );
     return fallback();
   }
 
