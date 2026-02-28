@@ -96,19 +96,19 @@ void main() {
   }
 
   group('Calendar settings card', () {
-    testWidgets('renders Calendar card title', (tester) async {
+    testWidgets('renders Calendar & Tasks card title', (tester) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Scroll to find the calendar card.
+      // Scroll to find the calendar & tasks card.
       await tester.scrollUntilVisible(
-        find.text('Calendar'),
+        find.text('Calendar & Tasks'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Calendar'), findsOneWidget);
+      expect(find.text('Calendar & Tasks'), findsOneWidget);
     });
 
     testWidgets('shows "Not connected" when not signed in', (tester) async {
@@ -116,12 +116,15 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(
-        find.text('Google Calendar: Not connected'),
+        find.text('Google Calendar & Tasks: Not connected'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
 
-      expect(find.text('Google Calendar: Not connected'), findsOneWidget);
+      expect(
+        find.text('Google Calendar & Tasks: Not connected'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('shows Connect button when not signed in', (tester) async {
@@ -129,12 +132,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(
-        find.text('Connect Google Calendar'),
+        find.text('Connect Google'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
 
-      expect(find.text('Connect Google Calendar'), findsOneWidget);
+      expect(find.text('Connect Google'), findsOneWidget);
     });
 
     testWidgets('auto-suggest toggle defaults to on', (tester) async {
@@ -169,20 +172,22 @@ void main() {
       );
     });
 
-    testWidgets('Calendar card appears before Data Management', (tester) async {
+    testWidgets('Calendar & Tasks card appears before Data Management', (
+      tester,
+    ) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Scroll to make Calendar visible.
+      // Scroll to make Calendar & Tasks visible.
       await tester.scrollUntilVisible(
-        find.text('Calendar'),
+        find.text('Calendar & Tasks'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
-      expect(find.text('Calendar'), findsOneWidget);
+      expect(find.text('Calendar & Tasks'), findsOneWidget);
 
-      // Continue scrolling to find Data Management after Calendar.
+      // Continue scrolling to find Data Management after Calendar & Tasks.
       await tester.scrollUntilVisible(
         find.text('Data Management'),
         200,

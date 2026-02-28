@@ -31,6 +31,7 @@ import 'package:flutter/foundation.dart';
 
 import 'audio_focus_service.dart';
 import 'event_extraction_service.dart';
+import 'task_extraction_service.dart';
 import 'speech_recognition_service.dart';
 import 'speech_to_text_stt_service.dart' show SttTimeoutEscalation;
 import 'text_to_speech_service.dart';
@@ -164,6 +165,12 @@ class VoiceSessionOrchestrator {
 
   /// Callback for dismissing a calendar event (verbal "no").
   SessionActionCallback? onDismissCalendarEvent;
+
+  /// Callback for confirming a task (verbal "yes").
+  SessionActionCallback? onConfirmTask;
+
+  /// Callback for dismissing a task (verbal "no").
+  SessionActionCallback? onDismissTask;
 
   /// The current orchestrator state.
   final ValueNotifier<VoiceOrchestratorState> stateNotifier = ValueNotifier(
@@ -582,6 +589,97 @@ class VoiceSessionOrchestrator {
     }
 
     // Resume previous state.
+    if (wasInContinuousMode &&
+        previousPhase != VoiceLoopPhase.idle &&
+        state.phase != VoiceLoopPhase.idle) {
+      await _startListening();
+    } else {
+      _updateState(state.copyWith(phase: previousPhase));
+    }
+
+    return confirmed;
+  }
+
+  /// Speak extracted task details and capture verbal confirmation.
+  ///
+  /// Called when a task intent is detected during voice mode.
+  /// Reads the task aloud, then listens for yes/no.
+  ///
+  /// Returns true if the user confirmed, false if dismissed or timed out.
+  Future<bool> confirmTask(ExtractedTask task) async {
+    if (!_sttService.isInitialized) return false;
+
+    final wasInContinuousMode = state.isContinuousMode;
+    final previousPhase = state.phase;
+
+    if (_sttService.isListening) {
+      await _stopListening();
+    }
+    _silenceTimer?.cancel();
+
+    final prompt = "Add '${task.title}' to your tasks?";
+
+    _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+    await _speak(prompt);
+
+    if (state.phase != VoiceLoopPhase.speaking) return false;
+
+    _updateState(
+      state.copyWith(phase: VoiceLoopPhase.listening, transcriptPreview: ''),
+    );
+
+    String? response;
+    final completer = ReusableCompleter<String?>();
+    await _recognitionSubscription?.cancel();
+
+    try {
+      final stream = _sttService.startListening();
+
+      _recognitionSubscription = stream.listen(
+        (result) {
+          _updateState(state.copyWith(transcriptPreview: result.text));
+          completer.setTimeout(const Duration(seconds: 5), null);
+
+          if (result.isFinal) {
+            completer.complete(result.text);
+          }
+        },
+        onError: (error) {
+          completer.complete(null);
+        },
+      );
+
+      completer.setTimeout(const Duration(seconds: 8), null);
+
+      response = await completer.future;
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('Task confirmation capture failed: $e');
+      }
+    } finally {
+      completer.dispose();
+      await _stopListening();
+    }
+
+    final confirmed = response != null && _isAffirmative(response);
+
+    if (confirmed) {
+      _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+      await _speak("Added to your tasks.");
+      if (onConfirmTask != null) {
+        await onConfirmTask!();
+      }
+    } else {
+      _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+      final feedback = response == null
+          ? "Okay, I'll leave that for now."
+          : "Okay, I won't add that.";
+      await _speak(feedback);
+      if (onDismissTask != null) {
+        await onDismissTask!();
+      }
+    }
+
     if (wasInContinuousMode &&
         previousPhase != VoiceLoopPhase.idle &&
         state.phase != VoiceLoopPhase.idle) {

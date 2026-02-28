@@ -22,6 +22,7 @@ import '../database/daos/calendar_event_dao.dart';
 import '../database/daos/message_dao.dart';
 import '../database/daos/photo_dao.dart';
 import '../database/daos/session_dao.dart';
+import '../database/daos/task_dao.dart';
 import '../models/sync_status.dart';
 import '../services/supabase_service.dart';
 
@@ -51,6 +52,7 @@ class SyncRepository {
   final MessageDao _messageDao;
   final PhotoDao? _photoDao;
   final CalendarEventDao? _calendarEventDao;
+  final TaskDao? _taskDao;
 
   SyncRepository({
     required SupabaseService supabaseService,
@@ -58,11 +60,13 @@ class SyncRepository {
     required MessageDao messageDao,
     PhotoDao? photoDao,
     CalendarEventDao? calendarEventDao,
+    TaskDao? taskDao,
   }) : _supabaseService = supabaseService,
        _sessionDao = sessionDao,
        _messageDao = messageDao,
        _photoDao = photoDao,
-       _calendarEventDao = calendarEventDao;
+       _calendarEventDao = calendarEventDao,
+       _taskDao = taskDao;
 
   /// Sync all pending and failed sessions to Supabase.
   ///
@@ -345,6 +349,69 @@ class SyncRepository {
     }
 
     return SyncResult(syncedCount: synced, failedCount: failed, errors: errors);
+  }
+
+  /// Sync all pending tasks across all sessions.
+  ///
+  /// Returns a [SyncResult] with counts of synced/failed tasks.
+  /// No-op if not authenticated or no TaskDao was provided.
+  Future<SyncResult> syncPendingTasks() async {
+    if (!_supabaseService.isAuthenticated || _taskDao == null) {
+      return const SyncResult();
+    }
+
+    final client = _supabaseService.client;
+    final userId = _supabaseService.currentUser?.id;
+    if (client == null || userId == null) return const SyncResult();
+
+    final tasksToSync = await _taskDao.getTasksToSync();
+    if (tasksToSync.isEmpty) return const SyncResult();
+
+    int synced = 0;
+    int failed = 0;
+    final errors = <String>[];
+
+    for (final task in tasksToSync) {
+      try {
+        await client.from('tasks').upsert(buildTaskUpsertMap(task, userId));
+        await _taskDao.updateSyncStatus(task.taskId, 'SYNCED');
+        synced++;
+      } on Exception catch (e) {
+        final taskSyncStatus = _isFatalSyncError(e)
+            ? SyncStatus.fatal.toDbString()
+            : SyncStatus.failed.toDbString();
+        await _taskDao.updateSyncStatus(task.taskId, taskSyncStatus);
+        failed++;
+        errors.add('Task ${task.taskId}: $e');
+        if (kDebugMode) {
+          debugPrint(
+            'Task sync ${taskSyncStatus.toLowerCase()} for ${task.taskId}: $e',
+          );
+        }
+      }
+    }
+
+    return SyncResult(syncedCount: synced, failedCount: failed, errors: errors);
+  }
+
+  /// Build the upsert map for a task row.
+  static Map<String, dynamic> buildTaskUpsertMap(Task task, String userId) {
+    return {
+      'task_id': task.taskId,
+      'session_id': task.sessionId,
+      'user_id': userId,
+      'title': task.title,
+      'notes': task.notes,
+      'due_date': task.dueDate?.toIso8601String(),
+      'google_task_id': task.googleTaskId,
+      'google_task_list_id': task.googleTaskListId,
+      'status': task.status,
+      'sync_status': 'SYNCED',
+      'raw_user_message': task.rawUserMessage,
+      'completed_at': task.completedAt?.toIso8601String(),
+      'created_at': task.createdAt.toIso8601String(),
+      'updated_at': task.updatedAt.toIso8601String(),
+    };
   }
 
   /// Upload photos for a session to Supabase Storage.

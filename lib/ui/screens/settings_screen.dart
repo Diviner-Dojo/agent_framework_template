@@ -31,6 +31,7 @@ import '../../providers/calendar_providers.dart';
 import '../../providers/location_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
+import '../../providers/task_providers.dart';
 import '../../repositories/sync_repository.dart';
 import '../../providers/voice_providers.dart';
 import '../widgets/llm_model_download_dialog.dart';
@@ -875,6 +876,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     final theme = Theme.of(context);
     final isConnected = ref.watch(isGoogleConnectedProvider);
     final autoSuggest = ref.watch(calendarAutoSuggestProvider);
+    final taskAutoSuggest = ref.watch(taskAutoSuggestProvider);
     final requireConfirmation = ref.watch(calendarConfirmationProvider);
 
     return Card(
@@ -883,7 +885,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Calendar', style: theme.textTheme.titleMedium),
+            Text('Calendar & Tasks', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
             // Connection status.
             Row(
@@ -899,8 +901,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 Expanded(
                   child: Text(
                     isConnected
-                        ? 'Google Calendar: Connected'
-                        : 'Google Calendar: Not connected',
+                        ? 'Google Calendar & Tasks: Connected'
+                        : 'Google Calendar & Tasks: Not connected',
                     style: theme.textTheme.bodyMedium,
                   ),
                 ),
@@ -934,10 +936,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   }
                 },
                 icon: const Icon(Icons.calendar_month),
-                label: const Text('Connect Google Calendar'),
+                label: const Text('Connect Google'),
               ),
             const SizedBox(height: 12),
-            // Auto-suggest toggle.
+            // Auto-suggest calendar events toggle.
             SwitchListTile(
               title: const Text('Auto-suggest calendar events'),
               subtitle: const Text(
@@ -948,6 +950,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 ref
                     .read(calendarAutoSuggestProvider.notifier)
                     .setEnabled(value);
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+            // Auto-suggest tasks toggle.
+            SwitchListTile(
+              title: const Text('Auto-suggest tasks'),
+              subtitle: const Text(
+                'Detect task creation requests in conversation',
+              ),
+              value: taskAutoSuggest,
+              onChanged: (value) {
+                ref.read(taskAutoSuggestProvider.notifier).setEnabled(value);
               },
               contentPadding: EdgeInsets.zero,
             ),

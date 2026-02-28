@@ -6,8 +6,9 @@
 //   Production code uses the real googleapis CalendarApi. Tests inject fakes
 //   without touching platform channels.
 //
-// Scope: Create-only (events.insert). No read, update, or delete operations
-//   in Phase 11. Events always go to the user's primary calendar.
+// Phase 11: Create events and reminders (events.insert).
+// Phase 13: Update events (events.patch), list events (events.list).
+// All operations target the user's primary calendar.
 //
 // See: ADR-0020 §2 (Scope Minimization), §4 (Event Extraction Routing)
 // ===========================================================================
@@ -15,6 +16,36 @@
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/calendar/v3.dart' as gcal;
 import 'package:googleapis_auth/googleapis_auth.dart' as googleapis_auth;
+
+/// Tag appended to event descriptions to identify events created by the app.
+const agenticJournalTag = '\n\n--- Created by Agentic Journal';
+
+/// Summary of a calendar event for day query display.
+class CalendarEventSummary {
+  /// Event title.
+  final String title;
+
+  /// Event start time.
+  final DateTime startTime;
+
+  /// Event end time.
+  final DateTime? endTime;
+
+  /// Whether this is an all-day event.
+  final bool isAllDay;
+
+  /// Event location (if any).
+  final String? location;
+
+  /// Create a [CalendarEventSummary].
+  const CalendarEventSummary({
+    required this.title,
+    required this.startTime,
+    this.endTime,
+    this.isAllDay = false,
+    this.location,
+  });
+}
 
 /// Result of a successful Google Calendar event creation.
 class CalendarCreateResult {
@@ -57,6 +88,22 @@ typedef CreateReminderFn =
       String? description,
     });
 
+/// Callback type for updating an existing Google Calendar event.
+typedef UpdateEventFn =
+    Future<void> Function({
+      required String googleEventId,
+      String? title,
+      DateTime? startTime,
+      DateTime? endTime,
+    });
+
+/// Callback type for listing events in a time range.
+typedef ListEventsFn =
+    Future<List<CalendarEventSummary>> Function({
+      required DateTime timeMin,
+      required DateTime timeMax,
+    });
+
 /// Google Calendar API service for creating events and reminders.
 ///
 /// Accepts an authenticated [googleapis_auth.AuthClient] from
@@ -74,6 +121,8 @@ typedef CreateReminderFn =
 class GoogleCalendarService {
   final CreateEventFn _createEvent;
   final CreateReminderFn _createReminder;
+  final UpdateEventFn? _updateEvent;
+  final ListEventsFn? _listEvents;
 
   /// Create a GoogleCalendarService with injectable callables.
   ///
@@ -83,8 +132,12 @@ class GoogleCalendarService {
   GoogleCalendarService({
     required CreateEventFn createEvent,
     required CreateReminderFn createReminder,
+    UpdateEventFn? updateEvent,
+    ListEventsFn? listEvents,
   }) : _createEvent = createEvent,
-       _createReminder = createReminder;
+       _createReminder = createReminder,
+       _updateEvent = updateEvent,
+       _listEvents = listEvents;
 
   /// Create a GoogleCalendarService backed by a real Google Calendar API client.
   ///
@@ -129,6 +182,22 @@ class GoogleCalendarService {
             description,
             tz,
           ),
+      updateEvent:
+          ({
+            required String googleEventId,
+            String? title,
+            DateTime? startTime,
+            DateTime? endTime,
+          }) => _updateEventImpl(
+            calendarApi,
+            googleEventId,
+            title,
+            startTime,
+            endTime,
+            tz,
+          ),
+      listEvents: ({required DateTime timeMin, required DateTime timeMax}) =>
+          _listEventsImpl(calendarApi, timeMin, timeMax, tz),
     );
   }
 
@@ -170,6 +239,45 @@ class GoogleCalendarService {
     );
   }
 
+  /// Update an existing calendar event (partial update via patch).
+  ///
+  /// Only updates the fields that are provided (non-null).
+  /// Throws [CalendarServiceException] on API error.
+  Future<void> updateEvent({
+    required String googleEventId,
+    String? title,
+    DateTime? startTime,
+    DateTime? endTime,
+  }) {
+    if (_updateEvent == null) {
+      throw const CalendarServiceException(
+        'Event updating not available (service created without client)',
+      );
+    }
+    return _updateEvent(
+      googleEventId: googleEventId,
+      title: title,
+      startTime: startTime,
+      endTime: endTime,
+    );
+  }
+
+  /// List events in a time range from the primary calendar.
+  ///
+  /// Returns a list of [CalendarEventSummary] for display in day queries.
+  /// Throws [CalendarServiceException] on API error.
+  Future<List<CalendarEventSummary>> listEvents({
+    required DateTime timeMin,
+    required DateTime timeMax,
+  }) {
+    if (_listEvents == null) {
+      throw const CalendarServiceException(
+        'Event listing not available (service created without client)',
+      );
+    }
+    return _listEvents(timeMin: timeMin, timeMax: timeMax);
+  }
+
   /// Real implementation for creating a calendar event.
   static Future<CalendarCreateResult> _createEventImpl(
     gcal.CalendarApi api,
@@ -182,9 +290,12 @@ class GoogleCalendarService {
     // Default end time: 1 hour after start if not provided.
     final effectiveEnd = endTime ?? startTime.add(const Duration(hours: 1));
 
+    // Append "Created by Agentic Journal" tag to description.
+    final taggedDescription = (description ?? '') + agenticJournalTag;
+
     final event = gcal.Event(
       summary: title,
-      description: description,
+      description: taggedDescription,
       start: gcal.EventDateTime(
         dateTime: startTime.toUtc(),
         timeZone: timezone,
@@ -230,10 +341,13 @@ class GoogleCalendarService {
     String? description,
     String timezone,
   ) async {
+    // Append "Created by Agentic Journal" tag to description.
+    final taggedDescription = (description ?? '') + agenticJournalTag;
+
     // Reminders are 30-minute events with a 10-minute popup notification.
     final event = gcal.Event(
       summary: title,
-      description: description,
+      description: taggedDescription,
       start: gcal.EventDateTime(dateTime: dateTime.toUtc(), timeZone: timezone),
       end: gcal.EventDateTime(
         dateTime: dateTime.add(const Duration(minutes: 30)).toUtc(),
@@ -269,6 +383,89 @@ class GoogleCalendarService {
         debugPrint('GoogleCalendarService.createReminder failed: $e');
       }
       throw const CalendarServiceException('Failed to create reminder');
+    }
+  }
+
+  /// Real implementation for updating an existing event (partial patch).
+  static Future<void> _updateEventImpl(
+    gcal.CalendarApi api,
+    String googleEventId,
+    String? title,
+    DateTime? startTime,
+    DateTime? endTime,
+    String timezone,
+  ) async {
+    final patch = gcal.Event(
+      summary: title,
+      start: startTime != null
+          ? gcal.EventDateTime(dateTime: startTime.toUtc(), timeZone: timezone)
+          : null,
+      end: endTime != null
+          ? gcal.EventDateTime(dateTime: endTime.toUtc(), timeZone: timezone)
+          : null,
+    );
+
+    try {
+      await api.events.patch(patch, 'primary', googleEventId);
+    } on gcal.DetailedApiRequestError catch (e) {
+      if (kDebugMode) {
+        debugPrint('Google Calendar API detail: ${e.message}');
+      }
+      throw CalendarServiceException(
+        'Google Calendar API error (HTTP ${e.status})',
+      );
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('GoogleCalendarService.updateEvent failed: $e');
+      }
+      throw const CalendarServiceException('Failed to update calendar event');
+    }
+  }
+
+  /// Real implementation for listing events in a time range.
+  static Future<List<CalendarEventSummary>> _listEventsImpl(
+    gcal.CalendarApi api,
+    DateTime timeMin,
+    DateTime timeMax,
+    String timezone,
+  ) async {
+    try {
+      final events = await api.events.list(
+        'primary',
+        timeMin: timeMin.toUtc(),
+        timeMax: timeMax.toUtc(),
+        singleEvents: true,
+        orderBy: 'startTime',
+        timeZone: timezone,
+      );
+
+      return (events.items ?? []).map((e) {
+        final isAllDay = e.start?.date != null;
+        final startDt = isAllDay
+            ? (e.start!.date!)
+            : (e.start?.dateTime ?? DateTime.now());
+        final endDt = isAllDay ? e.end?.date : e.end?.dateTime;
+
+        return CalendarEventSummary(
+          title: e.summary ?? '(No title)',
+          startTime: startDt,
+          endTime: endDt,
+          isAllDay: isAllDay,
+          location: e.location,
+        );
+      }).toList();
+    } on gcal.DetailedApiRequestError catch (e) {
+      if (kDebugMode) {
+        debugPrint('Google Calendar API detail: ${e.message}');
+      }
+      throw CalendarServiceException(
+        'Google Calendar API error (HTTP ${e.status})',
+      );
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('GoogleCalendarService.listEvents failed: $e');
+      }
+      throw const CalendarServiceException('Failed to list calendar events');
     }
   }
 }

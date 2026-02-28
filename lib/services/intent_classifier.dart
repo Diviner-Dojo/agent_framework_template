@@ -49,6 +49,12 @@ enum IntentType {
 
   /// Set a reminder.
   reminder,
+
+  /// Create a task / to-do item.
+  task,
+
+  /// Query about today's/tomorrow's schedule and tasks (day overview).
+  dayQuery,
 }
 
 /// The result of intent classification.
@@ -122,7 +128,9 @@ class IntentClassifier {
     if (words.length <= 4 &&
         !_hasStrongQuerySignal(trimmed) &&
         !_hasStrongCalendarSignal(trimmed) &&
-        !_hasStrongReminderSignal(trimmed)) {
+        !_hasStrongReminderSignal(trimmed) &&
+        !_hasStrongTaskSignal(trimmed) &&
+        !_hasStrongDayQuerySignal(trimmed)) {
       return const [IntentResult(type: IntentType.journal, confidence: 0.1)];
     }
 
@@ -185,19 +193,72 @@ class IntentClassifier {
       reminderScore += 0.5;
     }
 
+    // === Task signals ===
+    double taskScore = 0.0;
+
+    if (_taskIntentPattern.hasMatch(trimmed)) {
+      taskScore += 0.5;
+    }
+
+    // "Add X to my list" without explicit "task" / "to-do" is a moderate signal.
+    if (_taskListReferencePattern.hasMatch(trimmed)) {
+      taskScore += 0.5;
+    }
+
+    // Disambiguation: "remind me" always wins over task.
+    if (reminderScore > 0 && taskScore > 0) {
+      taskScore = 0.0;
+    }
+
+    // Disambiguation: when explicit task keyword is present, task wins.
+    // Otherwise calendar takes priority over task.
+    if (calendarScore > 0 && taskScore > 0) {
+      if (_taskIntentPattern.hasMatch(trimmed)) {
+        calendarScore = 0.0; // Explicit task keyword → task wins.
+      } else {
+        taskScore = 0.0; // No explicit task keyword → calendar wins.
+      }
+    }
+
+    // === Day query signals ===
+    double dayQueryScore = 0.0;
+
+    if (_dayQueryPattern.hasMatch(trimmed)) {
+      dayQueryScore += 0.55;
+    }
+
+    // Task-specific day queries.
+    if (_taskDayQueryPattern.hasMatch(trimmed)) {
+      dayQueryScore += 0.5;
+    }
+
+    // Guard: past-tense question → recall, not day query.
+    if (dayQueryScore > 0 && _questionPastPattern.hasMatch(trimmed)) {
+      dayQueryScore = 0.0;
+    }
+
     // === Temporal modifier (context-dependent) ===
     //
     // Temporal references are ambiguous — they could indicate recall
     // (past-tense question) or scheduling (future-tense action).
     // We assign the temporal boost based on what other signals are present.
     if (_temporalPattern.hasMatch(trimmed)) {
-      if (calendarScore > 0 || reminderScore > 0) {
-        // Calendar/reminder context: temporal boosts the dominant intent.
-        if (calendarScore >= reminderScore) {
+      if (calendarScore > 0 || reminderScore > 0 || taskScore > 0) {
+        // Calendar/reminder/task context: temporal boosts the dominant intent.
+        final maxIntent = [
+          calendarScore,
+          reminderScore,
+          taskScore,
+        ].reduce((a, b) => a > b ? a : b);
+        if (maxIntent == calendarScore && calendarScore >= reminderScore) {
           calendarScore += 0.25;
-        } else {
+        } else if (maxIntent == reminderScore) {
           reminderScore += 0.25;
+        } else {
+          taskScore += 0.15;
         }
+      } else if (dayQueryScore > 0) {
+        dayQueryScore += 0.2;
       } else if (_isQuestionStructure(trimmed)) {
         // Past-tense question context: temporal boosts recall.
         queryScore += 0.3;
@@ -221,6 +282,8 @@ class IntentClassifier {
     final clampedQuery = queryScore.clamp(0.0, 1.0);
     final clampedCalendar = calendarScore.clamp(0.0, 1.0);
     final clampedReminder = reminderScore.clamp(0.0, 1.0);
+    final clampedTask = taskScore.clamp(0.0, 1.0);
+    final clampedDayQuery = dayQueryScore.clamp(0.0, 1.0);
 
     // Add intents that reached the active threshold (>= 0.5).
     if (clampedQuery >= 0.5) {
@@ -249,6 +312,16 @@ class IntentClassifier {
       );
     }
 
+    if (clampedTask >= 0.5) {
+      results.add(IntentResult(type: IntentType.task, confidence: clampedTask));
+    }
+
+    if (clampedDayQuery >= 0.5) {
+      results.add(
+        IntentResult(type: IntentType.dayQuery, confidence: clampedDayQuery),
+      );
+    }
+
     // Sort primary intents by confidence descending.
     results.sort((a, b) => b.confidence.compareTo(a.confidence));
 
@@ -258,6 +331,8 @@ class IntentClassifier {
         clampedQuery,
         clampedCalendar,
         clampedReminder,
+        clampedTask,
+        clampedDayQuery,
       ].reduce((a, b) => a > b ? a : b);
       results.add(
         IntentResult(type: IntentType.journal, confidence: 1.0 - maxOther),
@@ -287,6 +362,14 @@ class IntentClassifier {
     if (clampedReminder > 0 && clampedReminder < 0.5) {
       results.add(
         IntentResult(type: IntentType.reminder, confidence: clampedReminder),
+      );
+    }
+    if (clampedTask > 0 && clampedTask < 0.5) {
+      results.add(IntentResult(type: IntentType.task, confidence: clampedTask));
+    }
+    if (clampedDayQuery > 0 && clampedDayQuery < 0.5) {
+      results.add(
+        IntentResult(type: IntentType.dayQuery, confidence: clampedDayQuery),
       );
     }
 
@@ -396,6 +479,49 @@ class IntentClassifier {
     caseSensitive: false,
   );
 
+  /// Task intent phrases — require explicit "task" or "to-do" keywords.
+  ///
+  /// Matches: "add a task", "create a task", "add X to my task list",
+  /// "new to-do", "add to my to-do list", "put X on my list".
+  /// Does NOT match bare action verbs ("buy groceries") without task keywords.
+  static final _taskIntentPattern = RegExp(
+    r'\b(add|create|make|new)\s+(a\s+)?(task|to.?do)\b|'
+    r'\badd\b.{0,50}\b(task\s*list|to.?do\s*list)\b|'
+    r'^(add|create)\s+(a\s+)?task\b',
+    caseSensitive: false,
+  );
+
+  /// Weaker task signal: "put X on my list" / "add X to my list".
+  ///
+  /// Without explicit "task" or "to-do", this is a weaker signal.
+  static final _taskListReferencePattern = RegExp(
+    r'\b(put|add)\b.{0,40}\b(on|to)\s+(my\s+)?list\b',
+    caseSensitive: false,
+  );
+
+  /// Day query intent phrases.
+  ///
+  /// Matches present/future-tense questions about schedule:
+  /// "What does my day look like?", "What's happening today?",
+  /// "What's on my schedule?", "Tell me about my schedule".
+  static final _dayQueryPattern = RegExp(
+    r'\bwhat.{0,10}(my|the)\s+day\s+look\b|'
+    r'\bwhat.{0,5}s?\s+(happening|going on|on my|on the)\b.{0,20}\b(today|tomorrow|schedule|calendar|agenda)\b|'
+    r'\b(tell me about|give me|show me)\s+(my\s+)?(schedule|calendar|agenda|day)\b|'
+    r'\bwhat.{0,5}s?\s+on\s+(my\s+)?(schedule|calendar|agenda|today|tomorrow)\b|'
+    r'\bwhat.{0,5}s?\s+my\s+(day|schedule|calendar|agenda)\b|'
+    r'\bhow.{0,5}s?\s+my\s+(day|schedule|calendar)\s+(look|shaping)\b',
+    caseSensitive: false,
+  );
+
+  /// Task-specific day query: "any tasks for today?", "what tasks are due?"
+  static final _taskDayQueryPattern = RegExp(
+    r'\b(any|what)\s+tasks?\b.{0,20}\b(today|tomorrow|due|pending)\b|'
+    r'\btasks?\s+(due|for)\s+(today|tomorrow)\b|'
+    r'\bwhat.{0,10}(do i have|is)\b.{0,15}\b(today|tomorrow)\b',
+    caseSensitive: false,
+  );
+
   // =========================================================================
   // Helper methods
   // =========================================================================
@@ -419,6 +545,26 @@ class IntentClassifier {
   /// Check if a short message has a strong reminder signal.
   static bool _hasStrongReminderSignal(String text) {
     return RegExp(r'^remind\b', caseSensitive: false).hasMatch(text);
+  }
+
+  /// Check if a short message has a strong task signal.
+  static bool _hasStrongTaskSignal(String text) {
+    return RegExp(
+      r'^(add|create|new)\s+(a\s+)?(task|to.?do)\b',
+      caseSensitive: false,
+    ).hasMatch(text);
+  }
+
+  /// Check if a short message has a strong day query signal.
+  static bool _hasStrongDayQuerySignal(String text) {
+    return RegExp(
+      r"^what.{0,5}s?\s+(my|on|happening|going)|"
+      r"^what\s+tasks?\b|"
+      r"^(show|give)\s+me\s+(my\s+)?(schedule|calendar|agenda|day)\b|"
+      r"^tell\s+me\s+about\s+(my\s+)?(schedule|calendar|agenda|day)\b|"
+      r"^any\s+tasks?\b",
+      caseSensitive: false,
+    ).hasMatch(text);
   }
 
   /// Check if the message has question structure (starts with question word

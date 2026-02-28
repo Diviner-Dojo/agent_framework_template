@@ -135,6 +135,27 @@ class CalendarEventDao {
     );
   }
 
+  /// Update event details (title, start time, end time).
+  ///
+  /// Only updates fields that are non-null. Used for calendar event editing.
+  Future<int> updateEventDetails(
+    String eventId, {
+    String? title,
+    DateTime? startTime,
+    DateTime? endTime,
+  }) {
+    return (_db.update(
+      _db.calendarEvents,
+    )..where((e) => e.eventId.equals(eventId))).write(
+      CalendarEventsCompanion(
+        title: title != null ? Value(title) : const Value.absent(),
+        startTime: startTime != null ? Value(startTime) : const Value.absent(),
+        endTime: endTime != null ? Value(endTime) : const Value.absent(),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
   /// Delete a single event.
   Future<int> deleteEvent(String eventId) {
     return (_db.delete(

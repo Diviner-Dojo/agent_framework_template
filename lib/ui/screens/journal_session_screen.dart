@@ -43,6 +43,7 @@ import '../../services/photo_service.dart';
 import '../../constants/voice_recovery_messages.dart';
 import '../../services/voice_session_orchestrator.dart';
 import '../widgets/calendar_event_card.dart';
+import '../widgets/task_card.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/model_download_dialog.dart';
 import '../widgets/photo_capture_sheet.dart';
@@ -161,6 +162,11 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     orchestrator.onDismissCalendarEvent = () {
       sessionNotifier.dismissCalendarEvent();
       sessionNotifier.dismissReminder();
+      return Future.value();
+    };
+    orchestrator.onConfirmTask = () => sessionNotifier.confirmTask();
+    orchestrator.onDismissTask = () {
+      sessionNotifier.dismissTask();
       return Future.value();
     };
 
@@ -288,6 +294,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
           notifier.deferCalendarEvent();
           orchestrator.speakDeferral();
         }
+      }
+
+      // Handle task extraction completion in voice mode.
+      final wasExtractingTask = previous?.isExtractingTask ?? false;
+      if (wasExtractingTask &&
+          !next.isExtractingTask &&
+          next.pendingExtractedTask != null) {
+        orchestrator.confirmTask(next.pendingExtractedTask!);
       }
     });
 
@@ -450,6 +464,10 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                 sessionState.pendingReminder != null)
               _buildCalendarEventCard(sessionState),
 
+            // Task confirmation card — shown when a pending
+            // task intent is detected (Phase 13).
+            if (sessionState.pendingTask != null) _buildTaskCard(sessionState),
+
             // Typing indicator — shown while waiting for agent response.
             if (sessionState.isWaitingForAgent && !sessionState.isSessionEnding)
               const _ThinkingIndicator(),
@@ -492,6 +510,21 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
           // After connecting, the card will show "Add to Calendar"
           // because isGoogleConnectedProvider updates automatically.
         }
+      },
+    );
+  }
+
+  /// Build the inline task confirmation card.
+  Widget _buildTaskCard(SessionState sessionState) {
+    return TaskCard(
+      extractedTask: sessionState.pendingExtractedTask,
+      isExtracting: sessionState.isExtractingTask,
+      extractionError: sessionState.taskExtractionError,
+      onConfirm: () {
+        ref.read(sessionNotifierProvider.notifier).confirmTask();
+      },
+      onDismiss: () {
+        ref.read(sessionNotifierProvider.notifier).dismissTask();
       },
     );
   }
