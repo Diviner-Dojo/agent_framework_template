@@ -20,6 +20,7 @@ import '../../providers/database_provider.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/session_providers.dart';
+import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
 import '../widgets/session_card.dart';
 
@@ -45,6 +46,8 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
       appBar: AppBar(
         title: const Text('Agentic Journal'),
         actions: [
+          // Tasks icon — visible when tasks exist.
+          _TasksIconButton(),
           // Gallery icon — visible when photos exist.
           _GalleryIconButton(),
           // Search icon — visible at 5+ sessions (progressive disclosure).
@@ -329,6 +332,29 @@ class _SearchIconButton extends ConsumerWidget {
           icon: const Icon(Icons.search),
           tooltip: 'Search journal',
           onPressed: () => Navigator.of(context).pushNamed('/search'),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// Tasks icon button with progressive disclosure.
+///
+/// Only visible when the user has at least one active task.
+class _TasksIconButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countAsync = ref.watch(taskCountProvider);
+
+    return countAsync.when(
+      data: (count) {
+        if (count < 1) return const SizedBox.shrink();
+        return IconButton(
+          icon: const Icon(Icons.task_alt_outlined),
+          tooltip: 'Tasks',
+          onPressed: () => Navigator.of(context).pushNamed('/tasks'),
         );
       },
       loading: () => const SizedBox.shrink(),

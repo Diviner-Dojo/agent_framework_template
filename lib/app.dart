@@ -44,6 +44,7 @@ import 'ui/screens/photo_gallery_screen.dart';
 import 'ui/screens/search_screen.dart';
 import 'ui/screens/session_list_screen.dart';
 import 'ui/screens/settings_screen.dart';
+import 'ui/screens/tasks_screen.dart';
 import 'ui/theme/app_theme.dart';
 
 /// The root widget of the app.
@@ -192,6 +193,7 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
         '/session': (context) => const JournalSessionScreen(),
         '/search': (context) => const SearchScreen(),
         '/gallery': (context) => const PhotoGalleryScreen(),
+        '/tasks': (context) => const TasksScreen(),
         '/settings': (context) => const SettingsScreen(),
         '/auth': (context) => const AuthScreen(),
         '/onboarding': (context) => const ConversationalOnboardingScreen(),

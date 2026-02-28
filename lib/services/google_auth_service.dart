@@ -60,6 +60,9 @@ class GoogleAuthException implements Exception {
 /// Google Calendar API scope — create and edit events.
 const _calendarEventsScope = 'https://www.googleapis.com/auth/calendar.events';
 
+/// Google Tasks API scope — full CRUD on tasks.
+const _tasksScope = 'https://www.googleapis.com/auth/tasks';
+
 /// Google OAuth2 authentication service for Calendar API access.
 ///
 /// Manages the sign-in/sign-out lifecycle and provides an authenticated
@@ -100,7 +103,7 @@ class GoogleAuthService {
 
   /// The shared GoogleSignIn instance with calendar.events scope.
   static final _defaultGoogleSignIn = GoogleSignIn(
-    scopes: [_calendarEventsScope],
+    scopes: [_calendarEventsScope, _tasksScope],
   );
 
   /// Trigger the Google OAuth2 consent flow.

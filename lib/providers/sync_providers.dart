@@ -23,12 +23,14 @@ final syncRepositoryProvider = Provider<SyncRepository>((ref) {
   final messageDao = ref.watch(messageDaoProvider);
   final photoDao = ref.watch(photoDaoProvider);
   final calendarEventDao = ref.watch(calendarEventDaoProvider);
+  final taskDao = ref.watch(taskDaoProvider);
   return SyncRepository(
     supabaseService: supabaseService,
     sessionDao: sessionDao,
     messageDao: messageDao,
     photoDao: photoDao,
     calendarEventDao: calendarEventDao,
+    taskDao: taskDao,
   );
 });
 

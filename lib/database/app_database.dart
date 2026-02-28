@@ -35,7 +35,14 @@ part 'app_database.g.dart';
 ///   final db = AppDatabase();          // production (file-based)
 ///   final db = AppDatabase.forTesting(NativeDatabase.memory());  // tests
 @DriftDatabase(
-  tables: [JournalSessions, JournalMessages, Photos, CalendarEvents, Videos],
+  tables: [
+    JournalSessions,
+    JournalMessages,
+    Photos,
+    CalendarEvents,
+    Videos,
+    Tasks,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   /// Default constructor — uses a file-based SQLite database.
@@ -51,7 +58,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -90,6 +97,21 @@ class AppDatabase extends _$AppDatabase {
           'videos',
           'CREATE INDEX IF NOT EXISTS idx_videos_session_id '
               'ON videos (session_id)',
+        ),
+      );
+      // Indexes for task queries (Phase 13).
+      await m.createIndex(
+        Index(
+          'tasks',
+          'CREATE INDEX IF NOT EXISTS idx_tasks_status '
+              'ON tasks (status)',
+        ),
+      );
+      await m.createIndex(
+        Index(
+          'tasks',
+          'CREATE INDEX IF NOT EXISTS idx_tasks_due_date '
+              'ON tasks (due_date)',
         ),
       );
     },
@@ -160,6 +182,24 @@ class AppDatabase extends _$AppDatabase {
       if (from < 8) {
         // E14: Journaling mode templates (ADR-0025).
         await m.addColumn(journalSessions, journalSessions.journalingMode);
+      }
+      if (from < 9) {
+        // Phase 13: Tasks table.
+        await m.createTable(tasks);
+        await m.createIndex(
+          Index(
+            'tasks',
+            'CREATE INDEX IF NOT EXISTS idx_tasks_status '
+                'ON tasks (status)',
+          ),
+        );
+        await m.createIndex(
+          Index(
+            'tasks',
+            'CREATE INDEX IF NOT EXISTS idx_tasks_due_date '
+                'ON tasks (due_date)',
+          ),
+        );
       }
     },
   );

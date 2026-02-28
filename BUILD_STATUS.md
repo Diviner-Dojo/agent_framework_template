@@ -1,23 +1,29 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-26 ~23:10 UTC
+> Last updated: 2026-02-28 ~current UTC
 
 ## Current Task
 
-**Status:** E13 Conversational Onboarding built and reviewed. Ready to commit.
+**Status:** Phase 13 (Google Tasks + Personal Assistant) — all phases implemented, tests being written.
 **Branch:** `main`
 
 ### In Progress
-- **Device testing** — P0 STT changes (silence padding, endpoint tuning) need on-device verification
-- **Model switching** — User reports rule-based fallback triggers too often. Need to prevent silent fallback to Layer A.
-- **Assistant gesture** — Long-press home not opening new chat. User needs to set app as default assistant in Android Settings.
+- **Phase 13 tests** — TaskDao tests + TaskExtractionService tests being written (agents)
+- **Coverage recovery** — Coverage dropped to 67.5% from new code; need tests for task_dao, task_extraction_service, tasks_screen, task_card, google_tasks_service
+- **Quality gate** — 5/6 passing (coverage only failure). Review + ADR still needed.
 
 ### Recently Completed
-- **E13 Conversational Onboarding** — Replaces static wizard with conversational first session. Build: DISC-20260226-224410. Review: REV-20260226-230621 (approve-with-changes, 0 blocking, 13 advisory). ADR-0026.
-- **Sprint N+2 (E7, E14, E16, E17, E28)** — Merged via PR #39.
-- **Sprint N+1 (E6, E8, E9, E10, E11)** — Merged via PR #38.
-- **P0 Quick Wins (E1-E5)** — Merged via PR #37. Silence padding, endpoint tuning, manifest fix, intent dedup, test fixes. Build: DISC-20260226-185523. Review: REV-20260226-191743 (approve-with-changes, 0 blocking, 8 advisory).
+- **Phase 13: Google Tasks + Personal Assistant** — Full implementation across 8 phases:
+  - Phase A: Tasks drift table, TaskDao, GoogleTasksService, task providers
+  - Phase B: OAuth tasks scope, calendar event editing/listing, "Created by Agentic Journal" tag
+  - Phase C: Intent classifier with task + dayQuery intents (69 regression tests)
+  - Phase D: TaskExtractionService (LLM/regex), task/dayQuery handling in SessionNotifier
+  - Phase E: TaskCard, TaskItemWidget, TasksScreen, Tasks icon, /tasks route
+  - Phase F: Supabase 007 migration, SyncRepository tasks
+  - Phase G: Voice orchestrator task confirmation
+  - Phase H: Settings screen "Calendar & Tasks" label, auto-suggest toggle
+- **E13 Conversational Onboarding** — Ready to commit (from previous session).
 - **Multi-project analysis (7 projects)** — FlutterVoiceFriend, LiveKit, Sherpa ONNX, Cactus, PowerSync, Dicio, Porcupine.
 - **Consolidated enhancement plan** — `docs/consolidated-enhancement-plan.md` with 28 enhancements across 7 domains, prioritized P0-P4.
 - **ADR-0022: Voice Engine Swap** — ElevenLabs TTS (via Supabase proxy) + speech_to_text STT.

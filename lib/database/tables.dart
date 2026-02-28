@@ -302,3 +302,67 @@ class Videos extends Table {
   @override
   Set<Column> get primaryKey => {videoId};
 }
+
+/// Tasks created from conversation or the Tasks screen (Phase 13).
+///
+/// Each task is optionally associated with a session (tasks created from
+/// the Tasks screen have no session). Tasks are local-first and auto-sync
+/// to Google Tasks when connected.
+///
+/// Lifecycle states (status column):
+///   PENDING_CREATE → ACTIVE (confirmed / synced to Google Tasks)
+///   ACTIVE → COMPLETED (user marked done)
+///   PENDING_CREATE → FAILED (sync error)
+///
+/// Sync states (syncStatus column) — independent from lifecycle:
+///   PENDING → SYNCED (on successful Google Tasks API call)
+///   PENDING → FAILED (on sync error)
+class Tasks extends Table {
+  /// Client-generated UUID — primary key.
+  TextColumn get taskId => text()();
+
+  /// Foreign key to JournalSessions — nullable (tasks from Tasks screen
+  /// have no session).
+  TextColumn get sessionId =>
+      text().nullable().references(JournalSessions, #sessionId)();
+
+  /// User ID for RLS and cloud sync.
+  TextColumn get userId => text().nullable()();
+
+  /// Task title (non-empty, max 200 chars).
+  TextColumn get title => text()();
+
+  /// Optional notes / details for the task.
+  TextColumn get notes => text().nullable()();
+
+  /// Due date (nullable — many tasks are open-ended).
+  DateTimeColumn get dueDate => dateTime().nullable()();
+
+  /// Google Tasks task ID — set after successful creation.
+  TextColumn get googleTaskId => text().nullable()();
+
+  /// Google Tasks task list ID (the "Agentic Journal" list).
+  TextColumn get googleTaskListId => text().nullable()();
+
+  /// Task lifecycle state.
+  /// Values: 'PENDING_CREATE' | 'ACTIVE' | 'COMPLETED' | 'FAILED'
+  TextColumn get status =>
+      text().withDefault(const Constant('PENDING_CREATE'))();
+
+  /// Cloud sync state — independent from lifecycle status.
+  /// Values: 'PENDING' | 'SYNCED' | 'FAILED'
+  TextColumn get syncStatus => text().withDefault(const Constant('PENDING'))();
+
+  /// The raw user message that triggered this task extraction.
+  TextColumn get rawUserMessage => text().nullable()();
+
+  /// When the task was marked as completed.
+  DateTimeColumn get completedAt => dateTime().nullable()();
+
+  /// Standard timestamps.
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {taskId};
+}

@@ -42,8 +42,11 @@ import '../database/daos/calendar_event_dao.dart';
 import '../database/daos/message_dao.dart';
 import '../database/daos/photo_dao.dart';
 import '../database/daos/session_dao.dart';
+import '../database/daos/task_dao.dart';
 import '../services/event_extraction_service.dart';
 import '../services/google_calendar_service.dart';
+import '../services/google_tasks_service.dart';
+import '../services/task_extraction_service.dart';
 import '../services/photo_service.dart';
 import '../services/video_service.dart';
 import '../database/daos/video_dao.dart';
@@ -58,6 +61,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'auth_providers.dart';
 import 'calendar_providers.dart';
 import 'database_provider.dart';
+import 'task_providers.dart';
 import 'llm_providers.dart';
 import 'location_providers.dart';
 import 'onboarding_providers.dart';
@@ -200,6 +204,19 @@ class SessionState {
   /// Error message if extraction failed.
   final String? extractionError;
 
+  /// Non-null when a task intent was detected and is pending user
+  /// confirmation. Contains the raw user message.
+  final String? pendingTask;
+
+  /// The extracted task details from [pendingTask].
+  final ExtractedTask? pendingExtractedTask;
+
+  /// True while the task extraction service is processing.
+  final bool isExtractingTask;
+
+  /// Error message if task extraction failed.
+  final String? taskExtractionError;
+
   /// Recent session summaries for conversational continuity (ADR-0023).
   ///
   /// Each map has 'date' and 'summary' keys. Populated at session start
@@ -227,6 +244,10 @@ class SessionState {
     this.pendingExtractedEvent,
     this.isExtracting = false,
     this.extractionError,
+    this.pendingTask,
+    this.pendingExtractedTask,
+    this.isExtractingTask = false,
+    this.taskExtractionError,
     this.sessionSummaries = const [],
     this.journalingMode,
   });
@@ -251,6 +272,10 @@ class SessionState {
     Object? pendingExtractedEvent = _sentinel,
     bool? isExtracting,
     Object? extractionError = _sentinel,
+    Object? pendingTask = _sentinel,
+    Object? pendingExtractedTask = _sentinel,
+    bool? isExtractingTask,
+    Object? taskExtractionError = _sentinel,
     List<Map<String, String>>? sessionSummaries,
     Object? journalingMode = _sentinel,
   }) {
@@ -281,6 +306,16 @@ class SessionState {
       extractionError: identical(extractionError, _sentinel)
           ? this.extractionError
           : extractionError as String?,
+      pendingTask: identical(pendingTask, _sentinel)
+          ? this.pendingTask
+          : pendingTask as String?,
+      pendingExtractedTask: identical(pendingExtractedTask, _sentinel)
+          ? this.pendingExtractedTask
+          : pendingExtractedTask as ExtractedTask?,
+      isExtractingTask: isExtractingTask ?? this.isExtractingTask,
+      taskExtractionError: identical(taskExtractionError, _sentinel)
+          ? this.taskExtractionError
+          : taskExtractionError as String?,
       sessionSummaries: sessionSummaries ?? this.sessionSummaries,
       journalingMode: identical(journalingMode, _sentinel)
           ? this.journalingMode
@@ -916,6 +951,20 @@ class SessionNotifier extends StateNotifier<SessionState> {
         }
         return false;
 
+      case IntentType.task:
+        if (intent.confidence >= _ambiguousThreshold) {
+          _handleTaskIntent(text);
+          return true;
+        }
+        return false;
+
+      case IntentType.dayQuery:
+        if (intent.confidence >= _ambiguousThreshold) {
+          await _handleDayQuery(text);
+          return true;
+        }
+        return false;
+
       case IntentType.journal:
         return false;
     }
@@ -1006,6 +1055,287 @@ class SessionNotifier extends StateNotifier<SessionState> {
           isExtracting: false,
           extractionError: error.reason,
         );
+    }
+  }
+
+  // =========================================================================
+  // Phase 13: Task handling
+  // =========================================================================
+
+  /// Handle a task intent: set pending state and extract details.
+  Future<void> _handleTaskIntent(String text) async {
+    state = state.copyWith(
+      pendingTask: text,
+      isExtractingTask: true,
+      taskExtractionError: null,
+      pendingExtractedTask: null,
+    );
+    await _extractTaskDetails(text);
+  }
+
+  /// Run task extraction and update pending state with the result.
+  Future<void> _extractTaskDetails(String text) async {
+    final extractionService = _ref.read(taskExtractionServiceProvider);
+    final now = nowUtc();
+    final timezone = await _ref.read(deviceTimezoneProvider.future);
+
+    final result = await extractionService.extract(
+      text,
+      now,
+      timezone: timezone,
+    );
+
+    // Check that we still have a pending task (user may have dismissed).
+    if (state.pendingTask == null) return;
+
+    switch (result) {
+      case TaskExtractionSuccess(:final task):
+        state = state.copyWith(
+          pendingExtractedTask: task,
+          isExtractingTask: false,
+        );
+      case TaskExtractionFailure(:final reason):
+        state = state.copyWith(
+          isExtractingTask: false,
+          taskExtractionError: reason,
+        );
+    }
+  }
+
+  /// Confirm the pending task: save to local DB and sync to Google Tasks.
+  Future<void> confirmTask() async {
+    if (state.isWaitingForAgent) return;
+
+    final sessionId = state.activeSessionId;
+    final rawMessage = state.pendingTask;
+    final task = state.pendingExtractedTask;
+    if (rawMessage == null || task == null) return;
+
+    // Clear pending state immediately (optimistic UI).
+    state = state.copyWith(
+      pendingTask: null,
+      pendingExtractedTask: null,
+      taskExtractionError: null,
+      isWaitingForAgent: true,
+    );
+
+    // Save the task to the local database.
+    final taskDao = _ref.read(taskDaoProvider);
+    final taskId = generateUuid();
+
+    await taskDao.insertTask(
+      TasksCompanion(
+        taskId: Value(taskId),
+        sessionId: Value.absentIfNull(sessionId),
+        title: Value(task.title),
+        notes: Value.absentIfNull(task.notes),
+        dueDate: Value.absentIfNull(task.dueDate),
+        rawUserMessage: Value(rawMessage),
+        status: const Value(TaskStatus.active),
+        syncStatus: const Value(TaskSyncStatus.pending),
+        createdAt: Value(nowUtc()),
+        updatedAt: Value(nowUtc()),
+      ),
+    );
+
+    // Try to sync to Google Tasks.
+    final isConnected = _ref.read(isGoogleConnectedProvider);
+    if (isConnected) {
+      await _createGoogleTask(taskId, task);
+    }
+
+    // Save an assistant confirmation message.
+    final confirmMsg = isConnected
+        ? "Added '${task.title}' to your tasks."
+        : "Added '${task.title}' to your tasks.";
+    if (sessionId != null) {
+      await _messageDao.insertMessage(
+        generateUuid(),
+        sessionId,
+        'ASSISTANT',
+        confirmMsg,
+        nowUtc(),
+      );
+    }
+
+    // Invalidate task count provider so UI updates.
+    _ref.invalidate(taskCountProvider);
+
+    state = state.copyWith(
+      isWaitingForAgent: false,
+      conversationMessages: [
+        ...state.conversationMessages,
+        {'role': 'assistant', 'content': confirmMsg},
+      ],
+    );
+  }
+
+  /// Create a Google Task via the API.
+  Future<void> _createGoogleTask(String taskId, ExtractedTask task) async {
+    final taskDao = _ref.read(taskDaoProvider);
+
+    try {
+      final authService = _ref.read(googleAuthServiceProvider);
+      final authClient = await authService.getAuthClient();
+      if (authClient == null) {
+        await taskDao.updateSyncStatus(taskId, TaskSyncStatus.failed);
+        return;
+      }
+
+      final tasksService = GoogleTasksService.withClient(authClient);
+      final result = await tasksService.createTask(
+        title: task.title,
+        notes: task.notes,
+        dueDate: task.dueDate,
+      );
+
+      await taskDao.updateGoogleTaskId(
+        taskId,
+        result.googleTaskId,
+        result.googleTaskListId,
+      );
+    } on GoogleTasksException catch (e) {
+      if (kDebugMode) {
+        debugPrint('Google Tasks API failed: $e');
+      }
+      await taskDao.updateSyncStatus(taskId, TaskSyncStatus.failed);
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('Google Tasks creation failed: $e');
+      }
+      await taskDao.updateSyncStatus(taskId, TaskSyncStatus.failed);
+    }
+  }
+
+  /// Dismiss the pending task (user chose to continue journaling).
+  void dismissTask() {
+    state = state.copyWith(
+      pendingTask: null,
+      pendingExtractedTask: null,
+      isExtractingTask: false,
+      taskExtractionError: null,
+    );
+  }
+
+  // =========================================================================
+  // Phase 13: Day query handling
+  // =========================================================================
+
+  /// Handle a day query: read local tasks + Google Calendar, synthesize.
+  Future<void> _handleDayQuery(String text) async {
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return;
+
+    state = state.copyWith(isWaitingForAgent: true);
+
+    try {
+      final taskDao = _ref.read(taskDaoProvider);
+      final lower = text.toLowerCase();
+      final isTomorrow = lower.contains('tomorrow');
+
+      // Get local tasks.
+      final tasks = isTomorrow
+          ? await taskDao.getTasksDueTomorrow()
+          : await taskDao.getTasksDueToday();
+
+      // Get calendar events if Google is connected.
+      List<CalendarEventSummary>? calendarEvents;
+      final isConnected = _ref.read(isGoogleConnectedProvider);
+      if (isConnected) {
+        try {
+          final authService = _ref.read(googleAuthServiceProvider);
+          final authClient = await authService.getAuthClient();
+          if (authClient != null) {
+            final timezone = await _ref.read(deviceTimezoneProvider.future);
+            final calendarService = GoogleCalendarService.withClient(
+              authClient,
+              timezone: timezone,
+            );
+
+            final now = DateTime.now();
+            final dayStart = isTomorrow
+                ? DateTime(now.year, now.month, now.day + 1)
+                : DateTime(now.year, now.month, now.day);
+            final dayEnd = dayStart.add(const Duration(days: 1));
+
+            calendarEvents = await calendarService.listEvents(
+              timeMin: dayStart,
+              timeMax: dayEnd,
+            );
+          }
+        } on CalendarServiceException catch (e) {
+          if (kDebugMode) {
+            debugPrint('Day query calendar fetch failed: $e');
+          }
+        }
+      }
+
+      // Build summary.
+      final dayLabel = isTomorrow ? 'tomorrow' : 'today';
+      final buffer = StringBuffer();
+
+      if ((calendarEvents == null || calendarEvents.isEmpty) && tasks.isEmpty) {
+        buffer.write(
+          "You don't have anything scheduled for $dayLabel. "
+          'Looks like a clear day!',
+        );
+      } else {
+        buffer.writeln("Here's what's on for $dayLabel:");
+        buffer.writeln();
+
+        if (calendarEvents != null && calendarEvents.isNotEmpty) {
+          buffer.writeln('**Calendar:**');
+          for (final event in calendarEvents) {
+            if (event.isAllDay) {
+              buffer.writeln('- ${event.title} (all day)');
+            } else {
+              final startLocal = event.startTime.toLocal();
+              final hour = startLocal.hour > 12
+                  ? startLocal.hour - 12
+                  : startLocal.hour == 0
+                  ? 12
+                  : startLocal.hour;
+              final minute = startLocal.minute.toString().padLeft(2, '0');
+              final amPm = startLocal.hour >= 12 ? 'PM' : 'AM';
+              buffer.writeln('- ${event.title} at $hour:$minute $amPm');
+            }
+          }
+          buffer.writeln();
+        }
+
+        if (tasks.isNotEmpty) {
+          buffer.writeln('**Tasks due $dayLabel:**');
+          for (final task in tasks) {
+            buffer.writeln('- ${task.title}');
+          }
+        }
+      }
+
+      final summary = buffer.toString().trim();
+
+      // Stale response check.
+      if (state.activeSessionId == null) return;
+
+      await _messageDao.insertMessage(
+        generateUuid(),
+        sessionId,
+        'ASSISTANT',
+        summary,
+        nowUtc(),
+      );
+
+      state = state.copyWith(
+        isWaitingForAgent: false,
+        conversationMessages: [
+          ...state.conversationMessages,
+          {'role': 'assistant', 'content': summary},
+        ],
+      );
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        debugPrint('Day query failed: $e');
+      }
+      state = state.copyWith(isWaitingForAgent: false);
     }
   }
 
