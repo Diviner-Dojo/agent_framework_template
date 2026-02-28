@@ -23,6 +23,7 @@ import 'app.dart';
 import 'config/environment.dart';
 import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
+import 'services/app_logger.dart';
 import 'services/connectivity_service.dart';
 
 void main() async {
@@ -38,16 +39,25 @@ void main() async {
   // Only initialize when environment is configured (--dart-define values present).
   // If not configured, the app works fully offline without sync.
   const env = Environment();
+  AppLogger.i(
+    'init',
+    'Environment: isConfigured=${env.isConfigured}, '
+        'SUPABASE_URL=${env.supabaseUrl.isNotEmpty ? "set" : "empty"}, '
+        'SUPABASE_ANON_KEY=${env.supabaseAnonKey.isNotEmpty ? "set" : "empty"}',
+  );
+
   if (env.isConfigured) {
     try {
       await Supabase.initialize(
         url: env.supabaseUrl,
         anonKey: env.supabaseAnonKey,
       );
-    } on Exception {
-      // Supabase initialization failed — app continues without sync.
-      // Auth and sync features will be unavailable.
+      AppLogger.i('init', 'Supabase initialized');
+    } on Exception catch (e) {
+      AppLogger.e('init', 'Supabase init failed: $e');
     }
+  } else {
+    AppLogger.w('init', 'Supabase skipped — dart-defines not configured');
   }
 
   // Initialize connectivity monitoring for Layer B (Claude API) support.
@@ -57,8 +67,12 @@ void main() async {
   final connectivityService = ConnectivityService();
   try {
     await connectivityService.initialize();
-  } on Exception {
-    // Connectivity plugin unavailable — Layer A fallback is always available.
+    AppLogger.i(
+      'init',
+      'Connectivity initialized: online=${connectivityService.isOnline}',
+    );
+  } on Exception catch (e) {
+    AppLogger.e('init', 'Connectivity init failed: $e');
   }
 
   runApp(

@@ -311,17 +311,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Journal Entry'),
-              Text(
-                ref.watch(activeLayerLabelProvider),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
-                ),
-              ),
-            ],
+          title: const Text('Journal Entry'),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(0),
+            child: _LayerIndicatorChip(
+              label: ref.watch(activeLayerLabelProvider),
+            ),
           ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
@@ -1256,6 +1251,41 @@ class _ThinkingIndicatorState extends State<_ThinkingIndicator> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Small colored chip indicating which conversation layer is active.
+///
+/// Colors:
+///   - Claude → green
+///   - Offline → orange
+///   - Local LLM → blue
+class _LayerIndicatorChip extends StatelessWidget {
+  final String label;
+  const _LayerIndicatorChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final (bgColor, fgColor) = switch (label) {
+      'Claude' => (Colors.green.shade100, Colors.green.shade800),
+      'Local LLM' => (Colors.blue.shade100, Colors.blue.shade800),
+      _ => (Colors.orange.shade100, Colors.orange.shade800),
+    };
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 56, bottom: 4),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(label, style: TextStyle(fontSize: 11, color: fgColor)),
+        ),
       ),
     );
   }
