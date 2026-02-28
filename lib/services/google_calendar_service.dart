@@ -98,6 +98,8 @@ class GoogleCalendarService {
     String? timezone,
   }) {
     final calendarApi = gcal.CalendarApi(authClient);
+    // Use IANA timezone (e.g., 'America/New_York') — NOT abbreviation ('EST').
+    // Google Calendar API requires IANA format.
     final tz = timezone ?? DateTime.now().timeZoneName;
 
     return GoogleCalendarService(

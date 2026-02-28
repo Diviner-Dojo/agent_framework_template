@@ -36,3 +36,10 @@
 - Use `@Tags(['uses_llm'])` to mark tests that call real LLM APIs
 - Use `@Tags(['slow'])` to mark slow-running tests
 - The quality gate runs deterministic tests only. LLM-dependent and slow tests are opt-in.
+
+## Regression Tests
+- Every bug fix MUST include a regression test that would fail under the old buggy code
+- Tag regression tests with `@Tags(['regression'])` and include a comment referencing the bug
+- Regression test names should describe the bug being prevented: `'speed setting persists across audio source changes (regression)'`
+- When modifying a file that has existing regression tests, verify they still pass and still test the right behavior
+- Regression tests must NOT be deleted or weakened without explicit developer approval

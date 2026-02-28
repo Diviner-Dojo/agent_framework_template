@@ -56,6 +56,9 @@ void main() {
               sharedPreferencesProvider.overrideWithValue(prefs),
               databaseProvider.overrideWithValue(database),
               agentRepositoryProvider.overrideWithValue(AgentRepository()),
+              deviceTimezoneProvider.overrideWith(
+                (ref) async => 'America/New_York',
+              ),
               // Override assistant status check (platform-dependent).
               isDefaultAssistantProvider.overrideWith(
                 (ref) => Future.value(false),

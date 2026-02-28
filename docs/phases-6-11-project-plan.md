@@ -36,7 +36,7 @@ The developer's vision is to transform this into a **voice-first AI-powered pers
 
 ---
 
-## Prerequisites
+## Prerequisites  
 
 Before starting Phase 6:
 

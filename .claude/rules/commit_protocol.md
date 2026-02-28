@@ -17,6 +17,13 @@ If any check fails, fix the issues before proceeding. Use `--fix` to auto-remedi
 
 Note: The git pre-commit hook enforces this automatically. If the quality gate fails, git will block the commit. The review existence check will fail if code files are staged but no review report from today exists in `docs/reviews/`. Use `--skip-reviews` to bypass if needed.
 
+### Step 1.5: Regression Test Verification (Required for bug fixes)
+When committing a bug fix:
+- Verify a regression test exists that fails without the fix and passes with it
+- Verify the test is tagged with `@Tags(['regression'])`
+- Add an entry to `memory/bugs/regression-ledger.md` documenting the bug, root cause, fix, and test location
+- Commit fixes promptly — uncommitted fixes are invisible to git and WILL be lost across sessions
+
 ### Step 2: Code Review (Required for code changes)
 For any change that modifies application source code (`lib/`), tests (`test/`), or framework infrastructure (`.claude/agents/`, `.claude/commands/`, `.claude/rules/`, `scripts/`):
 - Run `/review <changed files>` to trigger multi-agent specialist review

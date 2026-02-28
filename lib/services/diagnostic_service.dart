@@ -198,7 +198,7 @@ class DiagnosticService {
               'messages': [
                 {'role': 'user', 'content': 'ping'},
               ],
-              'max_tokens': 10,
+              'mode': 'chat',
             },
             options: Options(
               headers: {

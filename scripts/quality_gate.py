@@ -1,13 +1,15 @@
 """Run all quality checks for the Flutter/Dart project.
 
 Validates formatting (dart format), linting (dart analyze), tests (flutter test),
-coverage (>= 80%), ADR completeness, and review existence for code changes.
+coverage (>= 80%), ADR completeness, review existence for code changes, and
+regression guard (verifying regression test files exist for known-bug files).
 
 Usage:
     python scripts/quality_gate.py            # run all checks
     python scripts/quality_gate.py --fix      # auto-fix then check
     python scripts/quality_gate.py --skip-tests --skip-coverage
-    python scripts/quality_gate.py --skip-reviews  # bypass review check
+    python scripts/quality_gate.py --skip-reviews     # bypass review check
+    python scripts/quality_gate.py --skip-regression  # bypass regression guard
 
 Exit code 0 if all checks pass, 1 if any fail.
 
@@ -29,6 +31,7 @@ SRC_DIR = PROJECT_ROOT / "lib"
 TESTS_DIR = PROJECT_ROOT / "test"
 ADR_DIR = PROJECT_ROOT / "docs" / "adr"
 REVIEWS_DIR = PROJECT_ROOT / "docs" / "reviews"
+REGRESSION_LEDGER = PROJECT_ROOT / "memory" / "bugs" / "regression-ledger.md"
 
 # ANSI color codes (no-op on terminals that don't support them)
 GREEN = "\033[92m"
@@ -408,9 +411,95 @@ def check_review_existence() -> bool:
     return False
 
 
+def _parse_regression_ledger() -> dict[str, str]:
+    """Parse the regression ledger into a map of source basename → test path.
+
+    Returns a dict where keys are source file basenames (e.g. 'elevenlabs_tts_service.dart')
+    and values are the corresponding regression test paths. Entries with 'N/A' test paths
+    are excluded.
+    """
+    if not REGRESSION_LEDGER.exists():
+        return {}
+
+    text = REGRESSION_LEDGER.read_text(encoding="utf-8")
+    source_to_test: dict[str, str] = {}
+
+    for line in text.split("\n"):
+        line = line.strip()
+        # Skip non-table rows (no pipes, header row, separator row)
+        if not line.startswith("|") or line.startswith("| Bug") or line.startswith("|---"):
+            continue
+
+        cols = [c.strip() for c in line.split("|")]
+        # Split produces empty strings at start/end from leading/trailing pipes
+        # Expected columns: ['', Bug, File(s), Root Cause, Fix, Regression Test, Date, '']
+        if len(cols) < 7:
+            continue
+
+        files_col = cols[2]  # File(s)
+        test_col = cols[5]  # Regression Test
+
+        # Skip process-only entries
+        if "N/A" in test_col:
+            continue
+
+        # Extract just the file path (strip method/test name references like ':test name')
+        test_path = test_col.split(":")[0].strip()
+
+        # Map each source file basename to the test path
+        for src_file in files_col.split(", "):
+            src_file = src_file.strip()
+            if src_file:
+                source_to_test[src_file] = test_path
+
+    return source_to_test
+
+
+def check_regression_guard() -> bool:
+    """Check 7: verify regression test files exist for staged files with known bugs.
+
+    Parses the regression ledger and checks that for every staged file matching
+    a ledger entry, the corresponding regression test file exists on disk.
+    """
+    source_to_test = _parse_regression_ledger()
+    if not source_to_test:
+        _pass("Regression guard (no ledger entries)")
+        return True
+
+    staged = _get_staged_code_files()
+    if not staged:
+        _pass("Regression guard (no files staged)")
+        return True
+
+    # Build set of staged basenames for matching
+    staged_basenames = {Path(f).name for f in staged}
+
+    missing: list[str] = []
+    checked = 0
+    for src_basename, test_path in source_to_test.items():
+        if src_basename in staged_basenames:
+            checked += 1
+            full_test_path = PROJECT_ROOT / test_path
+            if not full_test_path.exists():
+                missing.append(f"{src_basename} → {test_path}")
+
+    if not checked:
+        _pass("Regression guard (no staged files match ledger)")
+        return True
+
+    if missing:
+        _fail(f"Regression guard ({len(missing)} missing test file(s))")
+        for entry in missing:
+            print(f"         {entry}")
+        return False
+
+    _pass(f"Regression guard ({checked} file(s) verified)")
+    return True
+
+
 QUALITY_GATE_LOG = PROJECT_ROOT / "metrics" / "quality_gate_log.jsonl"
 
-_CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews"]
+_CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
 
 
 def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, total: int) -> None:
@@ -422,7 +511,15 @@ def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, tot
     idx = 0
     for name, skip_attr in zip(
         _CHECK_NAMES,
-        ["skip_format", "skip_lint", "skip_tests", "skip_coverage", "skip_adrs", "skip_reviews"],
+        [
+            "skip_format",
+            "skip_lint",
+            "skip_tests",
+            "skip_coverage",
+            "skip_adrs",
+            "skip_reviews",
+            "skip_regression",
+        ],
     ):
         if getattr(args, skip_attr, False):
             check_results[name] = "skipped"
@@ -460,6 +557,11 @@ def main() -> int:
         "--skip-reviews",
         action="store_true",
         help="Skip review existence check",
+    )
+    parser.add_argument(
+        "--skip-regression",
+        action="store_true",
+        help="Skip regression guard check",
     )
     args = parser.parse_args()
 
@@ -521,6 +623,13 @@ def main() -> int:
     else:
         total += 1
         results.append(check_review_existence())
+
+    # Check 7: Regression guard
+    if args.skip_regression:
+        _skip("Regression guard")
+    else:
+        total += 1
+        results.append(check_regression_guard())
 
     # Summary
     passed = sum(results)

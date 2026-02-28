@@ -25,6 +25,7 @@ void main() {
         agentRepositoryProvider.overrideWithValue(AgentRepository()),
         connectivityServiceProvider.overrideWithValue(ConnectivityService()),
         sharedPreferencesProvider.overrideWithValue(prefs),
+        deviceTimezoneProvider.overrideWith((ref) async => 'America/New_York'),
       ],
     );
   });

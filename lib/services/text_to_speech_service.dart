@@ -33,7 +33,7 @@ abstract class TextToSpeechService {
   /// Whether TTS is currently speaking.
   bool get isSpeaking;
 
-  /// Set the speech rate (0.0–1.0 on most platforms, default 0.85).
+  /// Set the speech rate (0.0–1.5 on most platforms, default 1.0).
   Future<void> setSpeechRate(double rate);
 
   /// Release resources.
@@ -56,7 +56,7 @@ class FlutterTextToSpeechService implements TextToSpeechService {
     _tts = FlutterTts();
 
     await _tts!.setLanguage('en-US');
-    await _tts!.setSpeechRate(0.85);
+    await _tts!.setSpeechRate(1.0);
     await _tts!.setVolume(1.0);
     await _tts!.setPitch(1.0);
 

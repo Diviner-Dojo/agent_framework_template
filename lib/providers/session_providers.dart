@@ -54,17 +54,33 @@ import '../services/connectivity_service.dart';
 import '../services/intent_classifier.dart';
 import '../utils/uuid_generator.dart';
 import '../utils/timestamp_utils.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'auth_providers.dart';
 import 'calendar_providers.dart';
 import 'database_provider.dart';
 import 'llm_providers.dart';
 import 'location_providers.dart';
 import 'onboarding_providers.dart';
+import 'personality_providers.dart';
 import 'photo_providers.dart';
 import 'search_providers.dart';
 import 'sync_providers.dart';
 import 'video_providers.dart';
 import 'voice_providers.dart';
+
+/// IANA timezone for the current device (e.g., 'America/Los_Angeles').
+///
+/// Uses [FlutterTimezone] to get the system timezone. Tests should override
+/// this provider with a known IANA timezone string.
+// coverage:ignore-start
+final deviceTimezoneProvider = FutureProvider<String>((ref) async {
+  try {
+    return await FlutterTimezone.getLocalTimezone();
+  } on Exception {
+    return 'UTC';
+  }
+});
+// coverage:ignore-end
 
 /// Streams all sessions from the database for the session list screen.
 ///
@@ -345,9 +361,9 @@ class SessionNotifier extends StateNotifier<SessionState> {
         ? sessions.first.startTime
         : null;
 
-    // Create the session record in the database.
-    // Using 'UTC' as timezone for Phase 1 — Phase 2 adds flutter_timezone.
-    await _sessionDao.createSession(sessionId, now, 'UTC');
+    // Create the session record with the device's IANA timezone.
+    final timezone = await _ref.read(deviceTimezoneProvider.future);
+    await _sessionDao.createSession(sessionId, now, timezone);
 
     // Set journaling mode if provided (e.g., 'onboarding', 'gratitude').
     if (journalingMode != null) {
@@ -696,18 +712,27 @@ class SessionNotifier extends StateNotifier<SessionState> {
   /// the session's syncStatus stays PENDING/FAILED for later retry.
   void _triggerSyncAfterEnd(String sessionId) {
     final isAuthenticated = _ref.read(isAuthenticatedProvider);
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      debugPrint('[Sync] Skipped sync for $sessionId: not authenticated');
+      return;
+    }
 
     final connectivityService = _ref.read(connectivityServiceProvider);
-    if (!connectivityService.isOnline) return;
+    if (!connectivityService.isOnline) {
+      debugPrint('[Sync] Skipped sync for $sessionId: offline');
+      return;
+    }
+
+    debugPrint('[Sync] Starting background sync for $sessionId');
 
     // Schedule as background microtask so the Future actually executes.
     Future<void>(() async {
       try {
         final syncRepo = _ref.read(syncRepositoryProvider);
         await syncRepo.syncSession(sessionId);
+        debugPrint('[Sync] Completed sync for $sessionId');
       } on Exception catch (e) {
-        debugPrint('Background sync failed for $sessionId: $e');
+        debugPrint('[Sync] Background sync failed for $sessionId: $e');
       }
     });
   }
@@ -957,8 +982,13 @@ class SessionNotifier extends StateNotifier<SessionState> {
   Future<void> _extractEventDetails(String text) async {
     final extractionService = _ref.read(eventExtractionServiceProvider);
     final now = nowUtc();
+    final timezone = await _ref.read(deviceTimezoneProvider.future);
 
-    final result = await extractionService.extract(text, now);
+    final result = await extractionService.extract(
+      text,
+      now,
+      timezone: timezone,
+    );
 
     // Check that we still have a pending event (user may have dismissed).
     if (state.pendingCalendarEvent == null && state.pendingReminder == null) {
@@ -1069,7 +1099,11 @@ class SessionNotifier extends StateNotifier<SessionState> {
         return;
       }
 
-      final calendarService = GoogleCalendarService.withClient(authClient);
+      final timezone = await _ref.read(deviceTimezoneProvider.future);
+      final calendarService = GoogleCalendarService.withClient(
+        authClient,
+        timezone: timezone,
+      );
       final CalendarCreateResult result;
 
       if (isReminder) {
@@ -1617,10 +1651,17 @@ final agentRepositoryProvider = Provider<AgentRepository>((ref) {
   // Read the initial value (may be null if model not yet loaded).
   final localLlmLayer = ref.read(localLlmLayerProvider);
 
+  // Read the initial personality config for custom instructions.
+  // Uses ref.read (not ref.watch) to avoid rebuilding the provider chain
+  // on personality changes — ref.listen below handles updates without
+  // destroying the active session.
+  final personality = ref.read(personalityConfigProvider);
+
   final repo = AgentRepository(
     claudeService: claudeService,
     connectivityService: connectivityService,
     localLlmLayer: localLlmLayer,
+    customInstructions: personality.customPrompt,
   );
   repo.setPreferClaude(preferClaude);
   repo.setJournalOnlyMode(journalOnlyMode);
@@ -1629,6 +1670,13 @@ final agentRepositoryProvider = Provider<AgentRepository>((ref) {
   // without triggering a provider rebuild cascade.
   ref.listen(localLlmLayerProvider, (_, next) {
     repo.updateLocalLlmLayer(next);
+  });
+
+  // Listen for personality config changes and update custom instructions
+  // on the Claude API layer without rebuilding. Mirrors the localLlmLayer
+  // listen pattern to avoid destroying active session state.
+  ref.listen(personalityConfigProvider, (_, next) {
+    repo.updateCustomInstructions(next.customPrompt);
   });
 
   return repo;

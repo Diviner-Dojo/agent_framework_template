@@ -67,6 +67,7 @@ Focus on:
 - Whether the implementation approach is sound
 - Whether it aligns with existing ADRs and patterns
 - Any risks that would be expensive to fix later
+- Whether regression tests exist for any bug fixes in modified files (check memory/bugs/regression-ledger.md)
 
 <code content or file paths>
 

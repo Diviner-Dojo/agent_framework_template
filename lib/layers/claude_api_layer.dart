@@ -27,11 +27,32 @@ import 'conversation_layer.dart'
 class ClaudeApiLayer implements ConversationLayer {
   final ClaudeApiService _claudeService;
 
+  /// Custom instructions from the user's personality config.
+  ///
+  /// Sent to the Edge Function via the context map so the server-side
+  /// system prompt includes user-specified behavior (e.g. "respond with
+  /// one sentence"). Mutable so personality changes can be applied
+  /// without rebuilding the provider chain (mirrors LocalLlmLayer pattern).
+  String? _customInstructions;
+
   /// Creates a ClaudeApiLayer.
   ///
   /// [claudeService] — the Claude API HTTP client (must be configured).
-  ClaudeApiLayer({required ClaudeApiService claudeService})
-    : _claudeService = claudeService;
+  /// [customInstructions] — optional user custom prompt from personality config.
+  ClaudeApiLayer({
+    required ClaudeApiService claudeService,
+    String? customInstructions,
+  }) : _claudeService = claudeService,
+       _customInstructions = customInstructions;
+
+  /// Update custom instructions without rebuilding the layer.
+  ///
+  /// Called by AgentRepository when personality config changes. The
+  /// session-locked layer object is preserved, so this updates the
+  /// instructions for the current and future requests.
+  void updateCustomInstructions(String? instructions) {
+    _customInstructions = instructions;
+  }
 
   @override
   Future<AgentResponse> getGreeting({
@@ -64,6 +85,8 @@ class ClaudeApiLayer implements ConversationLayer {
           'session_summaries': sessionSummaries,
         'journaling_mode': journalingMode,
         if (isVoiceMode == true) 'voice_mode': true,
+        if (_customInstructions != null && _customInstructions!.isNotEmpty)
+          'custom_instructions': _customInstructions,
       },
     );
 
@@ -89,6 +112,8 @@ class ClaudeApiLayer implements ConversationLayer {
           'session_summaries': sessionSummaries,
         'journaling_mode': journalingMode,
         if (isVoiceMode == true) 'voice_mode': true,
+        if (_customInstructions != null && _customInstructions!.isNotEmpty)
+          'custom_instructions': _customInstructions,
       },
     );
     return AgentResponse(content: response, layer: AgentLayer.llmRemote);

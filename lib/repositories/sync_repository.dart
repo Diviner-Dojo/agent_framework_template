@@ -116,18 +116,26 @@ class SyncRepository {
   /// Called after endSession() for immediate upload.
   /// No-op if not authenticated.
   Future<void> syncSession(String sessionId) async {
-    if (!_supabaseService.isAuthenticated) return;
+    if (!_supabaseService.isAuthenticated) {
+      debugPrint('[SyncRepo] syncSession: not authenticated, skipping');
+      return;
+    }
 
     final session = await _sessionDao.getSessionById(sessionId);
-    if (session == null) return;
+    if (session == null) {
+      debugPrint('[SyncRepo] syncSession: session $sessionId not found');
+      return;
+    }
 
     try {
+      debugPrint('[SyncRepo] Uploading session $sessionId...');
       await uploadSession(session);
       await _sessionDao.updateSyncStatus(
         sessionId,
         'SYNCED',
         DateTime.now().toUtc(),
       );
+      debugPrint('[SyncRepo] Session $sessionId synced successfully');
     } on Exception catch (e) {
       final status = _isFatalSyncError(e)
           ? SyncStatus.fatal.toDbString()
@@ -137,9 +145,7 @@ class SyncRepository {
         status,
         DateTime.now().toUtc(),
       );
-      if (kDebugMode) {
-        debugPrint('Sync ${status.toLowerCase()} for session $sessionId: $e');
-      }
+      debugPrint('[SyncRepo] Sync ${status.toLowerCase()}: $e');
     }
   }
 
