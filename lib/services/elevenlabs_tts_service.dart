@@ -35,6 +35,7 @@ class ElevenLabsTtsService implements TextToSpeechService {
   AudioPlayer? _player;
   bool _isSpeaking = false;
   Completer<void>? _speakCompleter;
+  double _rate = 1.0;
 
   /// Creates an ElevenLabs TTS service.
   ///
@@ -118,6 +119,9 @@ class ElevenLabsTtsService implements TextToSpeechService {
 
     final source = _Mp3BytesAudioSource(Uint8List.fromList(audioBytes));
     await _player!.setAudioSource(source);
+    // Re-apply stored speech rate after setAudioSource, which resets speed.
+    // Without this, rate set via setSpeechRate() before speak() is lost.
+    await _player!.setSpeed(_rate);
     // play() starts playback asynchronously — don't await it.
     // The _speakCompleter is completed by the playerStateStream listener
     // when ProcessingState.completed fires.
@@ -128,8 +132,9 @@ class ElevenLabsTtsService implements TextToSpeechService {
 
   @override
   Future<void> setSpeechRate(double rate) async {
-    // Use just_audio's playback speed to control perceived TTS rate.
-    // The rate range (0.5–1.5) maps directly to just_audio's speed.
+    // Store rate so it survives calls before initialize() and across
+    // setAudioSource() resets in speak(). See regression ledger.
+    _rate = rate;
     if (_player != null) {
       await _player!.setSpeed(rate);
     }

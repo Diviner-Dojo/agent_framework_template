@@ -165,12 +165,12 @@ final ttsEngineProvider = NotifierProvider<TtsEngineNotifier, TtsEngine>(
 
 /// Controls the TTS playback speed. Persisted in SharedPreferences.
 ///
-/// Range: 0.5–1.5. Default: 0.85 (natural conversational speed).
+/// Range: 0.5–1.5. Default: 1.0 (natural conversational speed).
 class TtsRateNotifier extends Notifier<double> {
   @override
   double build() {
     final prefs = ref.watch(sharedPreferencesProvider);
-    return prefs.getDouble(ttsRateKey) ?? 0.85;
+    return prefs.getDouble(ttsRateKey) ?? 1.0;
   }
 
   /// Set the TTS rate. Persists to SharedPreferences.
@@ -262,7 +262,7 @@ final textToSpeechServiceProvider = Provider<TextToSpeechService>((ref) {
   }
 
   // Apply the current TTS rate. For FlutterTts this sets the Android
-  // speech rate; for ElevenLabs it's a no-op (server-controlled).
+  // speech rate; for ElevenLabs this sets just_audio's playback speed.
   service.setSpeechRate(ttsRate);
 
   ref.onDispose(() => service.dispose());

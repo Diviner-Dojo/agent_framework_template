@@ -26,6 +26,8 @@ void main() {
         agentRepositoryProvider.overrideWithValue(AgentRepository()),
         // SharedPreferences for location enabled toggle (Phase 10).
         sharedPreferencesProvider.overrideWithValue(prefs),
+        // Override timezone to avoid FlutterTimezone platform channel in tests.
+        deviceTimezoneProvider.overrideWith((ref) async => 'America/New_York'),
       ],
     );
   });

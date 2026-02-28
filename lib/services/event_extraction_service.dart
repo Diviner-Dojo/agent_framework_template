@@ -131,10 +131,16 @@ class EventExtractionService {
   /// [message] — the raw user message classified as calendar/reminder intent.
   /// [now] — current time for validation and relative date resolution.
   ///   Injected for testability.
-  Future<ExtractionResult> extract(String message, DateTime now) async {
+  /// [timezone] — IANA timezone string (e.g., 'America/New_York') for
+  ///   correct local time resolution. When null, uses device default.
+  Future<ExtractionResult> extract(
+    String message,
+    DateTime now, {
+    String? timezone,
+  }) async {
     // Try LLM extraction first.
     if (_claudeApi != null && _claudeApi.isConfigured) {
-      return _extractWithLlm(message, now);
+      return _extractWithLlm(message, now, timezone: timezone);
     }
 
     // Fall back to regex extraction (Layer A).
@@ -145,9 +151,13 @@ class EventExtractionService {
   // Layer B: LLM extraction
   // =========================================================================
 
-  Future<ExtractionResult> _extractWithLlm(String message, DateTime now) async {
+  Future<ExtractionResult> _extractWithLlm(
+    String message,
+    DateTime now, {
+    String? timezone,
+  }) async {
     try {
-      final prompt = _buildExtractionPrompt(message, now);
+      final prompt = _buildExtractionPrompt(message, now, timezone: timezone);
       final response = await _claudeApi!.chat(
         messages: [
           {'role': 'user', 'content': prompt},
@@ -165,19 +175,25 @@ class EventExtractionService {
   }
 
   /// Build the extraction prompt for the LLM.
-  String _buildExtractionPrompt(String message, DateTime now) {
-    final isoNow = now.toUtc().toIso8601String();
+  String _buildExtractionPrompt(
+    String message,
+    DateTime now, {
+    String? timezone,
+  }) {
+    final localNow = now.toLocal();
+    final isoLocal = localNow.toIso8601String();
+    final tz = sanitizeTimezone(timezone ?? localNow.timeZoneName);
     return '''Extract calendar event details from this message. '''
-        '''The current date/time is $isoNow.
+        '''The current local date/time is $isoLocal (timezone: $tz).
 
 Message: "$message"
 
 Respond with ONLY a JSON object (no markdown, no explanation):
-{"title": "event title", "start_time": "ISO 8601 datetime", "end_time": "ISO 8601 datetime or null", "duration_minutes": number or null}
+{"title": "event title", "start_time": "ISO 8601 datetime with timezone offset", "end_time": "ISO 8601 datetime with timezone offset or null", "duration_minutes": number or null}
 
 Rules:
 - title: concise event name (not the full sentence)
-- start_time: resolve relative dates ("tomorrow", "next Friday") to absolute ISO 8601
+- start_time: resolve relative dates ("tomorrow", "next Friday") to absolute ISO 8601 in the user's local timezone ($tz). Include the timezone offset (e.g., -05:00, -08:00).
 - end_time: null if not specified
 - duration_minutes: null if not specified; if given, compute end_time = start_time + duration''';
   }
@@ -211,6 +227,16 @@ Rules:
   /// Truncate untrusted strings for error messages (security-specialist).
   static String _sanitize(String raw, {int maxLen = 30}) =>
       raw.length > maxLen ? '${raw.substring(0, maxLen)}...' : raw;
+
+  /// Validate an IANA timezone string before interpolating into LLM prompts.
+  ///
+  /// Prevents prompt injection via crafted timezone values on rooted devices.
+  /// Returns 'UTC' for any string that doesn't match IANA format.
+  @visibleForTesting
+  static String sanitizeTimezone(String tz) {
+    final ianaPattern = RegExp(r'^[A-Za-z0-9_\-+/]{1,64}$');
+    return ianaPattern.hasMatch(tz) ? tz : 'UTC';
+  }
 
   /// Validate extracted fields against strict schema rules.
   ExtractionResult _validateExtraction(

@@ -21,6 +21,7 @@ void main() {
         databaseProvider.overrideWithValue(database),
         agentRepositoryProvider.overrideWithValue(AgentRepository()),
         sharedPreferencesProvider.overrideWithValue(prefs),
+        deviceTimezoneProvider.overrideWith((ref) async => 'America/New_York'),
       ],
     );
   });

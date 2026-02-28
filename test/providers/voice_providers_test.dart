@@ -195,6 +195,46 @@ void main() {
     });
   });
 
+  group('ttsRateProvider', () {
+    test('defaults to 1.0', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(ttsRateProvider), 1.0);
+    });
+
+    test('setRate persists to SharedPreferences and updates state', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(ttsRateProvider.notifier).setRate(1.3);
+      expect(container.read(ttsRateProvider), 1.3);
+      expect(prefs.getDouble(ttsRateKey), 1.3);
+    });
+
+    test('reads persisted value from SharedPreferences', () async {
+      SharedPreferences.setMockInitialValues({ttsRateKey: 0.7});
+      final prefs = await SharedPreferences.getInstance();
+
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(ttsRateProvider), 0.7);
+    });
+  });
+
   group('sttEngineProvider', () {
     test('defaults to speechToText', () async {
       SharedPreferences.setMockInitialValues({});

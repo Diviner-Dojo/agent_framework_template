@@ -420,6 +420,66 @@ void main() {
     );
   });
 
+  // Regression: voice mode greeting bypass removed — greetings now go through
+  // the active layer. See memory/bugs/regression-ledger.md.
+  group('Voice mode greeting uses active layer (regression)', () {
+    test(
+      'voice mode greeting goes through Claude when available (regression)',
+      () async {
+        final env = Environment.custom(
+          supabaseUrl: 'https://test.supabase.co',
+          supabaseAnonKey: 'test-key',
+        );
+        final dio = Dio();
+        dio.httpClientAdapter = _SuccessDioAdapter();
+        final claudeService = ClaudeApiService(environment: env, dio: dio);
+        final connectivity = AlwaysOnlineConnectivityService();
+
+        final agent = AgentRepository(
+          claudeService: claudeService,
+          connectivityService: connectivity,
+        );
+        agent.setPreferClaude(true);
+
+        final response = await agent.getGreeting(
+          now: DateTime(2026, 2, 28, 14, 0),
+          isVoiceMode: true,
+        );
+        // Must come from Claude layer, NOT a hardcoded canned response.
+        expect(response.layer, AgentLayer.llmRemote);
+      },
+    );
+
+    test(
+      'voice mode greeting goes through local LLM when available (regression)',
+      () async {
+        final agent = AgentRepository(localLlmLayer: FakeLocalLlmLayer());
+
+        final response = await agent.getGreeting(
+          now: DateTime(2026, 2, 28, 14, 0),
+          isVoiceMode: true,
+        );
+        // Must come from local LLM layer, NOT a hardcoded canned response.
+        expect(response.layer, AgentLayer.llmLocal);
+      },
+    );
+
+    test(
+      'voice mode greeting falls back to rule-based when no LLM (regression)',
+      () async {
+        final agent = AgentRepository();
+
+        final response = await agent.getGreeting(
+          now: DateTime(2026, 2, 28, 14, 0),
+          isVoiceMode: true,
+        );
+        // Rule-based layer handles voice mode with brief greeting.
+        expect(response.layer, AgentLayer.ruleBasedLocal);
+        expect(response.content, "What's on your mind?");
+      },
+    );
+  });
+
   group('Prompt isolation', () {
     test('custom prompt does not leak into rule-based fallback', () async {
       // When LocalLlmLayer fails and falls back to RuleBasedLayer,
@@ -432,6 +492,150 @@ void main() {
       expect(response.layer, AgentLayer.ruleBasedLocal);
       // Rule-based greetings are fixed strings — no custom prompt leakage.
       expect(response.content, isNot(contains('custom')));
+    });
+  });
+
+  group('Custom instructions passthrough', () {
+    test(
+      'custom instructions are passed to Claude API layer via context',
+      () async {
+        final env = Environment.custom(
+          supabaseUrl: 'https://test.supabase.co',
+          supabaseAnonKey: 'test-key',
+        );
+        final dio = Dio();
+        // Capture the request body to verify custom_instructions is included.
+        Map<String, dynamic>? capturedBody;
+        dio.httpClientAdapter = _CapturingDioAdapter(
+          onRequest: (body) => capturedBody = body,
+        );
+        final claudeService = ClaudeApiService(environment: env, dio: dio);
+        final connectivity = AlwaysOnlineConnectivityService();
+
+        final agent = AgentRepository(
+          claudeService: claudeService,
+          connectivityService: connectivity,
+          customInstructions: 'Respond with one sentence only.',
+        );
+        agent.setPreferClaude(true);
+
+        await agent.getGreeting(now: DateTime(2026, 2, 28, 14, 0));
+
+        expect(capturedBody, isNotNull);
+        final context = capturedBody!['context'] as Map<String, dynamic>;
+        expect(
+          context['custom_instructions'],
+          'Respond with one sentence only.',
+        );
+      },
+    );
+
+    test('custom instructions are passed in follow-up context', () async {
+      final env = Environment.custom(
+        supabaseUrl: 'https://test.supabase.co',
+        supabaseAnonKey: 'test-key',
+      );
+      final dio = Dio();
+      Map<String, dynamic>? capturedBody;
+      dio.httpClientAdapter = _CapturingDioAdapter(
+        onRequest: (body) => capturedBody = body,
+      );
+      final claudeService = ClaudeApiService(environment: env, dio: dio);
+      final connectivity = AlwaysOnlineConnectivityService();
+
+      final agent = AgentRepository(
+        claudeService: claudeService,
+        connectivityService: connectivity,
+        customInstructions: 'Be brief.',
+      );
+      agent.setPreferClaude(true);
+
+      await agent.getFollowUp(
+        latestUserMessage: 'I had a good day.',
+        conversationHistory: [],
+        followUpCount: 0,
+        allMessages: [
+          {'role': 'user', 'content': 'I had a good day.'},
+        ],
+      );
+
+      expect(capturedBody, isNotNull);
+      final context = capturedBody!['context'] as Map<String, dynamic>;
+      expect(context['custom_instructions'], 'Be brief.');
+    });
+
+    test('null custom instructions are not included in context', () async {
+      final env = Environment.custom(
+        supabaseUrl: 'https://test.supabase.co',
+        supabaseAnonKey: 'test-key',
+      );
+      final dio = Dio();
+      Map<String, dynamic>? capturedBody;
+      dio.httpClientAdapter = _CapturingDioAdapter(
+        onRequest: (body) => capturedBody = body,
+      );
+      final claudeService = ClaudeApiService(environment: env, dio: dio);
+      final connectivity = AlwaysOnlineConnectivityService();
+
+      final agent = AgentRepository(
+        claudeService: claudeService,
+        connectivityService: connectivity,
+        // No custom instructions
+      );
+      agent.setPreferClaude(true);
+
+      await agent.getGreeting(now: DateTime(2026, 2, 28, 14, 0));
+
+      expect(capturedBody, isNotNull);
+      final context = capturedBody!['context'] as Map<String, dynamic>;
+      expect(context.containsKey('custom_instructions'), isFalse);
+    });
+
+    test(
+      'updateCustomInstructions changes instructions on existing layer',
+      () async {
+        final env = Environment.custom(
+          supabaseUrl: 'https://test.supabase.co',
+          supabaseAnonKey: 'test-key',
+        );
+        final dio = Dio();
+        Map<String, dynamic>? capturedBody;
+        dio.httpClientAdapter = _CapturingDioAdapter(
+          onRequest: (body) => capturedBody = body,
+        );
+        final claudeService = ClaudeApiService(environment: env, dio: dio);
+        final connectivity = AlwaysOnlineConnectivityService();
+
+        final agent = AgentRepository(
+          claudeService: claudeService,
+          connectivityService: connectivity,
+          customInstructions: 'Original instruction.',
+        );
+        agent.setPreferClaude(true);
+
+        // Update custom instructions.
+        agent.updateCustomInstructions('Updated instruction.');
+
+        await agent.getGreeting(now: DateTime(2026, 2, 28, 14, 0));
+
+        expect(capturedBody, isNotNull);
+        final context = capturedBody!['context'] as Map<String, dynamic>;
+        expect(context['custom_instructions'], 'Updated instruction.');
+      },
+    );
+
+    test('custom instructions do not affect rule-based fallback', () async {
+      // When Claude is unavailable, custom instructions shouldn't affect
+      // rule-based responses (they're fixed strings).
+      final agent = AgentRepository(
+        customInstructions: 'Always respond in haiku form.',
+      );
+
+      final response = await agent.getGreeting(
+        now: DateTime(2026, 2, 28, 10, 0),
+      );
+      expect(response.layer, AgentLayer.ruleBasedLocal);
+      expect(response.content, isNot(contains('haiku')));
     });
   });
 }
@@ -487,6 +691,34 @@ class _SuccessDioAdapter implements HttpClientAdapter {
   ) async {
     return ResponseBody.fromString(
       '{"response": "Claude greeting"}',
+      200,
+      headers: {
+        'content-type': ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// Mock adapter that captures the request body and returns a success response.
+class _CapturingDioAdapter implements HttpClientAdapter {
+  final void Function(Map<String, dynamic> body) onRequest;
+
+  _CapturingDioAdapter({required this.onRequest});
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (options.data is Map<String, dynamic>) {
+      onRequest(options.data as Map<String, dynamic>);
+    }
+    return ResponseBody.fromString(
+      '{"response": "Claude response"}',
       200,
       headers: {
         'content-type': ['application/json'],

@@ -86,6 +86,34 @@ void main() {
         'Good morning! Any plans or thoughts for today?',
       );
     });
+
+    test(
+      'returns brief greeting in voice mode via layer (free/null mode)',
+      () async {
+        // Voice mode greetings now go through the active layer (not bypassed).
+        // With no Claude configured, rule-based layer handles it.
+        final response = await agent.getGreeting(
+          now: DateTime(2026, 2, 19, 14, 0),
+          isVoiceMode: true,
+        );
+        expect(response.content, "What's on your mind?");
+        expect(response.layer, AgentLayer.ruleBasedLocal);
+      },
+    );
+
+    test(
+      'returns normal greeting in voice mode with non-free journaling mode',
+      () async {
+        final response = await agent.getGreeting(
+          now: DateTime(2026, 2, 19, 14, 0),
+          isVoiceMode: true,
+          journalingMode: 'gratitude',
+        );
+        // Should NOT short-circuit — should return guided mode greeting.
+        expect(response.content, isNot("What's on your mind?"));
+        expect(response.layer, AgentLayer.ruleBasedLocal);
+      },
+    );
   });
 
   group('getFollowUp (Layer A)', () {

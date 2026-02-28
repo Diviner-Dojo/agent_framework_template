@@ -154,13 +154,19 @@ final localLlmServiceProvider = StateProvider<LocalLlmService?>((ref) => null);
 /// takes ~1-3s on modern devices.
 // coverage:ignore-start
 final llmAutoLoadProvider = FutureProvider<void>((ref) async {
-  // Auto-load disabled: llamadart's libllama.so uses CPU instructions
-  // (likely i8mm/SVE) not supported on Snapdragon 888 (Galaxy S21 Ultra),
-  // causing SIGILL in ggml_graph_compute. Since native crashes bypass Dart
-  // exception handling, we skip auto-load entirely until a compatible
-  // llamadart binary is available. Claude API via Edge Function is the
-  // primary conversation layer.
-  // TODO(local-llm): Re-enable when llamadart ships arm64-v8a baseline build.
+  // Auto-load disabled: llamadart 0.6.4 with cpu_profile: full still causes
+  // SIGILL (signal 4, ILL_ILLOPC) on Snapdragon 888 (Galaxy S21 Ultra).
+  // The native crash happens at load time and bypasses Dart exception handling,
+  // killing the entire app process.
+  //
+  // The hooks/user_defines/llamadart config in pubspec.yaml is set to
+  // cpu_profile: full, but the runtime loader may still be selecting an
+  // incompatible variant. This needs further investigation with llamadart
+  // maintainers or explicit cpu_variants: [android_armv8.0_1] override.
+  //
+  // TODO(local-llm): Test with cpu_variants: [android_armv8.0_1] (baseline)
+  //   or wait for llamadart fix. Claude API via Edge Function is the primary
+  //   conversation layer.
   return;
 });
 // coverage:ignore-end

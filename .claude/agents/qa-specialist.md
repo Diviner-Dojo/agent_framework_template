@@ -47,6 +47,12 @@ For every function and endpoint, consider:
 - Identify where property-based testing would add value
 - Suggest parameterized tests for input variations
 
+### 6. Regression Prevention
+- When reviewing bug fixes: verify a regression test exists that would catch re-introduction
+- When reviewing modifications to files with existing regression tests: verify those tests are preserved
+- Check `memory/bugs/regression-ledger.md` for known bugs in the files being modified
+- Classify missing regression tests as **blocking** (not advisory) when fixing a confirmed bug
+
 ## Anti-Patterns to Avoid
 - Do NOT require 100% test coverage. 80% is the target; the last 20% often covers trivial getters, error re-raises, and platform-specific branches that don't justify test code.
 - Do NOT suggest mocking everything. Over-mocking makes tests pass without verifying real behavior. Prefer integration tests for IO-heavy code paths.
@@ -71,7 +77,7 @@ confidence: 0.XX
 ### Findings
 For each finding:
 - **Severity**: High / Medium / Low
-- **Category**: missing-test / weak-assertion / edge-case / error-handling / test-isolation / flaky-risk
+- **Category**: missing-test / weak-assertion / edge-case / error-handling / test-isolation / flaky-risk / regression-gap
 - **Location**: file:line (source) or test file (test gap)
 - **Description**: What's missing or inadequate
 - **Recommendation**: Specific test to add or improve
