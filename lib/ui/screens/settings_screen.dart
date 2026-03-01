@@ -1075,6 +1075,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
 
   /// Build the "About" card with app information.
   Widget _buildAboutCard(BuildContext context) {
+    final versionAsync = ref.watch(appVersionProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1088,10 +1089,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 4),
-            Text(
-              'Version 1.0.0',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+            versionAsync.when(
+              data: (version) => Text(
+                'Version $version',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              loading: () => Text(
+                'Version ...',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              error: (_, _) => Text(
+                'Version Unknown',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             const SizedBox(height: 4),

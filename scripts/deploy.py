@@ -30,6 +30,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 BUILD_STATUS = PROJECT_ROOT / "BUILD_STATUS.md"
+PUBSPEC = PROJECT_ROOT / "pubspec.yaml"
 DEPLOY_LOG = PROJECT_ROOT / "metrics" / "deploy_log.jsonl"
 
 # ANSI color codes
@@ -92,6 +93,87 @@ def _parse_build_status() -> dict[str, str]:
     return result
 
 
+def _read_pubspec_version() -> str:
+    """Read the version string from pubspec.yaml (e.g. '0.14.0+1')."""
+    content = PUBSPEC.read_text(encoding="utf-8")
+    match = re.search(r"^version:\s*(\S+)", content, re.MULTILINE)
+    return match.group(1) if match else "unknown"
+
+
+def _check_version(device_arg: str | None) -> int:
+    """Compare the installed app version on device to the pubspec version."""
+    defaults = _parse_build_status()
+    device = device_arg or defaults.get("device", "")
+    if not device:
+        print(f"  {RED}ERROR{RESET}  No device ID specified.")
+        print("         Use -d DEVICE_ID or add a Device Build Command to BUILD_STATUS.md")
+        return 1
+
+    pubspec_version = _read_pubspec_version()
+    # Split semver from build number: "0.14.0+1" → ("0.14.0", "1")
+    if "+" in pubspec_version:
+        sem_ver, build_num = pubspec_version.split("+", 1)
+    else:
+        sem_ver, build_num = pubspec_version, "?"
+
+    print(f"{BOLD}Version check{RESET}")
+    print(f"  Pubspec:  {pubspec_version}  (version={sem_ver}, build={build_num})")
+
+    # Query the device via adb
+    try:
+        result = subprocess.run(
+            [
+                "adb",
+                "-s",
+                device,
+                "shell",
+                "dumpsys",
+                "package",
+                "com.divinerdojo.agentic_journal",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except FileNotFoundError:
+        print(f"  {RED}ERROR{RESET}  adb not found on PATH.")
+        return 1
+    except subprocess.TimeoutExpired:
+        print(f"  {RED}ERROR{RESET}  adb timed out querying device {device}.")
+        return 1
+
+    if result.returncode != 0:
+        print(f"  {RED}ERROR{RESET}  adb query failed (exit {result.returncode}).")
+        return 1
+
+    # Parse versionName and versionCode from dumpsys output
+    version_name = None
+    version_code = None
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("versionName="):
+            version_name = stripped.split("=", 1)[1]
+        elif stripped.startswith("versionCode="):
+            version_code = stripped.split("=", 1)[1]
+
+    if version_name is None:
+        print(f"  {YELLOW}NOT INSTALLED{RESET}  App not found on device {device}.")
+        return 0
+
+    print(
+        f"  Device:   {version_name}+{version_code or '?'}  "
+        f"(versionName={version_name}, versionCode={version_code or '?'})"
+    )
+
+    # Compare
+    if version_name == sem_ver and str(version_code) == str(build_num):
+        print(f"\n  {GREEN}MATCH{RESET}  Device is running the pubspec version.")
+    else:
+        print(f"\n  {YELLOW}MISMATCH{RESET}  Device version differs from pubspec.")
+
+    return 0
+
+
 def _log_outcome(
     outcome: str,
     duration_seconds: float,
@@ -107,6 +189,7 @@ def _log_outcome(
         "mode": mode,
         "device": device,
         "exit_code": exit_code,
+        "version": _read_pubspec_version(),
     }
 
     DEPLOY_LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +231,16 @@ def main() -> int:
         metavar="KEY=VALUE",
         help="Pass-through dart-define flags (repeatable)",
     )
+    parser.add_argument(
+        "--check-version",
+        action="store_true",
+        help="Compare installed app version on device to pubspec version, then exit",
+    )
     args = parser.parse_args()
+
+    # --check-version: compare device vs pubspec and exit
+    if args.check_version:
+        return _check_version(args.device)
 
     # Resolve mode
     mode = "debug" if args.debug else "release"

@@ -1,7 +1,7 @@
 name: agentic_journal
 description: "AI-powered journaling app with offline-first architecture"
 publish_to: 'none'
-version: 1.0.0+1
+version: 0.14.0+1
 
 environment:
   sdk: ^3.11.0
@@ -35,6 +35,9 @@ dependencies:
 
   # Secure storage — token persistence (used by supabase_flutter internally)
   flutter_secure_storage: ^9.2.0
+
+  # App version info (Phase 14 — ADR-0027)
+  package_info_plus: ^8.1.2
 
   # Core Flutter
   cupertino_icons: ^1.0.8
