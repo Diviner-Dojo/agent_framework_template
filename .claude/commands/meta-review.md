@@ -56,9 +56,29 @@ conn = sqlite3.connect('metrics/evaluation.db')
 print('=== Discussion Summary ===')
 for row in conn.execute('SELECT risk_level, collaboration_mode, COUNT(*), AVG(agent_count) FROM discussions GROUP BY risk_level, collaboration_mode'):
     print(row)
-print('=== Agent Effectiveness ===')
+print('=== Agent Effectiveness (turns) ===')
 for row in conn.execute('SELECT agent, intent, COUNT(*), AVG(confidence) FROM turns GROUP BY agent, intent'):
     print(row)
+print('=== Agent Effectiveness (dashboard) ===')
+try:
+    for row in conn.execute('SELECT * FROM v_agent_dashboard ORDER BY total_findings DESC'):
+        print(row)
+except: print('(v_agent_dashboard not available)')
+print('=== Findings Summary ===')
+try:
+    for row in conn.execute('SELECT category, severity, COUNT(*) FROM findings GROUP BY category, severity ORDER BY COUNT(*) DESC'):
+        print(row)
+except: print('(findings table not available)')
+print('=== Rule of Three ===')
+try:
+    for row in conn.execute('SELECT * FROM v_rule_of_three ORDER BY discussion_count DESC'):
+        print(row)
+except: print('(v_rule_of_three not available)')
+print('=== Promotion Candidates ===')
+try:
+    for row in conn.execute('SELECT status, COUNT(*) FROM promotion_candidates GROUP BY status'):
+        print(row)
+except: print('(promotion_candidates not available)')
 print('=== Reflection Patterns ===')
 for row in conn.execute('SELECT agent, COUNT(*), AVG(confidence_delta), SUM(promoted) FROM reflections GROUP BY agent'):
     print(row)
@@ -72,8 +92,30 @@ conn.close()
 ## Step 2: Deep Analysis
 
 ### Agent Effectiveness Scoring
-- Which agents find unique issues vs. duplicates?
-- Which agents have the best confidence calibration?
+
+Query `v_agent_dashboard` for data-driven agent assessment:
+
+```bash
+python -c "
+import sqlite3
+conn = sqlite3.connect('metrics/evaluation.db')
+try:
+    rows = conn.execute('SELECT * FROM v_agent_dashboard ORDER BY total_findings DESC').fetchall()
+    if rows:
+        for agent, disc, total, unique, uniq_pct, surv_pct, avg_conf, avg_cal in rows:
+            print(f'{agent}: {disc} disc, {total} findings, {uniq_pct or 0}% unique, {surv_pct or 0}% survived, conf={avg_conf or 0:.3f}')
+    else:
+        print('No agent effectiveness data — fall back to manual analysis from turns table.')
+except sqlite3.OperationalError:
+    print('v_agent_dashboard not available — fall back to manual analysis.')
+conn.close()
+"
+```
+
+Assess:
+- Which agents find unique issues vs. duplicates? (uniqueness_pct)
+- Which agents have the best confidence calibration? (avg_calibration)
+- Which agents' findings survive into synthesis? (survival_pct)
 - Which agents are most frequently overridden by the developer?
 
 ### Drift Analysis
@@ -128,6 +170,12 @@ period: [start date] to [end date]
 
 ## Framework Adjustments
 [Specific structural changes recommended]
+
+## Knowledge Pipeline Health
+[Run `python scripts/knowledge_dashboard.py --no-log` and include results]
+[Findings coverage, pattern mining, Layer 3 population, promotion throughput]
+[Rule of Three hits from v_rule_of_three view]
+[Forgetting curve status from `python scripts/enforce_forgetting_curve.py --dry-run`]
 
 ## Double-Loop Findings
 [Meta-level insights about the review process itself]

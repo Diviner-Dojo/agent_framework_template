@@ -44,6 +44,16 @@ else:
 
 If pre-flight fails, tell the developer what's missing. The metrics database is essential — suggest running `python scripts/init_db.py` if it's missing.
 
+## Step 0: Knowledge Pipeline Dashboard
+
+Run the knowledge pipeline dashboard to gather baseline metrics:
+
+```bash
+python scripts/knowledge_dashboard.py --no-log
+```
+
+Include the pipeline health score and any gaps in the retro data gathering. This provides context on whether knowledge is being captured and amplified effectively.
+
 ## Step 1: Gather Data
 
 Query SQLite for the sprint period:
@@ -156,15 +166,75 @@ Protocols with consistently zero blocking findings are relaxation candidates.
 Present data; do NOT recommend automatic relaxation (Principle #7 — human decides).
 ```
 
-## Step 4: Review Adoption Log
+## Step 4: Review Adoption Log + Knowledge Pipeline
+
+### 4a. Adoption Log Review
 
 Check `memory/lessons/adoption-log.md` for:
 1. Patterns with 3+ sightings that haven't been adopted yet (Rule of Three trigger)
 2. Recently deferred patterns that may warrant re-evaluation
 3. Whether adopted patterns from external analyses are actually being used in the codebase
-4. **PENDING adoption age**: For each PENDING pattern, compute days since its `Adopted` date. Report stale-pending count (patterns PENDING for >14 days). If stale count > 5, recommend the developer run `/batch-evaluate` to clear the backlog.
+4. **PENDING adoption age**: Run the stale adoption checker:
 
-Add findings to the draft under a "## External Learning" section. Include a PENDING age summary:
+```bash
+python scripts/check_stale_adoptions.py
+```
+
+If stale count > 5 (exit code 2), recommend the developer run `/batch-evaluate` to clear the backlog.
+
+### 4b. Rule of Three (Discussion-Derived Patterns)
+
+Query the unified Rule of Three view for patterns crossing the 3-discussion threshold:
+
+```bash
+python -c "
+import sqlite3
+conn = sqlite3.connect('metrics/evaluation.db')
+try:
+    rows = conn.execute('SELECT * FROM v_rule_of_three ORDER BY discussion_count DESC').fetchall()
+    if rows:
+        print('=== Rule of Three Hits ===')
+        for pattern_key, disc_count, agent_count, first_seen, last_seen, discussions in rows:
+            print(f'  {pattern_key}: {disc_count} discussions, {agent_count} agents')
+    else:
+        print('No patterns have crossed the Rule of Three threshold yet.')
+except sqlite3.OperationalError as e:
+    print(f'Rule of Three view not available: {e}')
+conn.close()
+"
+```
+
+### 4c. Agent Effectiveness Summary
+
+Query the agent dashboard for effectiveness trends:
+
+```bash
+python -c "
+import sqlite3
+conn = sqlite3.connect('metrics/evaluation.db')
+try:
+    rows = conn.execute('SELECT * FROM v_agent_dashboard ORDER BY total_findings DESC').fetchall()
+    if rows:
+        print('=== Agent Effectiveness ===')
+        for agent, disc, total, unique, uniq_pct, surv_pct, avg_conf, avg_cal in rows:
+            print(f'  {agent}: {disc} discussions, {total} findings, {uniq_pct or 0}% unique, {surv_pct or 0}% survived')
+    else:
+        print('No agent effectiveness data yet.')
+except sqlite3.OperationalError as e:
+    print(f'Agent dashboard not available: {e}')
+conn.close()
+"
+```
+
+### 4d. Forgetting Curve Check
+
+Run a dry-run staleness check on promoted knowledge:
+
+```bash
+python scripts/enforce_forgetting_curve.py --dry-run
+```
+
+Add all findings to the draft under "## Knowledge Pipeline Health" and "## External Learning" sections. Include a PENDING age summary:
 
 ```markdown
 ### PENDING Adoption Age

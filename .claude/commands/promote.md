@@ -43,9 +43,38 @@ Before promoting, verify ALL of the following:
 
 ## Workflow
 
-### Step 1: Read the Candidate
+### Step 1: Check Promotion Queue
 
-Read the artifact the developer wants to promote. Assess it against the promotion criteria above.
+Before accepting a manual path, query the promotion_candidates table for pending items:
+
+```bash
+python -c "
+import sqlite3
+conn = sqlite3.connect('metrics/evaluation.db')
+try:
+    rows = conn.execute('''
+        SELECT candidate_id, candidate_type, title, evidence_count, target_path, created_at
+        FROM promotion_candidates WHERE status = 'pending'
+        ORDER BY evidence_count DESC, created_at
+    ''').fetchall()
+    if rows:
+        print(f'=== {len(rows)} Pending Promotion Candidates ===')
+        for i, (cid, ctype, title, evidence, target, created) in enumerate(rows, 1):
+            print(f'  {i}. [{ctype.upper()}] {title[:70]}')
+            print(f'     Evidence: {evidence} | Target: {target} | Since: {created[:10]}')
+    else:
+        print('No pending promotion candidates in the queue.')
+except sqlite3.OperationalError:
+    print('promotion_candidates table not available — proceeding with manual promotion.')
+conn.close()
+"
+```
+
+If there are pending candidates, present them to the developer for selection. If the developer provides a specific artifact path instead, proceed with that.
+
+### Step 1b: Read the Candidate
+
+Read the artifact the developer wants to promote (either from the queue or a manual path). Assess it against the promotion criteria above.
 
 ### Step 2: Present for Approval
 
@@ -79,10 +108,28 @@ conn.close()
 "
 ```
 
+If promoting from the promotion_candidates queue, update the candidate status:
+```bash
+python -c "
+import sqlite3
+from datetime import datetime, timezone
+now = datetime.now(timezone.utc).isoformat()
+conn = sqlite3.connect('metrics/evaluation.db')
+conn.execute('''UPDATE promotion_candidates
+    SET status = 'approved', promoted_at = ?, reviewed_at = ?, last_referenced_at = ?,
+        human_verdict = 'approved'
+    WHERE candidate_id = ?''', (now, now, now, '<candidate_id>'))
+conn.commit()
+conn.close()
+"
+```
+
 ### Step 5: Confirm
 
 Report what was promoted and where it was saved.
 
 ## Forgetting Curve
 
-Note: Promoted knowledge that hasn't been referenced or validated within 90 days will be flagged for review. Knowledge unconfirmed for 180 days is moved to `memory/archive/` (not deleted).
+Promoted knowledge that hasn't been referenced or validated within 90 days will be flagged for review. Knowledge unconfirmed for 180 days is moved to `memory/archive/` (not deleted).
+
+To check staleness now: `python scripts/enforce_forgetting_curve.py --dry-run`
