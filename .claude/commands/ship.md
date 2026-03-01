@@ -78,6 +78,35 @@ Present a brief summary of what will be shipped:
 - Lines added/removed
 - Whether review will be required and why
 
+## Step 1.5: Version Bump
+
+Classify the change and bump the version automatically using `scripts/bump_version.py`:
+
+### Classification Rules
+
+| Change Type | Bump | Examples |
+|---|---|---|
+| **patch** | `--patch` | Bug fixes, framework-only changes, config, docs, test-only |
+| **minor** | `--minor` | New files in `lib/`, new commands/screens, new features, new dependencies |
+| **major** | `--major` | Breaking changes, database migrations, API contract changes |
+
+- If ambiguous between patch and minor → default to **minor**
+- If major → **confirm with the developer** before bumping
+- The build number always increments automatically on any bump
+
+### Execution
+
+```bash
+python scripts/bump_version.py --<patch|minor|major>
+```
+
+Print the new version to the developer:
+```
+Version bumped: 0.14.0+1 → 0.14.1+2
+```
+
+**Always stage `pubspec.yaml`** in Step 5a — the version bump must be included in the commit.
+
 ## Step 2: Quality Gate
 
 Run the quality gate:

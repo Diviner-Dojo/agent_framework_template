@@ -91,6 +91,7 @@ void main() {
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
           assistantServiceProvider.overrideWithValue(mockService),
+          appVersionProvider.overrideWith((ref) => Future.value('0.14.0')),
           environmentProvider.overrideWithValue(
             const Environment.custom(supabaseUrl: '', supabaseAnonKey: ''),
           ),
@@ -170,7 +171,7 @@ void main() {
 
       expect(find.text('About'), findsOneWidget);
       expect(find.text('Agentic Journal'), findsOneWidget);
-      expect(find.text('Version 1.0.0'), findsOneWidget);
+      expect(find.text('Version 0.14.0'), findsOneWidget);
     });
 
     testWidgets('shows manual instructions fallback', (tester) async {
@@ -260,6 +261,7 @@ void main() {
             overrides: [
               sharedPreferencesProvider.overrideWithValue(prefs),
               assistantServiceProvider.overrideWithValue(mockService),
+              appVersionProvider.overrideWith((ref) => Future.value('0.14.0')),
               environmentProvider.overrideWithValue(
                 const Environment.custom(supabaseUrl: '', supabaseAnonKey: ''),
               ),
@@ -309,6 +311,7 @@ void main() {
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
             assistantServiceProvider.overrideWithValue(mockService),
+            appVersionProvider.overrideWith((ref) => Future.value('0.14.0')),
             environmentProvider.overrideWithValue(
               const Environment.custom(supabaseUrl: '', supabaseAnonKey: ''),
             ),
@@ -542,6 +545,7 @@ void main() {
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
             assistantServiceProvider.overrideWithValue(mockService),
+            appVersionProvider.overrideWith((ref) => Future.value('0.14.0')),
             environmentProvider.overrideWithValue(
               const Environment.custom(supabaseUrl: '', supabaseAnonKey: ''),
             ),
