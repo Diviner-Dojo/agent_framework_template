@@ -152,9 +152,9 @@ def _check_version(device_arg: str | None) -> int:
     for line in result.stdout.splitlines():
         stripped = line.strip()
         if stripped.startswith("versionName="):
-            version_name = stripped.split("=", 1)[1]
+            version_name = stripped.split("=", 1)[1].split()[0]
         elif stripped.startswith("versionCode="):
-            version_code = stripped.split("=", 1)[1]
+            version_code = stripped.split("=", 1)[1].split()[0]
 
     if version_name is None:
         print(f"  {YELLOW}NOT INSTALLED{RESET}  App not found on device {device}.")
