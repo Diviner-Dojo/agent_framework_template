@@ -10,6 +10,7 @@ Usage:
     python scripts/deploy.py                          # defaults from BUILD_STATUS.md
     python scripts/deploy.py -d R5CR10LW2FE           # explicit device
     python scripts/deploy.py --debug                   # debug mode
+    python scripts/deploy.py --install-only            # exit after install (don't stay attached)
     python scripts/deploy.py --dart-define KEY=VALUE   # explicit dart-define
 
 Exit code mirrors the flutter process exit code.
@@ -136,6 +137,11 @@ def main() -> int:
         help="Debug mode override",
     )
     parser.add_argument(
+        "--install-only",
+        action="store_true",
+        help="Exit after install completes (don't stay attached for logs)",
+    )
+    parser.add_argument(
         "--dart-define",
         action="append",
         default=[],
@@ -186,24 +192,61 @@ def main() -> int:
     print(f"\n{BOLD}Deploying ({mode} mode) to {device}{RESET}")
     print(f"  {YELLOW}${RESET} {' '.join(display_cmd)}\n")
 
+    # Marker that flutter prints once the app is installed and running
+    _INSTALL_DONE_MARKER = "Flutter run key commands"
+
     # Run with live output streaming
     start_time = time.monotonic()
 
-    try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-            cwd=str(PROJECT_ROOT),
-        )
-        exit_code = process.wait()
-    except FileNotFoundError:
-        print(f"\n  {RED}ERROR{RESET}  Failed to execute: {flutter_cmd}")
-        exit_code = 127
-    except KeyboardInterrupt:
-        print(f"\n  {YELLOW}INTERRUPTED{RESET}  Deploy cancelled by user.")
-        process.terminate()
-        exit_code = 130
+    if args.install_only:
+        # Pipe stdout so we can watch for the install-complete marker,
+        # forwarding each line live to the terminal.
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                cwd=str(PROJECT_ROOT),
+                text=True,
+                bufsize=1,
+            )
+            exit_code = None
+            for line in process.stdout:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                if _INSTALL_DONE_MARKER in line:
+                    print(f"\n  {GREEN}Install complete.{RESET} Detaching from device.")
+                    process.terminate()
+                    process.wait(timeout=10)
+                    exit_code = 0
+                    break
+            if exit_code is None:
+                # Process ended before we saw the marker — treat as failure
+                exit_code = process.wait()
+        except FileNotFoundError:
+            print(f"\n  {RED}ERROR{RESET}  Failed to execute: {flutter_cmd}")
+            exit_code = 127
+        except KeyboardInterrupt:
+            print(f"\n  {YELLOW}INTERRUPTED{RESET}  Deploy cancelled by user.")
+            process.terminate()
+            exit_code = 130
+    else:
+        # Normal mode: direct passthrough, stays attached until user quits
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=sys.stdout,
+                stderr=sys.stderr,
+                cwd=str(PROJECT_ROOT),
+            )
+            exit_code = process.wait()
+        except FileNotFoundError:
+            print(f"\n  {RED}ERROR{RESET}  Failed to execute: {flutter_cmd}")
+            exit_code = 127
+        except KeyboardInterrupt:
+            print(f"\n  {YELLOW}INTERRUPTED{RESET}  Deploy cancelled by user.")
+            process.terminate()
+            exit_code = 130
 
     duration = time.monotonic() - start_time
     outcome = "success" if exit_code == 0 else "failure"
