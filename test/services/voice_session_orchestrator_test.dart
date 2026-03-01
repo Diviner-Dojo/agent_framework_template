@@ -185,6 +185,7 @@ void main() {
       sttService: mockStt,
       ttsService: mockTts,
       audioFocusService: mockAudioFocus,
+      enableThinkingSound: false,
     );
   });
 
@@ -260,7 +261,11 @@ void main() {
         await orchestrator.startPushToTalk();
 
         mockStt.emitResult(
-          const SpeechResult(text: 'Test message', isFinal: true),
+          const SpeechResult(
+            text: 'Test message',
+            isFinal: true,
+            confidence: 0.9,
+          ),
         );
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
@@ -302,7 +307,11 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         mockStt.emitResult(
-          const SpeechResult(text: 'I had a great day', isFinal: true),
+          const SpeechResult(
+            text: 'I had a great day',
+            isFinal: true,
+            confidence: 0.9,
+          ),
         );
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
@@ -323,7 +332,9 @@ void main() {
           await Future<void>.delayed(const Duration(milliseconds: 50));
 
           // Simulate user speech → processing.
-          mockStt.emitResult(const SpeechResult(text: 'test', isFinal: true));
+          mockStt.emitResult(
+            const SpeechResult(text: 'test', isFinal: true, confidence: 0.9),
+          );
           await Future<void>.delayed(const Duration(milliseconds: 50));
 
           // Simulate assistant response.
@@ -495,7 +506,9 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         // User says "goodbye" — strong end signal.
-        mockStt.emitResult(const SpeechResult(text: 'goodbye', isFinal: true));
+        mockStt.emitResult(
+          const SpeechResult(text: 'goodbye', isFinal: true, confidence: 0.9),
+        );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         expect(endSessionCalled, isTrue);
@@ -514,7 +527,11 @@ void main() {
 
         // User says "delete this" — discard always requires confirmation.
         mockStt.emitResult(
-          const SpeechResult(text: 'delete this', isFinal: true),
+          const SpeechResult(
+            text: 'delete this',
+            isFinal: true,
+            confidence: 0.9,
+          ),
         );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
@@ -537,7 +554,9 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         // User says "undo" but there's no closed session.
-        mockStt.emitResult(const SpeechResult(text: 'undo', isFinal: true));
+        mockStt.emitResult(
+          const SpeechResult(text: 'undo', isFinal: true, confidence: 0.9),
+        );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         // No session to resume, so onResumeSession should not be called
@@ -572,7 +591,11 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         mockStt.emitResult(
-          const SpeechResult(text: 'test message', isFinal: true),
+          const SpeechResult(
+            text: 'test message',
+            isFinal: true,
+            confidence: 0.9,
+          ),
         );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
@@ -695,12 +718,18 @@ void main() {
 
         // User says "delete this" — triggers confirmation.
         mockStt.emitResult(
-          const SpeechResult(text: 'delete this', isFinal: true),
+          const SpeechResult(
+            text: 'delete this',
+            isFinal: true,
+            confidence: 0.9,
+          ),
         );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         // Confirm with "yes".
-        mockStt.emitResult(const SpeechResult(text: 'yes', isFinal: true));
+        mockStt.emitResult(
+          const SpeechResult(text: 'yes', isFinal: true, confidence: 0.9),
+        );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         expect(discardCalled, isTrue);
@@ -719,13 +748,17 @@ void main() {
 
         // User says "delete this" — triggers confirmation.
         mockStt.emitResult(
-          const SpeechResult(text: 'delete this', isFinal: true),
+          const SpeechResult(
+            text: 'delete this',
+            isFinal: true,
+            confidence: 0.9,
+          ),
         );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         // Decline with "no".
         mockStt.emitResult(
-          const SpeechResult(text: 'no thanks', isFinal: true),
+          const SpeechResult(text: 'no thanks', isFinal: true, confidence: 0.9),
         );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
@@ -749,7 +782,7 @@ void main() {
 
           // High-confidence end command — no confirmation needed.
           mockStt.emitResult(
-            const SpeechResult(text: 'goodbye', isFinal: true),
+            const SpeechResult(text: 'goodbye', isFinal: true, confidence: 0.9),
           );
           await Future<void>.delayed(const Duration(milliseconds: 100));
 
@@ -777,14 +810,18 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         // End the session.
-        mockStt.emitResult(const SpeechResult(text: 'goodbye', isFinal: true));
+        mockStt.emitResult(
+          const SpeechResult(text: 'goodbye', isFinal: true, confidence: 0.9),
+        );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         // Now start again and say "undo".
         await orchestrator.startContinuousMode('Hi again');
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
-        mockStt.emitResult(const SpeechResult(text: 'undo', isFinal: true));
+        mockStt.emitResult(
+          const SpeechResult(text: 'undo', isFinal: true, confidence: 0.9),
+        );
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         // resumeSession should have been called with the stored session ID.
@@ -822,6 +859,7 @@ void main() {
           ttsService: mockTts,
           audioFocusService: mockAudioFocus,
           silenceTimeoutSeconds: 1,
+          enableThinkingSound: false,
         );
         addTearDown(shortTimeoutOrchestrator.dispose);
 
@@ -946,6 +984,314 @@ void main() {
             VoiceSessionErrorKind.audioFocusLoss,
           ]),
         );
+      });
+    });
+
+    // =========================================================================
+    // Voice Naturalness — SPEC-20260228
+    // =========================================================================
+
+    group('computeCommitDelay (Task 3)', () {
+      test('high confidence returns zero delay (R7, R11)', () {
+        expect(VoiceSessionOrchestrator.computeCommitDelay(0.9), Duration.zero);
+        expect(
+          VoiceSessionOrchestrator.computeCommitDelay(0.85),
+          Duration.zero,
+        );
+      });
+
+      test('medium confidence returns 400ms delay (R7, R11)', () {
+        expect(
+          VoiceSessionOrchestrator.computeCommitDelay(0.7),
+          const Duration(milliseconds: 400),
+        );
+        expect(
+          VoiceSessionOrchestrator.computeCommitDelay(0.65),
+          const Duration(milliseconds: 400),
+        );
+      });
+
+      test('low confidence returns 1200ms delay (R7, R11)', () {
+        expect(
+          VoiceSessionOrchestrator.computeCommitDelay(0.5),
+          const Duration(milliseconds: 1200),
+        );
+      });
+
+      test('zero confidence returns 1200ms delay (R10)', () {
+        expect(
+          VoiceSessionOrchestrator.computeCommitDelay(0.0),
+          const Duration(milliseconds: 1200),
+        );
+      });
+    });
+
+    group('stripMarkdown (Task 2)', () {
+      test('strips bold markdown', () {
+        expect(
+          VoiceSessionOrchestrator.stripMarkdown('This is **bold** text'),
+          'This is bold text',
+        );
+      });
+
+      test('strips italic markdown', () {
+        expect(
+          VoiceSessionOrchestrator.stripMarkdown('This is *italic* text'),
+          'This is italic text',
+        );
+      });
+
+      test('strips headers', () {
+        expect(
+          VoiceSessionOrchestrator.stripMarkdown('## My Header'),
+          'My Header',
+        );
+      });
+
+      test('strips bullet lists', () {
+        expect(
+          VoiceSessionOrchestrator.stripMarkdown('- item one\n- item two'),
+          'item one\nitem two',
+        );
+      });
+
+      test('strips numbered lists', () {
+        expect(
+          VoiceSessionOrchestrator.stripMarkdown('1. first\n2. second'),
+          'first\nsecond',
+        );
+      });
+
+      test('strips inline code', () {
+        expect(
+          VoiceSessionOrchestrator.stripMarkdown('Use `dart format` here'),
+          'Use dart format here',
+        );
+      });
+
+      test('handles combined formatting', () {
+        final input = '## Title\n\n- **Bold** item\n- *Italic* item';
+        final result = VoiceSessionOrchestrator.stripMarkdown(input);
+        expect(result, contains('Title'));
+        expect(result, contains('Bold item'));
+        expect(result, contains('Italic item'));
+        expect(result, isNot(contains('##')));
+        expect(result, isNot(contains('**')));
+        expect(result, isNot(contains('- ')));
+      });
+
+      test('passes through plain text unchanged', () {
+        expect(
+          VoiceSessionOrchestrator.stripMarkdown('Just a normal sentence.'),
+          'Just a normal sentence.',
+        );
+      });
+    });
+
+    group('parseTurnMarker (Task 5)', () {
+      test('parses ✓ marker', () {
+        final result = VoiceSessionOrchestrator.parseTurnMarker(
+          '✓ That sounds great!',
+        );
+        expect(result.$1, '✓');
+        expect(result.$2, 'That sounds great!');
+      });
+
+      test('parses ○ marker', () {
+        final result = VoiceSessionOrchestrator.parseTurnMarker('○');
+        expect(result.$1, '○');
+        expect(result.$2, isEmpty);
+      });
+
+      test('parses ◐ marker', () {
+        final result = VoiceSessionOrchestrator.parseTurnMarker('◐');
+        expect(result.$1, '◐');
+        expect(result.$2, isEmpty);
+      });
+
+      test('defaults to ✓ when no marker present (R28)', () {
+        final result = VoiceSessionOrchestrator.parseTurnMarker(
+          'No marker here.',
+        );
+        expect(result.$1, '✓');
+        expect(result.$2, 'No marker here.');
+      });
+
+      test('handles leading whitespace before marker', () {
+        final result = VoiceSessionOrchestrator.parseTurnMarker(
+          '  ✓ Response text',
+        );
+        expect(result.$1, '✓');
+        expect(result.$2, 'Response text');
+      });
+    });
+
+    group('idle timer interruption guard (Task 1)', () {
+      test(
+        'interim result cancels silence timer and sets _userIsSpeaking',
+        () async {
+          final shortTimeoutOrchestrator = VoiceSessionOrchestrator(
+            sttService: mockStt,
+            ttsService: mockTts,
+            audioFocusService: mockAudioFocus,
+            silenceTimeoutSeconds: 1,
+            enableThinkingSound: false,
+          );
+          addTearDown(shortTimeoutOrchestrator.dispose);
+
+          shortTimeoutOrchestrator.onSendMessage =
+              (text, {String inputMethod = 'TEXT'}) async => null;
+
+          await shortTimeoutOrchestrator.startContinuousMode('Hello');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+
+          // Emit an interim result — should suppress the silence timer.
+          mockStt.emitResult(
+            const SpeechResult(text: 'So I was', isFinal: false),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+
+          // Wait beyond the silence timeout.
+          await Future<void>.delayed(const Duration(milliseconds: 1200));
+
+          // The silence prompt should NOT have fired because interim
+          // results keep the guard up.
+          expect(
+            mockTts.spokenTexts.where((t) => t.contains('still listening')),
+            isEmpty,
+          );
+        },
+      );
+    });
+
+    group('confidence-weighted commit delay (Task 3)', () {
+      test('low-confidence result delays commit', () async {
+        String? sentText;
+        orchestrator.onSendMessage =
+            (text, {String inputMethod = 'TEXT'}) async {
+              sentText = text;
+              return null;
+            };
+
+        await orchestrator.startContinuousMode('Hello');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Emit a low-confidence final result.
+        mockStt.emitResult(
+          const SpeechResult(text: 'mumble', isFinal: true, confidence: 0.3),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Should NOT have sent yet — 1200ms delay.
+        expect(sentText, isNull);
+
+        // Wait for the delay to complete.
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+
+        expect(sentText, 'mumble');
+      });
+
+      test('high-confidence result commits immediately', () async {
+        String? sentText;
+        orchestrator.onSendMessage =
+            (text, {String inputMethod = 'TEXT'}) async {
+              sentText = text;
+              return null;
+            };
+
+        await orchestrator.startContinuousMode('Hello');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Emit a high-confidence final result.
+        mockStt.emitResult(
+          const SpeechResult(
+            text: 'clear speech',
+            isFinal: true,
+            confidence: 0.95,
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        // Should have sent immediately.
+        expect(sentText, 'clear speech');
+      });
+    });
+
+    group('turn-completeness markers (Task 5)', () {
+      test('○ marker suppresses TTS and starts re-prompt timer', () async {
+        orchestrator.onSendMessage =
+            (text, {String inputMethod = 'TEXT'}) async => null;
+
+        await orchestrator.startContinuousMode('Hello');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Simulate a final result that triggers processing.
+        mockStt.emitResult(
+          const SpeechResult(
+            text: 'So I was thinking',
+            isFinal: true,
+            confidence: 0.9,
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        // Now the LLM responds with ○ (incomplete).
+        await orchestrator.onAssistantMessage('○');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Should NOT have spoken the ○ marker as TTS.
+        expect(mockTts.spokenTexts.where((t) => t.contains('○')), isEmpty);
+
+        // Should transition to listening (waiting for user to continue).
+        expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+      });
+
+      test('✓ marker speaks response normally', () async {
+        orchestrator.onSendMessage =
+            (text, {String inputMethod = 'TEXT'}) async => null;
+
+        await orchestrator.startContinuousMode('Hello');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        mockStt.emitResult(
+          const SpeechResult(
+            text: 'Tell me about today',
+            isFinal: true,
+            confidence: 0.9,
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        await orchestrator.onAssistantMessage('✓ That sounds wonderful!');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Should have spoken the response (without marker).
+        expect(
+          mockTts.spokenTexts.any((t) => t.contains('That sounds wonderful')),
+          isTrue,
+        );
+      });
+    });
+
+    group('SpeechResult confidence', () {
+      test('default confidence is 0.0', () {
+        const result = SpeechResult(text: 'test', isFinal: true);
+        expect(result.confidence, 0.0);
+      });
+
+      test('confidence is included in equality', () {
+        const a = SpeechResult(text: 'test', isFinal: true, confidence: 0.9);
+        const b = SpeechResult(text: 'test', isFinal: true, confidence: 0.5);
+        expect(a, isNot(equals(b)));
+      });
+
+      test('toString includes confidence', () {
+        const result = SpeechResult(
+          text: 'hello',
+          isFinal: true,
+          confidence: 0.85,
+        );
+        expect(result.toString(), contains('confidence: 0.85'));
       });
     });
   });

@@ -112,6 +112,7 @@ void main() {
       ttsService: ttsService,
       audioFocusService: audioFocusService,
       silenceTimeoutSeconds: 15,
+      enableThinkingSound: false,
     );
   });
 

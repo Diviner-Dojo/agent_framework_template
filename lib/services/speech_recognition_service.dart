@@ -39,14 +39,23 @@ class SpeechResult {
   /// True when isEndpoint() detected an utterance boundary.
   final bool isFinal;
 
+  /// STT engine confidence score (0.0–1.0).
+  ///
+  /// Defaults to 0.0 for engines that don't report confidence (e.g. sherpa_onnx).
+  /// Google `speech_to_text` provides this via `SpeechRecognitionResult.confidence`.
+  /// Used by the confidence-weighted commit delay (SPEC-20260228 Task 3).
+  final double confidence;
+
   /// Creates a speech result.
   const SpeechResult({
     required this.text,
     required this.isFinal,
+    this.confidence = 0.0,
   }); // coverage:ignore-line
 
   @override
-  String toString() => 'SpeechResult(text: "$text", isFinal: $isFinal)';
+  String toString() =>
+      'SpeechResult(text: "$text", isFinal: $isFinal, confidence: $confidence)';
 
   @override
   bool operator ==(Object other) =>
@@ -54,10 +63,11 @@ class SpeechResult {
       other is SpeechResult &&
           runtimeType == other.runtimeType &&
           text == other.text &&
-          isFinal == other.isFinal;
+          isFinal == other.isFinal &&
+          confidence == other.confidence;
 
   @override
-  int get hashCode => text.hashCode ^ isFinal.hashCode;
+  int get hashCode => Object.hash(text, isFinal, confidence);
 }
 
 /// Abstract interface for speech-to-text services.

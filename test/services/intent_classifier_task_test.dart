@@ -83,6 +83,25 @@ void main() {
       expect(result.type, IntentType.task);
       expect(result.confidence, greaterThanOrEqualTo(0.5));
     });
+
+    // Regression: indirect object pronoun between verb and task keyword.
+    // "add me a to-do" has "me" between "add" and "a to-do".
+    test(
+      'indirect object: "add me a to-do item to call Kaiser" → task (regression)',
+      () {
+        final result = classifier.classify(
+          'I need you to add me a to-do item to call Kaiser about makin an appointment with my psychiatrist',
+        );
+        expect(result.type, IntentType.task);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test('indirect object: "add me a task" → task (regression)', () {
+      final result = classifier.classify('Add me a task to buy groceries');
+      expect(result.type, IntentType.task);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
   });
 
   // =========================================================================

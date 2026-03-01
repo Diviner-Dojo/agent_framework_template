@@ -114,7 +114,11 @@ class SpeechToTextSttService implements SpeechRecognitionService {
     }
 
     _resultController!.add(
-      SpeechResult(text: result.recognizedWords, isFinal: result.finalResult),
+      SpeechResult(
+        text: result.recognizedWords,
+        isFinal: result.finalResult,
+        confidence: result.confidence,
+      ),
     );
   }
 
