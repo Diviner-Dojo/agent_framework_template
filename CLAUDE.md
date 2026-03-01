@@ -75,7 +75,7 @@ Content here.
 ```
 .claude/
   agents/       — Specialist agent definitions (10 core, including project-analyst and ux-evaluator)
-  commands/     — Slash command workflows (12 commands)
+  commands/     — Slash command workflows (13 commands, including /knowledge-health)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
   rules/        — Auto-loaded standards (all agents inherit)
   skills/       — Reference knowledge (playbooks, checklists)
@@ -98,8 +98,8 @@ memory/         — Layer 3: Curated promoted knowledge
   patterns/     — Promoted code and process patterns
   reflections/  — Promoted agent reflections
   rules/        — Promoted rules (graduated to .claude/rules/)
-metrics/        — Layer 2: SQLite relational index + quality_gate_log.jsonl (trend data)
-scripts/        — Capture pipeline utilities + quality gate (Python dev tools)
+metrics/        — Layer 2: SQLite relational index + quality_gate_log.jsonl + knowledge_pipeline_log.jsonl (trend data)
+scripts/        — Capture pipeline utilities + quality gate + knowledge pipeline (Python dev tools)
 BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
 
@@ -171,15 +171,36 @@ When a `/review`, `/deliberate`, `/analyze-project`, `/build_module`, `/retro`, 
 2. Each agent turn is captured via `scripts/write_event.py` to events.jsonl
 3. `scripts/close_discussion.py` seals the discussion:
    - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
-   - `scripts/ingest_events.py` inserts events into SQLite (Layer 2)
+   - `scripts/ingest_events.py` inserts events into SQLite (Layer 2), including searchable `content_excerpt` and `tags`
    - Updates discussion status to `closed` in SQLite
+   - `scripts/extract_findings.py` parses events for structured findings (severity, category, summary)
+   - `scripts/surface_candidates.py` identifies recurring patterns for promotion queue
+   - `scripts/compute_agent_effectiveness.py` computes per-agent uniqueness/survival metrics
    - Sets discussion directory to read-only
 4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table. Called at synthesis time in `/review`, `/build_module`, and `/retro`.
 5. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
+6. `/knowledge-health` runs `scripts/knowledge_dashboard.py` to report on all pipeline layers and append to `metrics/knowledge_pipeline_log.jsonl`.
 
 **Known data quality**: Pre-migration discussions (before 2026-02-22) have NULL `duration_minutes` — backfill via `created_at`/`closed_at` is pending. The `protocol_yield` table had a duplicate-recording bug prior to the dedup guard added to `record_yield.py`.
 
 **Known limitation**: The `protocol_yield` table records blocking/advisory findings but not REVISE-resolved rounds. Checkpoint value from iterative improvement is currently undercounted.
+
+## Knowledge Amplification Pipeline
+
+The knowledge pipeline transforms captured discussion data into reusable patterns:
+
+1. **Findings Extraction** (`scripts/extract_findings.py`): Parses critique/proposal events into structured findings with severity and category. Stored in `findings` table.
+2. **Pattern Mining** (`scripts/mine_patterns.py`): Clusters similar findings using Jaccard similarity. Records sightings in `pattern_sightings` table. The `v_rule_of_three` view surfaces patterns appearing in 3+ discussions.
+3. **Agent Effectiveness** (`scripts/compute_agent_effectiveness.py`): Tracks per-agent uniqueness, survival rate, and confidence calibration. `v_agent_dashboard` view provides aggregated metrics.
+4. **Promotion Pipeline** (`scripts/surface_candidates.py`): Recurring findings/reflections become promotion candidates. Queue reviewed via `/promote`. Human gate preserved (Principle #7).
+5. **Forgetting Curve** (`scripts/enforce_forgetting_curve.py`): 90-day review flag, 180-day auto-archive for stale promoted knowledge.
+6. **Unified Rule of Three** (`scripts/unify_sightings.py`): Combines adoption-log patterns with discussion-derived patterns in `pattern_sightings`.
+
+**Backfill scripts** (one-time): `scripts/backfill_findings.py` and `scripts/backfill_turn_content.py` populate historical data.
+
+**New SQLite tables**: `findings`, `promotion_candidates`, `pattern_sightings`, `agent_effectiveness`
+**New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`
+**New columns**: `turns.content_excerpt`, `turns.tags`
 
 ## Agent Invocation Pattern
 

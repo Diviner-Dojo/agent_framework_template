@@ -183,11 +183,50 @@ python scripts/record_yield.py "<discussion_id>" review <verdict> --blocking <N>
 
 Where `<verdict>` maps to: approve, approve-with-changes, request-changes, or reject.
 
+## Step 7c: Request Agent Reflections
+
+After recording yield, request reflections from each specialist who participated (non-blocking — failures do not halt closure). For each specialist:
+
+1. Dispatch a reflection request (sonnet tier, 150-word cap):
+   ```
+   Task(subagent_type="<agent-name>", model="sonnet", prompt="Reflection Request: <discussion_id>\n\nYou just completed a review. Reflect briefly (under 150 words) on:\n1. What did you miss or what would you check next time?\n2. What improvement rule would you propose for future reviews?\n3. Was your confidence appropriate given what you found?\n\nFormat:\n## What I Missed\n<text>\n## Candidate Improvement Rule\n<text>\n## Confidence Calibration\nOriginal: X.X, Revised: Y.Y, Delta: ±Z.Z")
+   ```
+
+2. Capture each reflection:
+   ```bash
+   python scripts/write_event.py "<discussion_id>" "<agent-name>" "reflection" "<reflection_content>" --tags "reflection"
+   ```
+
+3. Ingest each reflection into SQLite:
+   ```bash
+   python -c "
+   import pathlib, tempfile
+   content = '''---
+   reflection_id: REFL-<timestamp>-<agent>
+   discussion_id: <discussion_id>
+   agent: <agent-name>
+   timestamp: <now>
+   ---
+
+   <reflection_content>
+   '''
+   p = pathlib.Path(tempfile.mktemp(suffix='.md'))
+   p.write_text(content, encoding='utf-8')
+   from scripts.ingest_reflection import ingest_reflection
+   ingest_reflection(p)
+   p.unlink()
+   "
+   ```
+
+If a specialist fails to produce a reflection, log the gap and continue to closure. Do NOT block on reflection failures.
+
 ## Step 8: Close Discussion
 
 ```
 python scripts/close_discussion.py "<discussion_id>"
 ```
+
+Note: `close_discussion.py` now automatically extracts findings, surfaces promotion candidates, and computes agent effectiveness as part of the closure pipeline.
 
 ## Step 9: Present to Developer
 

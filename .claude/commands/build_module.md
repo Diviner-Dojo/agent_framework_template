@@ -167,10 +167,23 @@ python scripts/record_yield.py "<discussion_id>" checkpoint <outcome> --blocking
 
 Where `<outcome>` is: approve, revise-resolved, or revise-unresolved.
 
+### Step 7b: Request Agent Reflections
+
+After recording yield, request reflections from each checkpoint specialist who participated (non-blocking). For each specialist who gave a REVISE verdict:
+
+Dispatch a reflection request (sonnet tier, 150-word cap):
+```
+Task(subagent_type="<agent-name>", model="sonnet", prompt="Reflection Request: <discussion_id>\n\nYou reviewed a build checkpoint. Reflect briefly (under 150 words):\n1. What did you miss?\n2. What improvement rule would you propose?\n3. Was your confidence appropriate?\n\nFormat:\n## What I Missed\n<text>\n## Candidate Improvement Rule\n<text>\n## Confidence Calibration\nDelta: ±Z.Z")
+```
+
+Capture via `write_event.py` with intent=reflection, tags=reflection. If a specialist fails to produce a reflection, log the gap and continue.
+
 Seal the discussion:
 ```bash
 python scripts/close_discussion.py "<discussion_id>"
 ```
+
+Note: `close_discussion.py` now automatically extracts findings, surfaces promotion candidates, and computes agent effectiveness.
 
 ## Step 8: Present Build Summary
 

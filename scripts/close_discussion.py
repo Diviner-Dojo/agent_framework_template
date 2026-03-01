@@ -7,7 +7,11 @@ This script:
 1. Generates transcript.md from events.jsonl
 2. Ingests events into SQLite
 3. Marks the discussion as closed in SQLite
-4. Sets events.jsonl and transcript.md to read-only (advisory)
+4. Extracts findings into the findings table (Phase 4.1)
+4b. Mines patterns and records sightings (Phase 5.1)
+5. Surfaces promotion candidates (Phase 4.4)
+6. Computes agent effectiveness (Phase 5.2)
+7. Sets events.jsonl and transcript.md to read-only (advisory)
 """
 
 import argparse
@@ -62,7 +66,43 @@ def close_discussion(discussion_id: str) -> None:
         conn.close()
         print(f"Discussion {discussion_id} marked as closed in SQLite")
 
-    # Step 4: Set files to read-only (advisory immutability)
+    # Step 4: Extract findings (Phase 4.1)
+    try:
+        from extract_findings import extract_findings
+
+        print(f"Extracting findings for {discussion_id}...")
+        extract_findings(discussion_id)
+    except Exception as e:
+        print(f"Warning: findings extraction failed: {e}")
+
+    # Step 4b: Mine patterns and record sightings (Phase 5.1)
+    try:
+        from mine_patterns import mine_patterns
+
+        print(f"Mining patterns for {discussion_id}...")
+        mine_patterns(discussion_id=discussion_id)
+    except Exception as e:
+        print(f"Warning: pattern mining failed: {e}")
+
+    # Step 5: Surface promotion candidates (Phase 4.4)
+    try:
+        from surface_candidates import surface_candidates
+
+        print(f"Surfacing promotion candidates for {discussion_id}...")
+        surface_candidates(discussion_id=discussion_id)
+    except Exception as e:
+        print(f"Warning: candidate surfacing failed: {e}")
+
+    # Step 6: Compute agent effectiveness (Phase 5.2)
+    try:
+        from compute_agent_effectiveness import compute_effectiveness
+
+        print(f"Computing agent effectiveness for {discussion_id}...")
+        compute_effectiveness(discussion_id)
+    except Exception as e:
+        print(f"Warning: effectiveness computation failed: {e}")
+
+    # Step 7: Set files to read-only (advisory immutability)
     for filename in ["events.jsonl", "transcript.md"]:
         filepath = disc_dir / filename
         if filepath.exists():

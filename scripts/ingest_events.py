@@ -46,7 +46,7 @@ def ingest_events(discussion_id: str, db_path: Path = DB_PATH) -> int:
         raise FileNotFoundError(f"No events.jsonl found at {events_path}")
 
     events = []
-    with open(events_path, "r", encoding="utf-8") as f:
+    with open(events_path, encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 events.append(json.loads(line))
@@ -60,12 +60,14 @@ def ingest_events(discussion_id: str, db_path: Path = DB_PATH) -> int:
 
     for event in events:
         content_hash = hashlib.sha256(event["content"].encode("utf-8")).hexdigest()
+        content_excerpt = event["content"][:500]
+        tags_json = json.dumps(event.get("tags", [])) if event.get("tags") else None
 
         conn.execute(
             """INSERT OR IGNORE INTO turns
                (discussion_id, turn_id, agent, reply_to, intent,
-                timestamp, confidence, content_hash)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                timestamp, confidence, content_hash, content_excerpt, tags)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 event["discussion_id"],
                 event["turn_id"],
@@ -75,6 +77,8 @@ def ingest_events(discussion_id: str, db_path: Path = DB_PATH) -> int:
                 event["timestamp"],
                 event["confidence"],
                 content_hash,
+                content_excerpt,
+                tags_json,
             ),
         )
 
