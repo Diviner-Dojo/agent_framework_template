@@ -1,65 +1,77 @@
-# AI-Native Agentic Development Framework — Project Template
+# Agent Framework Template
 
-A structured, multi-agent development framework for Claude Code that transforms AI-assisted development from unstructured "vibe coding" into a disciplined, self-improving engineering methodology.
+> AI-native development for people who think well and want to ship well.
+
+A structured, multi-agent development framework for
+[Claude Code](https://claude.ai/claude-code) that turns AI-assisted
+development into a disciplined, self-improving engineering methodology.
+
+You bring the thinking. The agents handle the rest.
+
+## Who Should Use This
+
+| You are... | You get... |
+|---|---|
+| A business wanting controlled AI development | Auditable decisions, enforced quality gates, no cowboy coding |
+| A builder learning a new stack | AI that builds *and* teaches, with explanations at every step |
+| A solo dev who wants senior-level guardrails | Specialist agent review without hiring a team |
 
 ## Quick Start
 
-### 1. Install dependencies
 ```bash
+# Clone the template
+git clone https://github.com/Diviner-Dojo/agent_framework_template myproject
+cd myproject
+
+# Install framework dependencies
 pip install -r requirements.txt
-```
 
-### 2. Initialize the metrics database
-```bash
+# Initialize the metrics database
 python scripts/init_db.py
+
+# Open in Claude Code and start building
+claude .
 ```
 
-### 3. Run the Todo API (test project)
-```bash
-uvicorn src.main:app --reload
+Then tell Claude what you want to build. The framework takes it from there.
+
+## The Development Loop
+
+```
+  Plan  -->  Build  -->  Review  -->  Learn  -->  Ship
+   |                                                |
+   +------------------------------------------------+
+                   Every decision captured.
+                   Every trade-off documented.
 ```
 
-### 4. Run tests
-```bash
-pytest tests/ -v
-```
+1. **Plan** -- Spec the feature before a line of code is written
+2. **Build** -- AI agents generate code with mid-build checkpoint reviews
+3. **Review** -- Independent specialist agents evaluate every change
+4. **Learn** -- Education gates ensure you understand what was built
+5. **Ship** -- Quality gates enforce standards before anything merges
 
-### 5. Try the framework commands
+## Framework Commands
+
 In Claude Code:
-- `/review src/` — Run a multi-agent code review
-- `/deliberate "topic"` — Start a structured discussion
-- `/plan "feature"` — Plan a feature with spec-driven development
-- `/walkthrough src/routes.py` — Get a guided code walkthrough
-- `/quiz src/routes.py` — Take a comprehension quiz
 
-## Directory Structure
-
-```
-.claude/
-  agents/       — 8 specialist agent definitions
-  commands/     — 10 workflow commands (/review, /deliberate, /plan, etc.)
-  rules/        — 5 auto-loaded standards (all agents inherit these)
-  skills/       — 5 reference knowledge playbooks
-
-docs/
-  adr/          — Architecture Decision Records
-  reviews/      — Review reports from /review
-  sprints/      — Sprint plans, retrospectives, meta-reviews
-  templates/    — Reusable artifact templates
-
-discussions/    — Layer 1: Immutable discussion capture (events.jsonl + transcript.md)
-memory/         — Layer 3: Curated knowledge (human-approved patterns and rules)
-metrics/        — Layer 2: SQLite relational index (evaluation.db)
-scripts/        — Capture pipeline utilities (Python)
-
-src/            — Application source code (Todo API test project)
-tests/          — Test suite
-```
+| Command | What It Does |
+|---|---|
+| `/plan "feature"` | Plan a feature with spec-driven development |
+| `/build_module spec` | Build from a spec with integrated quality gates |
+| `/review src/` | Run a multi-agent code review |
+| `/deliberate "topic"` | Start a structured multi-agent discussion |
+| `/walkthrough src/` | Get a guided code walkthrough |
+| `/quiz src/` | Take a comprehension quiz on the code |
+| `/retro` | Run a sprint retrospective |
+| `/ship` | Quality gate, review, commit, PR, merge -- end to end |
 
 ## The Agent Panel
 
-| Agent | Priority | When Activated |
-|-------|----------|---------------|
+Eight specialist agents, each with a distinct professional perspective:
+
+| Agent | Focus | Activated When |
+|---|---|---|
 | **Facilitator** | Orchestration, synthesis | Every workflow |
 | **Architecture Consultant** | Structural alignment, drift | Architecture changes, new modules |
 | **Security Specialist** | Vulnerabilities, threats | Auth, API, data handling |
@@ -69,14 +81,51 @@ tests/          — Test suite
 | **Educator** | Developer understanding | Every merge gate |
 | **Independent Perspective** | Anti-groupthink | Medium/high risk changes |
 
+Agents collaborate through **coopetition** -- shared goals with different
+professional priorities, producing natural productive tension without
+manufactured opposition.
+
 ## Key Concepts
 
-- **Coopetition**: Agents share goals but have different professional priorities — natural productive tension without manufactured opposition
-- **Four-Layer Capture**: Immutable files → SQLite index → Curated memory → Optional vector search
-- **Education Gates**: Walkthrough → Quiz → Explain-back → Merge
-- **Nested Loops**: Micro (per-discussion) → Meso (per-sprint /retro) → Macro (quarterly /meta-review)
-- **Spec-Driven Development**: Every significant change starts with an approved spec
+- **Four-Layer Capture**: Immutable event logs, SQLite index, curated
+  memory, optional vector search -- nothing gets lost
+- **Education Gates**: Walkthrough, quiz, explain-back, then merge.
+  The AI teaches you what it built before you ship it.
+- **Nested Improvement Loops**: Per-discussion (micro), per-sprint
+  retrospective (meso), quarterly meta-review (macro)
+- **Spec-Driven Development**: Every significant change starts with
+  an approved spec -- not a vague prompt
+
+## Directory Structure
+
+```
+.claude/
+  agents/       -- Specialist agent definitions
+  commands/     -- Workflow commands (/review, /plan, /build, etc.)
+  rules/        -- Auto-loaded standards (all agents inherit these)
+  skills/       -- Reference knowledge playbooks
+
+docs/
+  adr/          -- Architecture Decision Records
+  reviews/      -- Review reports
+  sprints/      -- Sprint plans, retrospectives
+  templates/    -- Reusable artifact templates
+
+discussions/    -- Immutable discussion capture (events + transcripts)
+memory/         -- Curated knowledge (human-approved patterns and rules)
+metrics/        -- SQLite relational index for querying and trends
+scripts/        -- Capture pipeline and quality gate (Python)
+
+src/            -- Your application source code goes here
+tests/          -- Your test suite goes here
+```
 
 ## Framework Spec
 
-See the full framework specification: `AI_Native_Agentic_Development_Framework_v2.1.md`
+See the full framework specification:
+`AI_Native_Agentic_Development_Framework_v2.1.md`
+
+---
+
+Built by [Diviner Dojo](https://github.com/Diviner-Dojo) --
+*where great thinking becomes great software.*
