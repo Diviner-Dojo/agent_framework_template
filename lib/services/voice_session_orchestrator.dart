@@ -28,6 +28,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:just_audio/just_audio.dart';
 
 import 'audio_focus_service.dart';
 import 'event_extraction_service.dart';
@@ -198,6 +199,22 @@ class VoiceSessionOrchestrator {
   /// The current active session ID, set by the UI when wiring callbacks.
   String? currentSessionId;
 
+  /// Whether the user is actively speaking (interim results received).
+  ///
+  /// Gates silence timer start — the timer should not run concurrently
+  /// with active speech. Set true on first interim result, false on
+  /// isFinal or STT stop. See: SPEC-20260228 Task 1.
+  bool _userIsSpeaking = false;
+
+  /// Pending commit timer for confidence-weighted delay (Task 3).
+  Timer? _commitDelayTimer;
+
+  /// Audio player for the non-verbal thinking sound (Task 4, R14).
+  AudioPlayer? _thinkingPlayer;
+
+  /// Timer for turn-completeness re-prompt (Task 5, R23/R24).
+  Timer? _turnCompletionTimer;
+
   /// Last closed session ID for undo support.
   String? _lastClosedSessionId;
 
@@ -211,8 +228,17 @@ class VoiceSessionOrchestrator {
   /// Confidence threshold for direct command execution.
   static const _highConfidenceThreshold = 0.8;
 
+  // Turn-completeness markers (Task 5, R21).
+  static const _markerComplete = '✓';
+  static const _markerIncomplete = '○';
+  static const _markerDeliberating = '◐';
+
   /// Silence timeout before re-prompting (seconds).
   final int _silenceTimeoutSeconds;
+
+  /// Whether the thinking sound is enabled (disable in tests where
+  /// AudioPlayer platform bindings are unavailable).
+  final bool _enableThinkingSound;
 
   /// Confirmation timeout (seconds) — prevents ambient audio spoofing.
   static const _confirmationTimeoutSeconds = 10;
@@ -222,9 +248,11 @@ class VoiceSessionOrchestrator {
     required TextToSpeechService ttsService,
     required AudioFocusService audioFocusService,
     int silenceTimeoutSeconds = 15,
+    bool enableThinkingSound = true,
   }) : _sttService = sttService,
        _ttsService = ttsService,
        _silenceTimeoutSeconds = silenceTimeoutSeconds,
+       _enableThinkingSound = enableThinkingSound,
        _audioFocusService = audioFocusService {
     // Subscribe to audio focus changes.
     _audioFocusSubscription = _audioFocusService.onFocusChanged.listen(
@@ -322,6 +350,9 @@ class VoiceSessionOrchestrator {
 
     _phaseBeforePause = currentPhase;
     _silenceTimer?.cancel();
+    _commitDelayTimer?.cancel();
+    _turnCompletionTimer?.cancel();
+    _stopThinkingSound();
 
     // Stop active audio.
     if (_sttService.isListening) {
@@ -376,6 +407,9 @@ class VoiceSessionOrchestrator {
   Future<void> stop() async {
     _silenceTimer?.cancel();
     _undoTimer?.cancel();
+    _commitDelayTimer?.cancel();
+    _turnCompletionTimer?.cancel();
+    _stopThinkingSound();
     _resetConfirmationState();
 
     if (_sttService.isListening) {
@@ -395,16 +429,43 @@ class VoiceSessionOrchestrator {
   /// In continuous mode, the orchestrator speaks the response and resumes
   /// listening. Called by the UI when it detects a new assistant message.
   Future<void> onAssistantMessage(String text) async {
+    // Parse turn-completeness marker (Task 5, R21/R22/R28).
+    final parsed = _parseTurnMarker(text);
+    final marker = parsed.$1;
+    final cleanText = _stripMarkdown(parsed.$2);
+
     if (!state.isContinuousMode) {
       // Push-to-talk: just speak the message.
-      await _speakNonBlocking(text);
+      await _speakNonBlocking(cleanText);
       return;
     }
 
     if (state.phase == VoiceLoopPhase.processing) {
-      // Transition: processing → speaking → listening
+      _stopThinkingSound();
+
+      // Handle incomplete/deliberating markers (Task 5, R23/R24).
+      if (marker == _markerIncomplete) {
+        _turnCompletionTimer?.cancel();
+        _turnCompletionTimer = Timer(
+          const Duration(seconds: 5),
+          () => _promptUserToContinue(brief: true),
+        );
+        await _startListening();
+        return;
+      }
+      if (marker == _markerDeliberating) {
+        _turnCompletionTimer?.cancel();
+        _turnCompletionTimer = Timer(
+          const Duration(seconds: 10),
+          () => _promptUserToContinue(brief: false),
+        );
+        await _startListening();
+        return;
+      }
+
+      // ✓ or no marker — speak normally.
       _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
-      await _speakInSentences(text);
+      await _speakInSentences(cleanText);
 
       // Resume listening after speaking (if still in continuous mode).
       if (state.phase == VoiceLoopPhase.speaking && state.isContinuousMode) {
@@ -752,9 +813,12 @@ class VoiceSessionOrchestrator {
     _silenceTimer?.cancel();
     _undoTimer?.cancel();
     _confirmationTimer?.cancel();
+    _commitDelayTimer?.cancel();
+    _turnCompletionTimer?.cancel();
     _recognitionSubscription?.cancel();
     _audioFocusSubscription?.cancel();
     _resetConfirmationState();
+    _stopThinkingSound();
     stateNotifier.dispose();
   }
 
@@ -796,6 +860,7 @@ class VoiceSessionOrchestrator {
   /// Stop STT stream.
   Future<void> _stopListening() async {
     _silenceTimer?.cancel();
+    _userIsSpeaking = false;
     await _recognitionSubscription?.cancel();
     _recognitionSubscription = null;
 
@@ -804,9 +869,11 @@ class VoiceSessionOrchestrator {
     }
   }
 
-  /// Start the silence timer. Resets on each partial result.
+  /// Start the silence timer. Guarded by [_userIsSpeaking] — the timer
+  /// must not run while the user is actively speaking (Task 1, R2).
   void _startSilenceTimer() {
     _silenceTimer?.cancel();
+    if (_userIsSpeaking) return;
     _silenceTimer = Timer(
       Duration(seconds: _silenceTimeoutSeconds),
       _onSilenceTimeout,
@@ -819,22 +886,63 @@ class VoiceSessionOrchestrator {
 
   /// Handle incoming speech results.
   void _onSpeechResult(SpeechResult result) {
-    // Reset silence timer on any speech activity.
-    _startSilenceTimer();
+    // Cancel any pending confidence-delay commit on new input (Task 3, R9).
+    _commitDelayTimer?.cancel();
+    // Cancel turn-completion re-prompt if user speaks (Task 5, R26).
+    _turnCompletionTimer?.cancel();
+
+    if (!result.isFinal && result.text.isNotEmpty) {
+      // Interim result — user is speaking. Cancel the silence timer
+      // immediately so it doesn't fire mid-utterance (Task 1, R1/R2).
+      _userIsSpeaking = true;
+      _silenceTimer?.cancel();
+    }
 
     // Update transcript preview.
     _updateState(state.copyWith(transcriptPreview: result.text));
 
     if (result.isFinal) {
+      _userIsSpeaking = false;
       final text = result.text.trim();
       if (text.isNotEmpty) {
-        _processFinalResult(text);
+        _processFinalResult(text, result.confidence);
+      } else {
+        // Empty final — restart silence timer for continued listening.
+        _startSilenceTimer();
       }
     }
   }
 
+  /// Compute the commit delay based on STT confidence (Task 3, R7).
+  ///
+  /// High-confidence results commit immediately. Low-confidence results
+  /// delay to give the user time to correct or continue speaking.
+  @visibleForTesting
+  static Duration computeCommitDelay(double confidence) {
+    if (confidence >= 0.85) return Duration.zero;
+    if (confidence >= 0.65) return const Duration(milliseconds: 400);
+    return const Duration(milliseconds: 1200);
+  }
+
   /// Process a final speech result — check for commands, then send.
-  Future<void> _processFinalResult(String text) async {
+  ///
+  /// When [confidence] is below 0.85, a timer delays the commit to allow
+  /// the user to continue speaking (Task 3, R8). The timer is cancelled
+  /// if new speech arrives (R9).
+  Future<void> _processFinalResult(String text, double confidence) async {
+    final delay = computeCommitDelay(confidence);
+
+    if (delay > Duration.zero) {
+      _commitDelayTimer?.cancel();
+      _commitDelayTimer = Timer(delay, () => _commitUserTurn(text));
+      return;
+    }
+
+    await _commitUserTurn(text);
+  }
+
+  /// Commit the user's turn — stop listening, classify, and send.
+  Future<void> _commitUserTurn(String text) async {
     _silenceTimer?.cancel();
 
     // Stop listening during processing.
@@ -859,6 +967,7 @@ class VoiceSessionOrchestrator {
       _updateState(
         state.copyWith(phase: VoiceLoopPhase.processing, transcriptPreview: ''),
       );
+      _startThinkingSound();
     } else {
       // Push-to-talk: return to idle after capturing text.
       await _audioFocusService.abandonFocus();
@@ -1170,6 +1279,7 @@ class VoiceSessionOrchestrator {
       await _stopListening();
     }
 
+    _stopThinkingSound();
     _updateState(state.copyWith(phase: VoiceLoopPhase.error, error: error));
 
     // Speak the error message.
@@ -1323,6 +1433,121 @@ class VoiceSessionOrchestrator {
     }
 
     return result;
+  }
+
+  // ===========================================================================
+  // Internal — Markdown stripping (Task 2)
+  // ===========================================================================
+
+  /// Strip markdown formatting before TTS (Task 2, R4/R5).
+  ///
+  /// Removes bold, italic, headers, and bullet markers so TTS speaks
+  /// clean prose instead of "asterisk" or "dash".
+  @visibleForTesting
+  static String stripMarkdown(String text) {
+    var result = text;
+    // Bold: **text** or __text__
+    result = result.replaceAllMapped(
+      RegExp(r'\*\*(.+?)\*\*'),
+      (m) => m.group(1)!,
+    );
+    result = result.replaceAllMapped(RegExp(r'__(.+?)__'), (m) => m.group(1)!);
+    // Italic: *text* or _text_ (single)
+    result = result.replaceAllMapped(
+      RegExp(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)'),
+      (m) => m.group(1)!,
+    );
+    result = result.replaceAllMapped(
+      RegExp(r'(?<!_)_(?!_)(.+?)(?<!_)_(?!_)'),
+      (m) => m.group(1)!,
+    );
+    // Headers: # Header → Header
+    result = result.replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '');
+    // Bullet lists: - item or * item → item
+    result = result.replaceAll(RegExp(r'^\s*[-*]\s+', multiLine: true), '');
+    // Numbered lists: 1. item → item
+    result = result.replaceAll(RegExp(r'^\s*\d+\.\s+', multiLine: true), '');
+    // Inline code: `code` → code
+    result = result.replaceAllMapped(RegExp(r'`(.+?)`'), (m) => m.group(1)!);
+    return result.trim();
+  }
+
+  /// Instance wrapper for [stripMarkdown].
+  String _stripMarkdown(String text) => stripMarkdown(text);
+
+  // ===========================================================================
+  // Internal — Thinking sound (Task 4)
+  // ===========================================================================
+
+  /// Start the looping thinking sound (Task 4, R15).
+  void _startThinkingSound() {
+    if (!_enableThinkingSound) return;
+    _stopThinkingSound();
+    try {
+      _thinkingPlayer = AudioPlayer();
+      _thinkingPlayer!
+          .setAsset('assets/audio/thinking_chime.mp3')
+          .then((_) => _thinkingPlayer?.setLoopMode(LoopMode.one))
+          .then((_) => _thinkingPlayer?.setVolume(0.4))
+          .then((_) => _thinkingPlayer?.play())
+          .catchError((Object e) {
+            debugPrint('[VoiceOrchestrator] thinking sound error: $e');
+          });
+    } on Exception catch (e) {
+      debugPrint('[VoiceOrchestrator] thinking sound init error: $e');
+    }
+  }
+
+  /// Stop and dispose the thinking sound player (Task 4, R16).
+  void _stopThinkingSound() {
+    try {
+      _thinkingPlayer?.stop();
+      _thinkingPlayer?.dispose();
+    } on Exception catch (e) {
+      debugPrint('[VoiceOrchestrator] thinking sound cleanup error: $e');
+    }
+    _thinkingPlayer = null;
+  }
+
+  // ===========================================================================
+  // Internal — Turn-completeness markers (Task 5)
+  // ===========================================================================
+
+  /// Parse the turn-completeness marker from the LLM response (Task 5, R21).
+  ///
+  /// Returns a record of (marker, stripped_text). If no marker is found,
+  /// returns [_markerComplete] as the default (R28 graceful fallback).
+  @visibleForTesting
+  static (String, String) parseTurnMarker(String text) {
+    final trimmed = text.trimLeft();
+    for (final marker in [
+      _markerComplete,
+      _markerIncomplete,
+      _markerDeliberating,
+    ]) {
+      if (trimmed.startsWith(marker)) {
+        return (marker, trimmed.substring(marker.length).trimLeft());
+      }
+    }
+    // No marker found — treat as complete (R28).
+    return (_markerComplete, text);
+  }
+
+  /// Instance wrapper for [parseTurnMarker].
+  (String, String) _parseTurnMarker(String text) => parseTurnMarker(text);
+
+  /// Gently prompt the user to continue after an incomplete turn (Task 5, R25).
+  Future<void> _promptUserToContinue({required bool brief}) async {
+    _turnCompletionTimer = null;
+    _updateState(state.copyWith(phase: VoiceLoopPhase.speaking));
+    if (brief) {
+      await _speak(VoiceRecoveryMessages.turnIncompleteBrief);
+    } else {
+      await _speak(VoiceRecoveryMessages.turnIncompletePatient);
+    }
+    if (state.phase == VoiceLoopPhase.speaking && state.isContinuousMode) {
+      await _startListening();
+    }
   }
 
   // ===========================================================================

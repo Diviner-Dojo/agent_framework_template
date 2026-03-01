@@ -93,4 +93,15 @@ class VoiceRecoveryMessages {
 
   /// Spoken when voice mode is interrupted by the user tapping interrupt.
   static const interrupted = "I'll stop talking. Go ahead.";
+
+  // =========================================================================
+  // Turn-completeness re-prompts (Task 5)
+  // =========================================================================
+
+  /// Brief re-prompt when the user was cut off (○ marker, 5s delay).
+  static const turnIncompleteBrief = "Go ahead, I didn't want to interrupt.";
+
+  /// Patient re-prompt when the user is deliberating (◐ marker, 10s delay).
+  static const turnIncompletePatient =
+      "Take your time — I'm here when you're ready.";
 }

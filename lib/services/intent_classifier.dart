@@ -481,11 +481,12 @@ class IntentClassifier {
 
   /// Task intent phrases — require explicit "task" or "to-do" keywords.
   ///
-  /// Matches: "add a task", "create a task", "add X to my task list",
-  /// "new to-do", "add to my to-do list", "put X on my list".
+  /// Matches: "add a task", "create a task", "add me a to-do item",
+  /// "add X to my task list", "new to-do", "put X on my list",
+  /// "I need you to add a task".
   /// Does NOT match bare action verbs ("buy groceries") without task keywords.
   static final _taskIntentPattern = RegExp(
-    r'\b(add|create|make|new)\s+(a\s+)?(task|to.?do)\b|'
+    r'\b(add|create|make|new)\s+(\w+\s+){0,2}(a\s+)?(task|to.?do)\b|'
     r'\badd\b.{0,50}\b(task\s*list|to.?do\s*list)\b|'
     r'^(add|create)\s+(a\s+)?task\b',
     caseSensitive: false,
@@ -550,7 +551,7 @@ class IntentClassifier {
   /// Check if a short message has a strong task signal.
   static bool _hasStrongTaskSignal(String text) {
     return RegExp(
-      r'^(add|create|new)\s+(a\s+)?(task|to.?do)\b',
+      r'^(add|create|new)\s+(\w+\s+){0,2}(a\s+)?(task|to.?do)\b',
       caseSensitive: false,
     ).hasMatch(text);
   }

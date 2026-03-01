@@ -139,6 +139,7 @@ void main() {
       sttService: mockStt,
       ttsService: mockTts,
       audioFocusService: mockAudioFocus,
+      enableThinkingSound: false,
     );
   });
 
@@ -157,6 +158,7 @@ void main() {
           sttService: uninitStt,
           ttsService: mockTts,
           audioFocusService: mockAudioFocus,
+          enableThinkingSound: false,
         );
         addTearDown(orch.dispose);
 
@@ -197,7 +199,9 @@ void main() {
       );
 
       // Emit a "yes" to complete the confirmation.
-      mockStt.emitResult(const SpeechResult(text: 'yes', isFinal: true));
+      mockStt.emitResult(
+        const SpeechResult(text: 'yes', isFinal: true, confidence: 0.9),
+      );
 
       final result = await confirmFuture;
       expect(result, isTrue);
@@ -222,7 +226,9 @@ void main() {
       final confirmFuture = orchestrator.confirmCalendarEvent(event);
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
-      mockStt.emitResult(const SpeechResult(text: 'yes', isFinal: true));
+      mockStt.emitResult(
+        const SpeechResult(text: 'yes', isFinal: true, confidence: 0.9),
+      );
 
       await confirmFuture;
       expect(confirmCalled, isTrue);
@@ -250,7 +256,9 @@ void main() {
       final confirmFuture = orchestrator.confirmCalendarEvent(event);
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
-      mockStt.emitResult(const SpeechResult(text: 'no thanks', isFinal: true));
+      mockStt.emitResult(
+        const SpeechResult(text: 'no thanks', isFinal: true, confidence: 0.9),
+      );
 
       final result = await confirmFuture;
       expect(result, isFalse);
