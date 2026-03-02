@@ -1,0 +1,14 @@
+{
+  "command": "plan",
+  "discussion_id": "DISC-20260302-201821-developer-input-capture-spec-review",
+  "status": "complete",
+  "started_at": "2026-03-02T20:18:33.406786+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "discussion_created",
+    "synthesis"
+  ],
+  "spec": "docs/sprints/SPEC-20260302-192548-developer-input-capture.md",
+  "topic": "Spec review: Developer Input Capture \u2014 Graduated Implementation",
+  "spec_path": "docs/sprints/SPEC-20260302-192548-developer-input-capture.md"
+}

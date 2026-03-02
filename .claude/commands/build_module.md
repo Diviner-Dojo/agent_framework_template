@@ -63,7 +63,19 @@ python scripts/create_discussion.py "build-<module-slug>" --risk medium --mode s
 
 Store the returned `discussion_id` — all subsequent capture calls reference it.
 
-Capture the build plan as the first event:
+Capture the context-brief as the first event (turn_id=1), before the build plan:
+
+```bash
+python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
+  "## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [which spec is being implemented; module name and location]
+- **Developer-stated motivation**: [why this module is being built, if stated; or 'none stated']
+- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
+  --tags "context-brief"
+```
+
+Capture the build plan as the second event:
 ```bash
 python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Build plan: <N tasks from spec>" --tags "build-plan"
 ```
@@ -101,7 +113,7 @@ After generating code for the task, evaluate whether it triggers a checkpoint pe
 1. Select 2 specialists from the trigger table in the rule file.
 2. Dispatch both specialists in parallel:
    ```
-   Task(subagent_type="<specialist>", model="sonnet", prompt="Build Checkpoint Review: <discussion_id>\nTask: <N> - <title>\nTrigger: <category>\n\nReview this code from your specialist perspective. This is a mid-build checkpoint, not a full review.\n\nFocus on:\n- Whether the implementation approach is sound\n- Whether it aligns with existing ADRs and patterns\n- Any risks that would be expensive to fix later\n\n<code content or file paths>\n\nRespond with APPROVE or REVISE (under 200 words).")
+   Task(subagent_type="<specialist>", model="sonnet", prompt="Build Checkpoint Review: <discussion_id>\nTask: <N> - <title>\nTrigger: <category>\n\n## Developer Context\n[Paste the four-field content from the context-brief event written in Step 2]\n\nReview this code from your specialist perspective. This is a mid-build checkpoint, not a full review.\n\nFocus on:\n- Whether the implementation approach is sound\n- Whether it aligns with existing ADRs and patterns\n- Any risks that would be expensive to fix later\n\n<code content or file paths>\n\nRespond with APPROVE or REVISE (under 200 words).")
    ```
 3. Capture each specialist's response:
    ```bash

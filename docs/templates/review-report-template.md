@@ -17,6 +17,13 @@ review_duration_minutes: 0
 
 [2-3 sentence overview of the changes reviewed and the key findings.]
 
+## Request Context
+
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [which files or changes were handed to this review]
+- **Developer-stated motivation**: [why this change is being made, if stated]
+- **Explicit constraints**: [any developer-stated constraints agents should respect; or "none stated"]
+
 ## Findings by Specialist
 
 ### Architecture Consultant
