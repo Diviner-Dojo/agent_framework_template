@@ -543,6 +543,102 @@ void main() {
     });
   });
 
+  group('context-aware extraction', () {
+    test('context included in prompt when provided', () async {
+      final api = _FakeClaudeApiService(
+        '{"title": "Process the opportunity cube", "due_date": null, '
+        '"notes": null}',
+      );
+      final service = TaskExtractionService(claudeApi: api);
+      await service.extract(
+        'Add it to my task list',
+        now,
+        context: [
+          {'role': 'user', 'content': 'I need to process the opportunity cube'},
+          {'role': 'assistant', 'content': 'That sounds important!'},
+        ],
+      );
+
+      // The prompt should contain the conversation history block.
+      expect(api.lastPrompt, contains('Conversation history:'));
+      expect(api.lastPrompt, contains('opportunity cube'));
+    });
+
+    test(
+      'pronoun "it" in task message resolves to prior context topic',
+      () async {
+        // Fake API returns a resolved title using conversation context.
+        final api = _FakeClaudeApiService(
+          '{"title": "Process the opportunity cube", "due_date": null, '
+          '"notes": null}',
+        );
+        final service = TaskExtractionService(claudeApi: api);
+        final result = await service.extract(
+          'add it to my task list',
+          now,
+          context: [
+            {
+              'role': 'user',
+              'content': 'I need to process the opportunity cube',
+            },
+          ],
+        );
+
+        expect(result.isSuccess, isTrue);
+        final success = result as TaskExtractionSuccess;
+        // LLM used context to resolve "it" — title is meaningful.
+        expect(
+          success.task.title.toLowerCase(),
+          isNot(equals('add it to my task list')),
+          reason: 'title should not literally repeat the instruction',
+        );
+        expect(
+          success.task.title.toLowerCase(),
+          contains('opportunity cube'),
+          reason: 'LLM resolved "it" from conversation context',
+        );
+      },
+    );
+
+    test('no conversation history block when context is null', () async {
+      final api = _FakeClaudeApiService(
+        '{"title": "Buy milk", "due_date": null, "notes": null}',
+      );
+      final service = TaskExtractionService(claudeApi: api);
+      await service.extract('add a task to buy milk', now);
+
+      // No history block when context is null.
+      expect(api.lastPrompt, isNot(contains('Conversation history:')));
+    });
+
+    test('no conversation history block when context is empty list', () async {
+      final api = _FakeClaudeApiService(
+        '{"title": "Buy milk", "due_date": null, "notes": null}',
+      );
+      final service = TaskExtractionService(claudeApi: api);
+      await service.extract('add a task to buy milk', now, context: []);
+
+      expect(api.lastPrompt, isNot(contains('Conversation history:')));
+    });
+
+    test('context role labels are uppercased in prompt', () async {
+      final api = _FakeClaudeApiService(
+        '{"title": "Call dentist", "due_date": null, "notes": null}',
+      );
+      final service = TaskExtractionService(claudeApi: api);
+      await service.extract(
+        'remind me to call',
+        now,
+        context: [
+          {'role': 'user', 'content': 'I should call the dentist'},
+        ],
+      );
+
+      // Role labels should be uppercased: [USER]: ...
+      expect(api.lastPrompt, contains('[USER]:'));
+    });
+  });
+
   group('LLM extraction — timezone parameter', () {
     test('includes provided IANA timezone in prompt', () async {
       final api = _FakeClaudeApiService(

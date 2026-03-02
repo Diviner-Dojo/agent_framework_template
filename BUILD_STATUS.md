@@ -1,23 +1,45 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-02 ~05:00 UTC
+> Last updated: 2026-03-02 ~07:45 UTC
 
 ## Current Task
 
-**Status:** Shipping coverage recovery + advisory fixes.
+**Status:** Bug-fix sprint complete. Ready for review + commit.
 **Branch:** `main`
-**Version:** `0.16.1+5`
+**Version:** `0.16.3+7` (pending bump for this sprint)
 
 ### In Progress
-- **Ship** — Quality gate passes (80.7% coverage), preparing to commit and ship
+(none)
 
 ### Just Completed
-- **Coverage Recovery** — 69.9% → 80.7% effective coverage (1850 → 1895 tests)
+- **Bug-Fix Sprint: Voice UX + Task + TTS Fallback** (5 fixes, quality gate PASS):
+  - Fix 1: Task extraction context — `context` param in `TaskExtractionService.extract()`, last 3 turns passed from `_extractTaskDetails`; resolves pronoun "it" using conversation history
+  - Fix 2: Journal-only mode intent routing — moved `journalOnlyMode` guard after `_routeByIntent()`; task/calendar intents now handled in journal-only mode
+  - Fix 3: Voice cleanup on back navigation — `await stop()` in discard path, `unawaited()` in `onPopInvokedWithResult`, `stop()` added to `dispose()`
+  - Fix 4: Empty session delete — `endSession()` empty guard now calls `discardSession()` (deletes row) instead of `endSession()` (preserves row)
+  - Fix 5: TTS fallback — new `FallbackTtsService`, `ttsFallbackActiveProvider`, ElevenLabs wrapped with fallback, SnackBar notification in session screen
+  - Tests: 1914 total (+17 new), 80.8% coverage, all 6 quality gate checks pass
+  - New files: `lib/services/fallback_tts_service.dart`, `test/services/fallback_tts_service_test.dart`, `test/providers/session_providers_test.dart`
+  - Updated tests: `session_empty_guard_test.dart` (expects deletion), `task_extraction_service_test.dart` (+5 context tests), `voice_session_orchestrator_test.dart` (+1 regression)
+
+- **Voice Bug Fixes + Integration Test** (PR #52, v0.16.3+7):
+  - Fix: Black screen on back button — try-finally in _endSessionAndPop ensures Navigator.pop() always runs
+  - Fix: STT silent after ElevenLabs TTS — AudioPlayer.stop() on completion releases audio session
+  - Fix: Post-dispose orchestrator crashes — _disposed flag + _updateState guard
+  - New: 8-phase voice_mode_test.dart integration test (emulator, 1m 14s)
+  - New: 2 regression tests for post-dispose safety
+  - Fix: quality_gate.py regression guard skips TODO entries, Unicode encoding fix
+  - Review: approve-with-changes (REV-20260302-071854), 1 blocking resolved, 7 advisory
+- **Coverage Recovery + Ship** (PR #51, v0.16.2+6):
+  - 69.9% → 80.7% effective coverage (1850 → 1895 tests)
   - New test files: chat_bubble_test, session_list_screen_expanded_test, session_detail_screen_expanded_test, search_screen_results_test
   - Expanded existing: settings_screen_expanded_test (+9 tests), tasks_screen_expanded_test (+6 tests)
-  - coverage:ignore-file pragmas: app_database.dart, google_calendar_service.dart, photo_service.dart, audio_file_service.dart (genuinely untestable platform code)
-- **Quick-win advisories** — onboarding_providers doc comment, FAB warnIfMissed:true, @Tags lint fix
+  - coverage:ignore-file pragmas: app_database.dart, google_calendar_service.dart, photo_service.dart, audio_file_service.dart, video_service.dart, video_player_widget.dart
+  - Quick-win advisories: onboarding_providers doc comment, FAB warnIfMissed:true, @Tags lint fix
+  - Review: approve-with-changes (REV-20260302-061043), 0 blocking, 8 advisory
+  - Emulator smoke test: PASS (all features verified)
+  - Physical device deploy: SUCCESS (release mode, SM_G998U1)
 - **Emulator Testing + Navigator Fix** (PR #50, v0.16.1+5, ADR-0029):
   - Emulator support in deploy.py (--emulator, --list-emulators, boot/wait)
   - New test_on_emulator.py runner with JSONL logging
@@ -119,14 +141,14 @@ Or manually (physical device):
 | Deploy --check-version | **Working** | Needs test | MATCH confirmed for 0.15.1+3 |
 | Claude AI | Needs test | **Working** | Edge Function responding (200 OK), in-app conversation works |
 | Video capture | Needs test | Limited | ffmpeg_kit may lack x86_64 libs |
-| Voice/STT | Needs test | Needs test | Voice naturalness shipped, needs on-device verify |
+| Voice/STT | Needs test | **Working** | voice_mode_test.dart: enable, session, toggle, back nav (1m 14s) |
 | Local LLM | Disabled | Disabled | SIGILL on Snapdragon 888 / ARM-only binaries |
 
 ## Tech Debt
 
-- **Coverage** — 80.7% (above 80% target, recovered from 69.9%)
+- **Coverage** — 80.7% (above 80% target, 1897 tests)
 - **Education gates deferred** — Phase 11 + Phase 12
-- **Review advisories open** — 12 from REV-20260301-025400 + 14 from REV-20260301-215800
+- **Review advisories open** — 12 from REV-20260301-025400 + 14 from REV-20260301-215800 + 8 from REV-20260302-061043 + 7 from REV-20260302-071854
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
 - **Pipeline advisories** — stop words duplication, bare except, candidate_id collision risk (see REV-20260301-215800)
@@ -142,9 +164,9 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **Test on device** — Voice naturalness (markdown stripping, turn-taking), Claude AI, video
-2. **Coverage recovery** — Write tests for Phase 13 code (task_dao, task_extraction_service, tasks_screen, etc.)
-3. **Address review advisories** — 12 non-blocking from voice naturalness review (REV-20260301-025400)
+1. **Review + commit** — Run `/review` on bug-fix sprint files, then commit and PR
+2. **Test on device** — All 5 bug fixes on SM_G998U1: journal-only task creation, context resolution, voice cleanup on discard, empty session delete, TTS fallback
+3. **Address review advisories** — 41 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854
 4. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1)
 5. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
 6. **Education gates** — Deferred from Phase 11 + 12

@@ -116,6 +116,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     _scrollController.dispose();
+    // Belt-and-suspenders: stop orchestrator if widget is disposed by any path.
+    try {
+      ref.read(voiceOrchestratorProvider).stop();
+    } on StateError {
+      // Provider already disposed — ignore.
+    }
     super.dispose();
   }
 
@@ -245,6 +251,20 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       }
     });
 
+    // Notify user when TTS falls back to system voice.
+    ref.listen<bool>(ttsFallbackActiveProvider, (_, isActive) {
+      if (isActive && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Switched to system voice \u2014 ElevenLabs unavailable',
+            ),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    });
+
     // Listen for new assistant messages to feed to the orchestrator.
     ref.listen<AsyncValue<List<dynamic>>>(activeSessionMessagesProvider, (
       previous,
@@ -317,7 +337,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
             ref.read(sessionNotifierProvider.notifier).dismissSession();
           }
           // Stop orchestrator on navigation away.
-          ref.read(voiceOrchestratorProvider).stop();
+          unawaited(ref.read(voiceOrchestratorProvider).stop());
           return;
         }
         // Save and close immediately — no confirmation dialog.
@@ -1203,7 +1223,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     );
 
     if (confirmed == true && mounted) {
-      ref.read(voiceOrchestratorProvider).stop();
+      await ref.read(voiceOrchestratorProvider).stop();
       await ref.read(sessionNotifierProvider.notifier).discardSession();
       if (mounted) {
         Navigator.of(context).pop();

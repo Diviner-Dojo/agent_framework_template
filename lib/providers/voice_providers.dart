@@ -35,6 +35,7 @@ import 'package:path_provider/path_provider.dart';
 import '../config/environment.dart';
 import '../services/audio_focus_service.dart';
 import '../services/elevenlabs_tts_service.dart';
+import '../services/fallback_tts_service.dart';
 import '../services/speech_recognition_service.dart';
 import '../services/speech_to_text_stt_service.dart';
 import '../services/text_to_speech_service.dart';
@@ -186,6 +187,12 @@ final ttsRateProvider = NotifierProvider<TtsRateNotifier, double>(
   TtsRateNotifier.new,
 );
 
+/// True when TTS has fallen back to the system voice (primary unavailable).
+///
+/// The UI watches this to show a one-time notification when ElevenLabs
+/// is unavailable and the app silently switches to system TTS.
+final ttsFallbackActiveProvider = StateProvider<bool>((ref) => false);
+
 /// Controls which STT engine is used. Persisted in SharedPreferences.
 ///
 /// Defaults to [SttEngine.speechToText] for zero-download experience.
@@ -253,9 +260,17 @@ final textToSpeechServiceProvider = Provider<TextToSpeechService>((ref) {
   switch (engine) {
     case TtsEngine.elevenlabs:
       const env = Environment();
-      service = ElevenLabsTtsService(
+      final primary = ElevenLabsTtsService(
         proxyUrl: env.elevenlabsProxyUrl,
         authToken: env.supabaseAnonKey,
+      );
+      final systemTts = FlutterTextToSpeechService();
+      service = FallbackTtsService(
+        primary: primary,
+        fallback: systemTts,
+        onFallbackActivated: () {
+          ref.read(ttsFallbackActiveProvider.notifier).state = true;
+        },
       );
     case TtsEngine.flutterTts:
       service = FlutterTextToSpeechService();

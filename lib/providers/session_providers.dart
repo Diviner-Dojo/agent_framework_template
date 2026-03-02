@@ -507,15 +507,17 @@ class SessionNotifier extends StateNotifier<SessionState> {
     ];
     state = state.copyWith(conversationMessages: updatedMessages);
 
-    // Journal-only mode: save message silently, no follow-up or classification.
-    if (_agent.journalOnlyMode) return;
-
-    // Phase 5+11: Intent classification — detect recall, calendar, and
+    // Phase 5+11: Intent classification — detect recall, calendar, task, and
     // reminder intents before routing to the journaling follow-up.
+    // Runs in all modes so task/calendar intents work even in journal-only mode.
     // Uses the top-ranked intent from classifyMulti() (ADR-0013, ADR-0020).
     final intentResult = _intentClassifier.classify(text);
     final handled = await _routeByIntent(text, intentResult);
     if (handled) return;
+
+    // Journal-only mode: message recorded, special intents handled above,
+    // but no AI conversational follow-up.
+    if (_agent.journalOnlyMode) return;
 
     // Check if the user wants to end the session.
     if (_agent.shouldEndSession(
@@ -601,23 +603,21 @@ class SessionNotifier extends StateNotifier<SessionState> {
     final sessionId = state.activeSessionId;
     if (sessionId == null) return;
 
-    // Empty session guard: if the user hasn't sent any messages, close the
-    // session quietly without generating a summary. The session is preserved
-    // in the database (not deleted) so no data is ever lost without explicit
-    // user action. The UI shows a brief "nothing recorded" notification.
+    // Empty session guard: if the user hasn't sent any messages, delete the
+    // session entirely so it never appears in the journal list. The greeting
+    // is AI-only content — there is nothing for the user to recover.
     final userMessageCount = await _messageDao.getMessageCountByRole(
       sessionId,
       'USER',
     );
     if (userMessageCount == 0) {
-      await _sessionDao.endSession(sessionId, nowUtc());
-      _agent.unlockLayer();
-      // Mark onboarding complete even for empty sessions — the user chose
-      // to exit, so they shouldn't be shown onboarding again (QA finding).
+      // Mark onboarding complete before state is cleared (needs journalingMode).
       await _completeOnboardingIfNeeded();
+      // Signal UI to show "nothing recorded" notification.
       _ref.read(wasAutoDiscardedProvider.notifier).state = true;
-      state = const SessionState();
-      _ref.read(activeSessionIdProvider.notifier).state = null;
+      // Delete session entirely — empty sessions (AI greeting only) must not
+      // appear in the journal list (user never contributed content).
+      await discardSession();
       return;
     }
 
@@ -1079,10 +1079,21 @@ class SessionNotifier extends StateNotifier<SessionState> {
     final now = nowUtc();
     final timezone = await _ref.read(deviceTimezoneProvider.future);
 
+    // Pass up to 3 prior messages as context so the LLM can resolve pronouns
+    // like "it" or "that" by referencing the recent conversation.
+    final allMessages = state.conversationMessages;
+    final contextMessages = allMessages.length > 1
+        ? allMessages.sublist(
+            (allMessages.length - 4).clamp(0, allMessages.length - 1),
+            allMessages.length - 1,
+          )
+        : null;
+
     final result = await extractionService.extract(
       text,
       now,
       timezone: timezone,
+      context: contextMessages?.isEmpty == true ? null : contextMessages,
     );
 
     // Check that we still have a pending task (user may have dismissed).

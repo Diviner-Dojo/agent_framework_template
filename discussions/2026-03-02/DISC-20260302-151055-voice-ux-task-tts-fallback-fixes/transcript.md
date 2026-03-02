@@ -1,0 +1,81 @@
+---
+discussion_id: DISC-20260302-151055-voice-ux-task-tts-fallback-fixes
+started: 2026-03-02T15:15:55.365998+00:00
+ended: 2026-03-02T15:24:12.913534+00:00
+agents: [architecture-consultant, facilitator, independent-perspective, qa-specialist, security-specialist]
+total_turns: 9
+---
+
+# Discussion: DISC-20260302-151055-voice-ux-task-tts-fallback-fixes
+
+## Turn 1 — qa-specialist (proposal)
+*2026-03-02T15:15:55.365998+00:00 | confidence: 0.88*
+*tags: round-1, coverage, advisory*
+
+Coverage assessment: 80.8% overall, all 5 fixes have regression tests. Notable gaps: (1) FallbackTtsService.isSpeaking fallback branch untested - mock sets _isSpeaking = true then false, never tests _usingFallback path; (2) stop() when primary throws not tested - if primary.stop() throws, fallback.stop() never runs; (3) Fix 2 regression test lacks DB-level assertion for user message persistence; (4) Missing @Tags(['regression']) on fallback_tts_service_test.dart. All findings are advisory - quality gate passes with 1914 tests.
+
+---
+
+## Turn 2 — architecture-consultant (proposal)
+*2026-03-02T15:16:03.082068+00:00 | confidence: 0.87*
+*tags: round-1, architecture, medium, stop-guard*
+
+Architectural alignment: all 5 fixes align with ADR-0015/22/6/14/26. FallbackTtsService correctly uses decorator pattern implementing TextToSpeechService, dependencies flow correctly (no provider imports from service layer), disposal chain is sound. MEDIUM finding: FallbackTtsService.stop() calls _primary.stop() without try-catch. If primary is in broken state and stop() throws, _fallback.stop() never runs, leaving fallback audio playing. Fix: wrap _primary.stop() in try-on-Exception so fallback stop always executes. Marked APPROVE - this finding does not block merge but should be addressed. Advisory: EventExtractionService asymmetry (context param only on TaskExtractionService), Fix 4 ordering fragility is acceptable with inline comment.
+
+---
+
+## Turn 3 — security-specialist (proposal)
+*2026-03-02T15:16:11.569608+00:00 | confidence: 0.88*
+*tags: round-1, security, advisory, prompt-injection*
+
+Security assessment: single-user local-first app, no new network surfaces opened. Role field in conversationMessages is hardcoded (not user-controlled) - no role injection. Advisory (1): Prompt injection via conversation history - user text embedded verbatim in contextBlock, can blur prompt boundaries, but blast radius is self-only data corruption and task confirmation provides human checkpoint. Advisory (2): onFallbackActivated fires from async speak() path - if provider container is disposed before callback fires, ref.read may throw StateError. Recommend Future.microtask() guard. TOCTOU for discardSession is a non-finding (Dart single-threaded event loop prevents interleaving). All findings are advisory, none block merge.
+
+---
+
+## Turn 4 — independent-perspective (critique)
+*2026-03-02T15:16:23.185732+00:00 | confidence: 0.82*
+*tags: round-1, independent, hidden-risks, journal-only-dayquery, process-scoped-fallback*
+
+Four hidden risks not raised by other specialists: (1) Fix 2 leaks recall/dayQuery intents in journal-only mode - the guard was moved after all of _routeByIntent(), meaning 'What did I write last Tuesday?' now fires an AI query in a supposedly AI-free mode. The journalOnlyMode guard should only suppress conversational follow-ups, not all AI-driven intents. This is a medium behavior change. (2) FallbackTtsService is process-scoped (textToSpeechServiceProvider lifetime), not session-scoped. A failure in one session permanently degrades all subsequent sessions with no notification. The SnackBar fires once, per-provider-lifetime, not per-session. (3) Fix 1 context sends raw journal entries to Claude API for task extraction - privacy concern, user's health/personal journal content transmitted without explicit consent. Suggested mitigation: use only prior ASSISTANT turn for pronoun context, not raw USER messages. (4) Fix 2 + Fix 3 interaction: task extraction in journal-only mode starts async, user presses back mid-extraction, pendingTask is set after screen is popped - task is silently lost. Not tested.
+
+---
+
+## Turn 5 — architecture-consultant (critique)
+*2026-03-02T15:18:58.830644+00:00 | confidence: 0.88*
+*tags: round-2, revise, stop-guard, dayquery-false-premise*
+
+Round 2: dayQuery finding from independent-perspective contains a factual error — _handleDayQuery reads local task DAO and Google Calendar directly with no LLM call. It belongs with task/calendar intents in journal-only mode. APPROVE on dayQuery concern. REVISE confirmed for unguarded primary.stop(): the fix belongs in this PR. FallbackTtsService.stop() must wrap _primary.stop() in try-on-Exception so _fallback.stop() always executes. This is the minimal 3-line fix that completes the decorator's reliability contract.
+
+---
+
+## Turn 6 — independent-perspective (critique)
+*2026-03-02T15:19:02.610211+00:00 | confidence: 0.92*
+*tags: round-2, advisory, dayquery-ambiguity, journal-only-recall-risk*
+
+Round 2: (1) dayQuery pre-existing ambiguity — question of whether dayQuery should work in journal-only mode was never decided; Fix 2 makes the gap visible. Not a new bug. _handleRecallQuery (IntentType.query) does call Claude and WOULD fire in journal-only mode — this is a genuine narrow risk worth tracking as advisory. (2) Journal content disclosure is marginal new surface: same content already sent to Claude on getFollowUp() calls. Narrow new risk: in journal-only mode specifically, task extraction now sends content to Claude when getFollowUp() would not. Advisory only, not blocking.
+
+---
+
+## Turn 7 — facilitator (synthesis)
+*2026-03-02T15:22:36.847624+00:00 | confidence: 0.9*
+*tags: synthesis, approve-with-changes, blocking:1, advisory:6*
+
+Verdict: APPROVE-WITH-CHANGES. The one blocking finding (unguarded primary.stop() in FallbackTtsService.stop()) was identified by architecture-consultant in Round 1, confirmed as REVISE in Round 2, and has been fixed. The fix wraps _primary.stop() in try-on-Exception so _fallback.stop() always executes, completing the decorator reliability contract. A regression test was added ('stop() calls fallback even when primary throws'). Quality gate: 7/7 PASS post-fix. 10 tests for FallbackTtsService. Advisory findings (6 total): (1) isSpeaking fallback branch untested (QA); (2) Fix 2 regression test lacks DB assertion (QA); (3) Missing @Tags regression on fallback test (QA); (4) EventExtractionService context param asymmetry (architecture); (5) onFallbackActivated StateProvider callback edge case (security); (6) IntentType.query (recall) fires in journal-only mode — narrow pre-existing gap exposed by Fix 2 (independent). dayQuery-in-journal-only concern from independent was a false premise: _handleDayQuery is local-data-only. Journal content privacy concern is pre-existing (same data already sent via getFollowUp). Strengths: correct decorator pattern, comprehensive TTS fallback tests, regression ledger well-maintained, Fix 2 guard placement preserves journalOnlyMode semantic correctly.
+
+---
+
+## Turn 8 — qa-specialist (reflection)
+*2026-03-02T15:24:10.152443+00:00 | confidence: 0.81*
+*tags: reflection*
+
+What I Missed: Unguarded primary.stop() was correctly flagged blocking but isSpeaking fallback branch was underclassified as low when it is a state guard property. Fix 2 regression test missing DB assertion should have been blocking, not advisory — regression tests for data contract changes must assert both state AND database state. Missed the journal-only mode + task extraction data flow interaction. Candidate Rule: Regression tests for data contract changes must assert both state transitions and persistent data (add to testing_requirements.md). Confidence Calibration: Original 0.88, Revised 0.81, Delta -0.07
+
+---
+
+## Turn 9 — architecture-consultant (reflection)
+*2026-03-02T15:24:12.913534+00:00 | confidence: 0.88*
+*tags: reflection*
+
+What I Missed: Should have proactively validated decorator reliability contracts (stop/dispose chains) in Round 1 rather than waiting for stop() guard to emerge. Fix 2 guard placement needed cross-referencing against journalOnlyMode semantics without prompting. Candidate Rule: Decorator Pattern Reliability Gate — when a PR introduces or modifies a decorator, validate in Round 1 that all resource cleanup chains have exception guards. Add to ADR-0015 guidance. Confidence Calibration: Original 0.87, Revised 0.88, Delta +0.01
+
+---
