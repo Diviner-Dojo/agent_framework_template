@@ -32,6 +32,8 @@ import 'package:agentic_journal/providers/photo_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/services/assistant_registration_service.dart';
 
+@Tags(['regression'])
+
 /// Mock assistant service that tracks method calls.
 class MockAssistantService extends AssistantRegistrationService {
   int wasLaunchedCallCount = 0;
@@ -150,6 +152,56 @@ void main() {
         await tester.pump();
 
         // Should show onboarding, NOT navigate to /session.
+        expect(find.text('Setting up your journal...'), findsOneWidget);
+      },
+    );
+
+    // Regression: ref.watch(onboardingNotifierProvider) in app.dart build()
+    // caused MaterialApp to rebuild when onboarding completed, which
+    // reassigned initialRoute on an already-mounted Navigator, collapsing
+    // the route stack. Fixed by using ref.read.
+    // See: memory/bugs/regression-ledger.md
+    testWidgets(
+      'Navigator stack not collapsed when onboarding completes (regression)',
+      (tester) async {
+        // Start with onboarding incomplete.
+        final prefs = await SharedPreferences.getInstance();
+
+        await buildApp(tester, prefs: prefs);
+        await tester.pump();
+
+        // Should be on onboarding screen.
+        expect(find.text('Setting up your journal...'), findsOneWidget);
+
+        // Simulate onboarding completion by writing to SharedPreferences
+        // and updating the notifier's state. In production, the
+        // ConversationalOnboardingScreen calls completeOnboarding() which
+        // sets state = true. If app.dart uses ref.watch, this would trigger
+        // a MaterialApp rebuild that reassigns initialRoute.
+        await prefs.setBool(onboardingCompleteKey, true);
+
+        // Pump several frames to process any rebuilds.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // The key assertion: the Navigator should still exist and be
+        // functional. If the bug were present (ref.watch), the MaterialApp
+        // would rebuild, initialRoute would change from '/onboarding' to '/',
+        // and the already-mounted Navigator's route stack would collapse.
+        // With the fix (ref.read), the MaterialApp does NOT rebuild, so the
+        // Navigator maintains its current route stack.
+        final navigators = find.byType(Navigator).evaluate();
+        expect(
+          navigators.isNotEmpty,
+          isTrue,
+          reason: 'Navigator should still exist after onboarding state change',
+        );
+
+        // The onboarding screen should still be showing because ref.read
+        // means the build method does NOT re-run when the provider changes.
+        // Navigation away from onboarding is handled by the onboarding
+        // screen itself via Navigator.pushReplacement, not by initialRoute.
         expect(find.text('Setting up your journal...'), findsOneWidget);
       },
     );

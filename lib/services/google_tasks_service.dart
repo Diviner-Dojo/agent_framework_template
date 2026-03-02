@@ -58,6 +58,10 @@ class GoogleTasksService {
   /// Create a GoogleTasksService with a Tasks API instance.
   GoogleTasksService._(this._api);
 
+  /// Create a GoogleTasksService with a pre-built [TasksApi] for testing.
+  @visibleForTesting
+  GoogleTasksService.forTesting(gtasks.TasksApi api) : _api = api;
+
   /// Create a GoogleTasksService backed by a real Google Tasks API client.
   factory GoogleTasksService.withClient(googleapis_auth.AuthClient authClient) {
     final api = gtasks.TasksApi(authClient);

@@ -6,6 +6,7 @@ import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/database/daos/calendar_event_dao.dart';
 import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/database/daos/message_dao.dart';
+import 'package:agentic_journal/database/daos/task_dao.dart';
 import 'package:agentic_journal/repositories/sync_repository.dart';
 import 'package:agentic_journal/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
@@ -751,6 +752,205 @@ void main() {
       );
       expect(result.errors, hasLength(2));
       expect(result.errors.first, contains('timeout'));
+    });
+  });
+
+  group('buildTaskUpsertMap', () {
+    test('includes all task fields', () {
+      final now = DateTime.utc(2026, 2, 28, 12, 0);
+      final task = Task(
+        taskId: 'task-1',
+        sessionId: 'session-1',
+        title: 'Buy groceries',
+        notes: 'Milk and eggs',
+        dueDate: now.add(const Duration(days: 1)),
+        googleTaskId: 'google-task-1',
+        googleTaskListId: 'google-list-1',
+        status: TaskStatus.active,
+        syncStatus: TaskSyncStatus.pending,
+        rawUserMessage: 'Add a task to buy groceries',
+        completedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final map = SyncRepository.buildTaskUpsertMap(task, 'user-xyz');
+
+      expect(map['task_id'], 'task-1');
+      expect(map['session_id'], 'session-1');
+      expect(map['user_id'], 'user-xyz');
+      expect(map['title'], 'Buy groceries');
+      expect(map['notes'], 'Milk and eggs');
+      expect(map['due_date'], isNotNull);
+      expect(map['google_task_id'], 'google-task-1');
+      expect(map['google_task_list_id'], 'google-list-1');
+      expect(map['status'], TaskStatus.active);
+      expect(map['sync_status'], 'SYNCED');
+      expect(map['raw_user_message'], 'Add a task to buy groceries');
+      expect(map['completed_at'], isNull);
+      expect(map['created_at'], now.toIso8601String());
+      expect(map['updated_at'], now.toIso8601String());
+    });
+
+    test('handles nullable fields', () {
+      final now = DateTime.utc(2026, 2, 28, 12, 0);
+      final task = Task(
+        taskId: 'task-2',
+        title: 'Open-ended task',
+        status: TaskStatus.active,
+        syncStatus: TaskSyncStatus.pending,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final map = SyncRepository.buildTaskUpsertMap(task, 'user-abc');
+
+      expect(map['task_id'], 'task-2');
+      expect(map['session_id'], isNull);
+      expect(map['due_date'], isNull);
+      expect(map['google_task_id'], isNull);
+      expect(map['google_task_list_id'], isNull);
+      expect(map['notes'], isNull);
+      expect(map['raw_user_message'], isNull);
+      expect(map['completed_at'], isNull);
+    });
+
+    test('includes completedAt for completed tasks', () {
+      final now = DateTime.utc(2026, 2, 28, 12, 0);
+      final completedAt = now.add(const Duration(hours: 2));
+      final task = Task(
+        taskId: 'task-3',
+        title: 'Done task',
+        status: TaskStatus.completed,
+        syncStatus: TaskSyncStatus.pending,
+        completedAt: completedAt,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final map = SyncRepository.buildTaskUpsertMap(task, 'user-abc');
+
+      expect(map['completed_at'], completedAt.toIso8601String());
+      expect(map['status'], TaskStatus.completed);
+    });
+  });
+
+  group('SyncRepository - task sync', () {
+    late AppDatabase taskDb;
+    late SessionDao taskSessionDao;
+    late MessageDao taskMessageDao;
+    late TaskDao taskDao;
+
+    setUp(() {
+      taskDb = AppDatabase.forTesting(NativeDatabase.memory());
+      taskSessionDao = SessionDao(taskDb);
+      taskMessageDao = MessageDao(taskDb);
+      taskDao = TaskDao(taskDb);
+    });
+
+    tearDown(() async {
+      await taskDb.close();
+    });
+
+    test('syncPendingTasks returns empty when not authenticated', () async {
+      final syncRepo = SyncRepository(
+        supabaseService: SupabaseService(
+          environment: const Environment.custom(
+            supabaseUrl: '',
+            supabaseAnonKey: '',
+          ),
+        ),
+        sessionDao: taskSessionDao,
+        messageDao: taskMessageDao,
+        taskDao: taskDao,
+      );
+
+      final result = await syncRepo.syncPendingTasks();
+      expect(result.syncedCount, 0);
+      expect(result.failedCount, 0);
+    });
+
+    test('syncPendingTasks returns empty when no dao provided', () async {
+      final syncRepo = SyncRepository(
+        supabaseService: _FakeAuthenticatedSupabaseService(),
+        sessionDao: taskSessionDao,
+        messageDao: taskMessageDao,
+        // No taskDao
+      );
+
+      final result = await syncRepo.syncPendingTasks();
+      expect(result.syncedCount, 0);
+      expect(result.failedCount, 0);
+    });
+
+    test('syncPendingTasks returns empty when no tasks to sync', () async {
+      final syncRepo = SyncRepository(
+        supabaseService: _FakeAuthenticatedSupabaseService(),
+        sessionDao: taskSessionDao,
+        messageDao: taskMessageDao,
+        taskDao: taskDao,
+      );
+
+      final result = await syncRepo.syncPendingTasks();
+      expect(result.syncedCount, 0);
+      expect(result.failedCount, 0);
+    });
+
+    test('getTasksToSync returns ACTIVE+PENDING tasks', () async {
+      final now = DateTime.utc(2026, 2, 28, 12, 0);
+
+      // ACTIVE + PENDING → should be included.
+      await taskDao.insertTask(
+        TasksCompanion(
+          taskId: const Value('task-1'),
+          title: const Value('Sync me'),
+          status: const Value(TaskStatus.active),
+          syncStatus: const Value(TaskSyncStatus.pending),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+      // COMPLETED + PENDING → should be included (sync completion).
+      await taskDao.insertTask(
+        TasksCompanion(
+          taskId: const Value('task-2'),
+          title: const Value('Completed but unsync'),
+          status: const Value(TaskStatus.completed),
+          syncStatus: const Value(TaskSyncStatus.pending),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+      // ACTIVE + SYNCED → should NOT be included (already synced).
+      await taskDao.insertTask(
+        TasksCompanion(
+          taskId: const Value('task-3'),
+          title: const Value('Already synced'),
+          status: const Value(TaskStatus.active),
+          syncStatus: const Value(TaskSyncStatus.synced),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+      // PENDING_CREATE → should NOT be included (not confirmed yet).
+      await taskDao.insertTask(
+        TasksCompanion(
+          taskId: const Value('task-4'),
+          title: const Value('Not ready'),
+          status: const Value(TaskStatus.pendingCreate),
+          syncStatus: const Value(TaskSyncStatus.pending),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+      final toSync = await taskDao.getTasksToSync();
+      expect(toSync, hasLength(2));
+      final ids = toSync.map((t) => t.taskId).toSet();
+      expect(ids, containsAll(['task-1', 'task-2']));
     });
   });
 }
