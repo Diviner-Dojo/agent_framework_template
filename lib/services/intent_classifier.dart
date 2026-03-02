@@ -433,8 +433,10 @@ class IntentClassifier {
   /// - "Add a meeting/event/appointment"
   static final _calendarIntentPattern = RegExp(
     r'^(schedule|book|set up|plan|arrange)\b|'
-    r'\b(add|put)\b.{0,40}\b(to|on)\s+(my\s+|the\s+)?calendar\b|'
+    r'\b(add|put)\b.{0,40}\b(to|on)\s+(my\s+|the\s+)?(google\s+)?calendar\b|'
     r'\b(want to|need to|going to|let.?s|can you|could you)\s+(schedule|book|set up|plan|arrange)\b|'
+    // "add a Google Calendar meeting" — "google calendar" modifier between add and event noun.
+    r'^add\b.{0,15}\b(google\s+)?calendar\b.{0,20}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b|'
     r'^add\b.{0,15}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b',
     caseSensitive: false,
   );

@@ -259,4 +259,52 @@ void main() {
       );
     });
   });
+
+  // Regression tests — calendar intent detection with "Google Calendar" modifier.
+  // Bug: "Add a Google Calendar meeting" bypassed intent routing and reached Claude
+  // because "a Google Calendar " (19 chars) exceeded the .{0,15} character limit.
+  // Fix: added (google\s+)?calendar sub-pattern and (google\s+)? to "to ... calendar".
+  group('calendar intent with Google Calendar modifier (regression)', () {
+    test(
+      '"Add a Google Calendar meeting" is classified as calendarEvent (regression)',
+      () {
+        final result = classifier.classify('Add a Google Calendar meeting');
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test(
+      '"Add a Google Calendar meeting tomorrow at 2pm" has high confidence',
+      () {
+        final result = classifier.classify(
+          'Add a Google Calendar meeting tomorrow at 2pm',
+        );
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.8));
+      },
+    );
+
+    test(
+      '"Add a meeting to my Google Calendar" is classified as calendarEvent',
+      () {
+        final result = classifier.classify(
+          'Add a meeting to my Google Calendar',
+        );
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test(
+      '"Schedule a Google Calendar appointment" is classified as calendarEvent',
+      () {
+        final result = classifier.classify(
+          'Schedule a Google Calendar appointment for next Monday',
+        );
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+  });
 }
