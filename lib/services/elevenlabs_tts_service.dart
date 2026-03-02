@@ -59,12 +59,18 @@ class ElevenLabsTtsService implements TextToSpeechService {
       (state) {
         if (state.processingState == ProcessingState.completed) {
           _isSpeaking = false;
+          // Explicitly stop the player to release the Android audio session.
+          // Without this, just_audio retains audio focus after playback
+          // completes, which blocks speech_to_text from acquiring the
+          // microphone for STT.
+          _player?.stop();
           _speakCompleter?.complete();
           _speakCompleter = null;
         }
       },
       onError: (Object e) {
         _isSpeaking = false;
+        _player?.stop();
         _speakCompleter?.completeError(StateError('Playback error: $e'));
         _speakCompleter = null;
       },

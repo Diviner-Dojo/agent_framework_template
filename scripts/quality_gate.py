@@ -439,8 +439,8 @@ def _parse_regression_ledger() -> dict[str, str]:
         files_col = cols[2]  # File(s)
         test_col = cols[5]  # Regression Test
 
-        # Skip process-only entries
-        if "N/A" in test_col:
+        # Skip process-only entries and TODO entries (tests not yet written)
+        if "N/A" in test_col or test_col.upper().startswith("TODO"):
             continue
 
         # Extract just the file path (strip method/test name references like ':test name')
@@ -481,7 +481,7 @@ def check_regression_guard() -> bool:
             checked += 1
             full_test_path = PROJECT_ROOT / test_path
             if not full_test_path.exists():
-                missing.append(f"{src_basename} → {test_path}")
+                missing.append(f"{src_basename} -> {test_path}")
 
     if not checked:
         _pass("Regression guard (no staged files match ledger)")

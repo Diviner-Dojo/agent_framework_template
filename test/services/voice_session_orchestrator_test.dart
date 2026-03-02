@@ -186,6 +186,7 @@ void main() {
       ttsService: mockTts,
       audioFocusService: mockAudioFocus,
       enableThinkingSound: false,
+      ttsReleaseDelay: Duration.zero,
     );
   });
 
@@ -860,6 +861,7 @@ void main() {
           audioFocusService: mockAudioFocus,
           silenceTimeoutSeconds: 1,
           enableThinkingSound: false,
+          ttsReleaseDelay: Duration.zero,
         );
         addTearDown(shortTimeoutOrchestrator.dispose);
 
@@ -1136,6 +1138,7 @@ void main() {
             audioFocusService: mockAudioFocus,
             silenceTimeoutSeconds: 1,
             enableThinkingSound: false,
+            ttsReleaseDelay: Duration.zero,
           );
           addTearDown(shortTimeoutOrchestrator.dispose);
 
@@ -1293,6 +1296,60 @@ void main() {
         );
         expect(result.toString(), contains('confidence: 0.85'));
       });
+    });
+
+    // Regression: onAssistantMessage after dispose must not crash.
+    // A late-arriving Claude API response can trigger onAssistantMessage
+    // after the user navigated away and the orchestrator was disposed.
+    // See: memory/bugs/regression-ledger.md (STT silent / black screen)
+    group('post-dispose safety (regression)', () {
+      test(
+        'onAssistantMessage after dispose does not throw (regression)',
+        () async {
+          final disposedOrchestrator = VoiceSessionOrchestrator(
+            sttService: mockStt,
+            ttsService: mockTts,
+            audioFocusService: mockAudioFocus,
+            enableThinkingSound: false,
+            ttsReleaseDelay: Duration.zero,
+          );
+
+          await disposedOrchestrator.startContinuousMode('Hello');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+
+          // Dispose the orchestrator (simulates user navigating away).
+          disposedOrchestrator.dispose();
+
+          // A late-arriving assistant message should be silently ignored,
+          // not crash with "ValueNotifier used after disposed".
+          await disposedOrchestrator.onAssistantMessage('late response');
+
+          // State should remain idle (the default after dispose).
+          // No exception means the guard worked.
+        },
+      );
+
+      test(
+        '_updateState after dispose is silently ignored (regression)',
+        () async {
+          final disposedOrchestrator = VoiceSessionOrchestrator(
+            sttService: mockStt,
+            ttsService: mockTts,
+            audioFocusService: mockAudioFocus,
+            enableThinkingSound: false,
+            ttsReleaseDelay: Duration.zero,
+          );
+
+          await disposedOrchestrator.startContinuousMode('Hello');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+
+          disposedOrchestrator.dispose();
+
+          // Calling stop() after dispose() should not crash — stop()
+          // calls _updateState internally, which is now guarded.
+          await disposedOrchestrator.stop();
+        },
+      );
     });
   });
 }

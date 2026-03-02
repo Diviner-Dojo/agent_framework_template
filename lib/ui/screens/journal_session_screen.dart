@@ -1151,18 +1151,28 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
   }
 
   /// End the session and navigate back immediately.
+  ///
+  /// Ensures navigation always completes even if endSession() fails
+  /// (e.g., Claude API timeout during summary generation). Without the
+  /// try-finally, an API failure leaves the user on a dead screen with
+  /// no way to navigate back.
   Future<void> _endSessionAndPop() async {
-    ref.read(voiceOrchestratorProvider).stop();
-    await ref.read(sessionNotifierProvider.notifier).endSession();
-    if (mounted) {
-      ref.read(sessionNotifierProvider.notifier).dismissSession();
-      Navigator.of(context).pop();
+    await ref.read(voiceOrchestratorProvider).stop();
+    try {
+      await ref.read(sessionNotifierProvider.notifier).endSession();
+    } on Exception catch (e) {
+      debugPrint('[JournalSession] endSession failed: $e');
+    } finally {
+      if (mounted) {
+        ref.read(sessionNotifierProvider.notifier).dismissSession();
+        Navigator.of(context).pop();
+      }
     }
   }
 
   /// Dismiss the completed session and navigate back to the list.
-  void _dismissAndPop() {
-    ref.read(voiceOrchestratorProvider).stop();
+  Future<void> _dismissAndPop() async {
+    await ref.read(voiceOrchestratorProvider).stop();
     ref.read(sessionNotifierProvider.notifier).dismissSession();
     if (mounted) {
       Navigator.of(context).pop();
