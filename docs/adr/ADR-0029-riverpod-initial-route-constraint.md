@@ -6,6 +6,7 @@ date: 2026-03-02
 discussion_id: DISC-20260302-031919-review-emulator-testing-and-app-fixes
 supersedes: null
 superseded_by: null
+decision_makers: [Claude, Developer]
 ---
 
 ## Context

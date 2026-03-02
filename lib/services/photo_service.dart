@@ -1,3 +1,4 @@
+// coverage:ignore-file — platform camera/file pipeline (image_picker, dart:io, isolates).
 // ===========================================================================
 // file: lib/services/photo_service.dart
 // purpose: Photo capture, EXIF stripping, compression, and file management.

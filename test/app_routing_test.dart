@@ -16,6 +16,9 @@
 //     - databaseProvider chain (overridden indirectly via allSessionsProvider)
 // ===========================================================================
 
+@Tags(['regression'])
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,8 +34,6 @@ import 'package:agentic_journal/providers/llm_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/services/assistant_registration_service.dart';
-
-@Tags(['regression'])
 
 /// Mock assistant service that tracks method calls.
 class MockAssistantService extends AssistantRegistrationService {

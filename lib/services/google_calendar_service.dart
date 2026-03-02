@@ -1,3 +1,4 @@
+// coverage:ignore-file — static _*Impl methods require real Google Calendar API client.
 // ===========================================================================
 // file: lib/services/google_calendar_service.dart
 // purpose: Google Calendar API client for creating events and reminders.

@@ -1,3 +1,4 @@
+// coverage:ignore-file — platform video pipeline (ffmpeg, video_thumbnail, image_picker).
 // ===========================================================================
 // file: lib/services/video_service.dart
 // purpose: Video capture, metadata stripping, thumbnail generation, and file
