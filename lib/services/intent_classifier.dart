@@ -435,9 +435,9 @@ class IntentClassifier {
     r'^(schedule|book|set up|plan|arrange)\b|'
     r'\b(add|put)\b.{0,40}\b(to|on)\s+(my\s+|the\s+)?(google\s+)?calendar\b|'
     r'\b(want to|need to|going to|let.?s|can you|could you)\s+(schedule|book|set up|plan|arrange)\b|'
-    // "add a Google Calendar meeting" — "google calendar" modifier between add and event noun.
-    r'^add\b.{0,15}\b(google\s+)?calendar\b.{0,20}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b|'
-    r'^add\b.{0,15}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b',
+    // "add/set a Google Calendar meeting" — "google calendar" modifier between verb and event noun.
+    r'^(add|set)\b.{0,15}\b(google\s+)?calendar\b.{0,20}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b|'
+    r'^(add|set)\b.{0,15}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b',
     caseSensitive: false,
   );
 
@@ -540,7 +540,8 @@ class IntentClassifier {
   /// Check if a short message has a strong calendar signal.
   static bool _hasStrongCalendarSignal(String text) {
     return RegExp(
-      r'^(schedule|book|set up|plan|arrange)\b',
+      r'^(schedule|book|set up|plan|arrange)\b|'
+      r'^(add|set)\b.{0,15}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b',
       caseSensitive: false,
     ).hasMatch(text);
   }

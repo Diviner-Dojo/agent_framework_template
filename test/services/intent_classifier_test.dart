@@ -264,6 +264,7 @@ void main() {
   // Bug: "Add a Google Calendar meeting" bypassed intent routing and reached Claude
   // because "a Google Calendar " (19 chars) exceeded the .{0,15} character limit.
   // Fix: added (google\s+)?calendar sub-pattern and (google\s+)? to "to ... calendar".
+  // Follow-up: "set" added alongside "add" — "set a calendar meeting" was not matched.
   group('calendar intent with Google Calendar modifier (regression)', () {
     test(
       '"Add a Google Calendar meeting" is classified as calendarEvent (regression)',
@@ -306,5 +307,20 @@ void main() {
         expect(result.confidence, greaterThanOrEqualTo(0.5));
       },
     );
+
+    test(
+      '"Set a calendar meeting" is classified as calendarEvent (regression)',
+      () {
+        final result = classifier.classify('Set a calendar meeting');
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test('"Set a Google Calendar meeting" is classified as calendarEvent', () {
+      final result = classifier.classify('Set a Google Calendar meeting');
+      expect(result.type, IntentType.calendarEvent);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
   });
 }
