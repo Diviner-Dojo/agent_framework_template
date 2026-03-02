@@ -1298,6 +1298,38 @@ void main() {
       });
     });
 
+    // Regression: stop() after discard must not leave orchestrator in
+    // processing state. Before Fix 3, stop() was called without await in the
+    // discard path, allowing the orchestrator to continue running briefly.
+    group('stop after discard (regression)', () {
+      test(
+        'stop() after discard does not leave orchestrator in processing state '
+        '(regression)',
+        () async {
+          orchestrator.onSendMessage =
+              (text, {String inputMethod = 'TEXT'}) async => null;
+
+          await orchestrator.startContinuousMode('Hello');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+
+          // Simulate the discard path: stop() is awaited before clearing state.
+          await orchestrator.stop();
+
+          // Orchestrator must be idle — not listening, processing, or speaking.
+          expect(
+            orchestrator.state.phase,
+            VoiceLoopPhase.idle,
+            reason: 'stop() after discard must bring orchestrator to idle',
+          );
+          expect(
+            orchestrator.state.isContinuousMode,
+            isFalse,
+            reason: 'continuous mode must be disabled after stop()',
+          );
+        },
+      );
+    });
+
     // Regression: onAssistantMessage after dispose must not crash.
     // A late-arriving Claude API response can trigger onAssistantMessage
     // after the user navigated away and the orchestrator was disposed.

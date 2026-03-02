@@ -77,13 +77,22 @@ class TaskExtractionService {
   TaskExtractionService({ClaudeApiService? claudeApi}) : _claudeApi = claudeApi;
 
   /// Extract task details from a user message.
+  ///
+  /// [context] — optional conversation history (up to 3 prior turns as
+  /// `{role, content}` maps) used to resolve pronouns and implicit references.
   Future<TaskExtractionResult> extract(
     String message,
     DateTime now, {
     String? timezone,
+    List<Map<String, String>>? context,
   }) async {
     if (_claudeApi != null && _claudeApi.isConfigured) {
-      return _extractWithLlm(message, now, timezone: timezone);
+      return _extractWithLlm(
+        message,
+        now,
+        timezone: timezone,
+        context: context,
+      );
     }
     return _extractWithRegex(message, now);
   }
@@ -96,23 +105,29 @@ class TaskExtractionService {
     String message,
     DateTime now, {
     String? timezone,
+    List<Map<String, String>>? context,
   }) async {
     try {
       final localNow = now.toLocal();
       final isoLocal = localNow.toIso8601String();
       final tz = _sanitizeTimezone(timezone ?? localNow.timeZoneName);
 
+      // Build conversation history block to help the LLM resolve pronouns.
+      final contextBlock = (context != null && context.isNotEmpty)
+          ? 'Conversation history:\n${context.map((m) => '[${m['role']?.toUpperCase() ?? 'UNKNOWN'}]: ${m['content'] ?? ''}').join('\n')}\n\n'
+          : '';
+
       final prompt =
           '''Extract task details from this message. '''
           '''The current local date/time is $isoLocal (timezone: $tz).
 
-Message: "$message"
+${contextBlock}Message: "$message"
 
 Respond with ONLY a JSON object (no markdown, no explanation):
 {"title": "task title", "due_date": "ISO 8601 date or null", "notes": "additional details or null"}
 
 Rules:
-- title: concise task name (not the full sentence). Remove action verbs like "add a task to" or "create a task".
+- title: concise task name (not the full sentence). Remove action verbs like "add a task to" or "create a task". Use conversation history to resolve pronouns like "it" or "that".
 - due_date: null if not specified. Resolve relative dates ("tomorrow", "next Friday") to absolute ISO 8601.
 - notes: null if no additional details beyond the title.''';
 

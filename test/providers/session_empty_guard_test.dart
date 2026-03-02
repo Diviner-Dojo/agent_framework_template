@@ -32,7 +32,9 @@ void main() {
   });
 
   group('Empty session guard', () {
-    test('end empty session closes quietly and preserves in DB', () async {
+    // regression: empty sessions (AI greeting only) must not appear in the
+    // journal list — endSession() now calls discardSession() to fully delete.
+    test('end empty session deletes session from DB (regression)', () async {
       final notifier = container.read(sessionNotifierProvider.notifier);
       final sessionId = await notifier.startSession();
 
@@ -40,7 +42,7 @@ void main() {
       final sessionDao = container.read(sessionDaoProvider);
       expect(await sessionDao.getSessionById(sessionId), isNotNull);
 
-      // End the empty session — should close quietly (not delete).
+      // End the empty session — should delete entirely.
       await notifier.endSession();
 
       // wasAutoDiscardedProvider should be true (signals UI to show SnackBar).
@@ -51,11 +53,9 @@ void main() {
       expect(state.activeSessionId, isNull);
       expect(state.isClosingComplete, false); // Never got to closing.
 
-      // Session should be preserved in DB with endTime set (not deleted).
+      // Session should be DELETED from DB (not just ended).
       final session = await sessionDao.getSessionById(sessionId);
-      expect(session, isNotNull);
-      expect(session!.endTime, isNotNull);
-      expect(session.summary, isNull); // No summary for empty session.
+      expect(session, isNull);
     });
 
     test('end session with messages follows normal flow', () async {
