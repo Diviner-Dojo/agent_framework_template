@@ -190,6 +190,13 @@ class VoiceSessionOrchestrator {
   Timer? _undoTimer;
   Timer? _confirmationTimer;
 
+  /// Active completer for the current task confirmation flow.
+  ///
+  /// Set at the start of [confirmTask] and cleared when it finishes.
+  /// [resolveTaskConfirmation] completes it externally when the user
+  /// confirms or dismisses via the UI task card instead of verbally.
+  ReusableCompleter<String?>? _taskConfirmCompleter;
+
   /// Phase before pausing — restored on resume.
   VoiceLoopPhase? _phaseBeforePause;
 
@@ -508,6 +515,18 @@ class VoiceSessionOrchestrator {
     await _startListening();
   }
 
+  /// Resolve the active task confirmation loop from the UI (card tap).
+  ///
+  /// Called when the user confirms or dismisses the task card widget instead
+  /// of responding verbally. Completes the STT listen completer immediately
+  /// so [confirmTask] receives the correct result without waiting for the
+  /// 8-second timeout and misreporting "okay, I won't add that."
+  ///
+  /// No-op when no task confirmation is in progress.
+  void resolveTaskConfirmation({required bool confirmed}) {
+    _taskConfirmCompleter?.complete(confirmed ? 'yes' : 'no');
+  }
+
   /// Capture a voice description for a photo (Phase 9 — ADR-0018).
   ///
   /// Speaks "Tell me about this photo", then listens for a response.
@@ -725,6 +744,7 @@ class VoiceSessionOrchestrator {
 
     String? response;
     final completer = ReusableCompleter<String?>();
+    _taskConfirmCompleter = completer; // expose for resolveTaskConfirmation()
     await _recognitionSubscription?.cancel();
 
     try {
@@ -752,6 +772,7 @@ class VoiceSessionOrchestrator {
         debugPrint('Task confirmation capture failed: $e');
       }
     } finally {
+      _taskConfirmCompleter = null;
       completer.dispose();
       await _stopListening();
     }
