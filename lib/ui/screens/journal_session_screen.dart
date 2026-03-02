@@ -365,14 +365,20 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
           ),
           actions: [
             // "Done" button — promoted to AppBar for quick 1-tap end.
+            // Hidden during isClosingComplete: the session is already ending
+            // and endSession() would silently no-op (isSessionEnding guard).
+            // The user dismisses via a second back press at this point.
             if (!sessionState.isSessionEnding &&
+                !sessionState.isClosingComplete &&
                 sessionState.activeSessionId != null)
               TextButton(
                 onPressed: _endSessionAndPop,
                 child: const Text('Done'),
               ),
             // Overflow menu — only Discard (destructive = hidden).
-            if (!sessionState.isSessionEnding)
+            // Also hidden during closing: session is already saved.
+            if (!sessionState.isSessionEnding &&
+                !sessionState.isClosingComplete)
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
                 tooltip: 'Session options',
@@ -1180,9 +1186,13 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     await ref.read(voiceOrchestratorProvider).stop();
     try {
       await ref.read(sessionNotifierProvider.notifier).endSession();
+      // Do NOT pop here. endSession() sets isClosingComplete = true, which
+      // shows the closing summary on screen — matching the "goodbye" UX
+      // flow. The user dismisses by pressing back again, which routes
+      // through _dismissAndPop() because canPop = true once closing is done.
     } on Exception catch (e) {
       debugPrint('[JournalSession] endSession failed: $e');
-    } finally {
+      // Force dismiss so the user is not left on a broken screen.
       if (mounted) {
         ref.read(sessionNotifierProvider.notifier).dismissSession();
         Navigator.of(context).pop();

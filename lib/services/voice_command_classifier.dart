@@ -209,6 +209,10 @@ class VoiceCommandClassifier {
   /// "stop", "finish", and "bye" are excluded here because they are common
   /// in narrative speech ("I told him to stop"). They live in
   /// [_moderateEndPattern] where they trigger verbal confirmation.
+  ///
+  /// Overlaps intentionally with AgentRepository._doneSignals (session layer),
+  /// which acts as a safety net for text mode and utterances the classifier
+  /// misses. Keep both lists in sync — see agent_repository.dart.
   static final _strongEndPattern = RegExp(
     r"^(i'm done|i am done|that's (it|all)|that is (it|all)|goodbye|good bye|wrap (it|this) up|end session|end the session|i'm finished|i am finished|done for (now|today)|that's all for (now|today))$",
     caseSensitive: false,

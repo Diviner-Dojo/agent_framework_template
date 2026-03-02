@@ -1382,6 +1382,63 @@ void main() {
           await disposedOrchestrator.stop();
         },
       );
+
+      test(
+        'acknowledgeNoResponse() is a no-op when not in processing phase',
+        () async {
+          // Orchestrator starts in idle — calling acknowledgeNoResponse()
+          // must not change the phase. This pins the guard contract against
+          // future refactors that might remove the phase check.
+          expect(orchestrator.state.phase, VoiceLoopPhase.idle);
+          await orchestrator.acknowledgeNoResponse();
+          expect(
+            orchestrator.state.phase,
+            VoiceLoopPhase.idle,
+            reason:
+                'acknowledgeNoResponse() must be a no-op outside processing',
+          );
+        },
+      );
+
+      // regression: in journal-only mode (and after handled intents), the
+      // orchestrator was stuck in `processing` because onAssistantMessage()
+      // was never called. acknowledgeNoResponse() resumes the loop without
+      // requiring an AI response.
+      test('acknowledgeNoResponse() transitions from processing to listening '
+          '(regression)', () async {
+        // Wire up a send callback that does NOT call onAssistantMessage(),
+        // simulating journal-only mode where no AI response is produced.
+        orchestrator.onSendMessage =
+            (text, {String inputMethod = 'TEXT'}) async {
+              return null;
+            };
+
+        await orchestrator.startContinuousMode('Hello');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Emit a final STT result to drive the orchestrator into processing.
+        mockStt.emitResult(
+          const SpeechResult(
+            text: 'Great day today',
+            isFinal: true,
+            confidence: 0.9,
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // Orchestrator is now stuck in processing (no AI response arrived).
+        expect(orchestrator.state.phase, VoiceLoopPhase.processing);
+
+        // Acknowledge that no response is coming — loop must resume.
+        await orchestrator.acknowledgeNoResponse();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(
+          orchestrator.state.phase,
+          VoiceLoopPhase.listening,
+          reason: 'acknowledgeNoResponse() must resume listening loop',
+        );
+      });
     });
   });
 }

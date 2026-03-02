@@ -84,6 +84,71 @@ void main() {
   });
 
   // =========================================================================
+  // Bug 3 regression: "goodbye" skipped in journal-only mode
+  // =========================================================================
+
+  group('Bug 3 — goodbye in journal-only mode ends session', () {
+    late ProviderContainer container;
+    late AppDatabase database;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      database = AppDatabase.forTesting(NativeDatabase.memory());
+
+      final journalOnlyAgent = AgentRepository();
+      journalOnlyAgent.setJournalOnlyMode(true);
+
+      container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          agentRepositoryProvider.overrideWithValue(journalOnlyAgent),
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          deviceTimezoneProvider.overrideWith(
+            (ref) async => 'America/New_York',
+          ),
+        ],
+      );
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await database.close();
+    });
+
+    // regression: shouldEndSession() was called AFTER the journalOnlyMode
+    // guard, so "goodbye" was silently ignored in journal-only mode.
+    // Fix B1 moves shouldEndSession() above the guard so it runs first.
+    test('goodbye in journal-only mode ends the session', () async {
+      final notifier = container.read(sessionNotifierProvider.notifier);
+      await notifier.startSession();
+
+      // Send a real message first so the session is not empty.
+      await notifier.sendMessage('Had a good morning run');
+
+      expect(
+        container.read(sessionNotifierProvider).activeSessionId,
+        isNotNull,
+        reason: 'session must be active before goodbye',
+      );
+
+      // Saying goodbye should end the session even in journal-only mode.
+      await notifier.sendMessage('goodbye');
+
+      final state = container.read(sessionNotifierProvider);
+
+      // endSession() runs asynchronously and leaves activeSessionId set so
+      // the UI can show the closing summary. The correct signal that the
+      // end-session flow ran is isClosingComplete == true.
+      expect(
+        state.isClosingComplete,
+        isTrue,
+        reason: 'goodbye must trigger endSession() in journal-only mode',
+      );
+    });
+  });
+
+  // =========================================================================
   // Fix 4 regression: endSession() with no user messages deletes session
   // =========================================================================
 

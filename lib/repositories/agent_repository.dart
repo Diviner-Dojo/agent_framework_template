@@ -379,6 +379,13 @@ class AgentRepository {
   // =========================================================================
 
   /// Done signals that indicate the user wants to end the session.
+  ///
+  /// These are exact-match after trim + lowercase + trailing-punctuation strip.
+  /// Overlaps intentionally with VoiceCommandClassifier._strongEndPattern and
+  /// _moderateEndPattern (voice layer), which intercept these in continuous mode
+  /// before they reach sendMessage(). This list is the session-layer safety net
+  /// for text mode and for any voice utterances the classifier misses.
+  /// Keep both lists in sync when adding new signals — see voice_command_classifier.dart.
   static const List<String> _doneSignals = [
     'no',
     'nope',

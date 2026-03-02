@@ -507,24 +507,34 @@ class SessionNotifier extends StateNotifier<SessionState> {
     ];
     state = state.copyWith(conversationMessages: updatedMessages);
 
+    // End-session signals work in ALL modes including journal-only.
+    // This runs BEFORE intent classification intentionally: _doneSignals are
+    // short exact-match words ("bye", "done", "goodbye") that the intent
+    // classifier would route as IntentType.journal anyway — no collision risk.
+    if (_agent.shouldEndSession(
+      followUpCount: state.followUpCount,
+      latestUserMessage: text,
+    )) {
+      await endSession();
+      return;
+    }
+
     // Phase 5+11: Intent classification — detect recall, calendar, task, and
     // reminder intents before routing to the journaling follow-up.
     // Runs in all modes so task/calendar intents work even in journal-only mode.
     // Uses the top-ranked intent from classifyMulti() (ADR-0013, ADR-0020).
     final intentResult = _intentClassifier.classify(text);
     final handled = await _routeByIntent(text, intentResult);
-    if (handled) return;
+    if (handled) {
+      // Handled intents don't generate AI responses — resume voice loop.
+      await _resumeOrchestratorIfVoiceMode();
+      return;
+    }
 
     // Journal-only mode: message recorded, special intents handled above,
-    // but no AI conversational follow-up.
-    if (_agent.journalOnlyMode) return;
-
-    // Check if the user wants to end the session.
-    if (_agent.shouldEndSession(
-      followUpCount: state.followUpCount,
-      latestUserMessage: text,
-    )) {
-      await endSession();
+    // but no AI conversational follow-up. Resume voice loop immediately.
+    if (_agent.journalOnlyMode) {
+      await _resumeOrchestratorIfVoiceMode();
       return;
     }
 
@@ -1902,6 +1912,17 @@ class SessionNotifier extends StateNotifier<SessionState> {
         {'role': 'assistant', 'content': content},
       ],
     );
+  }
+
+  /// Signal the voice orchestrator that processing is complete without a
+  /// response, so the listening loop resumes. No-op in text mode.
+  Future<void> _resumeOrchestratorIfVoiceMode() async {
+    if (!_ref.read(voiceModeEnabledProvider)) return;
+    try {
+      await _ref.read(voiceOrchestratorProvider).acknowledgeNoResponse();
+    } on StateError {
+      // Provider already disposed — ignore.
+    }
   }
 }
 

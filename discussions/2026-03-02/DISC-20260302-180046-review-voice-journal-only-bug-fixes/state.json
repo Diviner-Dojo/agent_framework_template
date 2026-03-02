@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260302-180046-review-voice-journal-only-bug-fixes",
+  "status": "complete",
+  "started_at": "2026-03-02T18:00:51.592290+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "medium",
+  "collaboration_mode": "structured-dialogue",
+  "report_path": "docs/reviews/REV-20260302-180046.md"
+}

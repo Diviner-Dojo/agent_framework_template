@@ -175,24 +175,50 @@ void main() {
       expect(state.activeSessionId, isNotNull);
     });
 
-    testWidgets('back button ends session and navigates back', (tester) async {
-      final container = await buildTestWidget(tester);
-      addTearDown(container.dispose);
+    // regression: back button used to immediately pop without showing the
+    // closing summary (endSession + dismissSession + pop in finally block).
+    // It now matches the "goodbye" UX: shows the closing summary so the
+    // user can confirm their entry was saved, then a second back dismisses.
+    testWidgets(
+      'back button ends session and shows closing summary, second back '
+      'dismisses (regression)',
+      (tester) async {
+        final container = await buildTestWidget(tester);
+        addTearDown(container.dispose);
 
-      // Send a user message so the session has content.
-      await tester.enterText(find.byType(TextField), 'I feel great');
-      await tester.tap(find.byIcon(Icons.send));
-      await tester.pumpAndSettle();
+        // Send a user message so the session has content.
+        await tester.enterText(find.byType(TextField), 'I feel great');
+        await tester.tap(find.byIcon(Icons.send));
+        await tester.pumpAndSettle();
 
-      // Tap the back button — ends session immediately (no dialog).
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
+        // First back press — ends session, shows closing summary.
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await tester.pumpAndSettle();
 
-      // Should navigate back to the session list.
-      expect(find.text('Session List'), findsOneWidget);
-    });
+        // Session must be in closing state (not immediately dismissed).
+        final state = container.read(sessionNotifierProvider);
+        expect(
+          state.isClosingComplete,
+          isTrue,
+          reason: 'back button must show closing summary, not immediately pop',
+        );
+        expect(
+          find.text('Session List'),
+          findsNothing,
+          reason: 'screen must stay open while closing summary is visible',
+        );
 
-    testWidgets('Done button ends session and navigates back', (tester) async {
+        // Second back press — dismisses the screen.
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Session List'), findsOneWidget);
+      },
+    );
+
+    testWidgets('Done button ends session and shows closing summary', (
+      tester,
+    ) async {
       final container = await buildTestWidget(tester);
       addTearDown(container.dispose);
 
@@ -201,12 +227,14 @@ void main() {
       await tester.tap(find.byIcon(Icons.send));
       await tester.pumpAndSettle();
 
-      // End via Done button in AppBar.
+      // Tap Done — ends session and shows closing summary (does not pop).
       await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
 
-      // Should navigate back to the session list.
-      expect(find.text('Session List'), findsOneWidget);
+      final state = container.read(sessionNotifierProvider);
+      expect(state.isClosingComplete, isTrue);
+      // Still on session screen — user dismisses with a back press.
+      expect(find.text('Session List'), findsNothing);
     });
 
     testWidgets('auto-discard shows SnackBar on empty session end', (

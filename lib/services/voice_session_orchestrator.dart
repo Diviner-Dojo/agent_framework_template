@@ -491,6 +491,23 @@ class VoiceSessionOrchestrator {
     }
   }
 
+  /// Signal that processing is complete without an AI response.
+  ///
+  /// Used in journal-only mode and after handled intents (task, calendar,
+  /// reminder) to resume the listening loop without speaking a response.
+  Future<void> acknowledgeNoResponse() async {
+    if (_disposed) return;
+    if (state.phase != VoiceLoopPhase.processing) return;
+    _stopThinkingSound();
+    if (!state.isContinuousMode) {
+      // Push-to-talk: return to idle (matches _commitUserTurn pattern).
+      await _audioFocusService.abandonFocus();
+      _updateState(state.copyWith(phase: VoiceLoopPhase.idle));
+      return;
+    }
+    await _startListening();
+  }
+
   /// Capture a voice description for a photo (Phase 9 — ADR-0018).
   ///
   /// Speaks "Tell me about this photo", then listens for a response.
