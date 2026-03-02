@@ -110,6 +110,26 @@ print(f'State initialized: {state_path}')
 "
 ```
 
+## Step 3.5: Write Context-Brief (Before Specialist Dispatch)
+
+Immediately after initializing `state.json`, capture a context-brief event. This must be
+written before any specialist is dispatched — it produces `turn_id=1` in the discussion
+and injects developer framing into specialist prompts.
+
+Summarise the developer's request from the current session. Populate all four fields;
+write "(none stated)" if a field was not addressed. Strip business context (deadlines,
+client names, regulatory pressures) — record structural intent only.
+
+```bash
+python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
+  "## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [which files or changes were handed to this review]
+- **Developer-stated motivation**: [why this change is being made, if stated; or 'none stated']
+- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
+  --tags "context-brief"
+```
+
 ## Step 4: Assemble Specialist Team
 
 Select specialists based on what's being reviewed:
@@ -127,7 +147,7 @@ Select specialists based on what's being reviewed:
 For each specialist, use the Task tool with the code content and review context:
 
 ```
-Task(subagent_type="<agent-name>", prompt="Code Review: <discussion_id>\nRisk Level: <level>\n\nReview the following code from your specialist perspective:\n\n<code content>\n\nProvide your structured analysis following your output format. Include confidence score.")
+Task(subagent_type="<agent-name>", prompt="Code Review: <discussion_id>\nRisk Level: <level>\n\n## Developer Context\n[Paste the four-field content from the context-brief event written in Step 3.5]\n\nReview the following code from your specialist perspective:\n\n<code content>\n\nProvide your structured analysis following your output format. Include confidence score.")
 ```
 
 Run independent specialists in parallel.
@@ -148,6 +168,19 @@ Before writing the synthesis, count findings across all specialist responses:
 - **Advisory findings**: Recommendations that improve quality but don't block merge
 
 Include these counts as tags on the synthesis event for yield tracking.
+
+**The synthesis content must begin with a `## Request Context` section** before the findings
+summary. Populate all four fields from the developer's request and the session context.
+Write "(none stated)" for any field the developer did not explicitly address — do NOT leave
+fields blank or as placeholders.
+
+```
+## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [which files or changes were handed to this review]
+- **Developer-stated motivation**: [why this change is being made, if stated]
+- **Explicit constraints**: [any developer-stated constraints agents should respect; or "none stated"]
+```
 
 Write the synthesis event:
 ```

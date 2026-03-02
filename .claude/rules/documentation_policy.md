@@ -7,6 +7,7 @@
 - All public APIs → docstrings in code + module-level docs
 - All agent reflections → reflection files linked to discussions
 - Sprint retrospectives → `docs/sprints/`
+- All facilitator synthesis events must include a `## Request Context` section documenting developer framing (what was requested, scope, motivation, explicit constraints)
 
 ## Where
 - ADRs: `docs/adr/ADR-NNNN-slug.md`

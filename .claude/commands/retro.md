@@ -310,6 +310,23 @@ python scripts/write_event.py <discussion_id> \
 
 Review both specialist responses and incorporate their feedback into the final retrospective. Note which findings were challenged, which documentation updates are needed, and which proposed adjustments were validated or rejected.
 
+## Step 5.5: Developer Input Capture Gate (SPEC-20260302-192548)
+
+Evaluate developer-input capture effectiveness before writing the final retrospective. This gate runs every sprint until Step 3 is formally initiated or abandoned.
+
+**Assess the following three signals** (all are observable from sprint discussions and retro analysis):
+
+- **Signal A — Specialist echo**: Are specialists repeating findings already stated as explicit developer constraints in context-brief sections this sprint? (Inspect context-brief events in sprint discussions and compare to specialist critique events.)
+- **Signal B — Framing drift**: Has framing drift been observed this sprint? (Facilitator synthesis diverges from what the developer actually asked for — noted in retro or review feedback.)
+- **Signal C — Disposition activity** (pending implementation): `SELECT COUNT(*) FROM findings WHERE disposition != 'open'` — expected to return 0 until ADR-0030 ships. If non-zero: dispositions are being captured and the mechanism is live.
+
+**Decision rule**:
+- If Signal A or Signal B is Yes → recommend initiating Step 3 (ADR-0030 + `agent="developer"` schema extension) and include in the retro document.
+- If both Signal A and Signal B are No (and Signal C = 0) → formally defer Step 3 with a one-line rationale in the retro document.
+- Once Signal C > 0, retire Signal C from the gate and re-evaluate the others.
+
+Remove this step once Step 3 is either shipped or formally abandoned.
+
 ## Step 6: Finalize and Close
 
 ### 6a. Write Final Retrospective
@@ -345,3 +362,4 @@ python scripts/close_discussion.py <discussion_id>
 ## Step 7: Present
 
 Present the retrospective to the developer with specific recommended actions, noting which recommendations were validated by specialist review.
+

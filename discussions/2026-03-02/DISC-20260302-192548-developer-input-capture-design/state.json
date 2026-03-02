@@ -1,0 +1,12 @@
+{
+  "command": "deliberate",
+  "discussion_id": "DISC-20260302-192548-developer-input-capture-design",
+  "status": "complete",
+  "started_at": "2026-03-02T19:25:54.224523+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "discussion_created",
+    "synthesis"
+  ],
+  "topic": "How should the agentic framework capture developer input (initial requests, feedback, approvals, corrections, domain context) alongside agent reasoning?"
+}

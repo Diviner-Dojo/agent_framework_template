@@ -185,6 +185,10 @@ When a `/review`, `/deliberate`, `/analyze-project`, `/build_module`, `/retro`, 
 
 **Known limitation**: The `protocol_yield` table records blocking/advisory findings but not REVISE-resolved rounds. Checkpoint value from iterative improvement is currently undercounted.
 
+**Known limitation**: `extract_findings.py` extraction rate baseline is 20.0% (61 findings from 305 eligible turns as of 2026-03-02). FINDING_PATTERN regex coverage improvement is tracked in SPEC-20260302-192548 Parallel P2.
+
+**Known limitation**: Developer input (verbatim requests, overrides, domain context corrections, approval caveats) is not captured in Layer 1. Facilitator synthesis templates include a `## Request Context` section as a partial mitigation. ADR-0030 (deferred, conditional on Step 3 trigger) will define `agent="developer"` as a reserved turn author if facilitator-mediated capture proves insufficient. See `DISC-20260302-192548-developer-input-capture-design` and `SPEC-20260302-192548-developer-input-capture.md`.
+
 ## Knowledge Amplification Pipeline
 
 The knowledge pipeline transforms captured discussion data into reusable patterns:

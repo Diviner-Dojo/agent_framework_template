@@ -1,18 +1,48 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-02 ~16:00 UTC
+> Last updated: 2026-03-02 ~23:30 UTC
 
 ## Current Task
 
-**Status:** Shipped PR #54. Deployed to SM_G998U1 (59s). Ready for on-device verification.
+**Status:** Context-brief framework rollout committed (framework-only, no version bump). Ready for Sprint N+1.
 **Branch:** `main`
-**Version:** `0.17.1+9`
+**Version:** `0.17.3+11`
 
 ### In Progress
 (none)
 
 ### Just Completed
+- **Context-Brief Framework Rollout** (SPEC-20260302-192548 Step 2, framework-only):
+  - Added Step 3.5 (context-brief before specialist dispatch) to: `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`
+  - Blocking fixes during review: plan.md synthesis `## Request Context` requirement, retro standing agenda restructured as Step 5.5, retro disposition dead-code condition rewritten as observable signals
+  - Review: REV-20260302-232244 (approve-with-changes, 3 blocking resolved, 6 advisory)
+  - Discussion: DISC-20260302-231156-review-context-brief-framework-rollout
+
+- **Set Verb + Short-Message Guard Fix** (PR #57, v0.17.3+11):
+  - Root cause: `_hasStrongCalendarSignal` not recognizing "set" + event noun; "set a calendar meeting" = 4 words → short-message guard fired → journal
+  - Fix: "set" added to two `^add` sub-patterns in `_calendarIntentPattern`; `^(add|set)\b.{0,15}\b(event noun)\b` added to `_hasStrongCalendarSignal`
+  - 2 regression tests; Review: REV-20260302-230547 (approve-with-changes, 1 blocking resolved, 5 advisory)
+  - Deploy: SUCCESS on SM_G998U1 (59s)
+
+- **Google Calendar Intent Classifier Fix** (PR #56, v0.17.3+11):
+  - Root cause: `_calendarIntentPattern` had `.{0,15}` char limit between "add" and event noun; "a Google Calendar " = 19 chars — exceeded limit, message fell through to Claude
+  - Fix: new sub-pattern `^add\b.{0,15}\b(google\s+)?calendar\b.{0,20}\b(meeting|...)` + `(google\s+)?` in "to...calendar" alternative
+  - 4 regression tests added; 1925 total, all pass, 81.2% coverage
+  - Review: REV-20260302-222520 (approve-with-changes, 0 blocking, 6 advisory)
+  - Deploy: SUCCESS on SM_G998U1 (61s)
+  - Files modified: `lib/services/intent_classifier.dart`, `test/services/intent_classifier_test.dart`, `memory/bugs/regression-ledger.md`, `pubspec.yaml`
+
+- **Task Verbal Confirmation Race Fix** (PR #55, v0.17.2+10):
+  - Root cause: `orchestrator.confirmTask()` ran an 8s verbal yes/no loop concurrently with UI task card. On card tap, task was added correctly but the timed-out completer spoke "Okay, I won't add that."
+  - Fix: `resolveTaskConfirmation({required bool confirmed})` added to `VoiceSessionOrchestrator` — completes `_taskConfirmCompleter` immediately when card is tapped
+  - Screen: task card `onConfirm`/`onDismiss` callbacks now call `resolveTaskConfirmation()` after `sessionNotifier.confirmTask/dismissTask()`
+  - Regression tests: 3 new tests; 1921 total, all pass, 81.2% coverage
+  - Ledger: entry added to `memory/bugs/regression-ledger.md`
+  - Review: REV-20260302-201931 (approve-with-changes, all blocking resolved)
+  - Deploy: SUCCESS on SM_G998U1 (54.9s)
+  - Files modified: `lib/services/voice_session_orchestrator.dart`, `lib/ui/screens/journal_session_screen.dart`, `test/services/voice_session_orchestrator_test.dart`, `memory/bugs/regression-ledger.md`
+
 - **Journal-Only Voice Mode: Three Bug Fixes + Back-Button Fix** (PR #54, v0.17.1+9):
   - Bug 1+2 fix: `acknowledgeNoResponse()` added to `VoiceSessionOrchestrator` — resumes listening loop without AI response (fixes stuck-in-processing in journal-only + after handled intents)
   - Bug 1+2 fix: `_resumeOrchestratorIfVoiceMode()` added to `SessionNotifier` — called at journal-only and handled-intent early exits in `sendMessage()`
@@ -163,12 +193,13 @@ Or manually (physical device):
 
 ## Tech Debt
 
-- **Coverage** — 80.7% (above 80% target, 1897 tests)
-- **Education gates deferred** — Phase 11 + Phase 12
-- **Review advisories open** — 12 from REV-20260301-025400 + 14 from REV-20260301-215800 + 8 from REV-20260302-061043 + 7 from REV-20260302-071854
+- **Coverage** — 81.2% (above 80% target, 1927 tests)
+- **Education gates deferred** — Phase 11 + Phase 12; also deferred from REV-20260302-152240
+- **Review advisories open** — 72 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 6 from REV-20260302-232244
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
 - **Pipeline advisories** — stop words duplication, bare except, candidate_id collision risk (see REV-20260301-215800)
+- **Three divergent event noun lists** — `_calendarIntentPattern`, `_hasStrongCalendarSignal`, `_eventNounPattern` (Sprint N+1 refactor: shared `static const _calendarEventNouns`)
 
 ## Key Decisions (Recent)
 
@@ -181,12 +212,11 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **Review + commit** — Run `/review` on the 9 changed files, then commit the journal-only voice bug fixes + back-button fix
-2. **Test on device** — SM_G998U1 with journal-only + voice mode: speak several messages (listening resumes), say "add a task" (task card appears, listening resumes), say "goodbye" (session closes)
-3. **Education gate** — Deferred from REV-20260302-152240 (medium-risk): run `/walkthrough lib/services/fallback_tts_service.dart lib/providers/voice_providers.dart` then `/quiz`
-4. **Address review advisories** — 47 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240
-5. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1)
-6. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
+1. **Education gate** — Deferred from REV-20260302-152240 (medium-risk): run `/walkthrough lib/services/fallback_tts_service.dart lib/providers/voice_providers.dart` then `/quiz`
+2. **Address review advisories** — 72 total open. Priority: A4 Outlook Calendar structural failure (REV-20260302-222520), A3 event noun list divergence (REV-20260302-230547), A1/A2 context-brief cold-start + INVARIANT comments (REV-20260302-232244)
+3. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1); structural intent classifier refactor: shared `static const _calendarEventNouns`
+4. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
+5. **ADR-0030 stub** — Create placeholder ADR for developer-input capture schema extension (advisory A5 from REV-20260302-232244)
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
