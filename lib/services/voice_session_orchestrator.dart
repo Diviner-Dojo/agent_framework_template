@@ -178,6 +178,9 @@ class VoiceSessionOrchestrator {
     const VoiceOrchestratorState(),
   );
 
+  /// Whether the orchestrator has been disposed.
+  bool _disposed = false;
+
   /// Current state (convenience getter).
   VoiceOrchestratorState get state => stateNotifier.value;
 
@@ -243,16 +246,25 @@ class VoiceSessionOrchestrator {
   /// Confirmation timeout (seconds) — prevents ambient audio spoofing.
   static const _confirmationTimeoutSeconds = 10;
 
+  /// Delay after TTS playback before starting STT (milliseconds).
+  ///
+  /// Gives the OS time to release the audio session from just_audio before
+  /// speech_to_text acquires the microphone. Set to 0 in tests to avoid
+  /// timing sensitivity.
+  final Duration _ttsReleaseDelay;
+
   VoiceSessionOrchestrator({
     required SpeechRecognitionService sttService,
     required TextToSpeechService ttsService,
     required AudioFocusService audioFocusService,
     int silenceTimeoutSeconds = 15,
     bool enableThinkingSound = true,
+    Duration ttsReleaseDelay = const Duration(milliseconds: 150),
   }) : _sttService = sttService,
        _ttsService = ttsService,
        _silenceTimeoutSeconds = silenceTimeoutSeconds,
        _enableThinkingSound = enableThinkingSound,
+       _ttsReleaseDelay = ttsReleaseDelay,
        _audioFocusService = audioFocusService {
     // Subscribe to audio focus changes.
     _audioFocusSubscription = _audioFocusService.onFocusChanged.listen(
@@ -429,6 +441,11 @@ class VoiceSessionOrchestrator {
   /// In continuous mode, the orchestrator speaks the response and resumes
   /// listening. Called by the UI when it detects a new assistant message.
   Future<void> onAssistantMessage(String text) async {
+    // Guard: ignore messages if the orchestrator is idle or disposed.
+    // This happens when endSession()'s closing summary arrives after the
+    // user already pressed back and stop() was called.
+    if (_disposed || state.phase == VoiceLoopPhase.idle) return;
+
     // Parse turn-completeness marker (Task 5, R21/R22/R28).
     final parsed = _parseTurnMarker(text);
     final marker = parsed.$1;
@@ -810,6 +827,7 @@ class VoiceSessionOrchestrator {
 
   /// Clean up all resources.
   void dispose() {
+    _disposed = true;
     _silenceTimer?.cancel();
     _undoTimer?.cancel();
     _confirmationTimer?.cancel();
@@ -831,8 +849,20 @@ class VoiceSessionOrchestrator {
     // Ensure TTS player is fully stopped to release its audio session
     // before starting STT. Without this, just_audio keeps reacting to
     // audio focus events which fights with speech_to_text for the mic.
-    if (_ttsInitialized && _ttsService.isSpeaking) {
-      await _ttsService.stop();
+    if (_ttsInitialized) {
+      if (_ttsService.isSpeaking) {
+        await _ttsService.stop();
+      }
+      // Brief delay to let the OS release the audio session after TTS
+      // playback ends. Without this, speech_to_text may fail to acquire
+      // the microphone on some Android devices because just_audio's
+      // AudioPlayer hasn't fully relinquished audio focus yet.
+      if (_ttsReleaseDelay > Duration.zero) {
+        await Future<void>.delayed(_ttsReleaseDelay);
+      }
+      // Guard: if the orchestrator was stopped or disposed during the
+      // delay (e.g., user navigated away), don't proceed to listening.
+      if (_disposed || state.phase == VoiceLoopPhase.idle) return;
     }
 
     _updateState(
@@ -1555,6 +1585,7 @@ class VoiceSessionOrchestrator {
   // ===========================================================================
 
   void _updateState(VoiceOrchestratorState newState) {
+    if (_disposed) return;
     stateNotifier.value = newState;
   }
 }
