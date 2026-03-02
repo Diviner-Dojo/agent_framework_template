@@ -5,15 +5,15 @@
 
 ## Current Task
 
-**Status:** All bugs fixed + review blocking finding resolved. Ready to commit.
+**Status:** Shipped PR #54. Deployed to SM_G998U1 (59s). Ready for on-device verification.
 **Branch:** `main`
-**Version:** `0.17.0+8`
+**Version:** `0.17.1+9`
 
 ### In Progress
 (none)
 
 ### Just Completed
-- **Journal-Only Voice Mode: Three Bug Fixes + Back-Button Fix** (not yet committed):
+- **Journal-Only Voice Mode: Three Bug Fixes + Back-Button Fix** (PR #54, v0.17.1+9):
   - Bug 1+2 fix: `acknowledgeNoResponse()` added to `VoiceSessionOrchestrator` — resumes listening loop without AI response (fixes stuck-in-processing in journal-only + after handled intents)
   - Bug 1+2 fix: `_resumeOrchestratorIfVoiceMode()` added to `SessionNotifier` — called at journal-only and handled-intent early exits in `sendMessage()`
   - Bug 3 fix: `shouldEndSession()` moved above `journalOnlyMode` guard and intent routing — "goodbye" now works in journal-only mode

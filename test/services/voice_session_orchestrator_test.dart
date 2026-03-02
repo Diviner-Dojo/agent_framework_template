@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:agentic_journal/services/audio_focus_service.dart';
 import 'package:agentic_journal/services/audio_file_service.dart';
 import 'package:agentic_journal/services/speech_recognition_service.dart';
+import 'package:agentic_journal/services/task_extraction_service.dart';
 import 'package:agentic_journal/services/text_to_speech_service.dart';
 import 'package:agentic_journal/services/voice_session_orchestrator.dart';
 
@@ -1438,6 +1439,69 @@ void main() {
           VoiceLoopPhase.listening,
           reason: 'acknowledgeNoResponse() must resume listening loop',
         );
+      });
+
+      // Regression: task card confirm/dismiss tapped while orchestrator is
+      // in verbal confirmation loop. Before the fix, the orchestrator would
+      // wait 8s then say "okay, I won't add that." regardless of card tap.
+      // resolveTaskConfirmation() completes the completer immediately.
+      group('resolveTaskConfirmation()', () {
+        test(
+          'resolveTaskConfirmation(confirmed: true) completes task loop early',
+          () async {
+            // Start confirmTask in background — it speaks then listens.
+            bool? taskConfirmed;
+            final taskFuture = orchestrator.confirmTask(
+              const ExtractedTask(title: 'hug Christin'),
+            );
+
+            // Allow orchestrator to reach the listening/awaiting phase.
+            await Future<void>.delayed(const Duration(milliseconds: 30));
+
+            // Simulate user tapping the UI confirm button.
+            orchestrator.resolveTaskConfirmation(confirmed: true);
+
+            taskConfirmed = await taskFuture;
+            expect(
+              taskConfirmed,
+              isTrue,
+              reason:
+                  'UI card confirm must resolve orchestrator loop as confirmed',
+            );
+          },
+        );
+
+        test(
+          'resolveTaskConfirmation(confirmed: false) completes task loop early',
+          () async {
+            bool? taskConfirmed;
+            final taskFuture = orchestrator.confirmTask(
+              const ExtractedTask(title: 'hug Christin'),
+            );
+
+            await Future<void>.delayed(const Duration(milliseconds: 30));
+
+            // Simulate user tapping the UI dismiss button.
+            orchestrator.resolveTaskConfirmation(confirmed: false);
+
+            taskConfirmed = await taskFuture;
+            expect(
+              taskConfirmed,
+              isFalse,
+              reason:
+                  'UI card dismiss must resolve orchestrator loop as dismissed',
+            );
+          },
+        );
+
+        test('resolveTaskConfirmation() is a no-op when no task confirmation '
+            'is in progress', () {
+          // Calling with no active confirmTask() must not throw.
+          expect(
+            () => orchestrator.resolveTaskConfirmation(confirmed: true),
+            returnsNormally,
+          );
+        });
       });
     });
   });

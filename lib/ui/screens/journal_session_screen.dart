@@ -548,9 +548,20 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
       extractionError: sessionState.taskExtractionError,
       onConfirm: () {
         ref.read(sessionNotifierProvider.notifier).confirmTask();
+        // Resolve the orchestrator's verbal confirmation loop so it speaks
+        // "Added to your tasks." and doesn't time out to "okay, I won't add
+        // that." when the user confirms via the card instead of verbally.
+        ref
+            .read(voiceOrchestratorProvider)
+            .resolveTaskConfirmation(confirmed: true);
       },
       onDismiss: () {
         ref.read(sessionNotifierProvider.notifier).dismissTask();
+        // Mirror the dismiss to the orchestrator so it speaks the correct
+        // feedback rather than waiting for the 8-second verbal timeout.
+        ref
+            .read(voiceOrchestratorProvider)
+            .resolveTaskConfirmation(confirmed: false);
       },
     );
   }
