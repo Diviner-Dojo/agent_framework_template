@@ -229,6 +229,226 @@ void main() {
     });
   });
 
+  group('updateEvent', () {
+    test('delegates to updateEvent callable', () async {
+      String? capturedId;
+      String? capturedTitle;
+      DateTime? capturedStart;
+      DateTime? capturedEnd;
+
+      final service = GoogleCalendarService(
+        createEvent:
+            ({
+              required String title,
+              required DateTime startTime,
+              DateTime? endTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        createReminder:
+            ({
+              required String title,
+              required DateTime dateTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        updateEvent:
+            ({
+              required String googleEventId,
+              String? title,
+              DateTime? startTime,
+              DateTime? endTime,
+            }) async {
+              capturedId = googleEventId;
+              capturedTitle = title;
+              capturedStart = startTime;
+              capturedEnd = endTime;
+            },
+      );
+
+      await service.updateEvent(
+        googleEventId: 'evt-123',
+        title: 'Updated standup',
+        startTime: DateTime.utc(2026, 3, 3, 15, 0),
+        endTime: DateTime.utc(2026, 3, 3, 15, 30),
+      );
+
+      expect(capturedId, 'evt-123');
+      expect(capturedTitle, 'Updated standup');
+      expect(capturedStart, DateTime.utc(2026, 3, 3, 15, 0));
+      expect(capturedEnd, DateTime.utc(2026, 3, 3, 15, 30));
+    });
+
+    test('throws when updateEvent callable is null', () {
+      final service = GoogleCalendarService(
+        createEvent:
+            ({
+              required String title,
+              required DateTime startTime,
+              DateTime? endTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        createReminder:
+            ({
+              required String title,
+              required DateTime dateTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+      );
+
+      expect(
+        () => service.updateEvent(googleEventId: 'evt-1'),
+        throwsA(isA<CalendarServiceException>()),
+      );
+    });
+
+    test('propagates CalendarServiceException', () async {
+      final service = GoogleCalendarService(
+        createEvent:
+            ({
+              required String title,
+              required DateTime startTime,
+              DateTime? endTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        createReminder:
+            ({
+              required String title,
+              required DateTime dateTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        updateEvent:
+            ({
+              required String googleEventId,
+              String? title,
+              DateTime? startTime,
+              DateTime? endTime,
+            }) async => throw const CalendarServiceException('Update failed'),
+      );
+
+      expect(
+        () => service.updateEvent(googleEventId: 'evt-1'),
+        throwsA(isA<CalendarServiceException>()),
+      );
+    });
+  });
+
+  group('listEvents', () {
+    test('delegates to listEvents callable', () async {
+      final service = GoogleCalendarService(
+        createEvent:
+            ({
+              required String title,
+              required DateTime startTime,
+              DateTime? endTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        createReminder:
+            ({
+              required String title,
+              required DateTime dateTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        listEvents:
+            ({required DateTime timeMin, required DateTime timeMax}) async {
+              return [
+                CalendarEventSummary(
+                  title: 'Meeting',
+                  startTime: DateTime.utc(2026, 3, 3, 14, 0),
+                  endTime: DateTime.utc(2026, 3, 3, 15, 0),
+                ),
+              ];
+            },
+      );
+
+      final result = await service.listEvents(
+        timeMin: DateTime.utc(2026, 3, 3),
+        timeMax: DateTime.utc(2026, 3, 4),
+      );
+
+      expect(result, hasLength(1));
+      expect(result.first.title, 'Meeting');
+    });
+
+    test('returns empty list when no events', () async {
+      final service = GoogleCalendarService(
+        createEvent:
+            ({
+              required String title,
+              required DateTime startTime,
+              DateTime? endTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        createReminder:
+            ({
+              required String title,
+              required DateTime dateTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        listEvents:
+            ({required DateTime timeMin, required DateTime timeMax}) async {
+              return [];
+            },
+      );
+
+      final result = await service.listEvents(
+        timeMin: DateTime.utc(2026, 3, 3),
+        timeMax: DateTime.utc(2026, 3, 4),
+      );
+
+      expect(result, isEmpty);
+    });
+
+    test('throws when listEvents callable is null', () {
+      final service = GoogleCalendarService(
+        createEvent:
+            ({
+              required String title,
+              required DateTime startTime,
+              DateTime? endTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+        createReminder:
+            ({
+              required String title,
+              required DateTime dateTime,
+              String? description,
+            }) async => throw UnimplementedError(),
+      );
+
+      expect(
+        () => service.listEvents(
+          timeMin: DateTime.utc(2026, 3, 3),
+          timeMax: DateTime.utc(2026, 3, 4),
+        ),
+        throwsA(isA<CalendarServiceException>()),
+      );
+    });
+  });
+
+  group('CalendarEventSummary', () {
+    test('stores all fields', () {
+      final summary = CalendarEventSummary(
+        title: 'Team sync',
+        startTime: DateTime.utc(2026, 3, 3, 14, 0),
+        endTime: DateTime.utc(2026, 3, 3, 15, 0),
+        isAllDay: false,
+        location: 'Room 101',
+      );
+      expect(summary.title, 'Team sync');
+      expect(summary.isAllDay, isFalse);
+      expect(summary.location, 'Room 101');
+    });
+
+    test('defaults isAllDay to false', () {
+      final summary = CalendarEventSummary(
+        title: 'Quick call',
+        startTime: DateTime.utc(2026, 3, 3, 10, 0),
+      );
+      expect(summary.isAllDay, isFalse);
+      expect(summary.endTime, isNull);
+      expect(summary.location, isNull);
+    });
+  });
+
   group('CalendarCreateResult', () {
     test('stores event ID and link', () {
       const result = CalendarCreateResult(

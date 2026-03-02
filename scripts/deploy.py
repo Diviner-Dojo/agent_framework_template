@@ -1,10 +1,11 @@
-"""Deploy the Flutter app to a connected device and log timing metrics.
+"""Deploy the Flutter app to a connected device or emulator and log timing metrics.
 
 Wraps `flutter run -d <device> --release --dart-define=...` with:
 - Full build+deploy timing
 - JSONL outcome logging to metrics/deploy_log.jsonl
 - Live output streaming (not captured silently)
 - BUILD_STATUS.md default extraction for device ID and dart-define values
+- Android emulator discovery, boot, and targeting
 
 Usage:
     python scripts/deploy.py                          # defaults from BUILD_STATUS.md
@@ -12,6 +13,8 @@ Usage:
     python scripts/deploy.py --debug                   # debug mode
     python scripts/deploy.py --install-only            # exit after install (don't stay attached)
     python scripts/deploy.py --dart-define KEY=VALUE   # explicit dart-define
+    python scripts/deploy.py --emulator                # boot first available AVD, deploy in debug
+    python scripts/deploy.py --emulator Pixel_7_API_36 # boot specific AVD
 
 Exit code mirrors the flutter process exit code.
 
@@ -21,6 +24,7 @@ See memory/lessons/deploy-safety.md.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -64,6 +68,207 @@ def _find_flutter() -> str:
 
     print(f"  {RED}ERROR{RESET}  Flutter SDK not found on PATH.")
     print('         Add Flutter to PATH: export PATH="$PATH:/c/src/flutter/bin"')
+    sys.exit(1)
+
+
+def _find_android_sdk() -> Path | None:
+    """Find the Android SDK path from local.properties, env var, or default location."""
+    # Try android/local.properties
+    local_props = PROJECT_ROOT / "android" / "local.properties"
+    if local_props.exists():
+        for line in local_props.read_text(encoding="utf-8").splitlines():
+            if line.startswith("sdk.dir="):
+                sdk_dir = line.split("=", 1)[1].replace("\\\\", "/").replace("\\", "/")
+                p = Path(sdk_dir)
+                if p.exists():
+                    return p
+
+    # Try ANDROID_HOME / ANDROID_SDK_ROOT env vars
+
+    for var in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        val = os.environ.get(var)
+        if val:
+            p = Path(val)
+            if p.exists():
+                return p
+
+    # Try common Windows default
+    default = Path.home() / "AppData" / "Local" / "Android" / "Sdk"
+    if default.exists():
+        return default
+
+    return None
+
+
+def _find_emulator_exe() -> str | None:
+    """Find the Android emulator executable."""
+    sdk = _find_android_sdk()
+    if sdk:
+        for name in ("emulator.exe", "emulator"):
+            exe = sdk / "emulator" / name
+            if exe.exists():
+                return str(exe)
+    # Fallback: check PATH
+    try:
+        result = subprocess.run(
+            ["emulator", "-list-avds"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return "emulator"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _find_adb_exe() -> str:
+    """Find the adb executable."""
+    sdk = _find_android_sdk()
+    if sdk:
+        for name in ("adb.exe", "adb"):
+            exe = sdk / "platform-tools" / name
+            if exe.exists():
+                return str(exe)
+    # Fallback: check PATH
+    try:
+        result = subprocess.run(
+            ["adb", "version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return "adb"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    print(f"  {RED}ERROR{RESET}  adb not found. Check Android SDK installation.")
+    sys.exit(1)
+
+
+def _list_available_emulators() -> list[str]:
+    """List installed AVD names using `emulator -list-avds`."""
+    emu = _find_emulator_exe()
+    if not emu:
+        return []
+    try:
+        result = subprocess.run(
+            [emu, "-list-avds"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return []
+
+
+def _get_running_emulators(adb: str) -> list[str]:
+    """Return device IDs of currently running emulators (e.g. ['emulator-5554'])."""
+    try:
+        result = subprocess.run(
+            [adb, "devices"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            devices = []
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] == "device" and parts[0].startswith("emulator-"):
+                    devices.append(parts[0])
+            return devices
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return []
+
+
+def _is_emulator(device_id: str) -> bool:
+    """Check if a device ID refers to an emulator."""
+    return device_id.startswith("emulator-")
+
+
+def _boot_emulator(avd_name: str, timeout_seconds: int = 120) -> str:
+    """Boot an Android emulator and wait for it to be ready.
+
+    Args:
+        avd_name: The AVD name to boot.
+        timeout_seconds: Max seconds to wait for boot completion.
+
+    Returns:
+        The device ID (e.g. 'emulator-5554').
+
+    Raises:
+        SystemExit: If emulator cannot be found, booted, or times out.
+    """
+    emu = _find_emulator_exe()
+    if not emu:
+        print(f"  {RED}ERROR{RESET}  Android emulator executable not found.")
+        print("         Check Android SDK installation and ensure emulator package is installed.")
+        sys.exit(1)
+
+    adb = _find_adb_exe()
+
+    # Check if an emulator is already running
+    running = _get_running_emulators(adb)
+    if running:
+        device_id = running[0]
+        print(f"  {GREEN}Reusing{RESET} already-running emulator: {device_id}")
+        return device_id
+
+    # Launch emulator as background process
+    print(f"  Booting emulator: {avd_name}...")
+    try:
+        process = subprocess.Popen(
+            [emu, "-avd", avd_name, "-no-snapshot-load"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        print(f"  {RED}ERROR{RESET}  Failed to launch emulator at: {emu}")
+        sys.exit(1)
+
+    # Wait for the emulator to appear in adb devices
+    start = time.monotonic()
+    device_id = None
+    while time.monotonic() - start < timeout_seconds:
+        time.sleep(3)
+        running = _get_running_emulators(adb)
+        if running:
+            device_id = running[0]
+            break
+
+    if not device_id:
+        elapsed = int(time.monotonic() - start)
+        print(f"  {RED}ERROR{RESET}  Emulator did not appear in adb devices after {elapsed}s.")
+        process.terminate()
+        sys.exit(1)
+
+    # Wait for sys.boot_completed
+    print(f"  Emulator appeared as {device_id}. Waiting for boot to complete...")
+    while time.monotonic() - start < timeout_seconds:
+        try:
+            result = subprocess.run(
+                [adb, "-s", device_id, "shell", "getprop", "sys.boot_completed"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.stdout.strip() == "1":
+                elapsed = int(time.monotonic() - start)
+                print(f"  {GREEN}Emulator ready{RESET} ({elapsed}s)")
+                return device_id
+        except subprocess.TimeoutExpired:
+            pass
+        time.sleep(2)
+
+    elapsed = int(time.monotonic() - start)
+    print(f"  {RED}ERROR{RESET}  Emulator boot did not complete after {elapsed}s.")
+    print("         The emulator process is still running — you may need to close it manually.")
     sys.exit(1)
 
 
@@ -180,6 +385,8 @@ def _log_outcome(
     mode: str,
     device: str,
     exit_code: int,
+    device_type: str = "physical",
+    avd_name: str | None = None,
 ) -> None:
     """Append a JSONL record of the deploy outcome."""
     record = {
@@ -188,9 +395,12 @@ def _log_outcome(
         "duration_seconds": round(duration_seconds, 1),
         "mode": mode,
         "device": device,
+        "device_type": device_type,
         "exit_code": exit_code,
         "version": _read_pubspec_version(),
     }
+    if avd_name:
+        record["avd_name"] = avd_name
 
     DEPLOY_LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(DEPLOY_LOG, "a", encoding="utf-8") as f:
@@ -236,11 +446,68 @@ def main() -> int:
         action="store_true",
         help="Compare installed app version on device to pubspec version, then exit",
     )
+    parser.add_argument(
+        "--emulator",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="AVD_NAME",
+        help="Boot and target an emulator. If AVD_NAME omitted, use first available AVD. "
+        "Implies --debug unless --release is explicitly set.",
+    )
+    parser.add_argument(
+        "--list-emulators",
+        action="store_true",
+        help="List available AVDs and running emulators, then exit.",
+    )
     args = parser.parse_args()
 
     # --check-version: compare device vs pubspec and exit
     if args.check_version:
         return _check_version(args.device)
+
+    # --list-emulators: show available AVDs and exit
+    if args.list_emulators:
+        avds = _list_available_emulators()
+        adb = _find_adb_exe()
+        running = _get_running_emulators(adb)
+        print(f"{BOLD}Available AVDs:{RESET}")
+        if avds:
+            for avd in avds:
+                print(f"  - {avd}")
+        else:
+            print("  (none found)")
+        print(f"\n{BOLD}Running emulators:{RESET}")
+        if running:
+            for dev in running:
+                print(f"  - {dev}")
+        else:
+            print("  (none running)")
+        return 0
+
+    # Track emulator state for logging
+    emulator_avd_name: str | None = None
+
+    # --emulator: discover/boot emulator and use it as target device
+    if args.emulator is not None:
+        avd_name = args.emulator  # empty string if no name given
+        if not avd_name:
+            # Pick first available AVD
+            avds = _list_available_emulators()
+            if not avds:
+                print(f"  {RED}ERROR{RESET}  No AVDs found. Create one in Android Studio.")
+                print("         Tools → Device Manager → Create Virtual Device")
+                return 1
+            avd_name = avds[0]
+            print(f"  Auto-selected AVD: {avd_name}")
+
+        emulator_avd_name = avd_name
+        device_id = _boot_emulator(avd_name)
+        args.device = device_id
+
+        # --emulator implies --debug unless --release was explicitly passed
+        if not any(a in sys.argv for a in ("--release",)):
+            args.debug = True
 
     # Resolve mode
     mode = "debug" if args.debug else "release"
@@ -252,7 +519,9 @@ def main() -> int:
     device = args.device or defaults.get("device", "")
     if not device:
         print(f"  {RED}ERROR{RESET}  No device ID specified.")
-        print("         Use -d DEVICE_ID or add a Device Build Command to BUILD_STATUS.md")
+        print(
+            "         Use -d DEVICE_ID, --emulator, or add a Device Build Command to BUILD_STATUS.md"
+        )
         return 1
 
     # Resolve dart-define values
@@ -281,7 +550,11 @@ def main() -> int:
         key = define.split("=", 1)[0]
         display_cmd.append(f"--dart-define={key}=<redacted>")
 
-    print(f"\n{BOLD}Deploying ({mode} mode) to {device}{RESET}")
+    device_type = "emulator" if _is_emulator(device) else "physical"
+    device_label = f"{device} ({device_type})"
+    if emulator_avd_name:
+        device_label = f"{device} (emulator: {emulator_avd_name})"
+    print(f"\n{BOLD}Deploying ({mode} mode) to {device_label}{RESET}")
     print(f"  {YELLOW}${RESET} {' '.join(display_cmd)}\n")
 
     # Marker that flutter prints once the app is installed and running
@@ -353,7 +626,15 @@ def main() -> int:
     )
 
     # Log to JSONL
-    _log_outcome(outcome, duration, mode, device, exit_code)
+    _log_outcome(
+        outcome,
+        duration,
+        mode,
+        device,
+        exit_code,
+        device_type="emulator" if _is_emulator(device) else "physical",
+        avd_name=emulator_avd_name,
+    )
     print(f"  Logged to {DEPLOY_LOG.relative_to(PROJECT_ROOT)}")
 
     return exit_code

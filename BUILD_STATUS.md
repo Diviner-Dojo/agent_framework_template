@@ -1,57 +1,46 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-02-28 ~current UTC
+> Last updated: 2026-03-02 ~01:35 UTC
 
 ## Current Task
 
-**Status:** Phase 13 (Google Tasks + Personal Assistant) — all phases implemented, tests being written.
+**Status:** Emulator integration tests PASSING.
 **Branch:** `main`
+**Version:** `0.16.0+4`
 
 ### In Progress
-- **Phase 13 tests** — TaskDao tests + TaskExtractionService tests being written (agents)
-- **Coverage recovery** — Coverage dropped to 67.5% from new code; need tests for task_dao, task_extraction_service, tasks_screen, task_card, google_tasks_service
-- **Quality gate** — 5/6 passing (coverage only failure). Review + ADR still needed.
+- None
+
+### Just Completed
+- **Emulator integration tests** — Both `smoke_test.dart` and `manual_test_automation.dart` passing on `Medium_Phone_API_36.1` (emulator-5554)
+  - smoke_test: ~1m 16s, manual_test: ~1m 25s
+  - Key fix: navigate to settings immediately after onboarding (don't pump on home while Claude API closing summary is in flight)
+  - `goHome()` helper updated to check FAB + title (not just title through stacked routes)
 
 ### Recently Completed
-- **Phase 13: Google Tasks + Personal Assistant** — Full implementation across 8 phases:
-  - Phase A: Tasks drift table, TaskDao, GoogleTasksService, task providers
-  - Phase B: OAuth tasks scope, calendar event editing/listing, "Created by Agentic Journal" tag
-  - Phase C: Intent classifier with task + dayQuery intents (69 regression tests)
-  - Phase D: TaskExtractionService (LLM/regex), task/dayQuery handling in SessionNotifier
-  - Phase E: TaskCard, TaskItemWidget, TasksScreen, Tasks icon, /tasks route
-  - Phase F: Supabase 007 migration, SyncRepository tasks
-  - Phase G: Voice orchestrator task confirmation
-  - Phase H: Settings screen "Calendar & Tasks" label, auto-suggest toggle
-- **E13 Conversational Onboarding** — Ready to commit (from previous session).
-- **Multi-project analysis (7 projects)** — FlutterVoiceFriend, LiveKit, Sherpa ONNX, Cactus, PowerSync, Dicio, Porcupine.
-- **Consolidated enhancement plan** — `docs/consolidated-enhancement-plan.md` with 28 enhancements across 7 domains, prioritized P0-P4.
-- **ADR-0022: Voice Engine Swap** — ElevenLabs TTS (via Supabase proxy) + speech_to_text STT.
+- **Knowledge Amplification Pipeline** (PR #49, v0.16.0+4, ADR-0028):
+  - 10 new Python scripts, 4 SQLite tables, 2 views, 1 new command (/knowledge-health)
+  - Pipeline: extract_findings → mine_patterns → surface_candidates → compute_effectiveness
+  - Backfill: 48 findings, 436 turns with content, 48 sightings, 2 Rule of Three hits
+  - Review: approve-with-changes (REV-20260301-215800), 2 blocking fixed, 14 advisory
+  - Dashboard health: 5/7
+- **Voice Naturalness Sprint** (SPEC-20260228, PR #47, v0.15.0+2) — 5 tasks:
+  1. Idle timer interruption guard (`_userIsSpeaking` flag)
+  2. Markdown stripping before TTS (`stripMarkdown`)
+  3. Confidence-weighted commit delay (`computeCommitDelay`)
+  4. Non-verbal thinking sound (`just_audio` chime loop)
+  5. LLM-marker turn completeness (✓/○/◐ markers in Edge Function)
+  - Review: approve-with-changes (REV-20260301-025400), 2 blocking fixed, 12 advisories open
+- **Semantic Versioning** (PR #46, v0.14.0+1 → 0.15.0+2):
+  - `scripts/bump_version.py` + tests, dynamic Settings version via `package_info_plus`
+  - `/ship` Step 1.5 auto-bump, `deploy.py --check-version`, ADR-0027
+- **Deploy parser fix** (PR #48, v0.15.1+3) — fix `--check-version` for multi-field dumpsys lines
+- **Phase 13: Google Tasks + Personal Assistant** — 8 sub-phases (A-H)
+- **Conversational Onboarding** (E13)
+- **Multi-project analysis** (7 projects) — consolidated enhancement plan
 
-## Multi-Project Analysis Summary (2026-02-26)
-
-### Deliverables
-| Artifact | Path |
-|----------|------|
-| Consolidated enhancement plan | `docs/consolidated-enhancement-plan.md` |
-| Adoption log (updated) | `memory/lessons/adoption-log.md` |
-| Analysis reports (7) | `docs/reviews/ANALYSIS-20260226-*` |
-| Discussions (8, all sealed) | `discussions/2026-02-26/DISC-*` |
-
-### P0 Quick Wins — SHIPPED (PR #37, commit 85735d8)
-1. ~~**Silence padding** in stopListening()~~ — DONE
-2. ~~**Endpoint rule tuning** — rule1: 2.4s, rule2: 1.2s~~ — DONE
-3. **ARM build flag fix** — `-march=armv8.2-a+dotprod+fp16` resolves SIGILL on Snapdragon 888 — DEFERRED (requires llamadart fork)
-4. ~~**Manifest fix** — remove `foregroundServiceType` from `<activity>`~~ — DONE
-5. ~~**Intent deduplication** — 100ms backoff for duplicate ACTION_ASSIST~~ — DONE
-
-### Key Findings
-- **SIGILL root cause confirmed**: llamadart uses armv8.7-a, Snapdragon 888 only supports armv8.2-a
-- **VoiceInteractionService not viable** for third-party apps (Dicio proves foreground service + AudioRecord is correct)
-- **Rule of Three triggered**: Session history injection (3 sightings: FlutterVoiceFriend + kelivo + moodiary)
-- **PowerSync + Drift bridge** viable but has 2 blocking conditions (background sync, forTesting redesign)
-
-## Google Calendar OAuth Config (In Progress)
+## Google Calendar OAuth Config
 
 **GCP Project:** `agenticjournal` (project number: `774019106928`)
 
@@ -61,64 +50,95 @@
   - SHA-1: `8B:32:96:6B:DD:A2:7E:A7:53:D3:31:65:43:C8:89:48:DC:E7:B9:41`
 - **Web:** `774019106928-211ougkvc63dm0lbare5qbq0it12huk7.apps.googleusercontent.com`
 
-**Status:** `google-services.json` updated with both client IDs (client_type 1 = Web, client_type 3 = Android). NOT YET REBUILT — needs `flutter run` to deploy the updated config to device.
-
-## Uncommitted Changes
-
-- `android/app/google-services.json` — updated with real GCP OAuth client IDs
-- `docs/consolidated-enhancement-plan.md` — NEW: 28-enhancement consolidated plan
-- `docs/reviews/ANALYSIS-20260226-*` — NEW: 7 individual analysis reports
-- `memory/lessons/adoption-log.md` — UPDATED: ~30 new pattern entries
-- Various discussion files under `discussions/2026-02-26/`
-
 ## Device Build Command
 
+**Physical device:**
+```bash
+python scripts/deploy.py --install-only
+```
+
+**Emulator:**
+```bash
+python scripts/deploy.py --emulator --install-only
+```
+
+**Emulator (specific AVD):**
+```bash
+python scripts/deploy.py --emulator Pixel_7_API_36 --install-only
+```
+
+**List available emulators:**
+```bash
+python scripts/deploy.py --list-emulators
+```
+
+Or manually (physical device):
 ```bash
 /c/src/flutter/bin/flutter run -d R5CR10LW2FE \
   --dart-define=SUPABASE_URL=https://oruastmawvtcpiyggrze.supabase.co \
   --dart-define=SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ydWFzdG1hd3Z0Y3BpeWdncnplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MzEwMzYsImV4cCI6MjA4NzIwNzAzNn0.1bKaVE0RD0SZKBfnYA4DvlnkjllQ4KNq3voTRGOq35A
 ```
 
+**adb** path: `/c/Users/evans/AppData/Local/Android/Sdk/platform-tools`
+
+## Emulator Config
+
+| Setting | Value |
+|---------|-------|
+| AVD Name (Google Play) | `Medium_Phone_API_36.1` |
+| AVD Name (Pixel 7) | `Pixel_7_API_36` |
+| Image | API 36, x86_64 |
+| Google Play | Medium_Phone only |
+| RAM | 2048 MB (Medium_Phone) |
+| Notes | `--emulator` implies `--debug` (release AOT doesn't target x86_64) |
+
 ## Device Testing Results
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| App launch | Working | No crash, Supabase init OK |
-| Photo capture | Working | Camera + gallery confirmed |
-| Google Calendar | **Working** | OAuth connected via Firebase + GCP test user |
-| Supabase auth | Working | New account (evansarak@yahoo.com), new publishable key (sb_publishable_...) |
-| Claude AI | Needs test | Edge Function deployed + verified via curl, untested in-app |
-| Video capture | Needs test | ffmpeg fork compiles, untested on device |
-| Voice/STT | Needs test | Silence padding + endpoint tuning shipped, needs on-device verify |
-| Local LLM | Disabled | SIGILL on Snapdragon 888 (fix path identified: ARM build flag) |
+| Feature | Physical Device | Emulator | Notes |
+|---------|----------------|----------|-------|
+| App launch | Working | **Working** | Supabase init OK on both |
+| Onboarding | Working | **Working** | Conversational onboarding, Claude API, session end |
+| Text journaling | Working | **Working** | FAB → session → send → Done → home |
+| Session detail/resume | Working | **Working** | Card tap → detail → Continue Entry → send → end |
+| Session discard | Working | **Working** | Empty session → back → auto-discard |
+| Settings navigation | Working | **Working** | All 8 cards verified (Digital Assistant, Voice, AI, Sync, Location, Calendar, Data, About) |
+| Unicode/edge cases | Working | **Working** | Unicode text preserved, long messages handled |
+| Photo capture | Working | Simulated | Virtual camera (checkerboard scene) |
+| Google Calendar | **Working** | Needs test | Emulator needs SHA-1 in GCP (Medium_Phone_API_36.1 has Google Play) |
+| Supabase auth | Working | Needs test | evansarak@yahoo.com |
+| Version display | **Working** | Needs test | Settings shows dynamic version via `package_info_plus` |
+| Deploy --check-version | **Working** | Needs test | MATCH confirmed for 0.15.1+3 |
+| Claude AI | Needs test | **Working** | Edge Function responding (200 OK), in-app conversation works |
+| Video capture | Needs test | Limited | ffmpeg_kit may lack x86_64 libs |
+| Voice/STT | Needs test | Needs test | Voice naturalness shipped, needs on-device verify |
+| Local LLM | Disabled | Disabled | SIGILL on Snapdragon 888 / ARM-only binaries |
 
 ## Tech Debt
 
-- **Coverage** — 77.2% (below 80% target)
+- **Coverage** — 69.9% (below 80% target)
 - **Education gates deferred** — Phase 11 + Phase 12
-- **Local LLM disabled** — llamadart SIGILL on Snapdragon 888 (fix: `-march=armv8.2-a+dotprod+fp16`)
-- **Supabase credentials** — user reported invalid, may need fresh key from Dashboard
-- **Path documentation mismatch** — ADR-0018/0021 say relative, actual values are absolute
-- **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05 + ~30 new patterns added
+- **Review advisories open** — 12 from REV-20260301-025400 + 14 from REV-20260301-215800
+- **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
+- **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
+- **Pipeline advisories** — stop words duplication, bare except, candidate_id collision risk (see REV-20260301-215800)
 
 ## Key Decisions (Recent)
 
+- ADR-0027: Semantic Versioning
 - ADR-0026: Conversational Onboarding via Real Journal Session
 - ADR-0021: Video Capture Architecture
 - ADR-0020: Google Calendar Integration
-- FFmpegKit retired → `ffmpeg_kit_min_gpl` fork (drop-in)
 - llamadart disabled → Claude API is primary conversation layer
 - Google OAuth requires both Android + Web client IDs for scoped access
-- VoiceInteractionService NOT viable → foreground service + AudioRecord is correct path
 
 ## Resume Instructions
 
-1. **Rebuild and deploy** — P0 changes + `google-services.json` update need deployment to device
-2. **Verify P0 on device** — Test STT silence padding (say a word and stop immediately — should capture it)
-3. **Test remaining features** — Claude AI, video, voice (see testing table above)
+1. **Test on device** — Voice naturalness (markdown stripping, turn-taking), Claude AI, video
+2. **Coverage recovery** — Write tests for Phase 13 code (task_dao, task_extraction_service, tasks_screen, etc.)
+3. **Address review advisories** — 12 non-blocking from voice naturalness review (REV-20260301-025400)
 4. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1)
-5. **Address review advisories** — JWT test assertions, Kotlin test coverage, bounded flush loop (REV-20260226-191743)
-6. **Education gates + coverage recovery** — After device features verified
+5. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
+6. **Education gates** — Deferred from Phase 11 + 12
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*

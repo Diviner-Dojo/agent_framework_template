@@ -1,0 +1,4 @@
+{"timestamp": "2026-03-01T00:48:18.061552+00:00", "outcome": "success", "duration_seconds": 35.8, "mode": "release", "device": "R5CR10LW2FE", "exit_code": 0}
+{"timestamp": "2026-03-01T00:58:49.454510+00:00", "outcome": "success", "duration_seconds": 61.7, "mode": "release", "device": "R5CR10LW2FE", "exit_code": 0}
+{"timestamp": "2026-03-01T05:33:46.090750+00:00", "outcome": "success", "duration_seconds": 125.7, "mode": "release", "device": "R5CR10LW2FE", "exit_code": 0, "version": "0.15.0+2"}
+{"timestamp": "2026-03-01T06:27:08.713971+00:00", "outcome": "success", "duration_seconds": 57.4, "mode": "release", "device": "R5CR10LW2FE", "exit_code": 0, "version": "0.15.1+3"}

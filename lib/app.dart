@@ -172,9 +172,14 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
 
   @override
   Widget build(BuildContext context) {
-    // Watch onboarding state to determine the initial route.
-    // This is the single source of truth — see onboarding_providers.dart.
-    final hasCompletedOnboarding = ref.watch(onboardingNotifierProvider);
+    // Read onboarding state once to determine the initial route.
+    // IMPORTANT: Use ref.read, NOT ref.watch. Watching this provider causes
+    // the MaterialApp to rebuild when onboarding completes, which changes
+    // initialRoute on an already-mounted Navigator. This collapses the
+    // Navigator's route stack (the new initialRoute conflicts with the
+    // active navigation stack). The onboarding → session list transition
+    // is handled by Navigator.pushReplacement/pop, not by initialRoute.
+    final hasCompletedOnboarding = ref.read(onboardingNotifierProvider);
 
     return MaterialApp(
       title: 'Agentic Journal',
