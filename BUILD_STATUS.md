@@ -1,27 +1,44 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-02 ~07:45 UTC
+> Last updated: 2026-03-02 ~16:00 UTC
 
 ## Current Task
 
-**Status:** Bug-fix sprint complete. Ready for review + commit.
+**Status:** All bugs fixed + review blocking finding resolved. Ready to commit.
 **Branch:** `main`
-**Version:** `0.16.3+7` (pending bump for this sprint)
+**Version:** `0.17.0+8`
 
 ### In Progress
 (none)
 
 ### Just Completed
-- **Bug-Fix Sprint: Voice UX + Task + TTS Fallback** (5 fixes, quality gate PASS):
+- **Journal-Only Voice Mode: Three Bug Fixes + Back-Button Fix** (not yet committed):
+  - Bug 1+2 fix: `acknowledgeNoResponse()` added to `VoiceSessionOrchestrator` — resumes listening loop without AI response (fixes stuck-in-processing in journal-only + after handled intents)
+  - Bug 1+2 fix: `_resumeOrchestratorIfVoiceMode()` added to `SessionNotifier` — called at journal-only and handled-intent early exits in `sendMessage()`
+  - Bug 3 fix: `shouldEndSession()` moved above `journalOnlyMode` guard and intent routing — "goodbye" now works in journal-only mode
+  - Back-button fix: `_endSessionAndPop()` no longer pops on success — shows closing summary (matches "goodbye" UX), force-pops only on exception
+  - Review B1 fix: Done button and overflow menu hidden during `isClosingComplete` — was silently no-oping via `isSessionEnding` re-entry guard
+  - Advisory A1: no-op guard test pinning acknowledgeNoResponse() phase contract
+  - Advisory A4: `isContinuousMode` guard in `acknowledgeNoResponse()` for push-to-talk safety
+  - Advisory A6: cross-reference comments between `_doneSignals` and `VoiceCommandClassifier._strongEndPattern`
+  - Regression tests: 3 new tests (orchestrator acknowledgeNoResponse, session goodbye, screen back-button)
+  - Ledger: 3 new entries in `memory/bugs/regression-ledger.md`
+  - Full test suite: EXIT 0 (1918 tests, all pass)
+  - Review: REV-20260302-201931 (approve-with-changes, 1 blocking resolved in-review, 8 advisory)
+  - Files modified: `lib/services/voice_session_orchestrator.dart`, `lib/providers/session_providers.dart`, `lib/ui/screens/journal_session_screen.dart`, `lib/repositories/agent_repository.dart`, `lib/services/voice_command_classifier.dart`, `test/services/voice_session_orchestrator_test.dart`, `test/providers/session_providers_test.dart`, `test/ui/journal_session_screen_test.dart`, `memory/bugs/regression-ledger.md`
+
+- **Bug-Fix Sprint: Voice UX + Task + TTS Fallback** (PR #53, v0.17.0+8):
   - Fix 1: Task extraction context — `context` param in `TaskExtractionService.extract()`, last 3 turns passed from `_extractTaskDetails`; resolves pronoun "it" using conversation history
   - Fix 2: Journal-only mode intent routing — moved `journalOnlyMode` guard after `_routeByIntent()`; task/calendar intents now handled in journal-only mode
   - Fix 3: Voice cleanup on back navigation — `await stop()` in discard path, `unawaited()` in `onPopInvokedWithResult`, `stop()` added to `dispose()`
   - Fix 4: Empty session delete — `endSession()` empty guard now calls `discardSession()` (deletes row) instead of `endSession()` (preserves row)
   - Fix 5: TTS fallback — new `FallbackTtsService`, `ttsFallbackActiveProvider`, ElevenLabs wrapped with fallback, SnackBar notification in session screen
-  - Tests: 1914 total (+17 new), 80.8% coverage, all 6 quality gate checks pass
+  - Review fix (in-review): `FallbackTtsService.stop()` guards `_primary.stop()` in try-catch
+  - Tests: 1915 total (+21 new), 80.8% coverage, all 7 quality gate checks pass
   - New files: `lib/services/fallback_tts_service.dart`, `test/services/fallback_tts_service_test.dart`, `test/providers/session_providers_test.dart`
-  - Updated tests: `session_empty_guard_test.dart` (expects deletion), `task_extraction_service_test.dart` (+5 context tests), `voice_session_orchestrator_test.dart` (+1 regression)
+  - Review: REV-20260302-152240 (approve-with-changes, 1 blocking resolved in-review, 6 advisory)
+  - Deploy: SUCCESS on SM_G998U1 (1m 18s)
 
 - **Voice Bug Fixes + Integration Test** (PR #52, v0.16.3+7):
   - Fix: Black screen on back button — try-finally in _endSessionAndPop ensures Navigator.pop() always runs
@@ -164,12 +181,12 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **Review + commit** — Run `/review` on bug-fix sprint files, then commit and PR
-2. **Test on device** — All 5 bug fixes on SM_G998U1: journal-only task creation, context resolution, voice cleanup on discard, empty session delete, TTS fallback
-3. **Address review advisories** — 41 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854
-4. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1)
-5. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
-6. **Education gates** — Deferred from Phase 11 + 12
+1. **Review + commit** — Run `/review` on the 9 changed files, then commit the journal-only voice bug fixes + back-button fix
+2. **Test on device** — SM_G998U1 with journal-only + voice mode: speak several messages (listening resumes), say "add a task" (task card appears, listening resumes), say "goodbye" (session closes)
+3. **Education gate** — Deferred from REV-20260302-152240 (medium-risk): run `/walkthrough lib/services/fallback_tts_service.dart lib/providers/voice_providers.dart` then `/quiz`
+4. **Address review advisories** — 47 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240
+5. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1)
+6. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
