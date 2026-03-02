@@ -1,3 +1,4 @@
+// coverage:ignore-file — migration paths require real versioned DB files; _openConnection uses path_provider.
 // ===========================================================================
 // file: lib/database/app_database.dart
 // purpose: drift database class — single entry point for all local DB access.

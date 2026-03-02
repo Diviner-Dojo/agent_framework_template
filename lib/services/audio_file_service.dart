@@ -1,3 +1,4 @@
+// coverage:ignore-file — platform audio pipeline (dart:io WAV file writing, PCM headers).
 // ===========================================================================
 // file: lib/services/audio_file_service.dart
 // purpose: Raw audio preservation — writes PCM16 audio to WAV files during

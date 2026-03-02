@@ -1,3 +1,4 @@
+// coverage:ignore-file — platform video rendering, requires real video_player.
 // ===========================================================================
 // file: lib/ui/widgets/video_player_widget.dart
 // purpose: Full-screen video playback widget with controls.

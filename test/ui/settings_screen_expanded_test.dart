@@ -21,6 +21,10 @@ import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/settings_providers.dart';
 import 'package:agentic_journal/providers/sync_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
+
+// SharedPreferences key constants — imported via providers above.
+// voiceModeEnabledKey is from voice_providers.dart.
+// journalOnlyModeKey is from llm_providers.dart.
 import 'package:agentic_journal/services/assistant_registration_service.dart';
 import 'package:agentic_journal/services/google_auth_service.dart';
 import 'package:agentic_journal/services/supabase_service.dart';
@@ -98,6 +102,30 @@ void main() {
       ),
     );
   }
+
+  group('Digital Assistant card', () {
+    testWidgets('shows Digital Assistant card with status', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Digital Assistant'), findsOneWidget);
+      expect(find.text('Default assistant: No'), findsOneWidget);
+    });
+
+    testWidgets('shows Set as Default Assistant button', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Set as Default Assistant'), findsOneWidget);
+    });
+
+    testWidgets('shows manual instructions fallback', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Go to Settings'), findsOneWidget);
+    });
+  });
 
   group('Voice card', () {
     testWidgets('shows Voice card with voice mode toggle', (tester) async {
@@ -252,6 +280,201 @@ void main() {
         find.text('Confirmation is always required in this version'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('Voice card — enabled state', () {
+    testWidgets('enabling voice mode reveals auto-save toggle', (tester) async {
+      // Pre-set voice mode to enabled via SharedPreferences.
+      SharedPreferences.setMockInitialValues({voiceModeEnabledKey: true});
+      prefs = await SharedPreferences.getInstance();
+
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      // Auto-save toggle should now be visible.
+      expect(find.text('Auto-save on exit'), findsOneWidget);
+    });
+
+    testWidgets('voice enabled shows TTS and STT engine selectors', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({voiceModeEnabledKey: true});
+      prefs = await SharedPreferences.getInstance();
+
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      // TTS engine selector.
+      expect(find.text('Text-to-speech engine'), findsOneWidget);
+      // STT engine selector.
+      expect(find.text('Speech recognition engine'), findsOneWidget);
+    });
+
+    testWidgets('voice enabled shows playback speed slider', (tester) async {
+      SharedPreferences.setMockInitialValues({voiceModeEnabledKey: true});
+      prefs = await SharedPreferences.getInstance();
+
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Playback speed:'), findsOneWidget);
+      expect(find.byType(Slider), findsOneWidget);
+    });
+  });
+
+  group('Personality section', () {
+    testWidgets('shows assistant name and conversation style fields', (
+      tester,
+    ) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Personality'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      // Fields should be visible.
+      expect(find.text('Assistant name'), findsOneWidget);
+      expect(find.text('Conversation style'), findsOneWidget);
+      expect(find.text('Custom prompt (optional)'), findsOneWidget);
+    });
+
+    testWidgets('shows journal-only mode disabled message', (tester) async {
+      // Enable journal only mode.
+      SharedPreferences.setMockInitialValues({journalOnlyModeKey: true});
+      prefs = await SharedPreferences.getInstance();
+
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Personality'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Personality settings are disabled in journal-only mode'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('changes take effect message is visible', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Changes take effect on the next session'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Changes take effect on the next session'),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('About card', () {
+    testWidgets('shows Agentic Journal title and version', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('About'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Agentic Journal'), findsOneWidget);
+      expect(find.text('Version 0.15.0'), findsOneWidget);
+    });
+
+    testWidgets('shows Developer Diagnostics tile', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Developer Diagnostics'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Developer Diagnostics'), findsOneWidget);
+      expect(find.text('Check subsystem health and view logs'), findsOneWidget);
+    });
+  });
+
+  group('Cloud Sync card — authenticated', () {
+    testWidgets('shows user email and sign out button', (tester) async {
+      await tester.pumpWidget(buildScreen(isAuthenticated: true));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Cloud Sync'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Signed in'), findsOneWidget);
+      expect(find.text('Sign Out'), findsOneWidget);
+      expect(find.text('Sync Now'), findsOneWidget);
+    });
+  });
+
+  group('Location card', () {
+    testWidgets('shows Location card with enable toggle', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Location'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Location'), findsOneWidget);
+      expect(find.text('Enable location'), findsOneWidget);
+      expect(find.text('Record where you journal'), findsOneWidget);
+    });
+
+    testWidgets('shows Clear Location Data button', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Clear Location Data'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Clear Location Data'), findsOneWidget);
+    });
+
+    testWidgets('shows privacy explanation text', (tester) async {
+      await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Location'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Raw coordinates are not'), findsOneWidget);
     });
   });
 

@@ -88,6 +88,11 @@ class OnboardingNotifier extends Notifier<bool> {
 ///   final hasOnboarded = ref.watch(onboardingNotifierProvider);
 ///   ```
 ///
+/// **Exception**: At the `MaterialApp` root, use `ref.read` instead of
+/// `ref.watch`. Using `ref.watch` on a provider that feeds `initialRoute`
+/// triggers a full `MaterialApp` rebuild when the state changes, which
+/// collapses the Navigator route stack. See ADR-0029.
+///
 /// To mark onboarding complete:
 ///   ```dart
 ///   ref.read(onboardingNotifierProvider.notifier).completeOnboarding();

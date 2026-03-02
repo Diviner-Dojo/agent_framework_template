@@ -463,7 +463,7 @@ void main() {
     // Section 6: Empty Session Auto-Discard (6.1-6.3)
     // =======================================================================
     // 6.1: Start a new session (short pumps to avoid tree collapse)
-    await tester.tap(find.byType(FloatingActionButton), warnIfMissed: false);
+    await tester.tap(find.byType(FloatingActionButton), warnIfMissed: true);
     for (var i = 0; i < 150; i++) {
       await safePump(const Duration(milliseconds: 100));
       await safePump();
@@ -520,7 +520,7 @@ void main() {
     // Section 27: Edge Cases (27.5-27.6) — special characters, long messages
     // =======================================================================
     // 27.5: Start a session and test special characters (short pumps)
-    await tester.tap(find.byType(FloatingActionButton), warnIfMissed: false);
+    await tester.tap(find.byType(FloatingActionButton), warnIfMissed: true);
     for (var i = 0; i < 150; i++) {
       await safePump(const Duration(milliseconds: 100));
       await safePump();

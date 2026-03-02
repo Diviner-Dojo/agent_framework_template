@@ -8,6 +8,8 @@
 //   - Loading and error states
 // ===========================================================================
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,6 +49,8 @@ void main() {
   });
 
   tearDown(() async {
+    // database.close() may have already been called by cleanupWidgetTree.
+    // Drift's close() is idempotent — safe to call twice.
     await database.close();
   });
 
@@ -68,6 +72,21 @@ void main() {
       createdAt: DateTime.utc(2026, 2, 28),
       updatedAt: DateTime.utc(2026, 2, 28),
     );
+  }
+
+  /// Tear down the widget tree cleanly to let drift's zero-duration
+  /// stream-close timers fire before the test framework checks for
+  /// pending timers. Without this, ProviderScope disposal triggers
+  /// StreamQueryStore.markAsClosed which creates a timer that the
+  /// test framework flags as "Timer still pending."
+  Future<void> cleanupWidgetTree(WidgetTester tester) async {
+    // Close the database first to cancel drift stream subscriptions
+    // before the widget tree disposes ProviderScope. This prevents
+    // drift's StreamQueryStore.markAsClosed from creating a zero-duration
+    // timer during widget tree disposal.
+    await database.close();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 100));
   }
 
   Widget buildScreen({
@@ -132,6 +151,8 @@ void main() {
       expect(tasks, isNotEmpty);
       expect(tasks.first.title, 'Buy groceries');
       expect(tasks.first.notes, 'From the store');
+
+      await cleanupWidgetTree(tester);
     });
 
     testWidgets('empty title does not create task', (tester) async {
@@ -153,6 +174,8 @@ void main() {
       final taskDao = TaskDao(database);
       final tasks = await taskDao.getTasksToSync();
       expect(tasks, isEmpty);
+
+      await cleanupWidgetTree(tester);
     });
   });
 
@@ -188,6 +211,8 @@ void main() {
         final updated = await taskDao.getTaskById('t1');
         expect(updated?.status, TaskStatus.completed);
       }
+
+      await cleanupWidgetTree(tester);
     });
 
     testWidgets('tapping task opens edit sheet', (tester) async {
@@ -217,6 +242,265 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Save'), findsOneWidget);
+    });
+  });
+
+  group('TasksScreen — error states', () {
+    testWidgets('active tasks shows error message', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeTasksStreamProvider.overrideWith(
+              (ref) => Stream.error(Exception('DB failure')),
+            ),
+            completedTasksStreamProvider.overrideWith(
+              (ref) => Stream.value(<Task>[]),
+            ),
+            taskCountProvider.overrideWith((ref) => Future.value(0)),
+            googleAuthServiceProvider.overrideWithValue(_fakeAuthService),
+            isGoogleConnectedProvider.overrideWith(
+              (ref) => GoogleConnectionNotifier(_fakeAuthService),
+            ),
+          ],
+          child: const MaterialApp(home: TasksScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Error:'), findsOneWidget);
+    });
+
+    testWidgets('completed tasks shows error message', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeTasksStreamProvider.overrideWith(
+              (ref) => Stream.value(<Task>[]),
+            ),
+            completedTasksStreamProvider.overrideWith(
+              (ref) => Stream.error(Exception('DB failure')),
+            ),
+            taskCountProvider.overrideWith((ref) => Future.value(0)),
+            googleAuthServiceProvider.overrideWithValue(_fakeAuthService),
+            isGoogleConnectedProvider.overrideWith(
+              (ref) => GoogleConnectionNotifier(_fakeAuthService),
+            ),
+          ],
+          child: const MaterialApp(home: TasksScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Completed tab.
+      await tester.tap(find.text('Completed'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Error:'), findsOneWidget);
+    });
+  });
+
+  group('TasksScreen — edit task flow', () {
+    testWidgets('edit sheet pre-fills title and notes', (tester) async {
+      await tester.pumpWidget(
+        buildScreen(
+          activeTasks: [makeTask(title: 'Fix bug', notes: 'In the login flow')],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap the task to open edit sheet.
+      await tester.tap(find.text('Fix bug'));
+      await tester.pumpAndSettle();
+
+      // Edit sheet should show pre-filled fields.
+      expect(find.text('Edit Task'), findsOneWidget);
+      expect(find.text('Fix bug'), findsWidgets); // In title field + list
+      expect(find.text('In the login flow'), findsOneWidget);
+    });
+
+    testWidgets('edit sheet shows due date button', (tester) async {
+      await tester.pumpWidget(
+        buildScreen(
+          activeTasks: [
+            makeTask(title: 'With date', dueDate: DateTime.utc(2026, 6, 15)),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('With date'));
+      await tester.pumpAndSettle();
+
+      // Should show formatted date.
+      expect(find.textContaining('Jun 15, 2026'), findsOneWidget);
+    });
+
+    testWidgets('edit sheet shows clear due date button when date set', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        buildScreen(
+          activeTasks: [
+            makeTask(title: 'Dated task', dueDate: DateTime.utc(2026, 3, 10)),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Dated task'));
+      await tester.pumpAndSettle();
+
+      // Clear button (X icon) should be visible.
+      expect(find.byIcon(Icons.clear), findsOneWidget);
+      expect(find.byTooltip('Remove due date'), findsOneWidget);
+    });
+
+    testWidgets('edit sheet save button submits changes via real DB', (
+      tester,
+    ) async {
+      await tester.pumpWidget(buildScreen(useRealDatabase: true));
+      await tester.pumpAndSettle();
+
+      // Insert a task directly.
+      final taskDao = TaskDao(database);
+      await taskDao.insertTask(
+        TasksCompanion(
+          taskId: const Value('edit-1'),
+          title: const Value('Original title'),
+          notes: const Value('Original notes'),
+          status: const Value(TaskStatus.active),
+          syncStatus: const Value(TaskSyncStatus.pending),
+          createdAt: Value(DateTime.utc(2026, 2, 28)),
+          updatedAt: Value(DateTime.utc(2026, 2, 28)),
+        ),
+      );
+
+      // Rebuild to pick up the task.
+      await tester.pumpWidget(buildScreen(useRealDatabase: true));
+      await tester.pumpAndSettle();
+
+      // Open edit sheet.
+      await tester.tap(find.text('Original title'));
+      await tester.pumpAndSettle();
+
+      // Clear the title field and enter a new one.
+      final titleField = find.widgetWithText(TextField, 'Task title');
+      await tester.enterText(titleField, 'Updated title');
+      await tester.pumpAndSettle();
+
+      // Tap Save.
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Verify the task was updated in DB.
+      final updated = await taskDao.getTaskById('edit-1');
+      expect(updated?.title, 'Updated title');
+
+      await cleanupWidgetTree(tester);
+    });
+  });
+
+  group('TasksScreen — delete task', () {
+    testWidgets('delete removes task from DB', (tester) async {
+      await tester.pumpWidget(buildScreen(useRealDatabase: true));
+      await tester.pumpAndSettle();
+
+      // Insert a task directly.
+      final taskDao = TaskDao(database);
+      await taskDao.insertTask(
+        TasksCompanion(
+          taskId: const Value('del-1'),
+          title: const Value('Delete me'),
+          status: const Value(TaskStatus.active),
+          syncStatus: const Value(TaskSyncStatus.pending),
+          createdAt: Value(DateTime.utc(2026, 2, 28)),
+          updatedAt: Value(DateTime.utc(2026, 2, 28)),
+        ),
+      );
+
+      // Rebuild to pick up the task.
+      await tester.pumpWidget(buildScreen(useRealDatabase: true));
+      await tester.pumpAndSettle();
+
+      // Find the delete icon button on the task item.
+      final deleteButton = find.byIcon(Icons.delete_outline);
+      if (deleteButton.evaluate().isNotEmpty) {
+        await tester.tap(deleteButton.first);
+        await tester.pumpAndSettle();
+
+        // Task should be deleted from DB.
+        final remaining = await taskDao.getTasksToSync();
+        expect(remaining, isEmpty);
+      }
+
+      await cleanupWidgetTree(tester);
+    });
+  });
+
+  group('TasksScreen — add task due date picker', () {
+    testWidgets('tapping due date button opens date picker', (tester) async {
+      await tester.pumpWidget(buildScreen(useRealDatabase: true));
+      await tester.pumpAndSettle();
+
+      // Open add task sheet.
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+
+      // Tap the "Add due date" button.
+      await tester.tap(find.text('Add due date'));
+      await tester.pumpAndSettle();
+
+      // DatePicker dialog should appear.
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+
+      // Dismiss the date picker.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      await cleanupWidgetTree(tester);
+    });
+
+    testWidgets('selecting a date updates the button label', (tester) async {
+      await tester.pumpWidget(buildScreen(useRealDatabase: true));
+      await tester.pumpAndSettle();
+
+      // Open add task sheet.
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+
+      // Tap the "Add due date" button.
+      await tester.tap(find.text('Add due date'));
+      await tester.pumpAndSettle();
+
+      // Select a day and confirm.
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      // Button label should now show a date (no longer "Add due date").
+      expect(find.text('Add due date'), findsNothing);
+
+      await cleanupWidgetTree(tester);
+    });
+  });
+
+  group('TasksScreen — empty states', () {
+    testWidgets('empty active list shows empty message', (tester) async {
+      await tester.pumpWidget(buildScreen(activeTasks: []));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No active tasks'), findsOneWidget);
+      expect(find.text('Tap + to add your first task.'), findsOneWidget);
+    });
+
+    testWidgets('empty completed list shows empty message', (tester) async {
+      await tester.pumpWidget(buildScreen(completedTasks: []));
+      await tester.pumpAndSettle();
+
+      // Switch to Completed tab.
+      await tester.tap(find.text('Completed'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No completed tasks yet.'), findsOneWidget);
     });
   });
 
@@ -277,17 +561,21 @@ void main() {
         final updated = await taskDao.getTaskById('c1');
         expect(updated?.status, TaskStatus.active);
       }
+
+      await cleanupWidgetTree(tester);
     });
 
     testWidgets('loading state shows spinner', (tester) async {
+      // Use a StreamController that never emits (no pending timer, unlike
+      // Future.delayed). This keeps the provider in loading state without
+      // creating timers that trigger "Timer still pending" errors.
+      final neverEmit = StreamController<List<Task>>();
+      addTearDown(() => neverEmit.close());
+
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            activeTasksStreamProvider.overrideWith(
-              (ref) => Stream.fromFuture(
-                Future.delayed(const Duration(seconds: 10), () => <Task>[]),
-              ),
-            ),
+            activeTasksStreamProvider.overrideWith((ref) => neverEmit.stream),
             completedTasksStreamProvider.overrideWith(
               (ref) => Stream.value(<Task>[]),
             ),
@@ -304,6 +592,8 @@ void main() {
       await tester.pump();
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await cleanupWidgetTree(tester);
     });
   });
 }
