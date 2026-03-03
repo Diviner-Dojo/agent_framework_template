@@ -35,6 +35,7 @@ import 'package:uuid/uuid.dart';
 import '../../providers/calendar_providers.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/photo_providers.dart';
+import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
 import '../../providers/video_providers.dart';
 import '../../providers/voice_providers.dart';
@@ -49,6 +50,7 @@ import '../widgets/model_download_dialog.dart';
 import '../widgets/photo_capture_sheet.dart';
 import '../widgets/photo_preview_dialog.dart';
 import '../widgets/photo_viewer.dart';
+import '../widgets/pulse_check_in_widget.dart';
 import '../widgets/video_player_widget.dart';
 
 /// The active journal conversation screen.
@@ -107,6 +109,8 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     // Wire orchestrator callbacks after the first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _wireOrchestrator();
+      // Auto-start Pulse Check-In if the session was opened in that mode.
+      _maybeStartCheckIn();
     });
   }
 
@@ -188,6 +192,18 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     });
   }
 
+  /// Auto-start the Pulse Check-In flow when the session mode is 'pulse_check_in'.
+  ///
+  /// Called once after the first frame. No-op if the mode is anything else or
+  /// if no active session exists.
+  void _maybeStartCheckIn() {
+    final sessionState = ref.read(sessionNotifierProvider);
+    if (sessionState.journalingMode == 'pulse_check_in' &&
+        sessionState.activeSessionId != null) {
+      ref.read(checkInProvider.notifier).startCheckIn();
+    }
+  }
+
   /// Start continuous mode with the greeting message.
   Future<void> _startContinuousModeWithGreeting(String greeting) async {
     final orchestrator = ref.read(voiceOrchestratorProvider);
@@ -223,6 +239,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     final sessionState = ref.watch(sessionNotifierProvider);
     final messagesAsync = ref.watch(activeSessionMessagesProvider);
     final voiceEnabled = ref.watch(voiceModeEnabledProvider);
+    final checkInState = ref.watch(checkInProvider);
     final sessionId = sessionState.activeSessionId;
     final photosAsync = sessionId != null
         ? ref.watch(sessionPhotosProvider(sessionId))
@@ -498,8 +515,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
             if (sessionState.isWaitingForAgent && !sessionState.isSessionEnding)
               const _ThinkingIndicator(),
 
-            // Text input field — hidden when session is ending.
-            if (!sessionState.isSessionEnding)
+            // Pulse Check-In widget — shown when a check-in flow is active.
+            // Replaces the text input field while check-in is in progress.
+            if (checkInState.isActive && sessionId != null)
+              PulseCheckInWidget(sessionId: sessionId),
+
+            // Text input field — hidden when session is ending or check-in
+            // is active (check-in has its own Next/Skip/Finish controls).
+            if (!sessionState.isSessionEnding && !checkInState.isActive)
               _buildInputField(context, voiceEnabled, orchestrator),
           ],
         ),

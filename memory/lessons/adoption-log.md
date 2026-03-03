@@ -1,10 +1,10 @@
 ---
-last_updated: "2026-02-26"
-total_analyses: 15
-patterns_evaluated: 103
-patterns_adopted: 35
+last_updated: "2026-03-03"
+total_analyses: 17
+patterns_evaluated: 118
+patterns_adopted: 45
 patterns_confirmed: 5
-patterns_deferred: 27
+patterns_deferred: 32
 patterns_rejected: 22
 ---
 
@@ -40,6 +40,166 @@ Each entry records:
 
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
+
+### Pattern: NotificationService Abstract Interface + Fake
+- **First seen**: FriesI23/mhabit (2026-03-03)
+- **Analysis**: DISC-20260303-143553-analyze-mhabit
+- **Score**: 22/25 (prevalence:5, elegance:4, evidence:4, fit:5, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — `lib/services/notification_service.dart` (interface), `test/fakes/fake_notification_service.dart` (recording fake)
+- **Decision**: Abstract interface with Riverpod provider wrapping. Discard singleton factory. Place recording fake in test/ with call log for meaningful assertions. Apache-2.0 attribution required.
+- **Date**: 2026-03-03
+
+### Pattern: whenNeeded Data-Anchored Reminder Scheduling
+- **First seen**: FriesI23/mhabit (2026-03-03)
+- **Analysis**: DISC-20260303-143553-analyze-mhabit
+- **Score**: 23/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — reminder scheduling logic in notification service
+- **Decision**: Schedule reminders based on data state (last session date) rather than fixed recurrence. Complements Daily_You's entry-existence guard. Wire rescheduling into session-logging flow. Replicate 7 test cases from habit_reminder_test.dart. Critical ADHD pre-mortem: without this, fixed-time reminders auto-disable after 3 dismissals.
+- **Date**: 2026-03-03
+
+### Pattern: Injectable AppClock
+- **First seen**: FriesI23/mhabit (2026-03-03)
+- **Analysis**: DISC-20260303-143553-analyze-mhabit
+- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — `lib/utils/app_clock.dart`
+- **Decision**: Singleton wrapping DateTime.now() with injectable replacement. ~15 lines, no quiver dependency needed. Prerequisite for testing all time-dependent scheduling logic.
+- **Date**: 2026-03-03
+
+### Pattern: Segmented Notification ID Namespace
+- **First seen**: FriesI23/mhabit (2026-03-03)
+- **Analysis**: DISC-20260303-143553-analyze-mhabit
+- **Score**: 19/25 (prevalence:4, elegance:4, evidence:3, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — `lib/services/notification_id_range.dart`
+- **Decision**: Named constant ranges preventing notification ID collision. Simplified for our scope: one ID for daily reminder, reserved range for future AI-insight notifications. ~10 lines.
+- **Date**: 2026-03-03
+
+### Pattern: SessionExporter Factory + Strategy + Mixin
+- **First seen**: FriesI23/mhabit (2026-03-03)
+- **Analysis**: DISC-20260303-143553-analyze-mhabit
+- **Score**: 21/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — `lib/services/session_exporter.dart`
+- **Decision**: Factory dispatches to ExportAll vs ExportFiltered. Shared serialization in mixin. Replace sqflite HabitDBCell with Drift Session data class. Use archive package for ZIP. Apache-2.0 attribution required.
+- **Date**: 2026-03-03
+
+### Pattern: Per-Channel AppNotifyConfig
+- **First seen**: FriesI23/mhabit (2026-03-03)
+- **Analysis**: DISC-20260303-143553-analyze-mhabit
+- **Score**: 16/25 (prevalence:3, elegance:4, evidence:3, fit:3, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Over-engineered for current scope (1-2 notification channels)
+- **Revisit if**: We add a third notification channel (AI insights, weekly digest, sync status)
+- **Date**: 2026-03-03
+
+### Pattern: Randomized Time-Window Alarm Scheduling
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:5, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — `lib/services/reminder_service.dart` (planned)
+- **Decision**: Schedule alarms at random minute within user-defined time window via android_alarm_manager_plus. Self-rescheduling callback chain. Prevents habituation for ADHD users. Requires SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED, WAKE_LOCK permissions.
+- **Date**: 2026-03-03
+
+### Pattern: Entry-Existence Guard in Background Callback
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 23/25 (prevalence:5, elegance:5, evidence:5, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — background callback dispatcher for reminder service
+- **Decision**: Check if user already journaled today before firing notification. Separate alwaysRemind toggle bypasses guard. Background isolate must re-init Drift with sync disabled.
+- **Date**: 2026-03-03
+
+### Pattern: Notification Auto-Dismiss on Session Creation
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 22/25 (prevalence:5, elegance:5, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — session creation path in session_providers.dart
+- **Decision**: Cancel pending reminder notification when user creates a journal session. One flutter_local_notifications cancel-by-ID call.
+- **Date**: 2026-03-03
+
+### Pattern: Localized Notification Strings Pre-Stash
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — app initialization path
+- **Decision**: Store current locale notification strings to SharedPreferences on every app launch. Background isolate reads these since it has no BuildContext for localization.
+- **Date**: 2026-03-03
+
+### Pattern: Date-Seeded Daily-Stable Random for Resurfacing
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — `lib/services/resurfacing_service.dart` (planned)
+- **Decision**: Use date-as-integer seed for daily-stable random entry selection. Fix infinite-loop bug from Daily_You implementation (use shuffle+first instead of while loop). Add excludeNegativeSentiment filter for ADHD-safe resurfacing.
+- **Date**: 2026-03-03
+
+### Pattern: Auth-Before-DB-Init Ordering
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Security features deprioritized by developer — active dev effort in progress
+- **Revisit if**: App moves toward release/beta distribution or lock screen exposure becomes a user concern
+- **Date**: 2026-03-03
+
+### Pattern: Biometric-Requires-Password-First Enrollment
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Security features deprioritized by developer — active dev effort in progress
+- **Revisit if**: Auth-before-DB-init is adopted; this pattern is a companion to it
+- **Date**: 2026-03-03
+
+### Pattern: Isolate Zip with ValueNotifier Progress
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 18/25 (prevalence:4, elegance:4, evidence:3, fit:3, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Phase 1 text-only export doesn't need isolate zip overhead. share_plus with synchronous JSON sufficient.
+- **Revisit if**: Media export (voice recordings, photos) is planned, or export data exceeds ~10MB
+- **Date**: 2026-03-03
+
+### Pattern: isVisible-Gated Stat Cards
+- **First seen**: Demizo/Daily_You (2026-03-03)
+- **Analysis**: DISC-20260303-140509-analyze-daily-you
+- **Score**: 16/25 (prevalence:3, elegance:4, evidence:3, fit:3, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: No insights/stats view exists yet
+- **Revisit if**: We build an insights or statistics screen
+- **Date**: 2026-03-03
 
 ### Pattern: Silence Padding on STT Stop
 - **First seen**: k2-fsa/sherpa-onnx (2026-02-26)

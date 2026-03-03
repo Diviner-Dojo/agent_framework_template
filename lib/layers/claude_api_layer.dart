@@ -65,9 +65,8 @@ class ClaudeApiLayer implements ConversationLayer {
   }) async {
     final currentTime = now ?? DateTime.now();
 
-    final daysSinceLast = lastSessionDate != null
-        ? currentTime.difference(lastSessionDate).inDays
-        : null;
+    // Gap duration is intentionally NOT passed to the AI layer (Phase 2A —
+    // ADHD UX constraint: never mention days since last session).
     final timeOfDay = getTimeOfDay(currentTime);
 
     final response = await _claudeService.chat(
@@ -79,7 +78,6 @@ class ClaudeApiLayer implements ConversationLayer {
       ],
       context: {
         'time_of_day': timeOfDay,
-        'days_since_last': ?daysSinceLast,
         'session_count': sessionCount,
         if (sessionSummaries != null && sessionSummaries.isNotEmpty)
           'session_summaries': sessionSummaries,

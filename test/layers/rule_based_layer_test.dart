@@ -39,15 +39,30 @@ void main() {
       expect(response.content, "Still up? What's on your mind?");
     });
 
-    test('returns gap greeting when last session was 2+ days ago', () async {
-      final now = DateTime(2026, 2, 23, 10, 0);
-      final twoDaysAgo = DateTime(2026, 2, 21, 10, 0);
-      final response = await layer.getGreeting(
-        lastSessionDate: twoDaysAgo,
-        now: now,
-      );
-      expect(response.content, "It's been a few days — want to catch up?");
-    });
+    // Phase 2A — ADHD UX: gap-shaming greeting removed. After 2+ days the
+    // layer now falls through to time-of-day greeting (no gap mention).
+    // Verified in full by test/layers/gap_shaming_removal_test.dart.
+    test(
+      'returns time-of-day greeting (not gap greeting) when 2+ days ago (Phase 2A)',
+      () async {
+        final now = DateTime(2026, 2, 23, 10, 0);
+        final twoDaysAgo = DateTime(2026, 2, 21, 10, 0);
+        final response = await layer.getGreeting(
+          lastSessionDate: twoDaysAgo,
+          now: now,
+        );
+        // Gap-shaming greeting "It's been a few days — want to catch up?" must not appear.
+        expect(
+          response.content,
+          isNot("It's been a few days — want to catch up?"),
+        );
+        // A time-of-day greeting is returned instead.
+        expect(
+          response.content,
+          'Good morning! Any plans or thoughts for today?',
+        );
+      },
+    );
 
     test(
       'returns time-of-day greeting when last session was 1 day ago',

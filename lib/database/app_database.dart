@@ -43,6 +43,10 @@ part 'app_database.g.dart';
     CalendarEvents,
     Videos,
     Tasks,
+    QuestionnaireTemplates,
+    QuestionnaireItems,
+    CheckInResponses,
+    CheckInAnswers,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -59,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -113,6 +117,22 @@ class AppDatabase extends _$AppDatabase {
           'tasks',
           'CREATE INDEX IF NOT EXISTS idx_tasks_due_date '
               'ON tasks (due_date)',
+        ),
+      );
+      // Index for check-in response retrieval by session (Phase 1 ADHD — ADR-0032).
+      await m.createIndex(
+        Index(
+          'check_in_responses',
+          'CREATE INDEX IF NOT EXISTS idx_checkin_responses_session_id '
+              'ON check_in_responses (session_id)',
+        ),
+      );
+      // Index for check-in answer retrieval by response.
+      await m.createIndex(
+        Index(
+          'check_in_answers',
+          'CREATE INDEX IF NOT EXISTS idx_checkin_answers_response_id '
+              'ON check_in_answers (response_id)',
         ),
       );
     },
@@ -199,6 +219,29 @@ class AppDatabase extends _$AppDatabase {
             'tasks',
             'CREATE INDEX IF NOT EXISTS idx_tasks_due_date '
                 'ON tasks (due_date)',
+          ),
+        );
+      }
+      if (from < 10) {
+        // ADHD Roadmap Phase 1: Pulse Check-In tables (ADR-0032).
+        await m.createTable(questionnaireTemplates);
+        await m.createTable(questionnaireItems);
+        await m.createTable(checkInResponses);
+        await m.createTable(checkInAnswers);
+        // Index for retrieving responses by session.
+        await m.createIndex(
+          Index(
+            'check_in_responses',
+            'CREATE INDEX IF NOT EXISTS idx_checkin_responses_session_id '
+                'ON check_in_responses (session_id)',
+          ),
+        );
+        // Index for retrieving answers by response.
+        await m.createIndex(
+          Index(
+            'check_in_answers',
+            'CREATE INDEX IF NOT EXISTS idx_checkin_answers_response_id '
+                'ON check_in_answers (response_id)',
           ),
         );
       }

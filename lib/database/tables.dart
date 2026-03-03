@@ -303,6 +303,156 @@ class Videos extends Table {
   Set<Column> get primaryKey => {videoId};
 }
 
+// ===========================================================================
+// Pulse Check-In tables (ADHD Roadmap Phase 1 — ADR-0032)
+// ===========================================================================
+
+/// Questionnaire templates — instrument definitions (WHO-5, PHQ-2, custom, etc.).
+///
+/// Each template holds the scale configuration and metadata. System defaults
+/// ([isSystemDefault] = true) cannot be deleted via the DAO — only deactivated.
+/// User-defined templates ([isSystemDefault] = false) can be deleted.
+///
+/// See: ADR-0032 (Pulse Check-In schema), SPEC-20260302-ADHD Phase 1 Task 1.
+class QuestionnaireTemplates extends Table {
+  /// Auto-increment primary key.
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Short display name (e.g., "Pulse Check-In").
+  TextColumn get name => text()();
+
+  /// Optional longer description shown in settings.
+  TextColumn get description => text().nullable()();
+
+  /// Instrument code identifying the source instrument (e.g., 'who-5', 'phq-4',
+  /// 'custom'). Used for license tracking — see ADR-0032 §License Decision.
+  /// System default uses 'custom' (mixed instruments — see SPEC §Default Question Set).
+  TextColumn get instrumentCode =>
+      text().withDefault(const Constant('custom'))();
+
+  /// Instrument version string (e.g., '1998', '2012', '1.0.0').
+  /// Used for license tracking and reproducibility of historical scores.
+  TextColumn get version => text().withDefault(const Constant('1.0.0'))();
+
+  /// License information for the source instrument.
+  /// WHO-5: 'CC BY-NC-SA 3.0 — Psychiatric Centre North Zealand'.
+  /// Null for public domain or custom instruments.
+  /// INVARIANT: Must be populated for any copyrighted instrument before shipping
+  /// to users. See ADR-0032 §License Decision.
+  TextColumn get licenseInfo => text().nullable()();
+
+  /// True for the built-in default template. System defaults cannot be deleted.
+  BoolColumn get isSystemDefault =>
+      boolean().withDefault(const Constant(false))();
+
+  /// Whether this template is available for selection. Deactivated templates
+  /// are hidden from the mode picker but retained for historical response data.
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+
+  /// Minimum scale value (e.g., 1 for a 1-10 scale, 0 for a 0-10 scale).
+  IntColumn get scaleMin => integer().withDefault(const Constant(1))();
+
+  /// Maximum scale value (e.g., 10, 100).
+  IntColumn get scaleMax => integer().withDefault(const Constant(10))();
+
+  /// Display order in template list (ascending).
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  /// Standard timestamps.
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Individual questionnaire items (questions) belonging to a template.
+///
+/// Each item has a question text, endpoint labels, and an optional reverse-
+/// scoring flag. Reverse-scored items use `scaleMax + scaleMin - rawValue`
+/// when computing the composite score.
+///
+/// See: ADR-0032 §Composite Score Formula.
+class QuestionnaireItems extends Table {
+  /// Auto-increment primary key.
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Foreign key to [QuestionnaireTemplates].
+  IntColumn get templateId =>
+      integer().references(QuestionnaireTemplates, #id)();
+
+  /// The question text displayed to the user.
+  TextColumn get questionText => text()();
+
+  /// Label for the low end of the scale (e.g., "Very low", "Not at all").
+  TextColumn get minLabel => text().nullable()();
+
+  /// Label for the high end of the scale (e.g., "Excellent", "Extremely").
+  TextColumn get maxLabel => text().nullable()();
+
+  /// True if high raw values indicate negative well-being (e.g., anxiety).
+  /// Composite score uses: scaleMax + scaleMin - rawValue for reversed items.
+  /// INVARIANT: formula uses scaleMax+scaleMin-raw, NOT scaleMax+1-raw.
+  /// The +1 variant is only valid when scaleMin=1 and must not be used.
+  BoolColumn get isReversed => boolean().withDefault(const Constant(false))();
+
+  /// Display order within the template (ascending).
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  /// Whether this item is active in the current template. Deactivated items
+  /// are hidden from check-ins but retained for historical answer data.
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+}
+
+/// A completed check-in response — one per check-in session.
+///
+/// Links to the journal session that triggered the check-in and the template
+/// used. [compositeScore] is null when all items were skipped (no score
+/// computed). Partial completion also leaves [compositeScore] null.
+///
+/// See: ADR-0032 §Composite Score Formula (edge cases).
+class CheckInResponses extends Table {
+  /// Auto-increment primary key.
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Foreign key to [JournalSessions] — the session that contained this check-in.
+  TextColumn get sessionId => text().references(JournalSessions, #sessionId)();
+
+  /// Foreign key to [QuestionnaireTemplates] — which template was used.
+  IntColumn get templateId =>
+      integer().references(QuestionnaireTemplates, #id)();
+
+  /// When the check-in was completed.
+  DateTimeColumn get completedAt => dateTime()();
+
+  /// Composite score (0.0–100.0), scaled from mean of all non-null answered
+  /// items. Null if all items were skipped or check-in was abandoned.
+  /// Formula: (mean_scored_value - scaleMin) / (scaleMax - scaleMin) * 100
+  RealColumn get compositeScore => real().nullable()();
+
+  /// Cloud sync state — matches session sync pattern (ADR-0012).
+  /// Values: 'PENDING' | 'SYNCED' | 'FAILED'
+  TextColumn get syncStatus => text().withDefault(const Constant('PENDING'))();
+}
+
+/// Individual answers within a check-in response — one per questionnaire item.
+///
+/// [value] is null when the item was skipped (explicit skip, non-numeric input
+/// after re-prompt, silence timeout, or out-of-range after re-prompt).
+/// Skipped items are excluded from the composite score denominator.
+///
+/// INVARIANT: Only one [CheckInAnswer] per (responseId, itemId) pair.
+class CheckInAnswers extends Table {
+  /// Auto-increment primary key.
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Foreign key to [CheckInResponses].
+  IntColumn get responseId => integer().references(CheckInResponses, #id)();
+
+  /// Foreign key to [QuestionnaireItems].
+  IntColumn get itemId => integer().references(QuestionnaireItems, #id)();
+
+  /// The user's raw answer value. Null if the item was skipped.
+  IntColumn get value => integer().nullable()();
+}
+
 /// Tasks created from conversation or the Tasks screen (Phase 13).
 ///
 /// Each task is optionally associated with a session (tasks created from
