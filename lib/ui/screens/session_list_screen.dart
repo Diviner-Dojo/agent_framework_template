@@ -21,7 +21,6 @@ import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
-import '../../providers/voice_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
 import '../widgets/session_card.dart';
@@ -336,9 +335,10 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
 
   /// Start a new journaling session and navigate to it.
   ///
-  /// Pulse Check-In sessions route to [CheckInScreen] (/check_in) when
-  /// voice mode is off (slider UI is more appropriate than chat chrome).
-  /// All other modes, and pulse check-in with voice on, use [JournalSessionScreen].
+  /// Pulse Check-In sessions always route to [CheckInScreen] (/check_in) —
+  /// the slider UI is always more appropriate than chat chrome for a
+  /// structured questionnaire. Voice check-in (Phase 3A) will be added
+  /// inside CheckInScreen, not by routing to the chat interface.
   Future<void> _startNewSession(
     BuildContext context, {
     String? journalingMode,
@@ -349,8 +349,7 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
           .read(sessionNotifierProvider.notifier)
           .startSession(journalingMode: journalingMode);
       if (context.mounted) {
-        final voiceEnabled = ref.read(voiceModeEnabledProvider);
-        final route = (journalingMode == 'pulse_check_in' && !voiceEnabled)
+        final route = journalingMode == 'pulse_check_in'
             ? '/check_in'
             : '/session';
         Navigator.of(context).pushNamed(route);
