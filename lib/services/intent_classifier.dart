@@ -424,20 +424,39 @@ class IntentClassifier {
     caseSensitive: false,
   );
 
+  /// Event nouns used in explicit calendar intent patterns.
+  ///
+  /// Shared between [_calendarIntentPattern] and [_hasStrongCalendarSignal].
+  /// Both locations must be updated together whenever nouns are added or removed —
+  /// keeping them in sync is enforced by this shared constant.
+  ///
+  /// Note: [_eventNounPattern] intentionally includes a broader set of nouns
+  /// (breakfast, brunch, date, party, interview, conference, hangout) used only for
+  /// temporal-disambiguation scoring, not for explicit scheduling intent. The two
+  /// lists are not equivalent by design.
+  static const _calendarEventNouns =
+      r'(meeting|appointment|event|dinner|lunch|call|reservation)';
+
   /// Explicit calendar intent phrases.
   ///
   /// Matches imperative scheduling commands and calendar references:
   /// - "Schedule a meeting", "Book dinner", "Set up a call"
   /// - "Add to my calendar", "Put on calendar"
   /// - "I want to schedule", "Can you book"
-  /// - "Add a meeting/event/appointment"
+  /// - "Add/set [modifier] <event noun>" — word-count wildcard covers any calendar
+  ///   brand modifier (Google Calendar, Outlook Calendar, iCloud Calendar, etc.)
+  ///   without a fixed char limit. Uses [_calendarEventNouns] shared constant.
+  /// - "Okay add a meeting" — \b anchor (not ^) allows voice preambles.
   static final _calendarIntentPattern = RegExp(
     r'^(schedule|book|set up|plan|arrange)\b|'
-    r'\b(add|put)\b.{0,40}\b(to|on)\s+(my\s+|the\s+)?(google\s+)?calendar\b|'
-    r'\b(want to|need to|going to|let.?s|can you|could you)\s+(schedule|book|set up|plan|arrange)\b|'
-    // "add/set a Google Calendar meeting" — "google calendar" modifier between verb and event noun.
-    r'^(add|set)\b.{0,15}\b(google\s+)?calendar\b.{0,20}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b|'
-    r'^(add|set)\b.{0,15}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b',
+            r'\b(add|put)\b.{0,40}\b(to|on)\s+(my\s+|the\s+)?(google\s+)?calendar\b|'
+            r'\b(want to|need to|going to|let.?s|can you|could you)\s+(schedule|book|set up|plan|arrange)\b|'
+            // Brand-agnostic: "add/set [0–4 words] <event noun>".
+            // [\w-]+ treats hyphenated tokens (e.g. "follow-up") as a single word.
+            // \b anchor (not ^) allows voice preambles ("Okay add a meeting").
+            r'\b(add|set)\b(\s+[\w-]+){0,4}\s+\b' +
+        _calendarEventNouns +
+        r'\b',
     caseSensitive: false,
   );
 
@@ -538,10 +557,25 @@ class IntentClassifier {
   }
 
   /// Check if a short message has a strong calendar signal.
+  ///
+  /// Used by the short-message guard path in [classifyMulti] when
+  /// `words.length <= 4`. The `^` anchor is intentional — this is a guard
+  /// for short messages where start-of-string matching prevents false
+  /// positives (unlike [_calendarIntentPattern] which uses `\b` for voice
+  /// preamble support).
+  ///
+  /// Uses [_calendarEventNouns] — must be updated in sync with
+  /// [_calendarIntentPattern]. See DISC-20260302-230547 (PR #57): failing to
+  /// update both locations in the same commit is the root cause of that bug.
   static bool _hasStrongCalendarSignal(String text) {
     return RegExp(
       r'^(schedule|book|set up|plan|arrange)\b|'
-      r'^(add|set)\b.{0,15}\b(meeting|appointment|event|dinner|lunch|call|reservation)\b',
+              // Word-count wildcard: up to 4 intervening words.
+              // [\w-]+ treats hyphenated tokens (e.g. "follow-up") as a single word.
+              // ^ anchor preserved — short-message guard requires start-of-string.
+              r'^(add|set)\b(\s+[\w-]+){0,4}\s+\b' +
+          _calendarEventNouns +
+          r'\b',
       caseSensitive: false,
     ).hasMatch(text);
   }

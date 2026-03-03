@@ -254,6 +254,32 @@ python scripts/create_discussion.py "retro-YYYYMMDD" --risk low --mode ensemble
 
 Use the actual date. Save the returned `discussion_id` — you will need it for all subsequent capture calls.
 
+### 5.1. Write Context-Brief (Before Specialist Dispatch)
+
+Immediately after creating the discussion, capture a context-brief event. This must be
+written before any specialist is dispatched — it produces `turn_id=1` in the discussion
+and injects developer framing into specialist prompts.
+
+Summarise the developer's request from the current session. Populate all four fields;
+write "(none stated)" if a field was not addressed. Strip business context (deadlines,
+client names, regulatory pressures) — record structural intent only.
+
+```bash
+# INVARIANT: This must be the first write_event.py call in this workflow.
+# turn_id=1 is required for extraction pipeline integrity. Any reordering
+# silently breaks context-brief capture. See DISC-20260302-231156.
+python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
+  "## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [sprint period and discussions being analyzed]
+- **Developer-stated motivation**: [why this retro is being run, if stated; or 'none stated']
+- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
+  --tags "context-brief"
+# If invoked without prior conversational context (cold start), populate all four
+# fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
+# invocations are queryable: --tags "context-brief,context-brief-cold-start"
+```
+
 ### 5b. Capture Draft as Proposal Event
 
 ```bash

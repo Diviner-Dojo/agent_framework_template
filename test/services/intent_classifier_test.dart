@@ -323,4 +323,136 @@ void main() {
       expect(result.confidence, greaterThanOrEqualTo(0.5));
     });
   });
+
+  // ===========================================================================
+  // Sprint N+1 regression tests: word-count wildcard + voice preamble anchor.
+  //
+  // Root cause: .{0,15} char-count wildcard in both _calendarIntentPattern and
+  // _hasStrongCalendarSignal broke for brand-modifier calendar names whose
+  // prefix exceeds 15 chars ("an Outlook Calendar " = 20 chars).
+  //
+  // Fix: replaced with (\s+[\w-]+){0,4} word-count wildcard (brand-agnostic,
+  // handles hyphenated tokens like "follow-up" as a single word).
+  // Also: ^ anchor → \b in _calendarIntentPattern only (voice preamble support).
+  // _hasStrongCalendarSignal retains ^ anchor (short-message guard intent).
+  // Both locations updated together via _calendarEventNouns shared constant.
+  // See SPEC-20260303-010332, DISC-20260303-011131.
+  // ===========================================================================
+  group('word-count wildcard and voice preamble anchor regressions', () {
+    // --- Brand-name calendar tests (long-message path, >4 words) ---
+    // These exercise _calendarIntentPattern directly (skips short-message guard).
+
+    test(
+      '"Add an Outlook Calendar meeting" classified as calendarEvent (regression)',
+      () {
+        final result = classifier.classify('Add an Outlook Calendar meeting');
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test(
+      '"Set an iCloud Calendar appointment" classified as calendarEvent (regression)',
+      () {
+        final result = classifier.classify(
+          'Set an iCloud Calendar appointment',
+        );
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    // --- Short-message guard path (≤4 words, exercises _hasStrongCalendarSignal) ---
+
+    test(
+      '"Add an Outlook meeting" (4 words) classified as calendarEvent via short-message guard (regression)',
+      () {
+        final result = classifier.classify('Add an Outlook meeting');
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test(
+      '"Set an iCloud call" (4 words) classified as calendarEvent via short-message guard (regression)',
+      () {
+        final result = classifier.classify('Set an iCloud call');
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    // --- Voice preamble (^ → \b anchor change in _calendarIntentPattern) ---
+
+    test(
+      '"Okay add a meeting tomorrow" classified as calendarEvent (voice preamble regression)',
+      () {
+        final result = classifier.classify('Okay add a meeting tomorrow');
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    // --- Word-count boundary (4-word modifier, at the {0,4} limit) ---
+
+    test(
+      '"Add a new Google Calendar meeting" (4-word modifier) classified as calendarEvent (boundary)',
+      () {
+        final result = classifier.classify('Add a new Google Calendar meeting');
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    // --- False-positive guards (de-anchored \b must not match non-calendar) ---
+
+    test(
+      '"I set a record at the gym today" classified as journal (false-positive guard)',
+      () {
+        final result = classifier.classify('I set a record at the gym today');
+        expect(result.type, IntentType.journal);
+      },
+    );
+
+    test(
+      '"She asked me to add notes to the doc" classified as journal (false-positive guard)',
+      () {
+        final result = classifier.classify(
+          'She asked me to add notes to the doc',
+        );
+        expect(result.type, IntentType.journal);
+      },
+    );
+
+    test(
+      '"Add a really very long extra meeting" (5-word modifier) classified as journal (out-of-bounds guard)',
+      () {
+        // 5 intervening words: "a", "really", "very", "long", "extra" — exceeds
+        // the {0,4} word-count limit, so the wildcard sub-pattern does not match.
+        // No other strong calendar signal present, so falls to journal.
+        final result = classifier.classify(
+          'Add a really very long extra meeting',
+        );
+        expect(result.type, IntentType.journal);
+      },
+    );
+
+    // --- Word-count new-territory FP documentation (SPEC-20260303-010332 risk table) ---
+    // The word-count wildcard is broader than the prior .{0,15} char-count pattern.
+    // "Add context to the call summary" (4 intervening words before 'call', a
+    // _calendarEventNouns member) now matches. This is accepted behavior: the
+    // confirmation gate (ADR-0020 §8) prevents auto-creation; the message reaches
+    // specialist routing for human decision rather than silent incorrect action.
+    // This test DOCUMENTS the tradeoff — it is not a failing assertion.
+    test(
+      '"Add context to the call summary" classifies as calendarEvent (new word-count FP territory, accepted via confirmation gate)',
+      () {
+        final result = classifier.classify('Add context to the call summary');
+        // The wildcard matches 'add [context to the] call' (3 intervening words).
+        // This is accepted: the confirmation gate (ADR-0020 §8) backstops it.
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, equals(0.5)); // No temporal boost.
+      },
+    );
+  });
 }
