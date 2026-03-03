@@ -15,3 +15,5 @@
 {"timestamp": "2026-03-02T22:54:59.832316+00:00", "outcome": "success", "duration_seconds": 58.7, "mode": "release", "device": "R5CR10LW2FE", "device_type": "physical", "exit_code": 0, "version": "0.17.3+11"}
 {"timestamp": "2026-03-03T15:21:47.378660+00:00", "outcome": "success", "duration_seconds": 38.7, "mode": "debug", "device": "emulator-5554", "device_type": "emulator", "exit_code": 0, "version": "0.18.0+13", "avd_name": "Medium_Phone_API_36.1"}
 {"timestamp": "2026-03-03T15:22:25.193203+00:00", "outcome": "success", "duration_seconds": 20.2, "mode": "debug", "device": "emulator-5554", "device_type": "emulator", "exit_code": 0, "version": "0.18.0+13", "avd_name": "emulator-5554"}
+{"timestamp": "2026-03-03T15:57:25.349257+00:00", "outcome": "success", "duration_seconds": 68.3, "mode": "release", "device": "R5CR10LW2FE", "device_type": "physical", "exit_code": 0, "version": "0.18.0+13"}
+{"timestamp": "2026-03-03T16:52:49.251632+00:00", "outcome": "success", "duration_seconds": 61.4, "mode": "release", "device": "R5CR10LW2FE", "device_type": "physical", "exit_code": 0, "version": "0.18.1+14"}
