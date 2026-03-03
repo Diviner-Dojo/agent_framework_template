@@ -24,6 +24,7 @@ import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
+import 'package:agentic_journal/providers/questionnaire_providers.dart';
 import 'package:agentic_journal/ui/screens/journal_session_screen.dart';
 
 void main() {
@@ -236,6 +237,91 @@ void main() {
       // Still on session screen — user dismisses with a back press.
       expect(find.text('Session List'), findsNothing);
     });
+
+    // regression: after completing a pulse_check_in session, checkInProvider
+    // (a global StateNotifierProvider) kept isActive=true. When the user then
+    // opened a new regular journal entry, _maybeStartCheckIn() did not reset
+    // the state — so the check-in complete card was displayed and the text
+    // input field was hidden behind it. Fix: call cancelCheckIn() in the
+    // else branch of _maybeStartCheckIn() for non-pulse-check-in sessions.
+    //
+    // NOTE: This test explicitly pre-seeds isActive=true before pumpAndSettle
+    // so that removing the else branch would cause the test to fail. A test
+    // that only checks the default isActive=false state proves nothing about
+    // the regression.
+    testWidgets(
+      'text input visible and check-in card absent in regular journal session '
+      '(regression: check-in state not reset cross-session)',
+      (tester) async {
+        // Create the container BEFORE pumpWidget so we can seed state.
+        // addPostFrameCallback fires during pumpWidget (on the first frame
+        // render), not during pumpAndSettle — so the state must be seeded
+        // before the widget is built.
+        final container = ProviderContainer(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            databaseProvider.overrideWithValue(database),
+            agentRepositoryProvider.overrideWithValue(AgentRepository()),
+            deviceTimezoneProvider.overrideWith(
+              (ref) async => 'America/New_York',
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        // Pre-condition: seed isActive=true to simulate stale check-in state
+        // from a previous pulse_check_in session. If the fix (else branch in
+        // _maybeStartCheckIn) is reverted, isActive stays true after the frame
+        // renders and the assertions below will fail.
+        await container.read(checkInProvider.notifier).startCheckIn();
+        expect(
+          container.read(checkInProvider).isActive,
+          isTrue,
+          reason:
+              'pre-condition: isActive must be seeded true before widget '
+              'builds to prove the regression fix is exercised',
+        );
+
+        // Start a session so the postFrameCallback's sessionState has a
+        // non-null activeSessionId when _maybeStartCheckIn() evaluates it.
+        await container.read(sessionNotifierProvider.notifier).startSession();
+
+        // Build the widget. The first frame render fires the postFrameCallback
+        // registered in initState, which calls _maybeStartCheckIn(). For a
+        // non-pulse-check-in session, the else branch calls cancelCheckIn()
+        // and resets isActive to false.
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              initialRoute: '/session',
+              routes: {
+                '/': (_) => const Scaffold(body: Text('Session List')),
+                '/session': (_) => const JournalSessionScreen(),
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Post-condition: cancelCheckIn() must have been called.
+        expect(
+          container.read(checkInProvider).isActive,
+          isFalse,
+          reason:
+              'cancelCheckIn() must be called for non-pulse-check-in sessions '
+              'to prevent lingering state from a previous check-in hiding the input',
+        );
+        // The text input field must be visible (isActive=true suppresses it).
+        expect(
+          find.byType(TextField),
+          findsOneWidget,
+          reason: 'text input must not be hidden by a stale check-in card',
+        );
+        // No pulse-check-in card should appear.
+        expect(find.text('Pulse Check-In'), findsNothing);
+      },
+    );
 
     testWidgets('auto-discard shows SnackBar on empty session end', (
       tester,

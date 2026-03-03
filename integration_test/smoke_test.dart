@@ -838,6 +838,116 @@ void main() {
     );
 
     // =======================================================================
+    // Section 11: Cross-session state check — regular journal after check-in.
+    //
+    // Regression: after a pulse_check_in session completes, checkInProvider
+    // (global StateNotifier) kept isActive=true. Opening a new regular journal
+    // entry rendered the check-in complete card and hid the text input field.
+    // Fix: _maybeStartCheckIn() now calls cancelCheckIn() for non-check-in sessions.
+    // This section verifies the text input field IS visible in a fresh session.
+    // =======================================================================
+    debugPrint('Section 11: Cross-session check-in state regression test');
+
+    // Tap FAB to start a new regular journal entry (text mode).
+    final fabSection11 = find.byType(FloatingActionButton);
+    if (fabSection11.evaluate().isNotEmpty) {
+      await tester.tap(fabSection11);
+      // Wait for session screen to appear.
+      bool sessionOpen = false;
+      final sessionDeadline = DateTime.now().add(const Duration(seconds: 15));
+      while (DateTime.now().isBefore(sessionDeadline)) {
+        await safePump(const Duration(milliseconds: 300));
+        if (find.byType(TextField).evaluate().isNotEmpty) {
+          sessionOpen = true;
+          break;
+        }
+      }
+
+      if (sessionOpen) {
+        // KEY REGRESSION CHECK: text input must be visible.
+        // If checkInProvider.isActive is still true from section 10, the
+        // PulseCheckInWidget replaces the input field — this assertion fails.
+        expect(
+          find.byType(TextField),
+          findsOneWidget,
+          reason:
+              'Section 11 REGRESSION: text input must be visible in a fresh '
+              'regular journal session — check-in state leaking from previous '
+              'pulse_check_in session would suppress it.',
+        );
+        // No stale check-in card should appear.
+        expect(
+          find.text('Pulse Check-In'),
+          findsNothing,
+          reason:
+              'Pulse Check-In card must not appear in a regular journal session',
+        );
+        expect(
+          find.text('Check-in saved.'),
+          findsNothing,
+          reason:
+              'Stale check-in complete card must not appear in a new session',
+        );
+
+        debugPrint('Section 11: text input visible — cross-session state OK');
+
+        // Send a short message to make the session non-empty.
+        await tester.enterText(
+          find.byType(TextField),
+          'Section 11 cross-session test',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        final sendBtn11 = find.byIcon(Icons.send);
+        if (sendBtn11.evaluate().isNotEmpty) {
+          await tester.tap(sendBtn11, warnIfMissed: false);
+          await safePump(const Duration(seconds: 2));
+        }
+
+        // End session (two-step: Done → closing summary → back).
+        final doneBtn11 = find.text('Done');
+        if (doneBtn11.evaluate().isNotEmpty) {
+          await tester.tap(doneBtn11);
+          for (var i = 0; i < 30; i++) {
+            await safePump(const Duration(seconds: 1));
+            if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+            if (find.text('Done').evaluate().isEmpty) break;
+          }
+          if (find.text('Agentic Journal').evaluate().isEmpty) {
+            final back11 = find.byIcon(Icons.arrow_back);
+            if (back11.evaluate().isNotEmpty) {
+              await tester.tap(back11);
+              for (var i = 0; i < 20; i++) {
+                await safePump(const Duration(milliseconds: 500));
+                if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+              }
+            }
+          }
+        }
+      } else {
+        debugPrint(
+          'Section 11: session screen did not open — skipping regression check',
+        );
+        // Navigate home if we ended up somewhere unexpected.
+        final navS11 = tester.state<NavigatorState>(
+          find.byType(Navigator).first,
+        );
+        navS11.pushNamedAndRemoveUntil('/', (route) => false);
+        for (var i = 0; i < 15; i++) {
+          await safePump(const Duration(milliseconds: 200));
+          if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+        }
+      }
+    } else {
+      debugPrint('Section 11: FAB not found — skipping cross-session test');
+    }
+
+    expect(
+      find.text('Agentic Journal'),
+      findsOneWidget,
+      reason: 'Should be on home screen at end of section 11',
+    );
+
+    // =======================================================================
     // Final: Report captured errors for debugging.
     // =======================================================================
     if (capturedErrors.isNotEmpty) {

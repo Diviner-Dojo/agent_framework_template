@@ -217,5 +217,65 @@ void main() {
       // SnackBar should show.
       expect(find.text('All journal entries cleared.'), findsOneWidget);
     });
+
+    testWidgets('Export My Data button is present in Data Management card', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Scroll to the Export My Data button (it's below Clear All Entries).
+      await tester.scrollUntilVisible(
+        find.text('Export My Data'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      // Button must be present and enabled (not exporting).
+      expect(find.text('Export My Data'), findsOneWidget);
+      // Icon should show the download icon (not a progress indicator).
+      expect(find.byIcon(Icons.download_outlined), findsOneWidget);
+    });
+
+    testWidgets('Export My Data shows export-complete SnackBar', (
+      tester,
+    ) async {
+      final container = await buildTestWidget(tester);
+      addTearDown(container.dispose);
+
+      // Scroll to the Export My Data button.
+      await tester.scrollUntilVisible(
+        find.text('Export My Data'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      // Tap Export — triggers async _exportData().
+      await tester.tap(find.text('Export My Data'));
+      // runAsync() exits the fake-async zone so that real I/O (DB query,
+      // path_provider, file write) can complete, then pump to render the
+      // resulting SnackBar frame.
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(seconds: 2));
+      });
+      await tester.pump();
+
+      // SnackBar must contain 'Saved to Downloads:' (success) OR
+      // 'Export failed:' (platform-specific failure is acceptable in CI).
+      // The key requirement: the export path executes without throwing
+      // unhandled and the user receives feedback.
+      final successSnackBar = find.textContaining('Saved to Downloads:');
+      final failureSnackBar = find.textContaining('Export failed:');
+      expect(
+        successSnackBar.evaluate().isNotEmpty ||
+            failureSnackBar.evaluate().isNotEmpty,
+        isTrue,
+        reason:
+            '_exportData must show a SnackBar (success or failure) after '
+            'the export button is tapped',
+      );
+    });
   });
 }

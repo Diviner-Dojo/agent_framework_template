@@ -1232,9 +1232,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
-  /// Export all journal data to a JSON file in the app documents directory.
+  /// Export all journal data to a JSON file in the public Downloads folder.
   ///
-  /// Writes to `<documents>/agentic_journal_export_<timestamp>.json`.
+  /// On Android writes to `/storage/emulated/0/Download/` (accessible from
+  /// the Files app or any file manager). Falls back to the app documents
+  /// directory on non-Android platforms.
+  ///
+  /// Filename: `agentic_journal_export_<UTC-timestamp>.json`
   /// Phase 2C — data sovereignty: users can always export and delete their data.
   Future<void> _exportData(BuildContext context) async {
     setState(() => _isExporting = true);
@@ -1269,7 +1273,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         });
       }
 
-      final dir = await getApplicationDocumentsDirectory();
+      // Use the public Downloads folder on Android (accessible via Files app).
+      // No WRITE_EXTERNAL_STORAGE permission needed on API 29+.
+      final Directory dir;
+      if (Platform.isAndroid) {
+        dir = Directory('/storage/emulated/0/Download');
+        if (!dir.existsSync()) await dir.create(recursive: true);
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+
       final timestamp = DateTime.now().toUtc().toIso8601String().replaceAll(
         ':',
         '-',
@@ -1283,7 +1296,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Exported to ${file.path}'),
+            content: Text(
+              'Saved to Downloads: agentic_journal_export_$timestamp.json',
+            ),
             duration: const Duration(seconds: 6),
           ),
         );

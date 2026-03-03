@@ -96,8 +96,8 @@ class SpeechToTextSttService implements SpeechRecognitionService {
       onResult: _onResult,
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(
-        seconds: 2,
-      ), // Tuned for journaling cadence (SPEC-20260302-ADHD P0). Revisit if Deepgram replaces this engine (ADR-0031).
+        seconds: 3,
+      ), // Tuned for journaling cadence (SPEC-20260302-ADHD P0). 2s was too aggressive — cut off mid-thought. 3s matches ADR-0031 recommendation. Revisit when Deepgram replaces this engine.
       localeId: _currentLocaleId,
       listenOptions: stt.SpeechListenOptions(
         partialResults: true,

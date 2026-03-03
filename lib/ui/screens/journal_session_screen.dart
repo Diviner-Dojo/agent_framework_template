@@ -194,13 +194,19 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
 
   /// Auto-start the Pulse Check-In flow when the session mode is 'pulse_check_in'.
   ///
-  /// Called once after the first frame. No-op if the mode is anything else or
-  /// if no active session exists.
+  /// Called once after the first frame. Also resets any lingering check-in
+  /// state from a previous session — [checkInProvider] is global and does not
+  /// auto-reset on navigation, so without this a completed pulse-check-in would
+  /// persist into a subsequent regular journal session, hiding the text input.
   void _maybeStartCheckIn() {
     final sessionState = ref.read(sessionNotifierProvider);
     if (sessionState.journalingMode == 'pulse_check_in' &&
         sessionState.activeSessionId != null) {
       ref.read(checkInProvider.notifier).startCheckIn();
+    } else {
+      // Reset lingering check-in state from a previous session so the text
+      // input field is not hidden on a fresh regular journal entry.
+      ref.read(checkInProvider.notifier).cancelCheckIn();
     }
   }
 
