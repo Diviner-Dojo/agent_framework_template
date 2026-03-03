@@ -105,14 +105,40 @@ class CheckInHistoryScreen extends ConsumerWidget {
 // Trend Chart
 // ---------------------------------------------------------------------------
 
-/// Filter options for the trend chart time window.
+/// Filter options for the trend chart time window (in calendar days).
 enum _ChartFilter { last5, last10, all }
+
+/// One calendar day's averaged Pulse Check-In data.
+///
+/// When multiple check-ins fall on the same day, their per-item values and
+/// composite scores are averaged so the chart shows exactly one point per day.
+class _DayAverage {
+  /// Representative local date for this day (from the first entry of the day).
+  final DateTime date;
+
+  /// Average answer value per item id. Null when all answers were skipped.
+  final Map<int, double?> itemAverages;
+
+  /// Average composite score across all check-ins on this day.
+  final double? compositeScore;
+
+  /// Number of check-ins merged into this day's average.
+  final int entryCount;
+
+  const _DayAverage({
+    required this.date,
+    required this.itemAverages,
+    required this.compositeScore,
+    required this.entryCount,
+  });
+}
 
 /// Interactive multi-line trend chart for Pulse Check-In history.
 ///
-/// Renders one line per questionnaire item (up to 6), with a
-/// Last-5 / Last-10 / All toggle and horizontal scrolling for
-/// dense histories. Tap any data point for a full tooltip.
+/// Multiple check-ins on the same calendar day are averaged into a single
+/// data point per day. Renders one line per questionnaire item (up to 6),
+/// with a Last-5 / Last-10 / All toggle (in days) and horizontal scrolling
+/// for dense histories. Tap any data point for a full tooltip.
 class _CheckInTrendChart extends StatefulWidget {
   /// All check-in history entries, newest-first (from [checkInHistoryProvider]).
   final List<CheckInHistoryEntry> entries;
@@ -143,33 +169,94 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
   @override
   void didUpdateWidget(_CheckInTrendChart old) {
     super.didUpdateWidget(old);
-    // Once 10+ check-ins accumulate, default the view to Last-10 so the
-    // chart is dense enough to show patterns without being noisy.
-    if (old.entries.length < 10 &&
-        widget.entries.length >= 10 &&
-        _filter == _ChartFilter.all) {
+    // Once 10+ unique days accumulate, default to Last-10 days.
+    final oldDays = _computeDailyAverages(old.entries.reversed.toList()).length;
+    final newDays = _computeDailyAverages(
+      widget.entries.reversed.toList(),
+    ).length;
+    if (oldDays < 10 && newDays >= 10 && _filter == _ChartFilter.all) {
       _filter = _ChartFilter.last10;
     }
   }
 
-  /// Chronologically ordered entries for the active filter.
+  /// Aggregate all entries into one [_DayAverage] per calendar day.
   ///
-  /// The provider emits newest-first; we reverse to oldest-first so the
-  /// chart's X axis reads left = past, right = present.
-  List<CheckInHistoryEntry> get _filteredEntries {
-    final chrono = widget.entries.reversed.toList();
-    final n = chrono.length;
+  /// Entries must be in chronological order (oldest first).
+  /// Groups by local "YYYY-MM-DD" key, then averages per-item values and
+  /// composite scores within each group.
+  List<_DayAverage> _computeDailyAverages(List<CheckInHistoryEntry> chrono) {
+    final byDay = <String, List<CheckInHistoryEntry>>{};
+    for (final e in chrono) {
+      final local = e.response.completedAt.toLocal();
+      final key =
+          '${local.year}-'
+          '${local.month.toString().padLeft(2, '0')}-'
+          '${local.day.toString().padLeft(2, '0')}';
+      byDay.putIfAbsent(key, () => []).add(e);
+    }
+
+    final sortedKeys = byDay.keys.toList()..sort();
+    return sortedKeys.map((key) {
+      final dayEntries = byDay[key]!;
+      final date = dayEntries.first.response.completedAt.toLocal();
+
+      // Collect all item ids seen on this day.
+      final itemIds = <int>{};
+      for (final e in dayEntries) {
+        for (final a in e.answers) {
+          itemIds.add(a.itemId);
+        }
+      }
+
+      // Average the non-null values per item.
+      final itemAverages = <int, double?>{};
+      for (final itemId in itemIds) {
+        final values = <int>[];
+        for (final e in dayEntries) {
+          for (final a in e.answers) {
+            if (a.itemId == itemId && a.value != null) {
+              values.add(a.value!);
+            }
+          }
+        }
+        itemAverages[itemId] = values.isEmpty
+            ? null
+            : values.reduce((a, b) => a + b) / values.length;
+      }
+
+      // Average composite scores.
+      final scores = dayEntries
+          .map((e) => e.response.compositeScore)
+          .whereType<double>()
+          .toList();
+      final avgScore = scores.isEmpty
+          ? null
+          : scores.reduce((a, b) => a + b) / scores.length;
+
+      return _DayAverage(
+        date: date,
+        itemAverages: itemAverages,
+        compositeScore: avgScore,
+        entryCount: dayEntries.length,
+      );
+    }).toList();
+  }
+
+  /// Daily averages for the active filter window.
+  List<_DayAverage> get _filteredDays {
+    final allDays = _computeDailyAverages(widget.entries.reversed.toList());
+    final n = allDays.length;
     return switch (_filter) {
-      _ChartFilter.last5 => n > 5 ? chrono.sublist(n - 5) : chrono,
-      _ChartFilter.last10 => n > 10 ? chrono.sublist(n - 10) : chrono,
-      _ChartFilter.all => chrono,
+      _ChartFilter.last5 => n > 5 ? allDays.sublist(n - 5) : allDays,
+      _ChartFilter.last10 => n > 10 ? allDays.sublist(n - 10) : allDays,
+      _ChartFilter.all => allDays,
     };
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final entries = _filteredEntries;
+    final days = _filteredDays;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
@@ -179,10 +266,10 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
         children: [
           _buildHeader(theme),
           const SizedBox(height: 12),
-          if (entries.length < 2)
+          if (days.length < 2)
             _buildSparseState(theme)
           else ...[
-            _buildChart(context, theme, entries),
+            _buildChart(context, theme, days),
             const SizedBox(height: 8),
             _buildLegend(theme),
           ],
@@ -191,15 +278,16 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
     );
   }
 
-  /// Header row: "Trends" label + Last-5/Last-10/All toggle.
+  /// Header row: "Trends" label + Last-5/Last-10/All toggle (in days).
   Widget _buildHeader(ThemeData theme) {
-    final total = widget.entries.length;
-    // Build only the segments that are relevant at the current count.
+    final totalDays = _computeDailyAverages(
+      widget.entries.reversed.toList(),
+    ).length;
     final segments = <ButtonSegment<_ChartFilter>>[
-      if (total >= 5)
-        const ButtonSegment(value: _ChartFilter.last5, label: Text('5')),
-      if (total >= 10)
-        const ButtonSegment(value: _ChartFilter.last10, label: Text('10')),
+      if (totalDays >= 5)
+        const ButtonSegment(value: _ChartFilter.last5, label: Text('5 days')),
+      if (totalDays >= 10)
+        const ButtonSegment(value: _ChartFilter.last10, label: Text('10 days')),
       const ButtonSegment(value: _ChartFilter.all, label: Text('All')),
     ];
 
@@ -222,13 +310,13 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
     );
   }
 
-  /// Sparse-data state shown when fewer than 2 check-ins exist.
+  /// Sparse-data state: shown when fewer than 2 distinct days exist.
   Widget _buildSparseState(ThemeData theme) {
     return SizedBox(
       height: 120,
       child: Center(
         child: Text(
-          'Complete more check-ins to see trends.',
+          'Complete check-ins on 2 or more days to see trends.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -240,15 +328,14 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
 
   /// The main LineChart inside a horizontally-scrollable container.
   ///
-  /// Chart width = max(screen width, entries × 56 dp) so sparse histories
-  /// fill the screen while dense ones can be scrolled.
+  /// Chart width = max(screen width, days × 56 dp).
   Widget _buildChart(
     BuildContext context,
     ThemeData theme,
-    List<CheckInHistoryEntry> entries,
+    List<_DayAverage> days,
   ) {
     final screenWidth = MediaQuery.of(context).size.width - 32;
-    final chartWidth = max(screenWidth, entries.length * 56.0);
+    final chartWidth = max(screenWidth, days.length * 56.0);
 
     return SizedBox(
       height: 200,
@@ -257,7 +344,7 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
         child: SizedBox(
           width: chartWidth,
           child: LineChart(
-            _buildChartData(theme, entries),
+            _buildChartData(theme, days),
             duration: const Duration(milliseconds: 400),
             curve: Curves.easeInOut,
           ),
@@ -266,27 +353,21 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
     );
   }
 
-  /// Build the [LineChartData] from the filtered entries.
-  LineChartData _buildChartData(
-    ThemeData theme,
-    List<CheckInHistoryEntry> entries,
-  ) {
+  /// Build [LineChartData] from daily-averaged data.
+  LineChartData _buildChartData(ThemeData theme, List<_DayAverage> days) {
     final items = widget.items;
 
-    // One LineChartBarData per questionnaire item.
+    // One line per questionnaire item, one point per day.
     final lineBars = items.asMap().entries.map((e) {
       final itemIdx = e.key;
       final item = e.value;
       final color = _seriesColors[itemIdx % _seriesColors.length];
 
       final spots = <FlSpot>[];
-      for (var ei = 0; ei < entries.length; ei++) {
-        final answers = entries[ei].answers;
-        for (final a in answers) {
-          if (a.itemId == item.id && a.value != null) {
-            spots.add(FlSpot(ei.toDouble(), a.value!.toDouble()));
-            break;
-          }
+      for (var di = 0; di < days.length; di++) {
+        final avg = days[di].itemAverages[item.id];
+        if (avg != null) {
+          spots.add(FlSpot(di.toDouble(), avg));
         }
       }
 
@@ -299,7 +380,7 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
         barWidth: 2.5,
         isStrokeCapRound: true,
         dotData: FlDotData(
-          show: entries.length <= 6,
+          show: days.length <= 6,
           getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
             radius: 4,
             color: color,
@@ -347,19 +428,18 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
             reservedSize: 28,
             getTitlesWidget: (value, meta) {
               final idx = value.toInt();
-              if (idx < 0 || idx >= entries.length) {
+              if (idx < 0 || idx >= days.length) {
                 return const SizedBox.shrink();
               }
-              // Show a label every N entries to avoid crowding.
-              final step = max(1, (entries.length / 5.0).ceil());
-              if (idx % step != 0 && idx != entries.length - 1) {
+              // Show a label every N days to avoid crowding.
+              final step = max(1, (days.length / 5.0).ceil());
+              if (idx % step != 0 && idx != days.length - 1) {
                 return const SizedBox.shrink();
               }
-              final dt = entries[idx].response.completedAt.toLocal();
               return Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  _formatDateShort(dt),
+                  _formatDateShort(days[idx].date),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -388,25 +468,31 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
           getTooltipItems: (touchedSpots) {
             return touchedSpots.map((spot) {
               final barIdx = spot.barIndex;
-              final entryIdx = spot.x.toInt();
-              if (entryIdx < 0 || entryIdx >= entries.length) return null;
+              final dayIdx = spot.x.toInt();
+              if (dayIdx < 0 || dayIdx >= days.length) return null;
 
               final color = _seriesColors[barIdx % _seriesColors.length];
-              final entry = entries[entryIdx];
-              final valueStr = spot.y.toInt().toString();
+              final day = days[dayIdx];
               final label = barIdx < items.length
                   ? _shortLabel(items[barIdx].questionText)
                   : 'Q${barIdx + 1}';
 
+              // Format value: integer for single entry, 1-decimal for averages.
+              final valueStr = day.entryCount > 1
+                  ? spot.y.toStringAsFixed(1)
+                  : spot.y.toInt().toString();
+
               if (barIdx == 0) {
-                // First bar: prepend date + composite score.
-                final dt = entry.response.completedAt.toLocal();
-                final score = entry.response.compositeScore;
+                // First bar: show date, avg composite score, entry count.
+                final score = day.compositeScore;
                 final scoreStr = score != null
                     ? ' · ${score.toStringAsFixed(0)}/100'
                     : '';
+                final countStr = day.entryCount > 1
+                    ? ' (${day.entryCount} check-ins)'
+                    : '';
                 return LineTooltipItem(
-                  '${_formatDate(dt)}$scoreStr\n',
+                  '${_formatDate(day.date)}$scoreStr$countStr\n',
                   TextStyle(
                     color: theme.colorScheme.onInverseSurface,
                     fontWeight: FontWeight.bold,
@@ -436,7 +522,7 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
     );
   }
 
-  /// Colored legend row: one swatch + short label per item.
+  /// Colored legend: one swatch + short label per item.
   Widget _buildLegend(ThemeData theme) {
     return Wrap(
       spacing: 14,
@@ -686,8 +772,9 @@ String _shortLabel(String questionText) {
   if (lower.contains('energy')) return 'Energy';
   if (lower.contains('anxi') || lower.contains('worr')) return 'Anxiety';
   if (lower.contains('focus') || lower.contains('concentrat')) return 'Focus';
-  if (lower.contains('emotion') || lower.contains('managing'))
+  if (lower.contains('emotion') || lower.contains('managing')) {
     return 'Emotions';
+  }
   if (lower.contains('sleep')) return 'Sleep';
   // Fallback: first 10 chars.
   return questionText.length > 10
