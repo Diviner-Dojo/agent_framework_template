@@ -1,238 +1,113 @@
-"""Enforce forgetting curve for promoted knowledge.
+"""Enforce forgetting curve for stale memory items.
 
-Checks all promoted artifacts in memory/ for staleness:
-- 90 days without reference → flag for review
-- 180 days without reference → move to memory/archive/
+Scans the `memory/` directory for items that haven't been reviewed
+or updated recently:
+- 90 days: flag for review
+- 180 days: auto-archive to `memory/archive/`
 
 Usage:
-    python scripts/enforce_forgetting_curve.py
-    python scripts/enforce_forgetting_curve.py --dry-run
+    python scripts/enforce_forgetting_curve.py [--dry-run] [--review-days 90] [--archive-days 180]
 """
 
 import argparse
 import shutil
-import sqlite3
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
-
-# Ensure UTF-8 output on Windows
-if sys.stdout.encoding != "utf-8":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 PROJECT_ROOT = Path(__file__).parent.parent
 MEMORY_DIR = PROJECT_ROOT / "memory"
 ARCHIVE_DIR = MEMORY_DIR / "archive"
-DB_PATH = PROJECT_ROOT / "metrics" / "evaluation.db"
 
-# ANSI colors
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-RED = "\033[91m"
-BOLD = "\033[1m"
-RESET = "\033[0m"
+# Subdirectories to scan (exclude archive itself)
+_SCAN_DIRS = ["decisions", "lessons", "patterns", "reflections", "rules", "bugs"]
 
-# Staleness thresholds
-REVIEW_THRESHOLD_DAYS = 90
-ARCHIVE_THRESHOLD_DAYS = 180
-
-# Subdirectories to scan (not archive itself)
-KNOWLEDGE_DIRS = ["patterns", "decisions", "reflections", "rules", "lessons"]
-
-# Files to skip
-SKIP_FILES = {".gitkeep", "adoption-log.md"}
+# Files to never archive
+_PROTECTED_FILES = {"adoption-log.md", "deploy-safety.md", "regression-ledger.md"}
 
 
-def _get_file_age_days(filepath: Path) -> int:
-    """Get file age in days from modification time."""
+def _file_age_days(filepath: Path) -> int:
+    """Get the age of a file in days based on modification time."""
     mtime = datetime.fromtimestamp(filepath.stat().st_mtime, tz=UTC)
-    return (datetime.now(UTC) - mtime).days
+    now = datetime.now(UTC)
+    return (now - mtime).days
 
 
-def _get_last_referenced(filepath: Path, conn: sqlite3.Connection | None) -> int | None:
-    """Get days since last reference from promotion_candidates table.
-
-    Args:
-        filepath: Path to the promoted file.
-        conn: Database connection, or None if DB not available.
-
-    Returns:
-        Days since last reference, or None if no data.
-    """
-    if conn is None:
-        return None
-
-    try:
-        row = conn.execute(
-            """SELECT last_referenced_at FROM promotion_candidates
-               WHERE target_path = ? AND status = 'approved'
-               ORDER BY promoted_at DESC LIMIT 1""",
-            (str(filepath.relative_to(PROJECT_ROOT)),),
-        ).fetchone()
-
-        if row and row[0]:
-            ref_date = datetime.fromisoformat(row[0])
-            if ref_date.tzinfo is None:
-                ref_date = ref_date.replace(tzinfo=UTC)
-            return (datetime.now(UTC) - ref_date).days
-    except (sqlite3.OperationalError, ValueError):
-        pass
-
-    return None
-
-
-def enforce_forgetting_curve(db_path: Path = DB_PATH, dry_run: bool = False) -> dict:
-    """Check promoted knowledge for staleness and take action.
+def enforce_forgetting_curve(
+    review_days: int = 90,
+    archive_days: int = 180,
+    dry_run: bool = False,
+) -> dict[str, list[str]]:
+    """Scan memory for stale items and flag/archive them.
 
     Args:
-        db_path: Path to the SQLite database.
-        dry_run: If True, report without moving files.
+        review_days: Days before flagging for review.
+        archive_days: Days before auto-archiving.
+        dry_run: If True, report but don't move files.
 
     Returns:
-        Dict with counts of flagged, archived, and healthy artifacts.
+        Dict with 'flagged' and 'archived' file lists.
     """
-    conn = None
-    if db_path.exists():
-        conn = sqlite3.connect(str(db_path))
-        conn.execute("PRAGMA foreign_keys=ON")
+    result: dict[str, list[str]] = {"flagged": [], "archived": []}
 
-    results = {
-        "healthy": [],
-        "flagged_for_review": [],
-        "archived": [],
-        "skipped": [],
-    }
+    if not MEMORY_DIR.exists():
+        print("Memory directory not found")
+        return result
 
-    for subdir_name in KNOWLEDGE_DIRS:
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+
+    for subdir_name in _SCAN_DIRS:
         subdir = MEMORY_DIR / subdir_name
-        if not subdir.exists():
+        if not subdir.is_dir():
             continue
 
-        for filepath in subdir.iterdir():
-            if filepath.name in SKIP_FILES or filepath.is_dir():
-                continue
-            if not filepath.is_file():
+        for filepath in subdir.glob("*.md"):
+            if filepath.name in _PROTECTED_FILES:
                 continue
 
-            file_age = _get_file_age_days(filepath)
-            last_ref_days = _get_last_referenced(filepath, conn)
+            age = _file_age_days(filepath)
 
-            # Use the more recent of file modification or last_referenced_at
-            effective_age = min(file_age, last_ref_days) if last_ref_days is not None else file_age
-            rel_path = filepath.relative_to(PROJECT_ROOT)
+            if age >= archive_days:
+                rel_path = filepath.relative_to(MEMORY_DIR)
+                archive_dest = ARCHIVE_DIR / subdir_name
+                archive_dest.mkdir(parents=True, exist_ok=True)
+                dest = archive_dest / filepath.name
 
-            if effective_age >= ARCHIVE_THRESHOLD_DAYS:
-                results["archived"].append(
-                    {
-                        "path": str(rel_path),
-                        "age_days": effective_age,
-                        "last_ref_days": last_ref_days,
-                    }
-                )
-
-                if not dry_run:
-                    # Move to archive
-                    archive_dest = ARCHIVE_DIR / subdir_name
-                    archive_dest.mkdir(parents=True, exist_ok=True)
-                    dest = archive_dest / filepath.name
+                if dry_run:
+                    print(f"[DRY RUN] Would archive: {rel_path} ({age} days old)")
+                else:
                     shutil.move(str(filepath), str(dest))
-                    print(f"  {RED}ARCHIVED: {rel_path} ({effective_age} days){RESET}")
+                    print(
+                        f"Archived: {rel_path} → archive/{subdir_name}/{filepath.name} ({age} days)"
+                    )
+                result["archived"].append(str(rel_path))
 
-                    # Update promotion_candidates status if applicable
-                    if conn:
-                        try:
-                            conn.execute(
-                                """UPDATE promotion_candidates
-                                   SET status = 'deferred',
-                                       human_verdict = 'auto-archived (forgetting curve)'
-                                   WHERE target_path = ? AND status = 'approved'""",
-                                (str(rel_path),),
-                            )
-                        except sqlite3.OperationalError:
-                            pass
+            elif age >= review_days:
+                rel_path = filepath.relative_to(MEMORY_DIR)
+                print(f"Review needed: {rel_path} ({age} days since last update)")
+                result["flagged"].append(str(rel_path))
 
-            elif effective_age >= REVIEW_THRESHOLD_DAYS:
-                results["flagged_for_review"].append(
-                    {
-                        "path": str(rel_path),
-                        "age_days": effective_age,
-                        "last_ref_days": last_ref_days,
-                    }
-                )
-
-                if not dry_run:
-                    # Re-add to promotion_candidates for review
-                    if conn:
-                        try:
-                            timestamp = datetime.now(UTC).isoformat()
-                            candidate_id = (
-                                f"CAND-stale-{filepath.stem}-"
-                                f"{timestamp.replace(':', '').replace('.', '')[:15]}"
-                            )
-                            conn.execute(
-                                """INSERT OR IGNORE INTO promotion_candidates
-                                   (candidate_id, candidate_type, source_type,
-                                    source_refs, title, summary, evidence_count,
-                                    target_path, status, created_at)
-                                   VALUES (?, 'pattern', 'finding', '[]',
-                                           ?, ?, 1, ?, 'pending', ?)""",
-                                (
-                                    candidate_id,
-                                    f"Stale review: {filepath.name}",
-                                    f"Not referenced for {effective_age} days. "
-                                    f"Confirm still relevant or archive.",
-                                    str(rel_path),
-                                    timestamp,
-                                ),
-                            )
-                        except sqlite3.IntegrityError:
-                            pass
-                print(f"  {YELLOW}REVIEW NEEDED: {rel_path} ({effective_age} days){RESET}")
-            else:
-                results["healthy"].append(
-                    {
-                        "path": str(rel_path),
-                        "age_days": effective_age,
-                    }
-                )
-
-    if conn:
-        if not dry_run:
-            conn.commit()
-        conn.close()
-
-    # Report
-    prefix = "[DRY RUN] " if dry_run else ""
-    print(f"\n{BOLD}{prefix}Forgetting Curve Report{RESET}")
-    print(f"  Healthy: {len(results['healthy'])}")
+    # Summary
     print(
-        f"  Flagged for review (>={REVIEW_THRESHOLD_DAYS}d): {len(results['flagged_for_review'])}"
+        f"\nSummary: {len(result['flagged'])} flagged for review, {len(result['archived'])} archived"
     )
-    print(f"  Archived (>={ARCHIVE_THRESHOLD_DAYS}d): {len(results['archived'])}")
-
-    if results["flagged_for_review"]:
-        print(f"\n  {YELLOW}Files needing review:{RESET}")
-        for item in results["flagged_for_review"]:
-            print(f"    - {item['path']} ({item['age_days']} days)")
-
-    if results["archived"]:
-        action = "Would archive" if dry_run else "Archived"
-        print(f"\n  {RED}{action}:{RESET}")
-        for item in results["archived"]:
-            print(f"    - {item['path']} ({item['age_days']} days)")
-
-    return results
+    return result
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Enforce forgetting curve for promoted knowledge")
+    parser = argparse.ArgumentParser(description="Enforce forgetting curve for memory items")
+    parser.add_argument("--dry-run", action="store_true", help="Report without moving files")
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Report staleness without moving files",
+        "--review-days", type=int, default=90, help="Days before review flag (default: 90)"
+    )
+    parser.add_argument(
+        "--archive-days", type=int, default=180, help="Days before auto-archive (default: 180)"
     )
     args = parser.parse_args()
-    enforce_forgetting_curve(dry_run=args.dry_run)
+    enforce_forgetting_curve(
+        review_days=args.review_days,
+        archive_days=args.archive_days,
+        dry_run=args.dry_run,
+    )
 
 
 if __name__ == "__main__":

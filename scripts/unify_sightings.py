@@ -1,241 +1,128 @@
-"""Unify sightings from adoption log into pattern_sightings table.
+"""Unify pattern sightings from adoption log and discussion-derived patterns.
 
-Parses memory/lessons/adoption-log.md and inserts sightings with
-source_type='adoption_log' so v_rule_of_three counts cross-source patterns.
+Merges patterns tracked in `memory/lessons/adoption-log.md` with
+discussion-derived patterns in the `pattern_sightings` table, ensuring
+the Rule of Three counts both sources.
 
 Usage:
     python scripts/unify_sightings.py
-    python scripts/unify_sightings.py --dry-run
 """
 
-import argparse
-import re
 import sqlite3
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-# Ensure UTF-8 output on Windows
-if sys.stdout.encoding != "utf-8":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+from pipeline_utils import pattern_hash as _pattern_hash
 
 PROJECT_ROOT = Path(__file__).parent.parent
-ADOPTION_LOG = PROJECT_ROOT / "memory" / "lessons" / "adoption-log.md"
 DB_PATH = PROJECT_ROOT / "metrics" / "evaluation.db"
-
-# ANSI colors
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-BOLD = "\033[1m"
-RESET = "\033[0m"
-
-# Date pattern in adoption log
-DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
-# Analysis ID pattern
-ANALYSIS_PATTERN = re.compile(r"ANALYSIS-\d{8}-\d{6}[-\w]*")
-
-# Stop words for pattern key generation
-STOP_WORDS = {
-    "a",
-    "an",
-    "the",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "have",
-    "has",
-    "had",
-    "do",
-    "does",
-    "did",
-    "will",
-    "would",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "of",
-    "with",
-    "by",
-    "from",
-    "not",
-    "no",
-    "but",
-    "or",
-    "and",
-    "if",
-    "then",
-    "else",
-    "when",
-    "all",
-    "each",
-    "every",
-    "some",
-    "other",
-    "this",
-    "that",
-    "it",
-}
+ADOPTION_LOG = PROJECT_ROOT / "memory" / "lessons" / "adoption-log.md"
 
 
-def _normalize_pattern_name(name: str) -> str:
-    """Normalize a pattern name for pattern_key generation."""
-    name = name.lower().strip()
-    for ch in "—–-:;,.!?()[]{}\"'":
-        name = name.replace(ch, " ")
-    words = [w for w in name.split() if w not in STOP_WORDS and len(w) > 2]
-    return "-".join(sorted(words[:5]))
+def _parse_adoption_log() -> list[dict]:
+    """Parse the adoption log for pattern entries.
 
-
-def parse_adoption_log(log_path: Path = ADOPTION_LOG) -> list[dict]:
-    """Parse adoption log for patterns with analysis sources.
-
-    Returns:
-        List of dicts with pattern name, status, source analysis, date, sighting count.
+    Looks for table rows in the adoption log with pattern information.
+    Expected format: | Pattern Name | Source | Category | Status | ... |
     """
-    if not log_path.exists():
-        print(f"Adoption log not found: {log_path}")
+    if not ADOPTION_LOG.exists():
         return []
 
-    text = log_path.read_text(encoding="utf-8")
-    entries = []
+    text = ADOPTION_LOG.read_text(encoding="utf-8")
+    patterns: list[dict] = []
 
+    # Find table rows (skip header and separator rows)
+    in_table = False
     for line in text.split("\n"):
-        # Skip headers and separators
-        if not line.strip().startswith("|") or line.strip().startswith("|--"):
+        line = line.strip()
+        if not line.startswith("|"):
+            in_table = False
             continue
-        cells = [c.strip() for c in line.split("|") if c.strip()]
+
+        cells = [c.strip() for c in line.split("|")[1:-1]]
         if len(cells) < 3:
             continue
-        # Skip header row
-        if "Pattern" in cells[0] and ("Status" in cells[1] or "Score" in cells[1]):
+
+        # Skip header/separator rows
+        if all(c.startswith("-") or c.startswith("=") for c in cells if c):
+            in_table = True
+            continue
+        if any(c.lower() in ("pattern", "name", "source", "category") for c in cells[:3]):
+            in_table = True
             continue
 
-        pattern_name = cells[0]
-        # Look for analysis references and dates in the cells
-        analysis_id = None
-        date_str = None
-        sighting_count = 1
+        if not in_table:
+            # First data-like row enables the table flag
+            in_table = True
 
-        for cell in cells:
-            analysis_match = ANALYSIS_PATTERN.search(cell)
-            if analysis_match:
-                analysis_id = analysis_match.group()
-            date_match = DATE_PATTERN.search(cell)
-            if date_match:
-                date_str = date_match.group()
-            # Look for sighting counts like "3 sightings"
-            count_match = re.search(r"(\d+)\s*sighting", cell, re.IGNORECASE)
-            if count_match:
-                sighting_count = int(count_match.group(1))
+        # Extract pattern data
+        if len(cells) >= 3:
+            name = cells[0].strip()
+            source = cells[1].strip() if len(cells) > 1 else ""
+            category = cells[2].strip() if len(cells) > 2 else "general"
 
-        if pattern_name and date_str:
-            entries.append(
-                {
-                    "pattern_name": pattern_name,
-                    "analysis_id": analysis_id,
-                    "date": date_str,
-                    "sighting_count": sighting_count,
-                }
-            )
+            if name and not name.startswith("-"):
+                patterns.append(
+                    {
+                        "name": name,
+                        "source": source,
+                        "category": category.lower() if category else "general",
+                    }
+                )
 
-    return entries
+    return patterns
 
 
-def unify_sightings(db_path: Path = DB_PATH, dry_run: bool = False) -> int:
-    """Parse adoption log and insert sightings into pattern_sightings.
-
-    Args:
-        db_path: Path to the SQLite database.
-        dry_run: If True, report without writing.
+def unify_sightings() -> int:
+    """Merge adoption-log patterns into the pattern_sightings table.
 
     Returns:
-        Number of sightings inserted.
+        Number of new sightings inserted from the adoption log.
     """
-    entries = parse_adoption_log()
-
-    if not entries:
-        print("No adoption log entries found")
+    if not DB_PATH.exists():
+        print(f"Database not found at {DB_PATH}")
         return 0
 
-    if not db_path.exists():
-        print(f"Database not found: {db_path}")
+    adoption_patterns = _parse_adoption_log()
+    if not adoption_patterns:
+        print("No patterns found in adoption log")
         return 0
 
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(DB_PATH))
     conn.execute("PRAGMA foreign_keys=ON")
+    now = datetime.now(UTC).isoformat()
+    new_count = 0
 
-    inserted = 0
-    timestamp = datetime.now(UTC).isoformat()
+    for pattern in adoption_patterns:
+        p_hash = _pattern_hash(pattern["category"], pattern["name"])
 
-    for entry in entries:
-        pattern_key = f"adoption:{_normalize_pattern_name(entry['pattern_name'])}"
-        discussion_id = entry.get("analysis_id") or f"adoption-log-{entry['date']}"
-
-        if dry_run:
-            print(f"  Would insert: {pattern_key} from {discussion_id}")
-            inserted += 1
-            continue
-
-        # Check for existing sighting
+        # Check if already recorded from adoption-log source
         existing = conn.execute(
-            """SELECT id FROM pattern_sightings
-               WHERE pattern_key = ? AND discussion_id = ? AND source_type = 'adoption_log'""",
-            (pattern_key, discussion_id),
+            "SELECT id FROM pattern_sightings WHERE pattern_hash = ? AND source = 'adoption-log'",
+            (p_hash,),
         ).fetchone()
 
         if not existing:
-            # Use a synthetic discussion_id for adoption log entries
-            # First check if a discussion exists with this ID
-            disc_exists = conn.execute(
-                "SELECT 1 FROM discussions WHERE discussion_id = ?",
-                (discussion_id,),
-            ).fetchone()
+            # Adoption-log patterns have no discussion provenance — use NULL.
+            # One sighting per source project for Rule of Three counting.
+            conn.execute(
+                """INSERT INTO pattern_sightings
+                   (pattern_hash, discussion_id, category, summary, source, created_at)
+                   VALUES (?, NULL, ?, ?, 'adoption-log', ?)""",
+                (p_hash, pattern["category"], pattern["name"], now),
+            )
+            new_count += 1
 
-            if disc_exists:
-                conn.execute(
-                    """INSERT INTO pattern_sightings
-                       (pattern_key, finding_id, discussion_id, agent,
-                        source_type, sighted_at)
-                       VALUES (?, NULL, ?, 'adoption-log', 'adoption_log', ?)""",
-                    (pattern_key, discussion_id, entry["date"]),
-                )
-                inserted += 1
-            else:
-                # Log that we skipped due to missing discussion reference
-                print(
-                    f"  {YELLOW}Skipping {entry['pattern_name']}: "
-                    f"no discussion {discussion_id} in DB{RESET}"
-                )
-
-    if not dry_run:
-        conn.commit()
-
+    conn.commit()
     conn.close()
-
-    print(f"\n{BOLD}Unified Sightings{RESET}")
-    print(f"  Adoption log entries: {len(entries)}")
-    action = "Would insert" if dry_run else "Inserted"
-    print(f"  {action}: {inserted} sightings")
-
-    return inserted
+    print(
+        f"Unified {new_count} new sightings from adoption log ({len(adoption_patterns)} patterns parsed)"
+    )
+    return new_count
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Unify adoption log sightings into pattern_sightings table"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Report without writing to database",
-    )
-    args = parser.parse_args()
-    unify_sightings(dry_run=args.dry_run)
+    unify_sightings()
 
 
 if __name__ == "__main__":

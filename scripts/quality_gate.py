@@ -25,6 +25,7 @@ TESTS_DIR = PROJECT_ROOT / "tests"
 ADR_DIR = PROJECT_ROOT / "docs" / "adr"
 REVIEWS_DIR = PROJECT_ROOT / "docs" / "reviews"
 QUALITY_GATE_LOG = PROJECT_ROOT / "metrics" / "quality_gate_log.jsonl"
+REGRESSION_LEDGER = PROJECT_ROOT / "memory" / "bugs" / "regression-ledger.md"
 
 # ANSI color codes (no-op on terminals that don't support them)
 GREEN = "\033[92m"
@@ -207,6 +208,67 @@ def check_coverage() -> bool:
     return False
 
 
+# --- Regression ledger helpers ---
+
+
+def _parse_regression_ledger() -> list[dict[str, str]]:
+    """Parse the regression ledger for file-to-test mappings.
+
+    Returns a list of dicts with 'file', 'test_file', and 'test_function' keys.
+    """
+    if not REGRESSION_LEDGER.exists():
+        return []
+
+    entries: list[dict[str, str]] = []
+    text = REGRESSION_LEDGER.read_text(encoding="utf-8")
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line.startswith("|") or line.startswith("| File") or line.startswith("|--"):
+            continue
+        if "<!--" in line:
+            continue
+        cells = [c.strip() for c in line.split("|")[1:-1]]
+        if len(cells) >= 5 and cells[0] and not cells[0].startswith("-"):
+            entries.append(
+                {
+                    "file": cells[0],
+                    "test_file": cells[3],
+                    "test_function": cells[4],
+                }
+            )
+    return entries
+
+
+def check_regression_ledger() -> bool:
+    """Check 7: verify regression test files exist for ledger entries.
+
+    For each entry in the regression ledger, verifies:
+    - The test file exists
+    - Modified source files listed in the ledger have corresponding tests
+    """
+    entries = _parse_regression_ledger()
+    if not entries:
+        _pass("Regression ledger (no entries)")
+        return True
+
+    errors: list[str] = []
+    for entry in entries:
+        test_file = PROJECT_ROOT / entry["test_file"]
+        if not test_file.exists():
+            errors.append(f"Missing test file: {entry['test_file']} (guards {entry['file']})")
+
+    if errors:
+        _fail(f"Regression ledger ({len(errors)} missing test(s))")
+        for err in errors[:5]:
+            print(f"         {err}")
+        if len(errors) > 5:
+            print(f"         ... and {len(errors) - 5} more")
+        return False
+
+    _pass(f"Regression ledger ({len(entries)} guard(s))")
+    return True
+
+
 # --- Review existence helpers ---
 
 # Directories whose files count as "code changes" requiring review
@@ -296,7 +358,7 @@ def check_review_existence() -> bool:
     return False
 
 
-_CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews"]
+_CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
 
 
 def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, total: int) -> None:
@@ -308,7 +370,15 @@ def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, tot
     idx = 0
     for name, skip_attr in zip(
         _CHECK_NAMES,
-        ["skip_format", "skip_lint", "skip_tests", "skip_coverage", "skip_adrs", "skip_reviews"],
+        [
+            "skip_format",
+            "skip_lint",
+            "skip_tests",
+            "skip_coverage",
+            "skip_adrs",
+            "skip_reviews",
+            "skip_regression",
+        ],
     ):
         if getattr(args, skip_attr, False):
             check_results[name] = "skipped"
@@ -346,6 +416,11 @@ def main() -> int:
         "--skip-reviews",
         action="store_true",
         help="Skip review existence check",
+    )
+    parser.add_argument(
+        "--skip-regression",
+        action="store_true",
+        help="Skip regression ledger check",
     )
     args = parser.parse_args()
 
@@ -407,6 +482,13 @@ def main() -> int:
     else:
         total += 1
         results.append(check_review_existence())
+
+    # Check 7: Regression ledger
+    if args.skip_regression:
+        _skip("Regression ledger")
+    else:
+        total += 1
+        results.append(check_regression_ledger())
 
     # Summary
     passed = sum(results)

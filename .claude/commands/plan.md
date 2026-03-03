@@ -101,6 +101,14 @@ python scripts/create_discussion.py "<spec-slug>-spec-review" --risk <level> --m
 
 Store the returned discussion ID — it is needed for all subsequent capture steps.
 
+## Step 3b: Emit Context Brief
+
+Immediately after creating the discussion, emit a context-brief event.
+
+```bash
+python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Context brief: Planning <feature/goal>. Risk level: <level>. Stakeholders: <who is affected>. Success criteria: <what defines done>. Constraints: <known constraints>." --tags "context-brief"
+```
+
 ## Step 4: Dispatch Specialists and Capture
 
 Dispatch relevant specialists to review the spec (not code — the spec itself):

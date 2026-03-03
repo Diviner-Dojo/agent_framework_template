@@ -75,7 +75,7 @@ Content here.
 ```
 .claude/
   agents/       — Specialist agent definitions (10 core, including project-analyst and ux-evaluator)
-  commands/     — Slash command workflows (13 commands)
+  commands/     — Slash command workflows (15 commands)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
   rules/        — Auto-loaded standards (all agents inherit)
   skills/       — Reference knowledge (playbooks, checklists)
@@ -87,12 +87,15 @@ docs/
 discussions/    — Layer 1: Immutable discussion capture
 memory/         — Layer 3: Curated promoted knowledge
   archive/      — Superseded or deprecated knowledge
+  bugs/         — Regression ledger tracking fixed bugs and their guard tests
   decisions/    — Promoted decision summaries
-  lessons/      — Adoption log tracking patterns from external project reviews
+  lessons/      — Adoption log, deploy safety rules, and external project patterns
   patterns/     — Promoted code and process patterns
   reflections/  — Promoted agent reflections
   rules/        — Promoted rules (graduated to .claude/rules/)
-metrics/        — Layer 2: SQLite relational index + quality_gate_log.jsonl (trend data)
+metrics/        — Layer 2: SQLite relational index + JSONL trend logs
+                  quality_gate_log.jsonl, knowledge_pipeline_log.jsonl,
+                  deploy_log.jsonl, emulator_test_log.jsonl
 scripts/        — Capture pipeline utilities + quality gate
 src/            — Application source code
 tests/          — Test suite
@@ -111,7 +114,7 @@ Before declaring work complete, run the quality gate to verify all documented st
 ```
 python scripts/quality_gate.py
 ```
-This checks: formatting (ruff format), linting (ruff check), tests (pytest), coverage (>= 80%), ADR completeness, and review existence (for code changes). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass the review existence check).
+This checks: formatting (ruff format), linting (ruff check), tests (pytest), coverage (>= 80%), ADR completeness, review existence (for code changes), and regression ledger (verifies guard tests exist for known bugs). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass the review existence check, `--skip-regression` to bypass the regression ledger check).
 
 Each run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis. The independent-perspective agent uses this data during retro and meta-review to assess protocol marginal value.
 
@@ -135,6 +138,9 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 ### Session Hooks
 - **PreCompact** (`.claude/hooks/pre-compact.ps1`): Before context compaction, prompts the agent to update `BUILD_STATUS.md` with current task state.
 - **SessionStart** (`.claude/hooks/session-start.ps1`): On session resume or post-compaction, prompts the agent to read `BUILD_STATUS.md` to restore working context.
+
+### User Notification Hook (Optional)
+- **Notification**: Fires a system notification when Claude Code completes a task. Platform-specific setup required — see `docs/setup/notification-hook.md` for Windows (BurntToast), macOS (osascript), and Linux (notify-send) instructions.
 
 `BUILD_STATUS.md` is session-scoped working state at the project root. It is ephemeral and distinct from the four-layer capture stack — it preserves in-flight context across sessions rather than capturing completed decisions.
 
@@ -161,10 +167,38 @@ When a `/review`, `/deliberate`, or `/analyze-project` command runs:
 3. `scripts/close_discussion.py` seals the discussion:
    - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
    - `scripts/ingest_events.py` inserts events into SQLite (Layer 2)
+   - Knowledge amplification: `scripts/extract_findings.py` → `scripts/mine_patterns.py` (optional, non-fatal)
    - Updates discussion status to `closed` in SQLite
    - Sets discussion directory to read-only
 4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table for trend analysis
 5. `scripts/quality_gate.py` appends a JSONL record to `metrics/quality_gate_log.jsonl` on every run, enabling the independent-perspective agent to assess protocol marginal value during retros and meta-reviews
+6. Knowledge pipeline scripts (run via `/knowledge-health` or independently):
+   - `scripts/surface_candidates.py` — identifies Rule-of-Three promotion candidates
+   - `scripts/compute_agent_effectiveness.py` — tracks per-agent uniqueness and calibration
+   - `scripts/enforce_forgetting_curve.py` — flags/archives stale memory items (90/180 days)
+   - `scripts/unify_sightings.py` — merges adoption-log patterns with discussion-derived patterns
+   - `scripts/knowledge_dashboard.py` — reports on all pipeline layers → `metrics/knowledge_pipeline_log.jsonl`
+
+## Autonomous Execution Authorization
+
+<!-- Uncomment and customize for your project. This section authorizes
+     Claude Code to perform specific actions without per-action confirmation. -->
+<!--
+The following actions are pre-authorized for autonomous execution:
+
+- **Tests**: Run `pytest` and `python scripts/quality_gate.py` without confirmation
+- **Formatting**: Run `ruff format` and `ruff check --fix` without confirmation
+- **Database init**: Run `python scripts/init_db.py` without confirmation
+- **Knowledge pipeline**: Run knowledge pipeline scripts without confirmation
+- **Git operations**: Create branches, stage files, and commit (but NOT push or force-push)
+
+Actions NOT authorized (always require confirmation):
+- `git push` to any remote
+- Destructive git operations (reset --hard, clean -f, branch -D)
+- Modifying `.claude/settings.json`
+- Deleting files outside of `memory/archive/`
+- Any operation affecting production environments
+-->
 
 ## Agent Invocation Pattern
 

@@ -184,7 +184,13 @@ python scripts/create_discussion.py "retro-YYYYMMDD" --risk low --mode ensemble
 
 Use the actual date. Save the returned `discussion_id` — you will need it for all subsequent capture calls.
 
-### 5b. Capture Draft as Proposal Event
+### 5b. Emit Context Brief
+
+```bash
+python scripts/write_event.py <discussion_id> "facilitator" "proposal" "Context brief: Sprint retrospective for <period>. Discussions analyzed: <N>. Focus areas: process friction, agent calibration, education trends, protocol value." --tags "context-brief"
+```
+
+### 5c. Capture Draft as Proposal Event
 
 ```bash
 python scripts/write_event.py <discussion_id> \
@@ -194,7 +200,7 @@ python scripts/write_event.py <discussion_id> \
   --tags "retro,draft"
 ```
 
-### 5c. Dispatch Specialists
+### 5d. Dispatch Specialists
 
 Dispatch exactly 2 specialists in parallel to review the DRAFT retro:
 
@@ -218,7 +224,7 @@ Focus on:
 Respond with your assessment (under 300 words).
 ```
 
-### 5d. Capture Specialist Responses
+### 5e. Capture Specialist Responses
 
 After BOTH specialists return, capture each response:
 
@@ -236,7 +242,7 @@ python scripts/write_event.py <discussion_id> \
   --tags "retro,specialist-review"
 ```
 
-### 5e. Incorporate Feedback
+### 5f. Incorporate Feedback
 
 Review both specialist responses and incorporate their feedback into the final retrospective. Note which findings were challenged, which documentation updates are needed, and which proposed adjustments were validated or rejected.
 

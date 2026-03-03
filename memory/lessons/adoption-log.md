@@ -1,11 +1,10 @@
 ---
-last_updated: "2026-03-03"
-total_analyses: 18
-patterns_evaluated: 124
-patterns_adopted: 50
-patterns_confirmed: 5
-patterns_deferred: 33
-patterns_rejected: 22
+last_updated: "2026-02-28"
+total_analyses: 8
+patterns_evaluated: 75
+patterns_adopted: 36
+patterns_deferred: 16
+patterns_rejected: 18
 ---
 
 # Adoption Log (Learning Ledger)
@@ -41,513 +40,163 @@ Each entry records:
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
 
-### Pattern: ADHD Symptom Taxonomy as AI Classification Vocabulary
-- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
-- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
-- **Score**: 22/25 (prevalence:4, elegance:5, evidence:4, fit:5, maintenance:4)
+---
+
+### Analysis: agentic_journal Framework Enhancements (2026-02-28)
+**Source project**: `C:\Work\AI\agentic_journal` — Flutter/Dart journaling app, first real-world project built on this framework.
+**Analysis report**: `docs/reviews/ANALYSIS-20260228-agentic-journal-framework-enhancements.md`
+**Primary theme**: Regression prevention infrastructure
+**All 16 patterns recommended for adoption** (confidence: 0.97; 13 from initial review + 3 from supplemental versioning review)
+
+---
+
+### Pattern: `/ship` Command — End-to-End Ship Workflow
+- **First seen**: agentic_journal (2026-02-28, supplemental review)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 23/25 (prevalence:4, elegance:5, evidence:5, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — Claude session analysis prompt engineering
-- **Decision**: IDEAS-ONLY (no license). Five-category ADHD vocabulary for AI classification: Positive States, Inattentive, Executive Dysfunction, Emotional Dysregulation, Stressors. Claude classifies voice transcripts using this vocabulary — users speak freely, AI names what it recognizes. DSM-5 aligned, independently derivable from clinical literature.
-- **Date**: 2026-03-03
+- **Adoption Status**: PENDING
+- **Location**: `.claude/commands/ship.md` (new file). 8-step workflow: analyze → version bump → quality gate → review gate → education gate → commit → branch+PR → merge+sync. Direct git + `gh` CLI automation with version classification table.
 
-### Pattern: Positive ADHD Traits as First-Class Trackable States
-- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
-- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
-- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
+### Pattern: `bump_version.py` — Semantic Version Utility
+- **First seen**: agentic_journal (2026-02-28, supplemental review)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:5, fit:4, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — Claude session analysis output framing
-- **Decision**: IDEAS-ONLY (no license). Name and track Hyperfocus, Flow, Momentum, Emotional Resiliency as positive ADHD states. Prevents AI from pathologizing neutral/positive experiences. Strengths-based framing from ADHD coaching literature.
-- **Date**: 2026-03-03
+- **Adoption Status**: PENDING
+- **Location**: `scripts/bump_version.py` + `scripts/test_bump_version.py` (both new). Reads/writes version in `pyproject.toml`. Flags: `--read`, `--patch`, `--minor`, `--major`. 8 unit tests including comment-preservation and one-line-changed structural invariant.
 
-### Pattern: Day-Type Taxonomy as AI Session Classification
-- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
-- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — Drift session schema enum + Claude analysis output
-- **Decision**: IDEAS-ONLY (no license). Classify sessions into named day types: Peak Performance, Successful, Emotional Challenge, Inattentive Struggle, Executive Dysfunction, High Stress, Neutral. AI assigns label after analysis. Users can override. Enables trend visualization.
-- **Date**: 2026-03-03
-
-### Pattern: Sleep Quality Field on Journal Sessions
-- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
-- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
-- **Score**: 21/25 (prevalence:5, elegance:4, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — Drift session schema addition
-- **Decision**: IDEAS-ONLY (no license). Add sleepQuality nullable numeric (1-5 or 0.0-1.0) to sessions. Sleep dysregulation is core ADHD comorbidity. Voice prompt "How did you sleep?" at session start (skippable). Include in Claude analysis context.
-- **Date**: 2026-03-03
-
-### Pattern: Medication Notes Field on Journal Sessions
-- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
-- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — Drift session schema addition
-- **Decision**: IDEAS-ONLY (no license). Add medicationNotes nullable text field. Free text for dose timing, missed doses, changes. Include in Claude analysis prompt. **OPT-IN ONLY**: Medication tracking must be gated behind an explicit toggle on the Settings page (default: off). When disabled, the field is not captured, the AI does not ask about medication, and no medication-related UI or prompts are shown. When enabled, voice prompts and AI analysis include medication context. Developer requirement — not a suggestion.
-- **Date**: 2026-03-03
-
-### Pattern: Emotion Cluster Aggregation for Dashboard
-- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
-- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
-- **Score**: 16/25 (prevalence:3, elegance:3, evidence:4, fit:3, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Claude API performs emotion categorization with greater accuracy. Hardcoded vocabulary lists would be regressive for our AI-enabled architecture.
-- **Revisit if**: We need offline-only emotion categorization without Claude API access
-- **Date**: 2026-03-03
-
-### Pattern: NotificationService Abstract Interface + Fake
-- **First seen**: FriesI23/mhabit (2026-03-03)
-- **Analysis**: DISC-20260303-143553-analyze-mhabit
-- **Score**: 22/25 (prevalence:5, elegance:4, evidence:4, fit:5, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — `lib/services/notification_service.dart` (interface), `test/fakes/fake_notification_service.dart` (recording fake)
-- **Decision**: Abstract interface with Riverpod provider wrapping. Discard singleton factory. Place recording fake in test/ with call log for meaningful assertions. Apache-2.0 attribution required.
-- **Date**: 2026-03-03
-
-### Pattern: whenNeeded Data-Anchored Reminder Scheduling
-- **First seen**: FriesI23/mhabit (2026-03-03)
-- **Analysis**: DISC-20260303-143553-analyze-mhabit
-- **Score**: 23/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — reminder scheduling logic in notification service
-- **Decision**: Schedule reminders based on data state (last session date) rather than fixed recurrence. Complements Daily_You's entry-existence guard. Wire rescheduling into session-logging flow. Replicate 7 test cases from habit_reminder_test.dart. Critical ADHD pre-mortem: without this, fixed-time reminders auto-disable after 3 dismissals.
-- **Date**: 2026-03-03
-
-### Pattern: Injectable AppClock
-- **First seen**: FriesI23/mhabit (2026-03-03)
-- **Analysis**: DISC-20260303-143553-analyze-mhabit
-- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — `lib/utils/app_clock.dart`
-- **Decision**: Singleton wrapping DateTime.now() with injectable replacement. ~15 lines, no quiver dependency needed. Prerequisite for testing all time-dependent scheduling logic.
-- **Date**: 2026-03-03
-
-### Pattern: Segmented Notification ID Namespace
-- **First seen**: FriesI23/mhabit (2026-03-03)
-- **Analysis**: DISC-20260303-143553-analyze-mhabit
-- **Score**: 19/25 (prevalence:4, elegance:4, evidence:3, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — `lib/services/notification_id_range.dart`
-- **Decision**: Named constant ranges preventing notification ID collision. Simplified for our scope: one ID for daily reminder, reserved range for future AI-insight notifications. ~10 lines.
-- **Date**: 2026-03-03
-
-### Pattern: SessionExporter Factory + Strategy + Mixin
-- **First seen**: FriesI23/mhabit (2026-03-03)
-- **Analysis**: DISC-20260303-143553-analyze-mhabit
+### Pattern: Version Bump at Ship Time (Not Commit Time)
+- **First seen**: agentic_journal (2026-02-28, supplemental review)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
 - **Score**: 21/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — `lib/services/session_exporter.dart`
-- **Decision**: Factory dispatches to ExportAll vs ExportFiltered. Shared serialization in mixin. Replace sqflite HabitDBCell with Drift Session data class. Use archive package for ZIP. Apache-2.0 attribution required.
-- **Date**: 2026-03-03
+- **Adoption Status**: PENDING
+- **Location**: `CLAUDE.md` — Commit Protocol section note. Architectural principle: version bumps belong in `/ship` (ship-time), not in manual commit steps.
 
-### Pattern: Per-Channel AppNotifyConfig
-- **First seen**: FriesI23/mhabit (2026-03-03)
-- **Analysis**: DISC-20260303-143553-analyze-mhabit
-- **Score**: 16/25 (prevalence:3, elegance:4, evidence:3, fit:3, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Over-engineered for current scope (1-2 notification channels)
-- **Revisit if**: We add a third notification channel (AI insights, weekly digest, sync status)
-- **Date**: 2026-03-03
+---
 
-### Pattern: Randomized Time-Window Alarm Scheduling
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 22/25 (prevalence:4, elegance:5, evidence:5, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — `lib/services/reminder_service.dart` (planned)
-- **Decision**: Schedule alarms at random minute within user-defined time window via android_alarm_manager_plus. Self-rescheduling callback chain. Prevents habituation for ADHD users. Requires SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED, WAKE_LOCK permissions.
-- **Date**: 2026-03-03
-
-### Pattern: Entry-Existence Guard in Background Callback
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 23/25 (prevalence:5, elegance:5, evidence:5, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — background callback dispatcher for reminder service
-- **Decision**: Check if user already journaled today before firing notification. Separate alwaysRemind toggle bypasses guard. Background isolate must re-init Drift with sync disabled.
-- **Date**: 2026-03-03
-
-### Pattern: Notification Auto-Dismiss on Session Creation
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 22/25 (prevalence:5, elegance:5, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — session creation path in session_providers.dart
-- **Decision**: Cancel pending reminder notification when user creates a journal session. One flutter_local_notifications cancel-by-ID call.
-- **Date**: 2026-03-03
-
-### Pattern: Localized Notification Strings Pre-Stash
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — app initialization path
-- **Decision**: Store current locale notification strings to SharedPreferences on every app launch. Background isolate reads these since it has no BuildContext for localization.
-- **Date**: 2026-03-03
-
-### Pattern: Date-Seeded Daily-Stable Random for Resurfacing
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING — future sprint (not yet implemented)
-- **Location**: TBD — `lib/services/resurfacing_service.dart` (planned)
-- **Decision**: Use date-as-integer seed for daily-stable random entry selection. Fix infinite-loop bug from Daily_You implementation (use shuffle+first instead of while loop). Add excludeNegativeSentiment filter for ADHD-safe resurfacing.
-- **Date**: 2026-03-03
-
-### Pattern: Auth-Before-DB-Init Ordering
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Security features deprioritized by developer — active dev effort in progress
-- **Revisit if**: App moves toward release/beta distribution or lock screen exposure becomes a user concern
-- **Date**: 2026-03-03
-
-### Pattern: Biometric-Requires-Password-First Enrollment
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Security features deprioritized by developer — active dev effort in progress
-- **Revisit if**: Auth-before-DB-init is adopted; this pattern is a companion to it
-- **Date**: 2026-03-03
-
-### Pattern: Isolate Zip with ValueNotifier Progress
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 18/25 (prevalence:4, elegance:4, evidence:3, fit:3, maintenance:4)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Phase 1 text-only export doesn't need isolate zip overhead. share_plus with synchronous JSON sufficient.
-- **Revisit if**: Media export (voice recordings, photos) is planned, or export data exceeds ~10MB
-- **Date**: 2026-03-03
-
-### Pattern: isVisible-Gated Stat Cards
-- **First seen**: Demizo/Daily_You (2026-03-03)
-- **Analysis**: DISC-20260303-140509-analyze-daily-you
-- **Score**: 16/25 (prevalence:3, elegance:4, evidence:3, fit:3, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: No insights/stats view exists yet
-- **Revisit if**: We build an insights or statistics screen
-- **Date**: 2026-03-03
-
-### Pattern: Silence Padding on STT Stop
-- **First seen**: k2-fsa/sherpa-onnx (2026-02-26)
-- **Analysis**: DISC-20260226-162548-analyze-sherpa-onnx
-- **Score**: 24/25 (prevalence:5, elegance:5, evidence:5, fit:5, maintenance:4)
+### Pattern: Regression Ledger
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 25/25 (prevalence:5, elegance:5, evidence:5, fit:5, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/services/speech_recognition_service.dart` (stopListening method)
-- **Decision**: Append Float32List(8000) (0.5s silence at 16kHz) before stopping recognizer to flush trailing audio. All 3 specialists converged. Pattern confirmed in dart-api-examples but missing from Flutter examples and our code.
-- **Date**: 2026-02-26
+- **Location**: `memory/bugs/regression-ledger.md` (new file and directory). Tracks: Bug | File(s) | Root Cause | Fix | Regression Test | Date.
 
-### Pattern: Endpoint Rule Tuning for Journaling
-- **First seen**: k2-fsa/sherpa-onnx (2026-02-26)
-- **Analysis**: DISC-20260226-162548-analyze-sherpa-onnx
-- **Score**: 22/25 (prevalence:4, elegance:5, evidence:4, fit:5, maintenance:4)
+### Pattern: Commit Protocol — Regression Test Verification Step
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 24/25 (prevalence:4, elegance:5, evidence:5, fit:5, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/services/speech_recognition_service.dart`
-- **Decision**: Set rule1MinTrailingSilence: 2.4, rule2MinTrailingSilence: 1.2 for natural journaling speech cadence. Zero-cost config change. Architecture + performance specialists both flagged.
-- **Date**: 2026-02-26
+- **Location**: `.claude/rules/commit_protocol.md` — Step 1.5 between quality gate and code review.
 
-### Pattern: ARM Build Flag Fix (armv8.2-a)
-- **First seen**: cactus-compute/cactus (2026-02-26)
-- **Analysis**: DISC-20260226-162549-analyze-cactus
-- **Score**: 22/25 (prevalence:5, elegance:4, evidence:5, fit:5, maintenance:3)
+### Pattern: Commit Protocol — Framework-Only Changes Threshold
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 22/25 (prevalence:4, elegance:4, evidence:5, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: llamadart build config (external fork)
-- **Decision**: Change -march=armv8.7-a to -march=armv8.2-a+dotprod+fp16. Cactus android/CMakeLists.txt line 186 provides evidence. All 3 specialists converged: the SIGILL fix is a build flag, not a library swap.
-- **Date**: 2026-02-26
+- **Location**: `.claude/rules/commit_protocol.md` — Step 2 extension. >5 framework files = medium-risk, requires `/review`.
 
-### Pattern: Session History Injection (Cross-Session Memory)
-- **First seen**: jbpassot/flutter_voice_friend (2026-02-26)
-- **Also seen in**: kelivo (session_summaries), moodiary (mood_trends)
-- **Analysis**: DISC-20260226-162547-analyze-flutter-voice-friend
-- **Score**: 22/25 (prevalence:4, elegance:4, evidence:5, fit:5, maintenance:4) + **Rule of Three bonus: +2**
-- **Sightings**: 3
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING
-- **Location**: `lib/repositories/agent_repository.dart`, `lib/database/daos/session_dao.dart`
-- **Decision**: Query last 3-5 session summaries, inject into Claude system prompt. Rule of Three triggered (FlutterVoiceFriend + kelivo + moodiary). JournalSessions.summary column already exists.
-- **Date**: 2026-02-26
-
-### Pattern: ReusableCompleter (Safe Async Lifecycle)
-- **First seen**: livekit/client-sdk-flutter (2026-02-26)
-- **Analysis**: DISC-20260226-162547-analyze-livekit-components-flutter
-- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
+### Pattern: Testing Requirements — Regression Tests Section
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 25/25 (prevalence:5, elegance:5, evidence:5, fit:5, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/utils/reusable_completer.dart` (new), `lib/services/voice_session_orchestrator.dart`
-- **Decision**: Drop-in fix for double-completion bugs in capturePhotoDescription() and confirmCalendarEvent(). All 3 LiveKit specialists converged. No framework dependency.
-- **Date**: 2026-02-26
+- **Location**: `.claude/rules/testing_requirements.md` — new "Regression Tests" section at end.
 
-### Pattern: Typed Voice Session Error Taxonomy
-- **First seen**: livekit/client-sdk-flutter (2026-02-26)
-- **Analysis**: DISC-20260226-162547-analyze-livekit-components-flutter
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+### Pattern: Review Gates — Advisory Lifecycle
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 21/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/services/voice_session_orchestrator.dart`
-- **Decision**: Replace errorMessage: String? with VoiceSessionError carrying VoiceSessionErrorKind enum. Makes error handling testable without string matching. Architecture + security specialists converged.
-- **Date**: 2026-02-26
+- **Location**: `.claude/rules/review_gates.md` — new "Advisory Lifecycle" section. Requires carry-forward of open advisories and CLAUDE.md documentation upon acceptance.
 
-### Pattern: Stop-With-Delay on Push-to-Talk (800ms)
-- **First seen**: jbpassot/flutter_voice_friend (2026-02-26)
-- **Analysis**: DISC-20260226-162547-analyze-flutter-voice-friend
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+### Pattern: Build Review Protocol — Dependency/Service Wiring Trigger
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 22/25 (prevalence:4, elegance:4, evidence:5, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/ui/journal_session_screen.dart`
-- **Decision**: 800ms delay before STT stop on button release. Prevents discarding trailing words. QA + UX specialists converged.
-- **Date**: 2026-02-26
+- **Location**: `.claude/rules/build_review_protocol.md` — new trigger row + regression ledger check in specialist prompt template.
 
-### Pattern: [PAUSE] Tag for Conversational Pacing
-- **First seen**: jbpassot/flutter_voice_friend (2026-02-26)
-- **Analysis**: DISC-20260226-162547-analyze-flutter-voice-friend
-- **Score**: 20/25 (prevalence:3, elegance:5, evidence:4, fit:4, maintenance:4)
+### Pattern: Education Gate Deferral Accountability
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 23/25 (prevalence:4, elegance:5, evidence:5, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/services/voice_session_orchestrator.dart` (_speakInSentences)
-- **Decision**: Insert 2s silence on [PAUSE] marker from Claude. Architecture + UX specialists converged. Low cost, high journaling UX impact.
-- **Date**: 2026-02-26
+- **Location**: `CLAUDE.md` — Principle 6 extended with deferral accountability language.
 
-### Pattern: Raw Audio Preservation Before STT
-- **First seen**: Research synthesis (2026-02-26)
-- **Source**: research-20260226 (Rosebud failure analysis)
-- **Score**: 24/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:5)
+### Pattern: Plan Mode Boundary for build_module
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 21/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/services/voice_recording_service.dart`, `lib/database/tables.dart`
-- **Decision**: Save raw audio file BEFORE attempting transcription. Universal data preservation principle. Rosebud user reviews report voice entries not saving.
-- **Date**: 2026-02-26
+- **Location**: `CLAUDE.md` — Build Review Protocol section, explicit plan-mode boundary rule.
 
-### Pattern: PowerSync + Drift Bridge (SqliteAsyncDriftConnection)
-- **First seen**: powersync-ja/powersync.dart (2026-02-26)
-- **Analysis**: DISC-20260226-162550-analyze-powersync-dart
-- **Score**: 21/25 (prevalence:4, elegance:4, evidence:5, fit:4, maintenance:4)
+### Pattern: Known Limitations Documentation in CLAUDE.md
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 22/25 (prevalence:4, elegance:4, evidence:5, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/database/app_database.dart`, `lib/services/powersync_connector.dart` (new)
-- **Decision**: PowerSync wraps Drift's SQLite connection. Three blocking conditions: background sync strategy ADR, forTesting() redesign, CalendarEvents as Table.localOnly(). All 3 specialists converged on adoption with caveats.
-- **Date**: 2026-02-26
+- **Location**: `CLAUDE.md` — Known limitation annotations inline with Quality Gate and Commit Protocol sections.
 
-### Pattern: SupabaseConnector fatalResponseCodes
-- **First seen**: powersync-ja/powersync.dart (2026-02-26)
-- **Analysis**: DISC-20260226-162550-analyze-powersync-dart
-- **Score**: 22/25 (prevalence:4, elegance:5, evidence:5, fit:4, maintenance:4)
+### Pattern: QA-Specialist — Regression Prevention Responsibility
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 24/25 (prevalence:4, elegance:5, evidence:5, fit:5, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/services/powersync_connector.dart` (new)
-- **Decision**: Classify Postgres error codes (class 22, 23, 42501) as fatal — discard rather than retry. All 3 specialists converged. Prevents infinite retry loops on RLS violations.
-- **Date**: 2026-02-26
+- **Location**: `.claude/agents/qa-specialist.md` — new Responsibility 6: Regression Prevention section.
 
-### Pattern: Manifest Fix (foregroundServiceType on activity)
-- **First seen**: Stypox/dicio-android (2026-02-26)
-- **Analysis**: DISC-20260226-162550-analyze-dicio-android
-- **Score**: N/A (bug fix, not pattern adoption)
+### Pattern: Review Command Session Resumption
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 20/25 (prevalence:3, elegance:4, evidence:4, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `android/app/src/main/AndroidManifest.xml`
-- **Decision**: Remove android:foregroundServiceType="microphone" from <activity> element. Only valid on <service>. Architecture + security specialists flagged.
-- **Date**: 2026-02-26
+- **Location**: `.claude/commands/review.md` — pre-step session resumption check via state.json.
 
-### Pattern: Intent Deduplication Backoff (100ms)
-- **First seen**: Stypox/dicio-android (2026-02-26)
-- **Analysis**: DISC-20260226-162550-analyze-dicio-android
-- **Score**: N/A (bug fix for undocumented Android behavior)
+### Pattern: Review Gates — Provably Incorrect Data Threshold
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 21/25 (prevalence:3, elegance:4, evidence:5, fit:5, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `android/app/src/main/kotlin/.../MainActivity.kt`
-- **Decision**: 100ms timestamp-based backoff for ACTION_ASSIST. Documents real Android bug: "During testing Android would send the assist intent twice."
-- **Date**: 2026-02-26
+- **Location**: `.claude/rules/review_gates.md` — Minimum Quality Thresholds: provably incorrect API responses are blocking.
 
-### Pattern: WakeWordService with PorcupineManager
-- **First seen**: Picovoice/porcupine (2026-02-26)
-- **Analysis**: DISC-20260226-162551-analyze-porcupine
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+### Pattern: build_module Pre-Flight Rule File Verification
+- **First seen**: agentic_journal (2026-02-28)
+- **Analysis**: ANALYSIS-20260228-agentic-journal-framework-enhancements
+- **Score**: 21/25 (prevalence:3, elegance:4, evidence:4, fit:5, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
 - **Adoption Status**: PENDING
-- **Location**: `lib/services/wake_word_service.dart` (new)
-- **Decision**: WakeWordService wraps PorcupineManager, sits between UI and VoiceSessionOrchestrator. All 3 specialists converged on approach. Custom "Hey Journal" keyword has 90-day trial limit. ADR required for licensing decision.
-- **Date**: 2026-02-26
+- **Location**: `.claude/commands/build_module.md` — pre-flight checks extended to verify 4 required rule files exist.
 
-### Pattern: Unified Voice-Plus-Text UI
-- **First seen**: Research synthesis (2026-02-26)
-- **Source**: research-20260226 (ChatGPT Nov 2025, Gemini Live, Pi)
-- **Score**: 22/25 (prevalence:5, elegance:4, evidence:5, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: High effort (L). Requires rethinking current separate recording overlay. Recommended for P2 sprint.
-- **Date**: 2026-02-26
-
-### Pattern: Conversational Onboarding
-- **First seen**: Research synthesis (2026-02-26)
-- **Source**: research-20260226 (Pi, Rosebud)
-- **Score**: 22/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:5)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Medium effort. Requires voice TTS for AI greeting and deferred permission flow. Recommended for P2 sprint.
-- **Date**: 2026-02-26
-
-### Pattern: Journaling Mode Templates (Activity-Scoped)
-- **First seen**: jbpassot/flutter_voice_friend (2026-02-26)
-- **Analysis**: DISC-20260226-162547-analyze-flutter-voice-friend
-- **Score**: 22/25 (prevalence:4, elegance:4, evidence:5, fit:4, maintenance:5)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Medium effort, ADR required. Depends on journaling mode enum + config design. Architecture + UX specialists both recommend.
-- **Date**: 2026-02-26
-
-### Pattern: Three-Tier STT Architecture
-- **First seen**: Research synthesis (2026-02-26)
-- **Source**: research-20260226 (synthesized from multiple projects)
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Large effort. Extends existing dual-engine to optimal design. Each tier independently well-proven.
-- **Date**: 2026-02-26
-
-### Pattern: Lock Screen Management (Scoped)
-- **First seen**: Stypox/dicio-android (2026-02-26)
-- **Analysis**: DISC-20260226-162550-analyze-dicio-android
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Low effort but needs security constraint (audio-only on lock screen). All 3 specialists converged with conditions.
-- **Date**: 2026-02-26
-
-### Pattern: VAD + Offline Recognizer Composition
-- **First seen**: k2-fsa/sherpa-onnx (2026-02-26)
-- **Analysis**: DISC-20260226-162548-analyze-sherpa-onnx
-- **Score**: 18/25 (prevalence:4, elegance:4, evidence:4, fit:3, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Architecture + performance split on urgency. Pending product decision on partial-vs-final result UX.
-- **Date**: 2026-02-26
-
-### Pattern: DisposableChangeNotifier (Async Dispose Guard)
-- **First seen**: livekit/client-sdk-flutter (2026-02-26)
-- **Analysis**: DISC-20260226-162547-analyze-livekit-components-flutter
-- **Score**: 19/25 (prevalence:3, elegance:5, evidence:4, fit:4, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Our VoiceSessionOrchestrator uses ValueNotifier, not ChangeNotifier. Extracting just the dispose-guard concept is lower cost.
-- **Date**: 2026-02-26
-
-### Pattern: AudioTrackState Machine (Four-State Audio Config)
-- **First seen**: livekit/client-sdk-flutter (2026-02-26)
-- **Analysis**: DISC-20260226-162547-analyze-livekit-components-flutter
-- **Score**: 19/25 (prevalence:3, elegance:4, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Performance vs architecture split. Validate against logcat dumps first — may explain iOS STT failures.
-- **Date**: 2026-02-26
-
-### Pattern: Concurrent Local+Cloud Inference (Entropy-Gated)
-- **First seen**: cactus-compute/cactus (2026-02-26)
-- **Analysis**: DISC-20260226-162549-analyze-cactus
-- **Score**: 18/25 (prevalence:3, elegance:4, evidence:4, fit:3, maintenance:4)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Concept is sound but depends on stable on-device LLM. Implement in Dart/Riverpod, NOT via cactus.
-- **Date**: 2026-02-26
-
-### Pattern: CompletionResult Telemetry Fields
-- **First seen**: cactus-compute/cactus (2026-02-26)
-- **Analysis**: DISC-20260226-162549-analyze-cactus
-- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
-- **Sightings**: 1
-- **Status**: ADOPTED
-- **Adoption Status**: PENDING
-- **Location**: `lib/models/agent_response.dart`
-- **Decision**: Add prefillTps, decodeTps, timeToFirstToken, confidence to on-device LLM response type. Pure API design improvement. Applicable regardless of backend.
-- **Date**: 2026-02-26
-
-### Pattern: Cactus Full Library Adoption
-- **First seen**: cactus-compute/cactus (2026-02-26)
-- **Analysis**: DISC-20260226-162549-analyze-cactus
-- **Score**: 8/25 (prevalence:3, elegance:2, evidence:2, fit:0, maintenance:1)
-- **Sightings**: 1
-- **Status**: REJECTED
-- **Reason**: SSL-off-by-default, unconsented telemetry, proprietary .cact format, custom license with $2M ARR termination. All 3 specialists recommend against. Originally rejected in phases-6-11 plan — confirmed.
-- **Date**: 2026-02-26
-
-### Pattern: Soft Gradient Voice Visualization
-- **First seen**: Research synthesis (2026-02-26)
-- **Source**: research-20260226 (Gemini Live design language)
-- **Score**: 18/25 (prevalence:3, elegance:5, evidence:3, fit:4, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Beautiful but effort-heavy. Defer to UX polish phase. Custom animations require tuning across devices.
-- **Date**: 2026-02-26
-
-### Pattern: VoiceInteractionService (Full Implementation)
-- **First seen**: Research synthesis (2026-02-26)
-- **Also analyzed in**: Stypox/dicio-android (which does NOT use it)
-- **Score**: 18/25 (prevalence:3, elegance:4, evidence:3, fit:5, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Dicio analysis reveals VoiceInteractionService is NOT viable for third-party apps. Dicio uses WakeService (foreground service) instead. Phase 1 (ROLE_ASSISTANT) still recommended.
-- **Date**: 2026-02-26
-
-### Pattern: Dual Notification Channels (Persistent + Triggered)
-- **First seen**: Stypox/dicio-android (2026-02-26)
-- **Analysis**: DISC-20260226-162550-analyze-dicio-android
-- **Score**: 18/25 (prevalence:3, elegance:4, evidence:4, fit:4, maintenance:3)
-- **Sightings**: 1
-- **Status**: DEFERRED
-- **Reason**: Bundled with WakeService implementation. Low effort when wake word is added.
-- **Date**: 2026-02-26
+---
 
 ### Pattern: ADR Completeness Validator
 - **First seen**: sa4s-serc/AgenticAKM (2026-02-19)
@@ -555,11 +204,10 @@ Each entry records:
 - **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: CONFIRMED
+- **Adoption Status**: PENDING
 - **Location**: `scripts/quality_gate.py` — `check_adrs()` function. Validates required YAML frontmatter fields (adr_id, title, status, date, decision_makers, discussion_id) and required markdown sections (Context, Decision, Alternatives Considered, Consequences).
 - **Decision**: ADRs are the most durable artifact in the four-layer capture stack (Principle #5). No machine-checkable completeness validation existed. Inspired by AgenticAKM Pydantic-validated ADR schema. All 3 specialists endorsed.
 - **Date**: 2026-02-19
-- **Confirmed**: 2026-02-20 (RETRO-20260220b). Caught ADR-0012 missing required fields (adr_id, discussion_id) and missing Alternatives Considered section during Phase 4 commit. Blocked commit until fixed.
 
 ### Pattern: Survey Quality Gate (Generate-Verify-Regenerate for Phase 1)
 - **First seen**: sa4s-serc/AgenticAKM (2026-02-19)
@@ -593,11 +241,10 @@ Each entry records:
 - **Score**: 24/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: REVERTED
-- **Location**: ~~`tests/conftest.py` (pytest_addoption + pytest_collection_modifyitems) + `pyproject.toml`~~ (deleted)
+- **Adoption Status**: PENDING
+- **Location**: `tests/conftest.py` (pytest_addoption + pytest_collection_modifyitems) + `pyproject.toml` (marker registration). Adds `--run-llm` and `--run-slow` CLI flags to gate expensive/flaky tests.
 - **Decision**: Quality gate runs deterministic tests by default. LLM-dependent and slow tests require explicit opt-in flags. Prevents API outages from blocking all commits. All 3 specialists converged (architecture, QA, independent).
 - **Date**: 2026-02-19
-- **Reverted**: 2026-02-19. Tech-stack pivot from Python/FastAPI to Flutter/Dart (ADR-0002) deleted `tests/conftest.py` and `pyproject.toml`. Pytest markers are inapplicable to Flutter test. The underlying principle (gating expensive tests behind opt-in flags) should be re-evaluated using Flutter/Dart test tagging when LLM-dependent tests are introduced.
 
 ### Pattern: Intervention Complexity Hierarchy
 - **First seen**: MaximeRobeyns/self_improving_coding_agent (2026-02-19)
@@ -772,11 +419,10 @@ Each entry records:
 - **Score**: 21/25 (prevalence:4, elegance:5, evidence:3, fit:4, maintenance:5)
 - **Sightings**: 1
 - **Status**: ADOPTED
-- **Adoption Status**: CONFIRMED
-- **Location**: `.claude/commands/review.md`, `.claude/commands/deliberate.md`, `.claude/commands/analyze-project.md`, `.claude/commands/build_module.md`, `.claude/commands/retro.md`, `.claude/commands/meta-review.md`, `.claude/commands/quiz.md`, `.claude/commands/walkthrough.md`
+- **Adoption Status**: PENDING
+- **Location**: `.claude/commands/review.md`, `.claude/commands/deliberate.md`, `.claude/commands/analyze-project.md`, `.claude/commands/build_module.md`
 - **Decision**: Complex commands now declare explicit pass/fail behavioral rules at the top. Frames workflow adherence as correctness criteria, not preferences. Borrowed from formal verification. 3/4 specialists endorsed.
 - **Date**: 2026-02-19
-- **Confirmed**: 2026-02-20 (RETRO-20260220b). Applied across 8 commands. NEVER skip capture, NEVER continue on failure, ALWAYS close discussion rules consistently enforced across 6+ command runs. Zero orphaned discussions this sprint (contrast: 1 in prior sprint).
 
 ### Pattern: State-Persistent Multi-Phase Workflows
 - **First seen**: wshobson/agents (2026-02-19)
@@ -888,11 +534,10 @@ Each entry records:
 - **Sightings**: 2 (also seen as PostToolUse Auto-Format in CritInsight)
 - **Score**: 22/25 (prevalence:5, elegance:4, evidence:4, fit:5, maintenance:4)
 - **Status**: ADOPTED
-- **Adoption Status**: CONFIRMED
+- **Adoption Status**: PENDING
 - **Location**: `.claude/hooks/pre-commit-gate.sh`
 - **Decision**: Intercepts git commit, injects reminder to run `python scripts/quality_gate.py`. Uses 5-minute verification cache. Bridges gap between having quality_gate.py and actually running it.
 - **Date**: 2026-02-19
-- **Confirmed**: 2026-02-20 (RETRO-20260220b). Exercised on every commit across 3 PRs. Successfully blocked commits when quality gate had not been run. No false positives observed.
 
 ### Pattern: Pre-Push Main Branch Blocker
 - **First seen**: claude-agentic-framework (2026-02-19)
@@ -982,11 +627,10 @@ Each entry records:
 - **Sightings**: 1
 - **Score**: 24/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:5)
 - **Status**: ADOPTED
-- **Adoption Status**: CONFIRMED
+- **Adoption Status**: PENDING
 - **Location**: `.claude/hooks/auto-format.sh` + `.claude/settings.json`
-- **Decision**: Automates formatting after every file edit. Zero cognitive overhead, set-and-forget. Handles both `*.dart` files with `dart format` and `*.py` with ruff.
+- **Decision**: Automates ruff formatting after every file edit. Zero cognitive overhead, set-and-forget. We already use ruff; this makes it automatic.
 - **Date**: 2026-02-19
-- **Confirmed**: 2026-02-20 (RETRO-20260220b). Exercised on every Write/Edit across Phases 2-4. Auto-formats Dart files immediately, eliminating formatting as a commit blocker. Extended to Dart during Phase 2 build.
 
 ### Pattern: Model-Tier Agent Assignment
 - **First seen**: CritInsight (2026-02-19)
@@ -1061,11 +705,10 @@ Each entry records:
 - **Sightings**: 1
 - **Score**: 23/25 (prevalence:5, elegance:4, evidence:5, fit:5, maintenance:4)
 - **Status**: ADOPTED
-- **Adoption Status**: REVERTED
-- **Location**: ~~`src/exceptions.py` + `src/error_handlers.py`~~ (deleted)
+- **Adoption Status**: PENDING
+- **Location**: `src/exceptions.py` + `src/error_handlers.py`
 - **Decision**: Fills a concrete gap. Routes used bare HTTPException with no error_code, no structured details, no centralized logging. Three specialists converged on this recommendation.
 - **Date**: 2026-02-19
-- **Reverted**: 2026-02-19. Tech-stack pivot from Python/FastAPI to Flutter/Dart (ADR-0002) deleted `src/exceptions.py` and `src/error_handlers.py`. The Python exception hierarchy is inapplicable to Dart. The underlying principle (typed exception hierarchy with structured error details) should be re-evaluated during Dart error handling design.
 
 ### Pattern: Quality Gate Script
 - **First seen**: ContractorVerification (2026-02-19)
@@ -1073,11 +716,10 @@ Each entry records:
 - **Sightings**: 1
 - **Score**: 22/25 (prevalence:5, elegance:4, evidence:4, fit:5, maintenance:4)
 - **Status**: ADOPTED
-- **Adoption Status**: CONFIRMED
+- **Adoption Status**: PENDING
 - **Location**: `scripts/quality_gate.py`
 - **Decision**: Framework documents quality standards in 3 rules files but had no automated enforcement. Quality gate converts documented-but-unenforced standards into executable validation.
 - **Date**: 2026-02-19
-- **Confirmed**: 2026-02-20 (RETRO-20260220b). Exercised on every commit across 3 PRs. Caught ADR-0012 missing YAML fields, coverage at 75.5%, and formatting issues. Blocked commits until fixed. Measurably prevented defective commits.
 
 ### Pattern: Session Initialization Protocol
 - **First seen**: ContractorVerification (2026-02-19)

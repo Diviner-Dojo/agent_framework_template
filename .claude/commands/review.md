@@ -110,6 +110,14 @@ print(f'State initialized: {state_path}')
 "
 ```
 
+## Step 3b: Emit Context Brief
+
+Immediately after creating the discussion, emit a context-brief event that captures what is being reviewed and why. This provides essential context for anyone reading the discussion later.
+
+```bash
+python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Context brief: Reviewing <files/scope>. Risk level: <level>. Motivation: <why this review was triggered>. Key concerns: <what to watch for based on the changes>." --tags "context-brief"
+```
+
 ## Step 4: Assemble Specialist Team
 
 Select specialists based on what's being reviewed:

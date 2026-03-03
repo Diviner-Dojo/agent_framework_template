@@ -106,6 +106,56 @@ def init_db(db_path: Path = DB_PATH) -> None:
             timestamp       DATETIME NOT NULL
         );
 
+        -- Knowledge pipeline tables
+
+        CREATE TABLE IF NOT EXISTS findings (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
+            turn_id         INTEGER NOT NULL,
+            agent           TEXT NOT NULL,
+            severity        TEXT NOT NULL CHECK(severity IN ('critical', 'high', 'medium', 'low', 'info')),
+            category        TEXT NOT NULL,
+            summary         TEXT NOT NULL,
+            raw_excerpt     TEXT,
+            resolved        BOOLEAN NOT NULL DEFAULT 0,
+            created_at      DATETIME NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS promotion_candidates (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            finding_pattern TEXT NOT NULL,
+            category        TEXT NOT NULL,
+            sighting_count  INTEGER NOT NULL DEFAULT 1,
+            first_seen      DATETIME NOT NULL,
+            last_seen       DATETIME NOT NULL,
+            promoted        BOOLEAN NOT NULL DEFAULT 0,
+            promoted_at     DATETIME,
+            promoted_to     TEXT,
+            evidence_ids    TEXT NOT NULL DEFAULT '[]'
+        );
+
+        CREATE TABLE IF NOT EXISTS pattern_sightings (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            pattern_hash    TEXT NOT NULL,
+            discussion_id   TEXT,
+            category        TEXT NOT NULL,
+            summary         TEXT NOT NULL,
+            source          TEXT NOT NULL CHECK(source IN ('discussion', 'adoption-log', 'manual')),
+            created_at      DATETIME NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_effectiveness (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent           TEXT NOT NULL,
+            discussion_id   TEXT NOT NULL REFERENCES discussions(discussion_id),
+            findings_unique INTEGER NOT NULL DEFAULT 0,
+            findings_duplicate INTEGER NOT NULL DEFAULT 0,
+            findings_false_positive INTEGER NOT NULL DEFAULT 0,
+            confidence_avg  REAL,
+            confidence_calibration REAL,
+            computed_at     DATETIME NOT NULL
+        );
+
         -- Indexes for common query patterns
         CREATE INDEX IF NOT EXISTS idx_turns_discussion ON turns(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_turns_agent ON turns(agent);
@@ -119,6 +169,49 @@ def init_db(db_path: Path = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_discussions_created ON discussions(created_at);
         CREATE INDEX IF NOT EXISTS idx_protocol_yield_discussion ON protocol_yield(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_protocol_yield_type ON protocol_yield(protocol_type);
+        CREATE INDEX IF NOT EXISTS idx_findings_discussion ON findings(discussion_id);
+        CREATE INDEX IF NOT EXISTS idx_findings_category ON findings(category);
+        CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
+        CREATE INDEX IF NOT EXISTS idx_pattern_sightings_hash ON pattern_sightings(pattern_hash);
+        CREATE INDEX IF NOT EXISTS idx_pattern_sightings_discussion ON pattern_sightings(discussion_id);
+        CREATE INDEX IF NOT EXISTS idx_agent_effectiveness_agent ON agent_effectiveness(agent);
+        CREATE INDEX IF NOT EXISTS idx_agent_effectiveness_discussion ON agent_effectiveness(discussion_id);
+        CREATE INDEX IF NOT EXISTS idx_promotion_candidates_category ON promotion_candidates(category);
+    """)
+
+    # Create views for knowledge pipeline reporting
+    conn.executescript("""
+        CREATE VIEW IF NOT EXISTS v_rule_of_three AS
+        SELECT
+            category,
+            pattern_hash,
+            summary,
+            COUNT(DISTINCT discussion_id) AS sighting_count,
+            MIN(created_at) AS first_seen,
+            MAX(created_at) AS last_seen,
+            GROUP_CONCAT(DISTINCT discussion_id) AS discussion_ids
+        FROM pattern_sightings
+        GROUP BY pattern_hash
+        HAVING COUNT(DISTINCT discussion_id) >= 3
+        ORDER BY sighting_count DESC;
+
+        CREATE VIEW IF NOT EXISTS v_agent_dashboard AS
+        SELECT
+            ae.agent,
+            COUNT(DISTINCT ae.discussion_id) AS discussions_participated,
+            SUM(ae.findings_unique) AS total_unique_findings,
+            SUM(ae.findings_duplicate) AS total_duplicate_findings,
+            SUM(ae.findings_false_positive) AS total_false_positives,
+            ROUND(AVG(ae.confidence_avg), 3) AS avg_confidence,
+            ROUND(AVG(ae.confidence_calibration), 3) AS avg_calibration,
+            ROUND(
+                CAST(SUM(ae.findings_unique) AS REAL) /
+                NULLIF(SUM(ae.findings_unique) + SUM(ae.findings_duplicate), 0),
+                3
+            ) AS uniqueness_ratio
+        FROM agent_effectiveness ae
+        GROUP BY ae.agent
+        ORDER BY total_unique_findings DESC;
     """)
 
     conn.commit()
@@ -128,6 +221,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
     _migrations = [
         ("discussions", "command_type", "TEXT"),
         ("discussions", "duration_minutes", "REAL"),
+        ("turns", "content_excerpt", "TEXT"),
+        ("turns", "tags", "TEXT DEFAULT '[]'"),
     ]
     for table, column, col_type in _migrations:
         try:

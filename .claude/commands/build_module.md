@@ -63,7 +63,12 @@ python scripts/create_discussion.py "build-<module-slug>" --risk medium --mode s
 
 Store the returned `discussion_id` — all subsequent capture calls reference it.
 
-Capture the build plan as the first event:
+Emit a context-brief event capturing the build scope:
+```bash
+python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Context brief: Building <module-slug> from spec. Tasks: <N>. Risk level: medium. Key components: <list of major components being built>. Dependencies: <any dependencies or prerequisites>." --tags "context-brief"
+```
+
+Capture the build plan as the next event:
 ```bash
 python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Build plan: <N tasks from spec>" --tags "build-plan"
 ```

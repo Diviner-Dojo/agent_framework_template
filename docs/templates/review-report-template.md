@@ -13,6 +13,13 @@ confidence: 0.80  # weighted average of specialist confidences
 review_duration_minutes: 0
 ---
 
+## Request Context
+
+- **What was requested**: [Brief description of the change request]
+- **Files/scope**: [List of files or directories under review]
+- **Motivation**: [Why this change is being made]
+- **Explicit constraints**: [Any constraints specified by the developer, e.g., "no new dependencies", "backwards-compatible"]
+
 ## Summary
 
 [2-3 sentence overview of the changes reviewed and the key findings.]
