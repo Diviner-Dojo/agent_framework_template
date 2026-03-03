@@ -236,7 +236,7 @@ void main() {
   });
 
   group('sttEngineProvider', () {
-    test('defaults to speechToText', () async {
+    test('defaults to deepgram (primary per ADR-0031)', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
 
@@ -245,7 +245,7 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      expect(container.read(sttEngineProvider), SttEngine.speechToText);
+      expect(container.read(sttEngineProvider), SttEngine.deepgram);
     });
 
     test('can be set to sherpaOnnx', () async {
