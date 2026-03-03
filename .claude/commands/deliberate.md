@@ -111,6 +111,9 @@ write "(none stated)" if a field was not addressed. Strip business context (dead
 client names, regulatory pressures) — record structural intent only.
 
 ```bash
+# INVARIANT: This must be the first write_event.py call in this workflow.
+# turn_id=1 is required for extraction pipeline integrity. Any reordering
+# silently breaks context-brief capture. See DISC-20260302-231156.
 python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
   "## Request Context
 - **What was requested**: [verbatim or close paraphrase of the developer's instruction]
@@ -118,6 +121,9 @@ python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
 - **Developer-stated motivation**: [why this topic is being deliberated, if stated; or 'none stated']
 - **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
   --tags "context-brief"
+# If invoked without prior conversational context (cold start), populate all four
+# fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
+# invocations are queryable: --tags "context-brief,context-brief-cold-start"
 ```
 
 ## Step 2: Assess and Select Specialists
