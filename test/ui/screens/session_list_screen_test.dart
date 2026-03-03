@@ -9,17 +9,23 @@
 //   - Session list with month grouping and session cards
 // ===========================================================================
 
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/database/app_database.dart';
+import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/providers/calendar_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
+import 'package:agentic_journal/providers/questionnaire_providers.dart';
+import 'package:agentic_journal/providers/resurfacing_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/task_providers.dart';
 import 'package:agentic_journal/services/google_auth_service.dart';
+import 'package:agentic_journal/services/resurfacing_service.dart';
 import 'package:agentic_journal/ui/screens/session_list_screen.dart';
 
 /// No-op auth service for test overrides.
@@ -168,6 +174,190 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(FloatingActionButton), findsOneWidget);
         expect(find.byIcon(Icons.add), findsOneWidget);
+      });
+    });
+
+    group('gift card (Phase 3C)', () {
+      late AppDatabase database;
+      late SessionDao sessionDao;
+      late SharedPreferences prefs;
+      late ResurfacingService resurfacingService;
+
+      setUp(() async {
+        SharedPreferences.setMockInitialValues({});
+        prefs = await SharedPreferences.getInstance();
+        database = AppDatabase.forTesting(NativeDatabase.memory());
+        sessionDao = SessionDao(database);
+        resurfacingService = ResurfacingService(sessionDao, prefs);
+      });
+
+      tearDown(() async {
+        await database.close();
+      });
+
+      /// A session 7 days ago that qualifies for resurfacing.
+      JournalSession giftSession() => _makeSession(
+        id: 'gift-1',
+        startTime: DateTime.now().toUtc().subtract(const Duration(days: 7)),
+        endTime: DateTime.now().toUtc().subtract(const Duration(days: 7)),
+        summary: 'Had a wonderful morning walk.',
+      );
+
+      /// Build the screen with the gift card overrides applied.
+      ///
+      /// [sessionFn] is called each time [resurfacedSessionProvider] evaluates
+      /// (including after invalidation). Pass a stateful closure to test the
+      /// card-disappears-after-skip flow.
+      Widget buildGiftScreen({required JournalSession? Function() sessionFn}) {
+        final baseSession = _makeSession(
+          id: 's1',
+          startTime: DateTime.utc(2026, 2, 15),
+          endTime: DateTime.utc(2026, 2, 15),
+          summary: 'A session',
+        );
+        return ProviderScope(
+          overrides: [
+            paginatedSessionsProvider.overrideWith(
+              (ref) => Stream.value([baseSession]),
+            ),
+            sessionCountProvider.overrideWith((ref) => Future.value(1)),
+            taskCountProvider.overrideWith((ref) => Future.value(0)),
+            photoCountProvider.overrideWith((ref) => Future.value(0)),
+            pendingCalendarEventsCountProvider.overrideWith(
+              (ref) => Future.value(0),
+            ),
+            checkInCountProvider.overrideWith((ref) => Stream.value(0)),
+            // Suppress the Check-In CTA banner so only the gift card is visible.
+            quickCheckInBannerDismissedProvider.overrideWith((ref) => true),
+            resurfacingServiceProvider.overrideWithValue(resurfacingService),
+            resurfacedSessionProvider.overrideWith((ref) async => sessionFn()),
+            googleAuthServiceProvider.overrideWithValue(_fakeAuthService),
+            isGoogleConnectedProvider.overrideWith(
+              (ref) => GoogleConnectionNotifier(_fakeAuthService),
+            ),
+          ],
+          child: MaterialApp(
+            home: const SessionListScreen(),
+            routes: {
+              '/session': (context) => const Scaffold(body: Text('Session')),
+              '/session/detail': (context) =>
+                  const Scaffold(body: Text('Detail')),
+              '/settings': (context) => const Scaffold(body: Text('Settings')),
+              '/search': (context) => const Scaffold(body: Text('Search')),
+              '/tasks': (context) => const Scaffold(body: Text('Tasks')),
+              '/gallery': (context) => const Scaffold(body: Text('Gallery')),
+            },
+          ),
+        );
+      }
+
+      testWidgets(
+        'renders gift card with header and summary when session qualifies',
+        (tester) async {
+          final session = giftSession();
+          await tester.pumpWidget(buildGiftScreen(sessionFn: () => session));
+          await tester.pumpAndSettle();
+
+          // Header label should appear.
+          expect(find.textContaining('A moment from'), findsOneWidget);
+          // Summary text should appear.
+          expect(find.text('Had a wonderful morning walk.'), findsOneWidget);
+          // Sparkle icon present.
+          expect(find.byIcon(Icons.auto_awesome_outlined), findsOneWidget);
+          // Reflect button present.
+          expect(find.text('Reflect on this →'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'gift card absent when resurfacedSessionProvider returns null',
+        (tester) async {
+          await tester.pumpWidget(buildGiftScreen(sessionFn: () => null));
+          await tester.pumpAndSettle();
+
+          expect(find.textContaining('A moment from'), findsNothing);
+          expect(find.text('Reflect on this →'), findsNothing);
+        },
+      );
+
+      testWidgets('Reflect button navigates to session detail', (tester) async {
+        final session = giftSession();
+        await tester.pumpWidget(buildGiftScreen(sessionFn: () => session));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Reflect on this →'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Detail'), findsOneWidget);
+      });
+
+      testWidgets('Skip button removes gift card after provider invalidation', (
+        tester,
+      ) async {
+        // First evaluation returns the session (card shows); subsequent
+        // evaluations return null (card hides after skip + invalidation).
+        var calls = 0;
+        final session = giftSession();
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value([
+                  _makeSession(
+                    id: 's1',
+                    startTime: DateTime.utc(2026, 2, 15),
+                    endTime: DateTime.utc(2026, 2, 15),
+                    summary: 'A session',
+                  ),
+                ]),
+              ),
+              sessionCountProvider.overrideWith((ref) => Future.value(1)),
+              taskCountProvider.overrideWith((ref) => Future.value(0)),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              pendingCalendarEventsCountProvider.overrideWith(
+                (ref) => Future.value(0),
+              ),
+              checkInCountProvider.overrideWith((ref) => Stream.value(0)),
+              quickCheckInBannerDismissedProvider.overrideWith((ref) => true),
+              resurfacingServiceProvider.overrideWithValue(resurfacingService),
+              resurfacedSessionProvider.overrideWith((ref) async {
+                calls++;
+                // Return session only on first evaluation; null after skip
+                // invalidates the provider.
+                return calls <= 1 ? session : null;
+              }),
+              googleAuthServiceProvider.overrideWithValue(_fakeAuthService),
+              isGoogleConnectedProvider.overrideWith(
+                (ref) => GoogleConnectionNotifier(_fakeAuthService),
+              ),
+            ],
+            child: MaterialApp(
+              home: const SessionListScreen(),
+              routes: {
+                '/session': (context) => const Scaffold(body: Text('Session')),
+                '/session/detail': (context) =>
+                    const Scaffold(body: Text('Detail')),
+                '/settings': (context) =>
+                    const Scaffold(body: Text('Settings')),
+                '/search': (context) => const Scaffold(body: Text('Search')),
+                '/tasks': (context) => const Scaffold(body: Text('Tasks')),
+                '/gallery': (context) => const Scaffold(body: Text('Gallery')),
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Gift card should be visible before skip.
+        expect(find.textContaining('A moment from'), findsOneWidget);
+
+        // Tap the skip button.
+        await tester.tap(find.byTooltip('Never resurface this memory'));
+        await tester.pumpAndSettle();
+
+        // Gift card should be gone after skip + provider invalidation.
+        expect(find.textContaining('A moment from'), findsNothing);
       });
     });
 
