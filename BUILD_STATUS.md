@@ -1,18 +1,44 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-03 ~03:30 UTC
+> Last updated: 2026-03-03 ~15:00 UTC
 
 ## Current Task
 
-**Status:** Sprint N+1 shipped (v0.17.4+12, PR #59). On `main`. Ready for next sprint.
-**Branch:** `main`
-**Version:** `0.17.4+12`
+**Status:** Phase 1 Pulse Check-In + Phase 2A/2B complete (PR #64, `develop/adhd-roadmap`). Ready for Phase 3A or next spec task.
+**Branch:** `develop/adhd-roadmap`
+**Version:** `0.18.0+13`
 
 ### In Progress
 (none)
 
 ### Just Completed
+- **Phase 1 Pulse Check-In + Phase 2A gap-shaming removal + Phase 2B CTA banner** (PR #64, `develop/adhd-roadmap`, v0.18.0+13):
+  - Phase 1: 4-table drift schema v10 (`questionnaire_templates`, `questionnaire_items`, `checkin_responses`, `check_in_answers`), `QuestionnaireDao` (atomic save, N+1 avoidance), `CheckInScoreService` (const, reverse-scoring formula, partial-completion), `QuestionnaireDefaults` (idempotent seed, 6 items), `CheckInNotifier` (Riverpod StateNotifier), `NumericParserService` (STT homophones, compound words, 0–100), `PulseCheckInWidget` + `PulseCheckInSummary` (ADHD copy), voice flow with re-prompt/skip
+  - Phase 2A: `daysSinceLast` removed from all 3 conversation layers; `@Tags(['regression'])` added to `local_llm_layer_test.dart`; ledger entry added
+  - Phase 2B: Quick Check-In CTA banner — universal display (no gap-detection), `quickCheckInBannerDismissedProvider` (Riverpod StateProvider) for dismissal persistence, 5 widget tests
+  - ADR-0032: status `proposed` → `accepted` with as-built schema (questionnaire_items, template-level scale, normalized CheckInAnswers, user_checkin_config deferred to v11)
+  - `_NumericParserAdapter` (53-line duplicate) replaced with direct `NumericParserService` import
+  - Review: REV-20260303-142206 (request-changes → all 6 blocking findings resolved)
+  - Quality gate: 7/7 | Coverage: 80.2% | Tests: 2060 | All pass
+  - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
+  - Open advisories: 10 new (A1–A10 from REV-20260303-142206) + 74 prior = **84 total**
+
+- **ADR-0031 + ADR-0032** (PR #62, `develop/adhd-roadmap`):
+  - ADR-0031: Deepgram Nova-3 as primary STT engine — swap via `SpeechRecognitionService` interface (ADR-0022 boundary), `speech_final`/`utterance_end` → `SpeechResult.isFinal` mapping, `endpointing=2000`, `utterance_end_ms=1500`, `deepgram-proxy` Edge Function following ADR-0005, fallback chain (Deepgram → SpeechToText → sherpa_onnx), GPT-4o Realtime as blocked north star
+  - ADR-0032: Four-table Pulse Check-In schema (`questionnaire_templates`, `questionnaire_questions`, `checkin_responses`, `user_checkin_config`), WHO-5 NC license decision, reverse-scoring formula (`scaleMax + scaleMin - rawValue`), composite score edge cases, deviation from ADR-0025 Alternative 3 justified
+  - Quality gate: 7/7 passed
+
+- **P0 STT pauseFor fix** (PR #61, `develop/adhd-roadmap`):
+  - `speech_to_text_stt_service.dart:98` — `pauseFor` 5s → 2s
+  - Eliminates ~30s dead time in 6-question Pulse Check-In voice flow
+
+- **ADHD Roadmap Spec + Clinical Constraints** (PR #60, `main`):
+  - `SPEC-20260302-adhd-informed-feature-roadmap.md` — major additions from 3 deliberation/plan sessions; status: reviewed
+  - `CLAUDE.md` — `## Clinical UX Constraints` section added
+  - 3 discussions sealed: DISC-20260303-031401, DISC-20260303-042204, DISC-20260303-043107
+
+
 - **Voice Capture Reliability Research** (DISC-20260303-031401, sealed, 7 turns):
   - Motivation: Device testing revealed frequent STT mistranscriptions with `speech_to_text` + Android SpeechRecognizer; ChatGPT voice as north star
   - **CRITICAL finding**: `lib/services/speech_to_text_stt_service.dart:98` — `pauseFor: Duration(seconds: 5)` is the dominant latency contributor. Change to `Duration(seconds: 2)` immediately.
@@ -213,9 +239,10 @@ Or manually (physical device):
 
 ## Tech Debt
 
-- **Coverage** — 81.2% (above 80% target, 1937 tests)
-- **Education gates deferred** — Phase 11 + Phase 12; also deferred from REV-20260302-152240
-- **Review advisories open** — 74 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421 (net: 72 - 5 closed + 7 new = 74)
+- **Coverage** — 80.2% (above 80% target, 2060 tests)
+- **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation)
+- **Review advisories open** — 84 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206
+- **user_checkin_config** deferred to schema v11 (Phase 1 Task 8)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
 - **Pipeline advisories** — stop words duplication, bare except, candidate_id collision risk (see REV-20260301-215800)
@@ -232,15 +259,18 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **Education gate** — Re-deferred 2026-03-02: REV-20260302-152240 walkthrough/quiz on `fallback_tts_service.dart` + `voice_providers.dart`. Must complete before any further changes to fallback TTS or voice providers.
-2. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
-3. **Run retro** — Sprint N+1 is landed. Run `/retro` to evaluate: ADR-0030 evaluation gate (Signal A/B check), advisory triage, protocol yield review.
-4. **Voice sprint planning** — DISC-20260303-031401 produced the research foundation. Next steps in priority order:
-   - **P0 (immediate fix, 1 line)**: `lib/services/speech_to_text_stt_service.dart:98` — change `pauseFor: Duration(seconds: 5)` to `Duration(seconds: 2)`
-   - **P1 (next sprint)**: Deepgram Nova-3 integration — new `DeepgramSttService`, `deepgram-proxy` Edge Function, journaling-tuned endpoint config (`endpointing=2000`, `utterance_end_ms=1500`)
-   - **P2 (future ADR first)**: GPT-4o Realtime — blocked; needs WebSocket proxy ADR before implementation
-5. **Next sprint other candidates** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1)
-6. **Open advisory triage** — 74 total. Priority: A1 RegExp-per-call in `_hasStrongCalendarSignal` (REV-20260303-013421); A4 documentation_policy.md enforcement parenthetical (2-sprint carry-forward)
+1. **ADHD Roadmap — Phase 1 complete**. On `develop/adhd-roadmap` (v0.18.0+13).
+   - **PR #64 merged**: Phase 1 Pulse Check-In + Phase 2A gap-shaming removal + Phase 2B CTA banner
+   - **Next step options**:
+     - Phase 1 Task 8 (`user_checkin_config` — schema v11, notification scheduling, 3-dismissal auto-disable) — run `/build_module docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md`
+     - Phase 3A (voice flow) — requires Deepgram implementation (ADR-0031 P1) first
+     - Advisory triage (84 open) — priority: A2 (UNIQUE constraint on check_in_answers), A3 (wrap v9→v10 migration in transaction), A1 (CheckInSyncStatus.pending constant)
+   - **Education gate pending** (deferred): Phase 1 Pulse Check-In state machine, composite score formula, ADHD clinical UX constraints, drift migration pattern — must complete before changes to clinical UX files
+2. **Education gate** — Re-deferred 2026-03-02: REV-20260302-152240 walkthrough/quiz on `fallback_tts_service.dart` + `voice_providers.dart`. Must complete before any further changes to those files.
+3. **Run retro** — Sprint N+1 landed. Run `/retro` to evaluate: ADR-0030 evaluation gate (Signal A/B check), advisory triage, protocol yield review.
+4. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
+5. **Open advisory triage** — 74 total. Priority: A1 RegExp-per-call in `_hasStrongCalendarSignal` (REV-20260303-013421); A4 documentation_policy.md enforcement parenthetical (2-sprint carry-forward)
+6. **Deepgram P1** (voice sprint, after Phase 1): new `DeepgramSttService`, `deepgram-proxy` Edge Function, per ADR-0031
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
