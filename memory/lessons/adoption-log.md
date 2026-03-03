@@ -1,10 +1,10 @@
 ---
 last_updated: "2026-03-03"
-total_analyses: 17
-patterns_evaluated: 118
-patterns_adopted: 45
+total_analyses: 18
+patterns_evaluated: 124
+patterns_adopted: 50
 patterns_confirmed: 5
-patterns_deferred: 32
+patterns_deferred: 33
 patterns_rejected: 22
 ---
 
@@ -40,6 +40,71 @@ Each entry records:
 
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
+
+### Pattern: ADHD Symptom Taxonomy as AI Classification Vocabulary
+- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
+- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:4, fit:5, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — Claude session analysis prompt engineering
+- **Decision**: IDEAS-ONLY (no license). Five-category ADHD vocabulary for AI classification: Positive States, Inattentive, Executive Dysfunction, Emotional Dysregulation, Stressors. Claude classifies voice transcripts using this vocabulary — users speak freely, AI names what it recognizes. DSM-5 aligned, independently derivable from clinical literature.
+- **Date**: 2026-03-03
+
+### Pattern: Positive ADHD Traits as First-Class Trackable States
+- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
+- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
+- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — Claude session analysis output framing
+- **Decision**: IDEAS-ONLY (no license). Name and track Hyperfocus, Flow, Momentum, Emotional Resiliency as positive ADHD states. Prevents AI from pathologizing neutral/positive experiences. Strengths-based framing from ADHD coaching literature.
+- **Date**: 2026-03-03
+
+### Pattern: Day-Type Taxonomy as AI Session Classification
+- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
+- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — Drift session schema enum + Claude analysis output
+- **Decision**: IDEAS-ONLY (no license). Classify sessions into named day types: Peak Performance, Successful, Emotional Challenge, Inattentive Struggle, Executive Dysfunction, High Stress, Neutral. AI assigns label after analysis. Users can override. Enables trend visualization.
+- **Date**: 2026-03-03
+
+### Pattern: Sleep Quality Field on Journal Sessions
+- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
+- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
+- **Score**: 21/25 (prevalence:5, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — Drift session schema addition
+- **Decision**: IDEAS-ONLY (no license). Add sleepQuality nullable numeric (1-5 or 0.0-1.0) to sessions. Sleep dysregulation is core ADHD comorbidity. Voice prompt "How did you sleep?" at session start (skippable). Include in Claude analysis context.
+- **Date**: 2026-03-03
+
+### Pattern: Medication Notes Field on Journal Sessions
+- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
+- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
+- **Score**: 20/25 (prevalence:4, elegance:4, evidence:4, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING — future sprint (not yet implemented)
+- **Location**: TBD — Drift session schema addition
+- **Decision**: IDEAS-ONLY (no license). Add medicationNotes nullable text field. Free text for dose timing, missed doses, changes. Include in Claude analysis prompt. **OPT-IN ONLY**: Medication tracking must be gated behind an explicit toggle on the Settings page (default: off). When disabled, the field is not captured, the AI does not ask about medication, and no medication-related UI or prompts are shown. When enabled, voice prompts and AI analysis include medication context. Developer requirement — not a suggestion.
+- **Date**: 2026-03-03
+
+### Pattern: Emotion Cluster Aggregation for Dashboard
+- **First seen**: gosooners345/ADHD_Journal_Flutter (2026-03-03)
+- **Analysis**: DISC-20260303-205909-analyze-adhd-journal-flutter
+- **Score**: 16/25 (prevalence:3, elegance:3, evidence:4, fit:3, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Claude API performs emotion categorization with greater accuracy. Hardcoded vocabulary lists would be regressive for our AI-enabled architecture.
+- **Revisit if**: We need offline-only emotion categorization without Claude API access
+- **Date**: 2026-03-03
 
 ### Pattern: NotificationService Abstract Interface + Fake
 - **First seen**: FriesI23/mhabit (2026-03-03)

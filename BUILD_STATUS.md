@@ -1,18 +1,71 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-03 ~15:00 UTC
+> Last updated: 2026-03-03 ~23:30 UTC
 
 ## Current Task
 
-**Status:** v0.19.0+15 landed. Phase 1 Task 10 complete (CheckInScreen + CheckInHistoryScreen + export). Ready for Phase 1 Task 8, Phase 3A, advisory triage, or device testing.
+**Status:** Phase 3D shipped (PR pending, v0.25.0+22). Next: Advisory triage A7/A8/A9 (settings async error handling).
 **Branch:** `develop/adhd-roadmap`
-**Version:** `0.19.0+15`
+**Version:** `0.25.0+22`
 
 ### In Progress
-(none)
+- (none — shipping Phase 3D now)
 
 ### Just Completed
+- **Phase 3D: Weekly Celebratory Digest** (PR pending, `develop/adhd-roadmap`, v0.25.0+22):
+  - `WeeklyDigestService` — 7-day look-back window, quick_mood_tap excluded, dismissal TTL via SharedPreferences, highlight = most recent session with summary
+  - `weeklyDigestProvider` — FutureProvider<WeeklyDigest?> following Phase 3C pattern
+  - `session_list_screen.dart` — `_buildWeeklyDigestCard` + mutual exclusion guard (showDigest/showGift) — ADHD "one card at a time" invariant
+  - B-1 blocking fix applied in-review: digest card + gift card mutual exclusion
+  - 12 service unit tests + 4 widget tests, 35 tests total pass
+  - Review: REV-20260303-232113 (approve-with-changes, 1 blocking resolved in-review, 10 advisory)
+  - Quality gate: 7/7 | Coverage: 81.0% | All pass
+  - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
+  - Open advisories: 10 new from REV-20260303-232113. **Total: 145**
+
+- **Phase 3C: Home Screen Resurfacing ("Gifts")** (PR #74, `develop/adhd-roadmap`, v0.24.0+21):
+  - `ResurfacingService` — spaced-repetition windows (7d/30d/90d), Holt-Winters-lite decay, gift card on session_list_screen
+  - `resurfacedSessionProvider` — FutureProvider with weighted random selection
+  - Skip action: re-rolls immediately; Reflect action: opens session detail
+  - 3 service tests + widget tests; review approved
+  - Education gate: deferred per CLAUDE.md
+
+- **Phase 3B: Quick Mood Tap** (PR #73, `develop/adhd-roadmap`, v0.23.0+20):
+  - `QuickMoodTapSheet` bottom sheet widget: mood emoji row → energy row → atomic save → "Saved. That's enough."
+  - `QuickMoodNotifier` with single `createQuickMoodSession()` atomic INSERT (eliminates orphan-session crash window)
+  - `JournalingMode.quickMoodTap` (7th enum value); `quick_mood_tap` sessions excluded from watch streams
+  - 48dp touch targets + `Semantics.selected` on mood emojis; SnackBar error feedback on failure
+  - 27 new tests: widget (7), provider unit (9), DAO filter (11)
+  - Review: REV-20260303-222128 (approve-with-changes, 6 blocking all resolved in-review, 14 advisory open)
+  - Quality gate: 7/7 | Coverage: 80.8% | Tests: 2156 | All pass
+  - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
+  - Open advisories: 14 new from REV-20260303-222128. **Total: 135**
+
+- **Deepgram P1: DeepgramSttService + Edge Function** (PR #72, `develop/adhd-roadmap`, v0.22.0+19):
+  - `DeepgramSttService` WebSocket client; `deepgram-proxy` Edge Function; STT fallback chain
+
+- **Phase 1 Task 8: Settings Questionnaire Config** (PR #71, `develop/adhd-roadmap`, v0.21.0+18):
+  - `watchDefaultTemplate()` DAO stream method for real-time scale config via `watchSingleOrNull()`
+  - `activeDefaultTemplateProvider` Riverpod `StreamProvider<QuestionnaireTemplate?>` wired to settings scale toggle
+  - `SegmentedButton` scale preset toggle (1-5/1-10/0-100) in Pulse Check-In settings — persists to DB immediately via stream
+  - Edit question text dialog per item — `TextEditingController` inside `showDialog` builder (fixes dispose-during-dismiss-animation crash)
+  - `_showAddCheckInItemDialog` same controller pattern fix
+  - Bug fix: `_exportData` changed from `getActiveItemsForTemplate` → `getAllItemsForTemplate` — deactivated items now show question text in CSV exports (was showing 'Unknown')
+  - 15 new widget tests in `test/ui/settings_checkin_questionnaire_test.dart`
+  - 5 new DAO tests in `watchDefaultTemplate` group
+  - Build: DISC-20260303-202018-build-checkin-settings-questionnaire-config (sealed)
+  - Review: REV-20260303-204036 (approve-with-changes, 1 blocking resolved in-review, 13 advisory open)
+  - Quality gate: 7/7 | Coverage: 80.4% | Tests: 2091 | All pass
+  - Deploy: SUCCESS on SM_G998U1 (release mode)
+  - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
+  - Open advisories: 13 new (A1–A13 from REV-20260303-204036). **Total: 121**
+
+- **Daily Average Chart Fix** (PR #70, `develop/adhd-roadmap`, v0.20.1+17):
+  - `_DayAverage` class: groups check-in entries by YYYY-MM-DD, averages per-item values and composite scores per day
+  - Filter labels changed: "5 days" / "10 days" / "All"
+  - Sparse state message updated
+
 - **Phase 1 Task 10: CheckInScreen + CheckInHistoryScreen + Export** (PR #67, `develop/adhd-roadmap`, v0.19.0+15):
   - CheckInScreen: dedicated slider-based check-in flow (no chat chrome), PopScope back-button protection with discard dialog, `completeCheckInSession()` bypasses empty-session auto-discard guard
   - CheckInHistoryScreen: expandable cards with composite score chip, per-question answer bars, ADHD-safe UX (no streaks, no gap-shaming, neutral palette)
@@ -274,9 +327,9 @@ Or manually (physical device):
 
 ## Tech Debt
 
-- **Coverage** — 80.2% (above 80% target, 2076 tests)
-- **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation); REV-20260303-180530 (CheckInHistoryScreen async* stream, completeCheckInSession, _normalizeValue, ADHD UX)
-- **Review advisories open** — 108 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530
+- **Coverage** — 81.0% (above 80% target, 35 new tests in Phase 3D)
+- **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation); REV-20260303-180530 (CheckInHistoryScreen async* stream, completeCheckInSession, _normalizeValue, ADHD UX); REV-20260303-222128 (Phase 3B Quick Mood Tap); REV-20260303-232113 (Phase 3D Weekly Digest)
+- **Review advisories open** — 145 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113
 - **user_checkin_config** deferred to schema v11 (Phase 1 Task 8)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
@@ -294,21 +347,13 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — Phase 1 complete + emulator-tested + 3 device bugs fixed**. On `develop/adhd-roadmap` (v0.18.1+14).
-   - **PR #64 merged**: Phase 1 Pulse Check-In + Phase 2A gap-shaming removal + Phase 2B CTA banner
-   - **PR #65 merged**: Emulator smoke test for Phase 1 — all features verified on device
-   - **PR #66 merged**: 3 post-deploy bug fixes (STT, check-in state, Downloads export)
-   - **Next step options**:
-     - Device testing: deploy v0.19.0+15 to SM_G998U1 and verify CheckInScreen + CheckInHistoryScreen on device
-     - Phase 1 Task 8 (`user_checkin_config` — schema v11, notification scheduling, 3-dismissal auto-disable) — run `/build_module docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md`
-     - Phase 3A (voice flow) — requires Deepgram implementation (ADR-0031 P1) first
-     - Advisory triage (108 open) — priority: A2 (UNIQUE constraint on check_in_answers), A3 (wrap v9→v10 migration in transaction), A2 from REV-20260303-163807 (getDownloadsDirectory())
-   - **Education gate pending** (deferred): Phase 1 Pulse Check-In state machine, composite score formula, ADHD clinical UX constraints, drift migration pattern — must complete before changes to clinical UX files
-2. **Education gate** — Re-deferred 2026-03-02: REV-20260302-152240 walkthrough/quiz on `fallback_tts_service.dart` + `voice_providers.dart`. Must complete before any further changes to those files.
-3. **Run retro** — Sprint N+1 landed. Run `/retro` to evaluate: ADR-0030 evaluation gate (Signal A/B check), advisory triage, protocol yield review.
-4. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
-5. **Open advisory triage** — 74 total. Priority: A1 RegExp-per-call in `_hasStrongCalendarSignal` (REV-20260303-013421); A4 documentation_policy.md enforcement parenthetical (2-sprint carry-forward)
-6. **Deepgram P1** (voice sprint, after Phase 1): new `DeepgramSttService`, `deepgram-proxy` Edge Function, per ADR-0031
+1. **ADHD Roadmap — Phase 3D shipping**. On `develop/adhd-roadmap` (v0.25.0+22).
+   - **PR #74 merged**: Phase 3C Home Screen Resurfacing ("Gifts") (ResurfacingService, gift card, 7d/30d/90d windows)
+   - **PR #73 merged**: Phase 3B Quick Mood Tap (atomic DAO write, 27 new tests)
+   - **Phase 3D PR pending**: Weekly Celebratory Digest (WeeklyDigestService, weeklyDigestProvider, digest card, mutual exclusion guard)
+   - **Next**: Advisory triage A7/A8/A9 from settings async error handling, then Phase 4A Tag Editing
+2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D; REV-20260302-152240 (fallback TTS, voice_providers)
+3. **Open advisory triage** — 145 total. Priority: A6/A9 from REV-20260303-222128 (getRecentCompletedSessions includes mood taps — LLM greeting degradation); A-8/A-9 from REV-20260303-232113 (optimistic dismiss, TalkBack Semantics wrapper)
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*

@@ -22,6 +22,8 @@ import '../../providers/search_providers.dart';
 import '../../providers/questionnaire_providers.dart';
 import '../../providers/resurfacing_providers.dart';
 import '../../providers/session_providers.dart';
+import '../../providers/weekly_digest_providers.dart';
+import '../../services/weekly_digest_service.dart';
 import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
 import '../widgets/quick_mood_tap_sheet.dart';
@@ -89,11 +91,29 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
           // FutureProvider loads (hasValue=false) and if none qualifies.
           final resurfacedAsync = ref.watch(resurfacedSessionProvider);
 
+          // Phase 3D — weekly digest card: celebrates this week's captures.
+          // Hidden while loading, if dismissed in the past 7 days, or if no
+          // eligible sessions exist this week.
+          final weeklyDigestAsync = ref.watch(weeklyDigestProvider);
+
+          // ADHD UX: show at most one passive-celebration card at a time.
+          // The weekly digest card takes priority — the gift card is shown
+          // only when no digest card qualifies. Showing both simultaneously
+          // creates 6+ competing interactive elements above the session list
+          // and violates the ADHD spec's "one entry at a time" principle.
+          final showDigest =
+              weeklyDigestAsync.hasValue && weeklyDigestAsync.value != null;
+          final showGift =
+              !showDigest &&
+              resurfacedAsync.hasValue &&
+              resurfacedAsync.value != null;
+
           return Column(
             children: [
               if (!bannerDismissed) _buildRecoveryBanner(context),
-              if (resurfacedAsync.hasValue && resurfacedAsync.value != null)
-                _buildGiftCard(context, resurfacedAsync.value!),
+              if (showDigest)
+                _buildWeeklyDigestCard(context, weeklyDigestAsync.value!),
+              if (showGift) _buildGiftCard(context, resurfacedAsync.value!),
               Expanded(child: _buildGroupedSessionList(context, ref, sessions)),
             ],
           );
@@ -336,6 +356,89 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Weekly celebratory digest card (Phase 3D).
+  ///
+  /// Shows a congratulatory card once per week celebrating the sessions the
+  /// user captured. ADHD-safe framing: only what WAS captured is mentioned —
+  /// no gaps, no missed days, no streaks.
+  ///
+  /// Tap ✕ → dismissed for 7 days (stored in SharedPreferences).
+  Widget _buildWeeklyDigestCard(BuildContext context, WeeklyDigest digest) {
+    final theme = Theme.of(context);
+    final count = digest.sessionCount;
+    final momentWord = count == 1 ? 'moment' : 'moments';
+    final headline = 'This week you captured $count $momentWord — nice.';
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.star_outline,
+                  size: 16,
+                  color: theme.colorScheme.tertiary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    headline,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onTertiaryContainer,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  color: theme.colorScheme.onTertiaryContainer,
+                  tooltip: 'Dismiss until next week',
+                  onPressed: () async {
+                    try {
+                      await ref
+                          .read(weeklyDigestServiceProvider)
+                          .dismissDigest();
+                      if (context.mounted) {
+                        ref.invalidate(weeklyDigestProvider);
+                      }
+                    } on Exception {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Couldn't dismiss. Try again."),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+            if (digest.highlightSession?.summary != null &&
+                digest.highlightSession!.summary!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                digest.highlightSession!.summary!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onTertiaryContainer,
+                  fontStyle: FontStyle.italic,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ],
         ),
       ),
