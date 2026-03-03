@@ -1,19 +1,39 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-02 ~23:30 UTC
+> Last updated: 2026-03-03 ~03:30 UTC
 
 ## Current Task
 
-**Status:** Context-brief framework rollout committed (framework-only, no version bump). Ready for Sprint N+1.
+**Status:** Sprint N+1 shipped (v0.17.4+12, PR #59). On `main`. Ready for next sprint.
 **Branch:** `main`
-**Version:** `0.17.3+11`
+**Version:** `0.17.4+12`
 
 ### In Progress
 (none)
 
 ### Just Completed
-- **Context-Brief Framework Rollout** (SPEC-20260302-192548 Step 2, framework-only):
+- **Voice Capture Reliability Research** (DISC-20260303-031401, sealed, 7 turns):
+  - Motivation: Device testing revealed frequent STT mistranscriptions with `speech_to_text` + Android SpeechRecognizer; ChatGPT voice as north star
+  - **CRITICAL finding**: `lib/services/speech_to_text_stt_service.dart:98` — `pauseFor: Duration(seconds: 5)` is the dominant latency contributor. Change to `Duration(seconds: 2)` immediately.
+  - **Incremental path (recommended)**: Replace Android SpeechRecognizer with Deepgram Nova-3 streaming WebSocket. New `DeepgramSttService` implementing `SpeechRecognitionService`. New `deepgram-proxy` Edge Function. Configure `endpointing=2000`, `utterance_end_ms=1500`, `interim_results=true`. Est. $1.77/month at 10 min/day.
+  - **North star (blocked)**: GPT-4o Realtime API blocked by WebSocket proxy ADR (ADR-0005 doesn't extend to WebSocket), constraint conflict (Claude as AI layer), and $3/session cost. Needs new ADR before implementation.
+  - **On-device Whisper (conditional)**: sherpa_onnx/whisper.cpp as offline fallback. Snapdragon 888 SIGILL risk from ADR-0017 applies — requires hardware validation spike first.
+  - **Endpoint detection key insight**: Journaling requires 2–3s silence threshold, NOT cloud defaults (~800ms) which interrupt thinking pauses. This config difference is as important as the STT provider choice.
+  - Panel: architecture-consultant, performance-analyst, independent-perspective (2 rounds)
+  - Discussion: DISC-20260303-031401-voice-capture-reliability-and-conversational-ai-architecture (sealed)
+
+- **Sprint N+1: Intent Classifier Stability Refactor + Advisory Resolution** (SPEC-20260303-010332, PR #59, v0.17.4+12):
+  - Root cause fix: `static const _calendarEventNouns` shared constant enforces noun-list sync between `_calendarIntentPattern` and `_hasStrongCalendarSignal` at compile time (eliminates PR #56/#57 regression class)
+  - Word-count wildcard `(\s+[\w-]+){0,4}` replaces `.{0,15}` char-count wildcard in both patterns — brand-agnostic
+  - `\b` anchor (was `^`) in `_calendarIntentPattern` for voice preamble support; `^` retained in `_hasStrongCalendarSignal`
+  - 10 new regression tests; 1937 total, all pass, 81.2% coverage
+  - Advisory resolution: A1–A5 from REV-20260302-232244 closed (INVARIANT comments, cold-start fallback, privacy filter, CLAUDE.md context-brief list, ADR-0030 stub)
+  - ADR-0030: developer input capture schema extension (status: proposed, pending two-sprint evaluation gate)
+  - Review: REV-20260303-013421 (approve-with-changes, 1 blocking resolved in-review, 8 advisory)
+  - Discussions: DISC-20260303-010442 (spec), DISC-20260303-011131 (build), DISC-20260303-013421 (review) — all closed
+
+- **Context-Brief Framework Rollout** (SPEC-20260302-192548 Step 2, PR #58, framework-only):
   - Added Step 3.5 (context-brief before specialist dispatch) to: `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`
   - Blocking fixes during review: plan.md synthesis `## Request Context` requirement, retro standing agenda restructured as Step 5.5, retro disposition dead-code condition rewritten as observable signals
   - Review: REV-20260302-232244 (approve-with-changes, 3 blocking resolved, 6 advisory)
@@ -193,13 +213,13 @@ Or manually (physical device):
 
 ## Tech Debt
 
-- **Coverage** — 81.2% (above 80% target, 1927 tests)
+- **Coverage** — 81.2% (above 80% target, 1937 tests)
 - **Education gates deferred** — Phase 11 + Phase 12; also deferred from REV-20260302-152240
-- **Review advisories open** — 72 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 6 from REV-20260302-232244
+- **Review advisories open** — 74 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421 (net: 72 - 5 closed + 7 new = 74)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
 - **Pipeline advisories** — stop words duplication, bare except, candidate_id collision risk (see REV-20260301-215800)
-- **Three divergent event noun lists** — `_calendarIntentPattern`, `_hasStrongCalendarSignal`, `_eventNounPattern` (Sprint N+1 refactor: shared `static const _calendarEventNouns`)
+- **ADR-0030 evaluation gate** — two-sprint window starts now (Signal A: specialist echo, Signal B: framing drift — check at next retro)
 
 ## Key Decisions (Recent)
 
@@ -212,11 +232,15 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **Education gate** — Deferred from REV-20260302-152240 (medium-risk): run `/walkthrough lib/services/fallback_tts_service.dart lib/providers/voice_providers.dart` then `/quiz`
-2. **Address review advisories** — 72 total open. Priority: A4 Outlook Calendar structural failure (REV-20260302-222520), A3 event noun list divergence (REV-20260302-230547), A1/A2 context-brief cold-start + INVARIANT comments (REV-20260302-232244)
-3. **Start Sprint N+1** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1); structural intent classifier refactor: shared `static const _calendarEventNouns`
-4. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
-5. **ADR-0030 stub** — Create placeholder ADR for developer-input capture schema extension (advisory A5 from REV-20260302-232244)
+1. **Education gate** — Re-deferred 2026-03-02: REV-20260302-152240 walkthrough/quiz on `fallback_tts_service.dart` + `voice_providers.dart`. Must complete before any further changes to fallback TTS or voice providers.
+2. **Batch-evaluate adoptions** — 9 patterns approaching stale threshold (run `/batch-evaluate`)
+3. **Run retro** — Sprint N+1 is landed. Run `/retro` to evaluate: ADR-0030 evaluation gate (Signal A/B check), advisory triage, protocol yield review.
+4. **Voice sprint planning** — DISC-20260303-031401 produced the research foundation. Next steps in priority order:
+   - **P0 (immediate fix, 1 line)**: `lib/services/speech_to_text_stt_service.dart:98` — change `pauseFor: Duration(seconds: 5)` to `Duration(seconds: 2)`
+   - **P1 (next sprint)**: Deepgram Nova-3 integration — new `DeepgramSttService`, `deepgram-proxy` Edge Function, journaling-tuned endpoint config (`endpointing=2000`, `utterance_end_ms=1500`)
+   - **P2 (future ADR first)**: GPT-4o Realtime — blocked; needs WebSocket proxy ADR before implementation
+5. **Next sprint other candidates** — Session history injection (P1), ReusableCompleter (P1), typed errors (P1), stop-with-delay (P1), [PAUSE] tag (P1)
+6. **Open advisory triage** — 74 total. Priority: A1 RegExp-per-call in `_hasStrongCalendarSignal` (REV-20260303-013421); A4 documentation_policy.md enforcement parenthetical (2-sprint carry-forward)
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*

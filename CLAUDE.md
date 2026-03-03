@@ -20,6 +20,17 @@
 7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
 8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
 
+## Clinical UX Constraints
+
+Features touching greeting/microcopy, AI response framing, reminder/notification logic, session-gap tracking, or any feature that references session history to motivate behavior must comply with ADHD clinical UX constraints defined in `docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md` under `## Design Principles`.
+
+Key constraints (violations are **blocking findings** in any review):
+- Never mention missed days, gaps, or absence duration — not even implicitly
+- No streaks, streak counters, or gap-shaming calendars
+- Reminders must not escalate after dismissal; auto-disable after 3 consecutive dismissals
+- AI correlation outputs use epistemic humility framing ("possible relationship"), never diagnostic language
+- Voice reliability is part of the "effortless capture" contract (see Voice Capture Prerequisites in that spec)
+
 ## Architectural Boundaries
 
 ### Four-Layer Capture Stack
