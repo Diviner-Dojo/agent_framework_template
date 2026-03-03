@@ -20,6 +20,7 @@ import '../../providers/database_provider.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/questionnaire_providers.dart';
+import '../../providers/resurfacing_providers.dart';
 import '../../providers/session_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
@@ -83,9 +84,16 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
             quickCheckInBannerDismissedProvider,
           );
 
+          // Phase 3C — resurfaced "Gift" card: show when a qualifying past
+          // session exists in a spaced-repetition window. Hidden while the
+          // FutureProvider loads (hasValue=false) and if none qualifies.
+          final resurfacedAsync = ref.watch(resurfacedSessionProvider);
+
           return Column(
             children: [
               if (!bannerDismissed) _buildRecoveryBanner(context),
+              if (resurfacedAsync.hasValue && resurfacedAsync.value != null)
+                _buildGiftCard(context, resurfacedAsync.value!),
               Expanded(child: _buildGroupedSessionList(context, ref, sessions)),
             ],
           );
@@ -332,6 +340,126 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
         ),
       ),
     );
+  }
+
+  /// "Gift" resurfacing card (Phase 3C).
+  ///
+  /// Shows a past session from a spaced-repetition window (~7d, ~30d, or ~90d
+  /// ago). ADHD-safe framing: "A moment from last week" — no gap references,
+  /// no evaluation of frequency or consistency.
+  ///
+  /// "Skip" → excludes the session from future resurfacing (persisted).
+  /// "Reflect on this" → opens session detail (card refreshes on return).
+  Widget _buildGiftCard(BuildContext context, JournalSession session) {
+    final theme = Theme.of(context);
+    final timeAgo = _formatTimeAgo(session.startTime);
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      color: theme.colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_outlined,
+                  size: 16,
+                  color: theme.colorScheme.secondary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'A moment from $timeAgo',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSecondaryContainer,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  color: theme.colorScheme.onSecondaryContainer,
+                  tooltip: 'Never resurface this memory',
+                  onPressed: () async {
+                    try {
+                      await ref
+                          .read(resurfacingServiceProvider)
+                          .skipSession(session.sessionId);
+                      if (context.mounted) {
+                        ref.invalidate(resurfacedSessionProvider);
+                      }
+                    } on Exception {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Couldn't skip. Try again."),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+            if (session.summary != null && session.summary!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                session.summary!,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSecondaryContainer,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () async {
+                  await Navigator.of(
+                    context,
+                  ).pushNamed('/session/detail', arguments: session.sessionId);
+                  // Invalidate AFTER the user returns, not before — prevents
+                  // the card from reloading while the user is in the detail screen.
+                  if (context.mounted) {
+                    ref.invalidate(resurfacedSessionProvider);
+                  }
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.secondary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
+                child: const Text('Reflect on this →'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Format a past timestamp as a human-friendly relative phrase.
+  ///
+  /// ADHD UX: keeps framing positive ("a moment from…") without implying
+  /// anything about the user's activity frequency.
+  ///
+  /// Note: the spaced-repetition windows reach at most ~93 days (90d ± 3d
+  /// radius). Branches beyond 120 days are unreachable in production but kept
+  /// as a safe defensive fallback.
+  String _formatTimeAgo(DateTime sessionTime) {
+    final days = DateTime.now().difference(sessionTime).inDays;
+    if (days < 14) return 'last week';
+    if (days < 50) return 'last month';
+    if (days < 120) return 'three months ago';
+    if (days < 200) return 'several months ago';
+    return 'a while back';
   }
 
   /// Start a new journaling session and navigate to it.
