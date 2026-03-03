@@ -104,6 +104,8 @@ class _PulseCheckInWidgetState extends ConsumerState<PulseCheckInWidget> {
               max: scaleMax,
               divisions: (scaleMax - scaleMin).toInt(),
               label: _sliderValue.round().toString(),
+              semanticFormatterCallback: (v) =>
+                  '${v.round()} out of ${scaleMax.toInt()}',
               onChanged: (v) {
                 setState(() {
                   _sliderValue = v;

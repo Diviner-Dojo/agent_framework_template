@@ -21,6 +21,7 @@ import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
+import '../../providers/voice_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
 import '../widgets/session_card.dart';
@@ -51,6 +52,8 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
           _TasksIconButton(),
           // Gallery icon — visible when photos exist.
           _GalleryIconButton(),
+          // Check-In History icon — visible after first completed check-in.
+          _CheckInHistoryIconButton(),
           // Search icon — visible at 5+ sessions (progressive disclosure).
           _SearchIconButton(),
           // Settings gear icon — opens the settings screen.
@@ -332,6 +335,10 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
   }
 
   /// Start a new journaling session and navigate to it.
+  ///
+  /// Pulse Check-In sessions route to [CheckInScreen] (/check_in) when
+  /// voice mode is off (slider UI is more appropriate than chat chrome).
+  /// All other modes, and pulse check-in with voice on, use [JournalSessionScreen].
   Future<void> _startNewSession(
     BuildContext context, {
     String? journalingMode,
@@ -342,7 +349,11 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
           .read(sessionNotifierProvider.notifier)
           .startSession(journalingMode: journalingMode);
       if (context.mounted) {
-        Navigator.of(context).pushNamed('/session');
+        final voiceEnabled = ref.read(voiceModeEnabledProvider);
+        final route = (journalingMode == 'pulse_check_in' && !voiceEnabled)
+            ? '/check_in'
+            : '/session';
+        Navigator.of(context).pushNamed(route);
       }
     } finally {
       if (mounted) {
@@ -505,6 +516,30 @@ class _TasksIconButton extends ConsumerWidget {
           icon: const Icon(Icons.task_alt_outlined),
           tooltip: 'Tasks',
           onPressed: () => Navigator.of(context).pushNamed('/tasks'),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// Check-In History icon with progressive disclosure.
+///
+/// Visible only after the user has completed at least one Pulse Check-In.
+/// Routes to [CheckInHistoryScreen] (/check_in_history).
+class _CheckInHistoryIconButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countAsync = ref.watch(checkInCountProvider);
+
+    return countAsync.when(
+      data: (count) {
+        if (count < 1) return const SizedBox.shrink();
+        return IconButton(
+          icon: const Icon(Icons.insights_outlined),
+          tooltip: 'Check-in history',
+          onPressed: () => Navigator.of(context).pushNamed('/check_in_history'),
         );
       },
       loading: () => const SizedBox.shrink(),

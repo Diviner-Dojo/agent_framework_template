@@ -36,6 +36,8 @@ import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
 import 'providers/settings_providers.dart';
 import 'providers/voice_providers.dart';
+import 'ui/screens/check_in_history_screen.dart';
+import 'ui/screens/check_in_screen.dart';
 import 'ui/screens/journal_session_screen.dart';
 import 'ui/screens/conversational_onboarding_screen.dart';
 import 'ui/screens/session_detail_screen.dart';
@@ -196,6 +198,8 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
       routes: {
         '/': (context) => const SessionListScreen(),
         '/session': (context) => const JournalSessionScreen(),
+        '/check_in': (context) => const CheckInScreen(),
+        '/check_in_history': (context) => const CheckInHistoryScreen(),
         '/search': (context) => const SearchScreen(),
         '/gallery': (context) => const PhotoGalleryScreen(),
         '/tasks': (context) => const TasksScreen(),

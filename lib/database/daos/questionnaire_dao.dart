@@ -111,6 +111,18 @@ class QuestionnaireDao {
         .get();
   }
 
+  /// Get all items for a template (including inactive), ordered by sortOrder.
+  ///
+  /// Use this in historical views (e.g., check-in history dashboard) where
+  /// deactivated items must still display their question text against old
+  /// answers. Use [getActiveItemsForTemplate] only for "what to answer today".
+  Future<List<QuestionnaireItem>> getAllItemsForTemplate(int templateId) {
+    return (_db.select(_db.questionnaireItems)
+          ..where((i) => i.templateId.equals(templateId))
+          ..orderBy([(i) => OrderingTerm.asc(i.sortOrder)]))
+        .get();
+  }
+
   /// Watch all items for a template (including inactive), ordered by sortOrder.
   Stream<List<QuestionnaireItem>> watchItemsForTemplate(int templateId) {
     return (_db.select(_db.questionnaireItems)
@@ -225,6 +237,34 @@ class QuestionnaireDao {
     return (_db.select(
       _db.checkInResponses,
     )..orderBy([(r) => OrderingTerm.desc(r.completedAt)])).watch();
+  }
+
+  /// Watch all responses with their answers (for the history dashboard).
+  ///
+  /// Emits whenever any response or answer row changes. Uses a single
+  /// IN-clause query for answers to avoid N+1 round-trips.
+  Stream<List<CheckInResponseWithAnswers>> watchAllResponsesWithAnswers() {
+    return watchAllResponses().asyncMap((responses) async {
+      if (responses.isEmpty) return [];
+      final ids = responses.map((r) => r.id).toList();
+      final allAnswers = await (_db.select(
+        _db.checkInAnswers,
+      )..where((a) => a.responseId.isIn(ids))).get();
+
+      final answersByResponseId = <int, List<CheckInAnswer>>{};
+      for (final a in allAnswers) {
+        answersByResponseId.putIfAbsent(a.responseId, () => []).add(a);
+      }
+
+      return responses
+          .map(
+            (r) => CheckInResponseWithAnswers(
+              response: r,
+              answers: answersByResponseId[r.id] ?? [],
+            ),
+          )
+          .toList();
+    });
   }
 }
 

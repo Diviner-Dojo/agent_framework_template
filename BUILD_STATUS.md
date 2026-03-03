@@ -5,14 +5,24 @@
 
 ## Current Task
 
-**Status:** Phase 1 Pulse Check-In emulator-tested + smoke test updated (PR #65, `develop/adhd-roadmap`). Ready for Phase 3A or next spec task.
+**Status:** v0.18.1+14 deployed to SM_G998U1. Three post-deploy bugs fixed (STT cutoff, stale check-in state, Downloads export). Ready for Phase 1 Task 8, Phase 3A, or advisory triage.
 **Branch:** `develop/adhd-roadmap`
-**Version:** `0.18.0+13`
+**Version:** `0.18.1+14`
 
 ### In Progress
 (none)
 
 ### Just Completed
+- **3 Post-Deploy Bug Fixes** (PR #66, `develop/adhd-roadmap`, v0.18.1+14):
+  - STT: `pauseFor` 2s → 3s (ADR-0031 journaling cadence, was cutting users off after one word)
+  - Check-in state: `cancelCheckIn()` else branch in `_maybeStartCheckIn()` (stale isActive=true was hiding text input in new regular journal entries after voice mode)
+  - Export: public `/storage/emulated/0/Download` path on Android (accessible from Files app)
+  - Tests: regression test pre-seeds isActive=true before widget build; Export SnackBar test added to settings_data_management_test.dart; smoke_test.dart section 11 (cross-session state)
+  - Review: REV-20260303-163807 (approve-with-changes, 2 blocking resolved in-review, 7 advisory)
+  - Quality gate: 7/7 | Coverage: 80.4% | Tests: 2068 | All pass
+  - Deploy: SUCCESS on SM_G998U1 (1m 1.4s)
+  - Open advisories: 7 new (A1–A7 from REV-20260303-163807): MediaStore API (A1), getDownloadsDirectory() (A2), STT 3s feedback gap (A3), Continue button on check-in complete card (A4), SnackBar text length (A5), raw exception in catch (A6), comment verbosity (A7). **Total: 91**
+
 - **Pulse Check-In emulator smoke test** (PR #65, `develop/adhd-roadmap`):
   - `integration_test/smoke_test.dart` section 10: Quick Check-In banner → Pulse Check-In session → slider interaction → save → complete card → session end
   - Fixed section 8: two-step session-end navigation (Done → closing summary → back button)
@@ -249,7 +259,7 @@ Or manually (physical device):
 
 - **Coverage** — 80.2% (above 80% target, 2060 tests)
 - **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation)
-- **Review advisories open** — 84 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206
+- **Review advisories open** — 91 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807
 - **user_checkin_config** deferred to schema v11 (Phase 1 Task 8)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
@@ -267,13 +277,14 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — Phase 1 complete + emulator-tested**. On `develop/adhd-roadmap` (v0.18.0+13).
+1. **ADHD Roadmap — Phase 1 complete + emulator-tested + 3 device bugs fixed**. On `develop/adhd-roadmap` (v0.18.1+14).
    - **PR #64 merged**: Phase 1 Pulse Check-In + Phase 2A gap-shaming removal + Phase 2B CTA banner
    - **PR #65 merged**: Emulator smoke test for Phase 1 — all features verified on device
+   - **PR #66 merged**: 3 post-deploy bug fixes (STT, check-in state, Downloads export)
    - **Next step options**:
      - Phase 1 Task 8 (`user_checkin_config` — schema v11, notification scheduling, 3-dismissal auto-disable) — run `/build_module docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md`
      - Phase 3A (voice flow) — requires Deepgram implementation (ADR-0031 P1) first
-     - Advisory triage (84 open) — priority: A2 (UNIQUE constraint on check_in_answers), A3 (wrap v9→v10 migration in transaction), A1 (CheckInSyncStatus.pending constant)
+     - Advisory triage (91 open) — priority: A2 (UNIQUE constraint on check_in_answers), A3 (wrap v9→v10 migration in transaction), A2 from REV-20260303-163807 (getDownloadsDirectory())
    - **Education gate pending** (deferred): Phase 1 Pulse Check-In state machine, composite score formula, ADHD clinical UX constraints, drift migration pattern — must complete before changes to clinical UX files
 2. **Education gate** — Re-deferred 2026-03-02: REV-20260302-152240 walkthrough/quiz on `fallback_tts_service.dart` + `voice_providers.dart`. Must complete before any further changes to those files.
 3. **Run retro** — Sprint N+1 landed. Run `/retro` to evaluate: ADR-0030 evaluation gate (Signal A/B check), advisory triage, protocol yield review.
