@@ -5,7 +5,7 @@
 
 ## Current Task
 
-**Status:** Phase 1 Pulse Check-In + Phase 2A/2B complete (PR #64, `develop/adhd-roadmap`). Ready for Phase 3A or next spec task.
+**Status:** Phase 1 Pulse Check-In emulator-tested + smoke test updated (PR #65, `develop/adhd-roadmap`). Ready for Phase 3A or next spec task.
 **Branch:** `develop/adhd-roadmap`
 **Version:** `0.18.0+13`
 
@@ -13,6 +13,12 @@
 (none)
 
 ### Just Completed
+- **Pulse Check-In emulator smoke test** (PR #65, `develop/adhd-roadmap`):
+  - `integration_test/smoke_test.dart` section 10: Quick Check-In banner → Pulse Check-In session → slider interaction → save → complete card → session end
+  - Fixed section 8: two-step session-end navigation (Done → closing summary → back button)
+  - Emulator result: **PASS** (1m 12.9s, emulator-5554 Medium_Phone_API_36.1)
+  - Phase 1 features confirmed working on device: banner (ADHD UX compliant), check-in flow, score save, complete card
+
 - **Phase 1 Pulse Check-In + Phase 2A gap-shaming removal + Phase 2B CTA banner** (PR #64, `develop/adhd-roadmap`, v0.18.0+13):
   - Phase 1: 4-table drift schema v10 (`questionnaire_templates`, `questionnaire_items`, `checkin_responses`, `check_in_answers`), `QuestionnaireDao` (atomic save, N+1 avoidance), `CheckInScoreService` (const, reverse-scoring formula, partial-completion), `QuestionnaireDefaults` (idempotent seed, 6 items), `CheckInNotifier` (Riverpod StateNotifier), `NumericParserService` (STT homophones, compound words, 0–100), `PulseCheckInWidget` + `PulseCheckInSummary` (ADHD copy), voice flow with re-prompt/skip
   - Phase 2A: `daysSinceLast` removed from all 3 conversation layers; `@Tags(['regression'])` added to `local_llm_layer_test.dart`; ledger entry added
@@ -236,6 +242,8 @@ Or manually (physical device):
 | Video capture | Needs test | Limited | ffmpeg_kit may lack x86_64 libs |
 | Voice/STT | Needs test | **Working** | voice_mode_test.dart: enable, session, toggle, back nav (1m 14s) |
 | Local LLM | Disabled | Disabled | SIGILL on Snapdragon 888 / ARM-only binaries |
+| Quick Check-In banner | Needs test | **Working** | ADHD UX: shows to all users with sessions, "Quick check-in" CTA visible |
+| Pulse Check-In flow | Needs test | **Working** | Slider → Skip/Next/Finish → "Check-in saved." card (1m 12.9s, PR #65) |
 
 ## Tech Debt
 
@@ -259,8 +267,9 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — Phase 1 complete**. On `develop/adhd-roadmap` (v0.18.0+13).
+1. **ADHD Roadmap — Phase 1 complete + emulator-tested**. On `develop/adhd-roadmap` (v0.18.0+13).
    - **PR #64 merged**: Phase 1 Pulse Check-In + Phase 2A gap-shaming removal + Phase 2B CTA banner
+   - **PR #65 merged**: Emulator smoke test for Phase 1 — all features verified on device
    - **Next step options**:
      - Phase 1 Task 8 (`user_checkin_config` — schema v11, notification scheduling, 3-dismissal auto-disable) — run `/build_module docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md`
      - Phase 3A (voice flow) — requires Deepgram implementation (ADR-0031 P1) first
