@@ -1,7 +1,7 @@
 ---
 adr_id: ADR-0031
 title: "Deepgram Nova-3 as Primary STT Engine"
-status: proposed
+status: accepted
 date: 2026-03-03
 risk_level: medium
 confidence: 0.85

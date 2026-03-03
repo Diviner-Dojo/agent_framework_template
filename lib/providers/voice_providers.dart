@@ -34,6 +34,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config/environment.dart';
 import '../services/audio_focus_service.dart';
+import '../services/deepgram_stt_service.dart';
 import '../services/elevenlabs_tts_service.dart';
 import '../services/fallback_tts_service.dart';
 import '../services/speech_recognition_service.dart';
@@ -72,10 +73,16 @@ enum TtsEngine {
 
 /// Available speech-to-text engines.
 enum SttEngine {
-  /// Google on-device recognizer via speech_to_text (no model download).
+  /// Deepgram Nova-3 via Supabase proxy WebSocket (primary, cloud).
+  ///
+  /// Lower WER (~6–9%), journaling-tuned endpoint detection (2s pause).
+  /// Requires network. See ADR-0031.
+  deepgram,
+
+  /// Google on-device recognizer via speech_to_text (fallback A, cloud).
   speechToText,
 
-  /// sherpa_onnx Zipformer (offline, requires 71MB model download).
+  /// sherpa_onnx Zipformer (fallback B, offline, requires 71MB model download).
   sherpaOnnx,
 }
 
@@ -195,14 +202,17 @@ final ttsFallbackActiveProvider = StateProvider<bool>((ref) => false);
 
 /// Controls which STT engine is used. Persisted in SharedPreferences.
 ///
-/// Defaults to [SttEngine.speechToText] for zero-download experience.
+/// Defaults to [SttEngine.deepgram] (primary per ADR-0031).
+/// Falls back to [SttEngine.speechToText] if the stored value is unrecognized.
 class SttEngineNotifier extends Notifier<SttEngine> {
   @override
   SttEngine build() {
     final prefs = ref.watch(sharedPreferencesProvider);
     final stored = prefs.getString(sttEngineKey);
+    if (stored == 'deepgram') return SttEngine.deepgram;
     if (stored == 'sherpaOnnx') return SttEngine.sherpaOnnx;
-    return SttEngine.speechToText;
+    if (stored == 'speechToText') return SttEngine.speechToText;
+    return SttEngine.deepgram; // Default: Deepgram primary (ADR-0031).
   }
 
   /// Set the STT engine. Persists to SharedPreferences.
@@ -225,8 +235,9 @@ final sttEngineProvider = NotifierProvider<SttEngineNotifier, SttEngine>(
 // coverage:ignore-start
 /// Provides the STT service singleton based on the current engine preference.
 ///
-/// When [SttEngine.speechToText] is selected, returns the Google on-device
-/// recognizer. When [SttEngine.sherpaOnnx], returns the offline Zipformer.
+/// [SttEngine.deepgram] — Deepgram Nova-3 via proxy WebSocket (primary, ADR-0031).
+/// [SttEngine.speechToText] — Google on-device recognizer (fallback A).
+/// [SttEngine.sherpaOnnx] — sherpa_onnx Zipformer (fallback B, offline).
 /// The service is created but not initialized — call `initialize()` first.
 final speechRecognitionServiceProvider = Provider<SpeechRecognitionService>((
   ref,
@@ -235,6 +246,12 @@ final speechRecognitionServiceProvider = Provider<SpeechRecognitionService>((
   final SpeechRecognitionService service;
 
   switch (engine) {
+    case SttEngine.deepgram:
+      const env = Environment();
+      service = DeepgramSttService(
+        proxyWsUrl: env.deepgramProxyWsUrl,
+        authToken: env.supabaseAnonKey,
+      );
     case SttEngine.speechToText:
       service = SpeechToTextSttService();
     case SttEngine.sherpaOnnx:
@@ -296,13 +313,14 @@ final audioFocusServiceProvider = Provider<AudioFocusService>((ref) {
 
 /// Whether the STT model has been downloaded and is ready.
 ///
-/// When using [SttEngine.speechToText], always returns true (no model
-/// download needed). When using [SttEngine.sherpaOnnx], checks for the
-/// existence of all four Zipformer model files.
+/// [SttEngine.deepgram] — always returns true (cloud, no model download).
+/// [SttEngine.speechToText] — always returns true (system recognizer).
+/// [SttEngine.sherpaOnnx] — checks for the four Zipformer model files.
 final sttModelReadyProvider = FutureProvider<bool>((ref) async {
   final engine = ref.watch(sttEngineProvider);
 
-  // speech_to_text uses the system recognizer — always ready.
+  // Cloud engines need no local model — always ready.
+  if (engine == SttEngine.deepgram) return true;
   if (engine == SttEngine.speechToText) return true;
 
   // sherpa_onnx requires downloaded model files.
