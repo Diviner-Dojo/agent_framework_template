@@ -264,6 +264,48 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // watchAllResponsesWithAnswers — stream with IN-clause N+1 avoidance
+  // ---------------------------------------------------------------------------
+
+  group('watchAllResponsesWithAnswers', () {
+    late int templateId;
+    late int itemId;
+
+    setUp(() async {
+      templateId = await dao.insertTemplate(makeTemplate());
+      itemId = await dao.insertItem(makeItem(templateId: templateId));
+    });
+
+    test('emits empty list when no responses exist', () async {
+      final first = await dao.watchAllResponsesWithAnswers().first;
+      expect(first, isEmpty);
+    });
+
+    // Regression: _AnswerRow used to hardcode scale 1–10; the DAO must emit
+    // answers so the history screen can resolve them against the template scale.
+    test('emits answers alongside response on first stream event', () async {
+      await dao.saveCheckInResponse(
+        response: CheckInResponsesCompanion(
+          sessionId: const Value('session1'),
+          templateId: Value(templateId),
+          completedAt: Value(DateTime.utc(2026, 3, 3)),
+          compositeScore: const Value(70.0),
+          syncStatus: const Value('PENDING'),
+        ),
+        answers: [
+          CheckInAnswersCompanion(itemId: Value(itemId), value: const Value(7)),
+        ],
+      );
+
+      final first = await dao.watchAllResponsesWithAnswers().first;
+      expect(first, hasLength(1));
+      expect(first.first.response.compositeScore, 70.0);
+      expect(first.first.answers, isNotEmpty);
+      expect(first.first.answers.first.value, 7);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // getAllResponsesForSession — N+1-free IN-clause query
   // ---------------------------------------------------------------------------
 

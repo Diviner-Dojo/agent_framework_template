@@ -390,6 +390,15 @@ class CheckInNotifier extends StateNotifier<CheckInState> {
 // Provider
 // ---------------------------------------------------------------------------
 
+/// Counts all completed check-in responses (for progressive disclosure of
+/// the history icon in the home screen AppBar).
+///
+/// Emits 0 while loading or if no check-ins exist.
+final checkInCountProvider = StreamProvider<int>((ref) {
+  final dao = ref.watch(questionnaireDaoProvider);
+  return dao.watchAllResponses().map((r) => r.length);
+});
+
 /// Watches items for the active default template (for settings screen).
 ///
 /// Emits an empty list when no default template exists yet. Updates in
@@ -435,3 +444,72 @@ final _numericParserProvider = Provider((_) => const NumericParserService());
 /// ADHD UX: the banner is shown universally (not conditioned on gap duration)
 /// to avoid implicit gap-shaming. See REV-20260303-142206 B1/B2.
 final quickCheckInBannerDismissedProvider = StateProvider<bool>((ref) => false);
+
+// ---------------------------------------------------------------------------
+// Check-In History
+// ---------------------------------------------------------------------------
+
+/// One annotated check-in entry for the history dashboard.
+///
+/// Pairs a [CheckInResponseWithAnswers] with the resolved question text
+/// for each answer and the template's scale bounds, so the UI can display
+/// labels and answer bars without extra DAO calls.
+class CheckInHistoryEntry {
+  /// The response row with its raw answer values.
+  final CheckInResponseWithAnswers responseWithAnswers;
+
+  /// Map of item id → question text, resolved from the template's item rows.
+  final Map<int, String> itemText;
+
+  /// Scale bounds from the template used for this response.
+  final int scaleMin;
+  final int scaleMax;
+
+  const CheckInHistoryEntry({
+    required this.responseWithAnswers,
+    required this.itemText,
+    this.scaleMin = 1,
+    this.scaleMax = 10,
+  });
+
+  CheckInResponse get response => responseWithAnswers.response;
+  List<CheckInAnswer> get answers => responseWithAnswers.answers;
+}
+
+/// Streams all check-in responses with resolved question labels and scale bounds.
+///
+/// Builds a per-template item-text and template cache to avoid repeated DAO
+/// round-trips when multiple responses share the same template.
+final checkInHistoryProvider = StreamProvider<List<CheckInHistoryEntry>>((
+  ref,
+) async* {
+  final dao = ref.watch(questionnaireDaoProvider);
+  await for (final responses in dao.watchAllResponsesWithAnswers()) {
+    // Resolve question text and scale bounds per template (cached per emission).
+    final itemTextCache = <int, Map<int, String>>{};
+    final templateCache = <int, QuestionnaireTemplate?>{};
+    for (final rwa in responses) {
+      final templateId = rwa.response.templateId;
+      if (!itemTextCache.containsKey(templateId)) {
+        // Use getAllItemsForTemplate (not getActiveItemsForTemplate) so that
+        // deactivated items still show their question text in the history view.
+        final items = await dao.getAllItemsForTemplate(templateId);
+        itemTextCache[templateId] = {
+          for (final it in items) it.id: it.questionText,
+        };
+      }
+      if (!templateCache.containsKey(templateId)) {
+        templateCache[templateId] = await dao.getTemplateById(templateId);
+      }
+    }
+    yield responses.map((rwa) {
+      final template = templateCache[rwa.response.templateId];
+      return CheckInHistoryEntry(
+        responseWithAnswers: rwa,
+        itemText: itemTextCache[rwa.response.templateId] ?? {},
+        scaleMin: template?.scaleMin ?? 1,
+        scaleMax: template?.scaleMax ?? 10,
+      );
+    }).toList();
+  }
+});

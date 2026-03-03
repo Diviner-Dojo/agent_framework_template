@@ -911,6 +911,23 @@ class SessionNotifier extends StateNotifier<SessionState> {
     );
   }
 
+  /// Complete a check-in session without AI summary generation.
+  ///
+  /// Used by [CheckInScreen] when the user finishes all slider questions.
+  /// Since session content is stored in the checkin_responses table (not as
+  /// chat messages), the normal [endSession] path would auto-discard the
+  /// session (empty-session guard). This method writes [endTime] directly
+  /// and resets state so the session appears in the journal list.
+  Future<void> completeCheckInSession() async {
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return;
+
+    await _sessionDao.endSession(sessionId, nowUtc());
+    _agent.unlockLayer();
+    state = const SessionState();
+    _ref.read(activeSessionIdProvider.notifier).state = null;
+  }
+
   /// Dismiss the completed session and clear all state.
   ///
   /// Called by the UI after the user has read the closing summary and tapped

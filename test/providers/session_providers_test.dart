@@ -213,4 +213,81 @@ void main() {
       },
     );
   });
+
+  // =========================================================================
+  // completeCheckInSession() — Phase 1 Task 10
+  // =========================================================================
+
+  group('completeCheckInSession — closes check-in session without AI', () {
+    late ProviderContainer container;
+    late AppDatabase database;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      database = AppDatabase.forTesting(NativeDatabase.memory());
+
+      container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          agentRepositoryProvider.overrideWithValue(AgentRepository()),
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          deviceTimezoneProvider.overrideWith(
+            (ref) async => 'America/New_York',
+          ),
+        ],
+      );
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await database.close();
+    });
+
+    // regression: a pulse_check_in session with no USER messages would be
+    // auto-discarded by endSession(). completeCheckInSession() bypasses the
+    // AI layer and writes endTime directly so the session is preserved.
+    test('completeCheckInSession preserves session row with endTime set', () async {
+      final notifier = container.read(sessionNotifierProvider.notifier);
+      final sessionId = await notifier.startSession(
+        journalingMode: 'pulse_check_in',
+      );
+
+      final sessionDao = container.read(sessionDaoProvider);
+      final before = await sessionDao.getSessionById(sessionId);
+      expect(before, isNotNull, reason: 'session must exist after start');
+      expect(before!.endTime, isNull, reason: 'endTime null before close');
+
+      // Complete the check-in session.
+      await notifier.completeCheckInSession();
+
+      // Session row must still exist (not discarded).
+      final after = await sessionDao.getSessionById(sessionId);
+      expect(
+        after,
+        isNotNull,
+        reason:
+            'completeCheckInSession must preserve the session row (not discard)',
+      );
+      expect(
+        after!.endTime,
+        isNotNull,
+        reason: 'endTime must be set after completeCheckInSession',
+      );
+
+      // Provider state is reset.
+      expect(
+        container.read(sessionNotifierProvider).activeSessionId,
+        isNull,
+        reason: 'activeSessionId must be null after completeCheckInSession',
+      );
+
+      // Session must NOT be flagged as auto-discarded (it was saved intentionally).
+      expect(
+        container.read(wasAutoDiscardedProvider),
+        isFalse,
+        reason: 'completeCheckInSession must not set wasAutoDiscardedProvider',
+      );
+    });
+  });
 }

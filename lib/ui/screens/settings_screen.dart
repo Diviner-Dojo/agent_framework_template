@@ -1240,11 +1240,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   ///
   /// Filename: `agentic_journal_export_<UTC-timestamp>.json`
   /// Phase 2C — data sovereignty: users can always export and delete their data.
+  /// Includes: sessions, messages, check-in responses/answers, photo paths.
   Future<void> _exportData(BuildContext context) async {
     setState(() => _isExporting = true);
     try {
       final sessionDao = ref.read(sessionDaoProvider);
       final messageDao = ref.read(messageDaoProvider);
+      final questionnaireDao = ref.read(questionnaireDaoProvider);
+      final photoDao = ref.read(photoDaoProvider);
+
+      // Cache: templateId → {itemId → questionText}
+      final itemTextCache = <int, Map<int, String>>{};
 
       final sessions = await sessionDao.getAllSessionsByDate();
       final exportData = <Map<String, dynamic>>[];
@@ -1253,6 +1259,49 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         final messages = await messageDao.getMessagesForSession(
           session.sessionId,
         );
+
+        // Check-in data for this session.
+        final checkInResponses = await questionnaireDao
+            .getAllResponsesForSession(session.sessionId);
+        final checkInsJson = <Map<String, dynamic>>[];
+        for (final rwa in checkInResponses) {
+          // Resolve item text (cached per template).
+          final templateId = rwa.response.templateId;
+          if (!itemTextCache.containsKey(templateId)) {
+            final items = await questionnaireDao.getActiveItemsForTemplate(
+              templateId,
+            );
+            itemTextCache[templateId] = {
+              for (final it in items) it.id: it.questionText,
+            };
+          }
+          final itemTexts = itemTextCache[templateId]!;
+          checkInsJson.add({
+            'completed_at': rwa.response.completedAt.toIso8601String(),
+            'composite_score': rwa.response.compositeScore,
+            'answers': rwa.answers
+                .map(
+                  (a) => {
+                    'question': itemTexts[a.itemId] ?? 'Unknown',
+                    'value': a.value,
+                  },
+                )
+                .toList(),
+          });
+        }
+
+        // Photo paths for this session.
+        final photos = await photoDao.getPhotosForSession(session.sessionId);
+        final photosJson = photos
+            .map(
+              (p) => {
+                'local_path': p.localPath,
+                'timestamp': p.timestamp.toIso8601String(),
+                if (p.description != null) 'description': p.description,
+              },
+            )
+            .toList();
+
         exportData.add({
           'session_id': session.sessionId,
           'start_time': session.startTime.toIso8601String(),
@@ -1270,6 +1319,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 },
               )
               .toList(),
+          if (checkInsJson.isNotEmpty) 'check_ins': checkInsJson,
+          if (photosJson.isNotEmpty) 'photos': photosJson,
         });
       }
 

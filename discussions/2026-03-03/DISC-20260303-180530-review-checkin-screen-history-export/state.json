@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260303-180530-review-checkin-screen-history-export",
+  "status": "complete",
+  "started_at": "2026-03-03T18:05:35.443175+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "medium",
+  "collaboration_mode": "structured-dialogue",
+  "report_path": "docs/reviews/REV-20260303-180530.md"
+}
