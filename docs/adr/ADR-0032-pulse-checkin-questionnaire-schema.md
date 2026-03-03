@@ -1,10 +1,11 @@
 ---
 adr_id: ADR-0032
 title: "Pulse Check-In Questionnaire Schema: Four-Table Design"
-status: proposed
+status: accepted
 date: 2026-03-03
+accepted_date: 2026-03-03
 risk_level: medium
-confidence: 0.82
+confidence: 0.88
 tags: [database, schema, pulse-checkin, adhd-roadmap, drift]
 discussion_id: DISC-20260303-043107-adhd-roadmap-spec-review
 supersedes: null
@@ -40,87 +41,106 @@ The `questionnaire_templates` table in this ADR IS warranted because:
 **Implement a four-table schema in the drift AppDatabase:**
 
 ```
-questionnaire_templates  — instrument definitions (WHO-5, PHQ-2, etc.)
-questionnaire_questions  — individual items per template
-checkin_responses        — per-session, per-question answers
-user_checkin_config      — per-user notification and instrument preferences (Task 8)
+questionnaire_templates  — instrument definitions with template-level scale (scaleMin/scaleMax)
+questionnaire_items      — individual items per template (not questionnaire_questions)
+checkin_responses        — one per check-in session (not per-question)
+check_in_answers         — per-item answers linked to checkin_responses
 ```
+
+Note: `user_checkin_config` (Task 8, Phase 1 Task 8) is defined in ADR but deferred to
+schema v11. The four tables above are implemented in schema v10.
 
 The schema is implemented as drift `Table` classes with type-safe DAOs. The composite
 score formula's canonical source is in `CheckInScoreService` (Dart), not the database.
 Scores are persisted to `checkin_responses.compositeScore` after calculation.
 
-## Schema Definition
+**Key deviations from initial proposal** (documented here per Principle 1 traceability):
+1. Table `questionnaire_questions` was renamed to `questionnaire_items` in implementation.
+2. Scale (`scaleMin`/`scaleMax`) is on `questionnaire_templates` (template-level), not per-item. Items share the template scale.
+3. `checkin_responses` is one row per check-in session (not one row per question). Individual answers are normalized into `check_in_answers` (a separate table with one row per item).
+4. `CheckInAnswers.value` is nullable (null = skipped item). No `rawValue` column.
+5. `user_checkin_config` is deferred to schema v11 (Phase 1 Task 8).
+
+## Schema Definition (As-Built — schema v10)
 
 ### `questionnaire_templates`
 
 ```dart
 class QuestionnaireTemplates extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get instrumentCode => text()(); // 'WHO-5', 'PHQ-2', 'GAD-2', 'custom'
-  TextColumn get version => text()();        // '1998', '2012', '1.0.0'
-  TextColumn get displayName => text()();
+  TextColumn get name => text()();                      // e.g., "Pulse Check-In"
   TextColumn get description => text().nullable()();
-  IntColumn get itemCount => integer()();
-  RealColumn get minScore => real()();
-  RealColumn get maxScore => real()();
-  TextColumn get licenseInfo => text().nullable()(); // CC BY-NC-SA 3.0 for WHO-5
+  TextColumn get instrumentCode =>
+      text().withDefault(const Constant('custom'))();   // 'who-5', 'phq-4', 'custom'
+  TextColumn get version =>
+      text().withDefault(const Constant('1.0.0'))();
+  TextColumn get licenseInfo => text().nullable()();    // CC BY-NC-SA 3.0 for WHO-5
+  BoolColumn get isSystemDefault =>
+      boolean().withDefault(const Constant(false))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  IntColumn get scaleMin => integer().withDefault(const Constant(1))();
+  IntColumn get scaleMax => integer().withDefault(const Constant(10))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 ```
 
-### `questionnaire_questions`
+### `questionnaire_items` (was `questionnaire_questions` in proposal)
 
 ```dart
-class QuestionnaireQuestions extends Table {
+class QuestionnaireItems extends Table {
   IntColumn get id => integer().autoIncrement()();
-  IntColumn get templateId => integer().references(QuestionnaireTemplates, #id)();
-  IntColumn get orderIndex => integer()();  // 1-based display order
+  IntColumn get templateId =>
+      integer().references(QuestionnaireTemplates, #id)();
   TextColumn get questionText => text()();
-  IntColumn get scaleMin => integer()();    // e.g., 0
-  IntColumn get scaleMax => integer()();    // e.g., 4
-  BoolColumn get reverseScored => boolean().withDefault(const Constant(false))();
-  TextColumn get minLabel => text().nullable()(); // e.g., "All of the time"
-  TextColumn get maxLabel => text().nullable()(); // e.g., "At no time"
+  TextColumn get minLabel => text().nullable()();       // e.g., "Very low"
+  TextColumn get maxLabel => text().nullable()();       // e.g., "Excellent"
+  BoolColumn get isReversed =>
+      boolean().withDefault(const Constant(false))();   // was reverseScored
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  // Note: scale is on the template, not per-item. Items inherit template scaleMin/scaleMax.
 }
 ```
 
-### `checkin_responses`
+### `check_in_responses` — one row per check-in session
 
 ```dart
 class CheckInResponses extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get sessionId => text().references(JournalSessions, #id)();
-  IntColumn get templateId => integer().references(QuestionnaireTemplates, #id)();
-  IntColumn get questionId => integer().references(QuestionnaireQuestions, #id)();
-  IntColumn get rawValue => integer().nullable()(); // null if skipped
-  RealColumn get compositeScore => real().nullable()(); // null until all Qs answered
-  DateTimeColumn get answeredAt => dateTime()();
+  TextColumn get sessionId =>
+      text().references(JournalSessions, #sessionId)();
+  IntColumn get templateId =>
+      integer().references(QuestionnaireTemplates, #id)();
+  DateTimeColumn get completedAt => dateTime()();
+  RealColumn get compositeScore => real().nullable()(); // null if all items skipped
+  TextColumn get syncStatus =>
+      text().withDefault(const Constant('PENDING'))();  // PENDING | SYNCED | FAILED
 }
 ```
 
-**Note on `compositeScore`**: The composite score is written to each row in the response
-group after the final question is answered (or after the session ends with partial
-completion). Partial completion (fewer than `itemCount` non-null answers) does NOT produce
-a composite score — the field remains null. This enables AI correlation queries to
-distinguish "completed check-in" from "partially completed check-in."
-
-### `user_checkin_config`
+### `check_in_answers` — one row per item per check-in
 
 ```dart
-class UserCheckinConfig extends Table {
+class CheckInAnswers extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get userId => text()(); // Supabase auth user ID
-  IntColumn get templateId => integer().references(QuestionnaireTemplates, #id)();
-  BoolColumn get isEnabled => boolean().withDefault(const Constant(true))();
-  IntColumn get reminderHour => integer().nullable()();   // 0–23, null = no reminder
-  IntColumn get reminderMinute => integer().nullable()(); // 0–59
-  TextColumn get reminderDays => text().nullable()();     // JSON array, e.g. ["Mon","Wed","Fri"]
-  IntColumn get consecutiveDismissals => integer().withDefault(const Constant(0))();
-  // Auto-disable after 3 consecutive dismissals (ADHD UX constraint)
-  DateTimeColumn get updatedAt => dateTime()();
+  IntColumn get responseId =>
+      integer().references(CheckInResponses, #id)();
+  IntColumn get itemId =>
+      integer().references(QuestionnaireItems, #id)();
+  IntColumn get value => integer().nullable()();        // null = skipped
+  // INVARIANT: Only one (responseId, itemId) pair per check-in.
+  //            Enforced at application layer (no DB UNIQUE constraint yet — see advisory A2).
 }
 ```
+
+### `user_checkin_config` (deferred to schema v11 — Phase 1 Task 8)
+
+Defined in ADR but not yet implemented. Will contain: userId, templateId, isEnabled,
+reminderHour, reminderMinute, reminderDays, consecutiveDismissals, updatedAt.
+`consecutiveDismissals` enforces the ADHD UX constraint: auto-disable reminders after
+3 consecutive dismissals.
 
 ## Composite Score Formula
 
@@ -139,8 +159,9 @@ This is the general formula valid for any scale. For WHO-5 (0–4 scale):
 `scaleMax + scaleMin - rawValue = 4 + 0 - rawValue = 4 - rawValue`
 
 The `+1` variant (`scaleMax + 1 - rawValue`) is only valid when `scaleMin = 1` and
-must NOT be used here. The general formula is stored in `QuestionnaireQuestions.scaleMin`
-and `scaleMax` per-question, not hardcoded in `CheckInScoreService`.
+must NOT be used here. The general formula uses `QuestionnaireTemplate.scaleMin`
+and `scaleMax` (template-level), passed to `CheckInScoreService` at call time.
+Items with `isReversed = true` use this formula; others use the raw value directly.
 
 **Edge cases**:
 - Empty response list → `compositeScore = null` (not 0)

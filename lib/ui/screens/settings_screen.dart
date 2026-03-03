@@ -18,7 +18,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:path_provider/path_provider.dart';
 
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:drift/drift.dart' show Value;
+
+import '../../database/app_database.dart'
+    show QuestionnaireItem, QuestionnaireItemsCompanion;
 import '../../models/personality_config.dart';
 import '../../providers/auth_providers.dart';
 import '../../services/google_auth_service.dart';
@@ -29,6 +37,7 @@ import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/calendar_providers.dart';
 import '../../providers/location_providers.dart';
+import '../../providers/questionnaire_providers.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
 import '../../providers/task_providers.dart';
@@ -49,6 +58,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with WidgetsBindingObserver {
   bool _isClearingLocation = false;
   bool _isSyncing = false;
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -93,6 +103,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           _buildLocationCard(context),
           const SizedBox(height: 16),
           _buildCalendarCard(context),
+          const SizedBox(height: 16),
+          _buildPulseCheckInCard(context),
           const SizedBox(height: 16),
           _buildDataManagementCard(context),
           const SizedBox(height: 16),
@@ -986,6 +998,174 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
+  /// Build the "Pulse Check-In" questionnaire configuration card.
+  ///
+  /// Shows all items for the active default template with enable/disable
+  /// toggles, drag-to-reorder, and an add-custom-item button.
+  Widget _buildPulseCheckInCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final itemsAsync = ref.watch(activeCheckInItemsProvider);
+
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.monitor_heart_outlined),
+        title: const Text('Pulse Check-In'),
+        subtitle: const Text('Questionnaire questions and order'),
+        children: [
+          itemsAsync.when(
+            data: (items) => _buildCheckInItemList(context, theme, items),
+            loading: () => const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (_, _) => Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Could not load questions.',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build the list of check-in items with toggle, reorder, and add controls.
+  Widget _buildCheckInItemList(
+    BuildContext context,
+    ThemeData theme,
+    List<QuestionnaireItem> items,
+  ) {
+    final dao = ref.read(questionnaireDaoProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag-to-reorder list.
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            onReorder: (oldIndex, newIndex) async {
+              if (newIndex > oldIndex) newIndex--;
+              final reordered = List<QuestionnaireItem>.from(items);
+              final moved = reordered.removeAt(oldIndex);
+              reordered.insert(newIndex, moved);
+              // Persist updated sortOrder values.
+              for (var i = 0; i < reordered.length; i++) {
+                await dao.updateItem(
+                  reordered[i].id,
+                  QuestionnaireItemsCompanion(sortOrder: Value(i)),
+                );
+              }
+            },
+            itemBuilder: (ctx, i) {
+              final item = items[i];
+              return SwitchListTile(
+                key: ValueKey(item.id),
+                title: Text(
+                  item.questionText,
+                  style: theme.textTheme.bodyMedium,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                secondary: ReorderableDragStartListener(
+                  index: i,
+                  child: const Icon(Icons.drag_handle),
+                ),
+                value: item.isActive,
+                onChanged: (enabled) async {
+                  await dao.updateItem(
+                    item.id,
+                    QuestionnaireItemsCompanion(isActive: Value(enabled)),
+                  );
+                },
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              );
+            },
+          ),
+          // Add custom item button.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () => _showAddCheckInItemDialog(context),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add custom question'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show a dialog to add a custom check-in item.
+  Future<void> _showAddCheckInItemDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add question'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'e.g. How motivated do you feel?',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          maxLength: 120,
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || controller.text.trim().isEmpty) {
+      controller.dispose();
+      return;
+    }
+
+    final questionText = controller.text.trim();
+    controller.dispose();
+
+    final dao = ref.read(questionnaireDaoProvider);
+    final template = await dao.getActiveDefaultTemplate();
+    if (template == null) return;
+
+    // Determine next sortOrder.
+    final existingItems = await dao.getActiveItemsForTemplate(template.id);
+    final nextSort = existingItems.isEmpty
+        ? 0
+        : existingItems
+                  .map((i) => i.sortOrder)
+                  .reduce((a, b) => a > b ? a : b) +
+              1;
+
+    await dao.insertItem(
+      QuestionnaireItemsCompanion(
+        templateId: Value(template.id),
+        questionText: Value(questionText),
+        sortOrder: Value(nextSort),
+        isActive: const Value(true),
+        isReversed: const Value(false),
+      ),
+    );
+  }
+
   Widget _buildDataManagementCard(BuildContext context) {
     final theme = Theme.of(context);
     final sessionCountAsync = ref.watch(sessionCountProvider);
@@ -1021,6 +1201,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               error: (_, _) => const Text('Could not count photos'),
             ),
             const SizedBox(height: 12),
+            // Export data button (Phase 2C — data sovereignty).
+            OutlinedButton.icon(
+              onPressed: _isExporting ? null : () => _exportData(context),
+              icon: _isExporting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.download_outlined),
+              label: Text(_isExporting ? 'Exporting...' : 'Export My Data'),
+            ),
+            const SizedBox(height: 8),
             // Clear all button.
             OutlinedButton.icon(
               onPressed: () => _showClearAllDialog(context),
@@ -1037,6 +1230,73 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         ),
       ),
     );
+  }
+
+  /// Export all journal data to a JSON file in the app documents directory.
+  ///
+  /// Writes to `<documents>/agentic_journal_export_<timestamp>.json`.
+  /// Phase 2C — data sovereignty: users can always export and delete their data.
+  Future<void> _exportData(BuildContext context) async {
+    setState(() => _isExporting = true);
+    try {
+      final sessionDao = ref.read(sessionDaoProvider);
+      final messageDao = ref.read(messageDaoProvider);
+
+      final sessions = await sessionDao.getAllSessionsByDate();
+      final exportData = <Map<String, dynamic>>[];
+
+      for (final session in sessions) {
+        final messages = await messageDao.getMessagesForSession(
+          session.sessionId,
+        );
+        exportData.add({
+          'session_id': session.sessionId,
+          'start_time': session.startTime.toIso8601String(),
+          'end_time': session.endTime?.toIso8601String(),
+          'summary': session.summary,
+          'mood_tags': session.moodTags,
+          'topic_tags': session.topicTags,
+          'journaling_mode': session.journalingMode,
+          'messages': messages
+              .map(
+                (m) => {
+                  'role': m.role,
+                  'content': m.content,
+                  'timestamp': m.timestamp.toIso8601String(),
+                },
+              )
+              .toList(),
+        });
+      }
+
+      final dir = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().toUtc().toIso8601String().replaceAll(
+        ':',
+        '-',
+      );
+      final file = File('${dir.path}/agentic_journal_export_$timestamp.json');
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(exportData),
+        encoding: utf8,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Exported to ${file.path}'),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    } on Exception catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   /// Show a two-step confirmation dialog for clearing all data.

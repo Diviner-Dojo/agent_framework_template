@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/calendar_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
+import 'package:agentic_journal/providers/questionnaire_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/ui/screens/session_list_screen.dart';
@@ -545,6 +546,143 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byIcon(Icons.event_note), findsNothing);
+      });
+    });
+
+    // Phase 2B — Quick Check-In CTA banner (REV-20260303-142206 B6)
+    // Banner is shown universally (no gap-detection) until dismissed.
+    // Dismissal persists at app level via quickCheckInBannerDismissedProvider.
+    group('quick check-in banner', () {
+      final sessionTime = DateTime.utc(2026, 2, 19, 10, 0);
+      final session = JournalSession(
+        sessionId: 's1',
+        startTime: sessionTime,
+        timezone: 'UTC',
+        syncStatus: 'PENDING',
+        isResumed: false,
+        resumeCount: 0,
+        createdAt: sessionTime,
+        updatedAt: sessionTime,
+      );
+
+      testWidgets('shown when sessions exist and not dismissed', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value([session]),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              quickCheckInBannerDismissedProvider.overrideWith((ref) => false),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.text('Quick check-in'), findsOneWidget);
+        expect(find.text('Just browse'), findsOneWidget);
+      });
+
+      testWidgets('not shown in empty state (no sessions)', (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value(<JournalSession>[]),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              quickCheckInBannerDismissedProvider.overrideWith((ref) => false),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.text('Quick check-in'), findsNothing);
+        expect(find.text('Just browse'), findsNothing);
+      });
+
+      testWidgets('close button dismisses banner — does not reappear', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value([session]),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              quickCheckInBannerDismissedProvider.overrideWith((ref) => false),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        // Banner visible.
+        expect(find.text('Quick check-in'), findsOneWidget);
+
+        // Dismiss via close icon.
+        await tester.tap(find.byTooltip('Dismiss'));
+        await tester.pumpAndSettle();
+
+        // Banner is gone.
+        expect(find.text('Quick check-in'), findsNothing);
+        expect(find.text('Just browse'), findsNothing);
+      });
+
+      testWidgets('Just browse dismisses banner — does not reappear', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value([session]),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              quickCheckInBannerDismissedProvider.overrideWith((ref) => false),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.text('Just browse'), findsOneWidget);
+
+        await tester.tap(find.text('Just browse'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Quick check-in'), findsNothing);
+        expect(find.text('Just browse'), findsNothing);
+      });
+
+      testWidgets('banner absent when already dismissed', (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              paginatedSessionsProvider.overrideWith(
+                (ref) => Stream.value([session]),
+              ),
+              photoCountProvider.overrideWith((ref) => Future.value(0)),
+              // Start with dismissed = true (persisted from prior navigation).
+              quickCheckInBannerDismissedProvider.overrideWith((ref) => true),
+            ],
+            child: const MaterialApp(home: SessionListScreen()),
+          ),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.text('Quick check-in'), findsNothing);
+        expect(find.text('Just browse'), findsNothing);
       });
     });
   });

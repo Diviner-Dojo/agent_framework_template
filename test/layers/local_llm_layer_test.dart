@@ -6,8 +6,14 @@
 // correctly delegates to the LLM service, passes system prompts, and
 // returns AgentLayer.llmLocal on all methods.
 //
+// Contains Phase 2A ADHD gap-shaming removal regression tests (lines 118-154).
+// See: memory/bugs/regression-ledger.md — Phase 2A gap-shaming removal.
+//
 // See: SPEC-20260224-014525 §R2, §R8
 // ===========================================================================
+
+@Tags(['regression'])
+library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:agentic_journal/layers/local_llm_layer.dart';
@@ -111,32 +117,47 @@ void main() {
       expect(userMsg, contains('morning'));
     });
 
-    test('includes days-since-last when >= 2 days', () async {
-      await layer.getGreeting(
-        now: DateTime(2026, 2, 23, 10, 0),
-        lastSessionDate: DateTime(2026, 2, 20, 10, 0),
-      );
-      final userMsg = mockService.lastMessages!.first['content']!;
-      expect(userMsg, contains('3 days'));
-    });
+    // Phase 2A — ADHD UX: gap duration is NEVER injected into context hints.
+    // These tests were previously "includes days-since-last when >= 2 days"
+    // and "includes days-since-last when exactly 2 days (boundary)" —
+    // both reversed after Phase 2A removal. See gap_shaming_removal_test.dart.
+    test(
+      'does not include days-since-last after 3-day gap (Phase 2A)',
+      () async {
+        await layer.getGreeting(
+          now: DateTime(2026, 2, 23, 10, 0),
+          lastSessionDate: DateTime(2026, 2, 20, 10, 0),
+        );
+        final userMsg = mockService.lastMessages!.first['content']!;
+        expect(userMsg, isNot(contains('3 days')));
+        expect(userMsg, isNot(contains('days since')));
+      },
+    );
 
-    test('includes days-since-last when exactly 2 days (boundary)', () async {
-      await layer.getGreeting(
-        now: DateTime(2026, 2, 23, 10, 0),
-        lastSessionDate: DateTime(2026, 2, 21, 10, 0),
-      );
-      final userMsg = mockService.lastMessages!.first['content']!;
-      expect(userMsg, contains('2 days'));
-    });
+    test(
+      'does not include days-since-last after 2-day gap (Phase 2A)',
+      () async {
+        await layer.getGreeting(
+          now: DateTime(2026, 2, 23, 10, 0),
+          lastSessionDate: DateTime(2026, 2, 21, 10, 0),
+        );
+        final userMsg = mockService.lastMessages!.first['content']!;
+        expect(userMsg, isNot(contains('2 days')));
+        expect(userMsg, isNot(contains('days since')));
+      },
+    );
 
-    test('does not include days-since-last when < 2 days', () async {
-      await layer.getGreeting(
-        now: DateTime(2026, 2, 23, 10, 0),
-        lastSessionDate: DateTime(2026, 2, 22, 10, 0),
-      );
-      final userMsg = mockService.lastMessages!.first['content']!;
-      expect(userMsg, isNot(contains('days since')));
-    });
+    test(
+      'does not include days-since-last for any gap length (Phase 2A)',
+      () async {
+        await layer.getGreeting(
+          now: DateTime(2026, 2, 23, 10, 0),
+          lastSessionDate: DateTime(2026, 2, 22, 10, 0),
+        );
+        final userMsg = mockService.lastMessages!.first['content']!;
+        expect(userMsg, isNot(contains('days since')));
+      },
+    );
 
     test('includes first-session context when sessionCount=0', () async {
       await layer.getGreeting(

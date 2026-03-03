@@ -176,14 +176,8 @@ class RuleBasedLayer implements ConversationLayer {
   String _getLocalGreeting({DateTime? lastSessionDate, DateTime? now}) {
     final currentTime = now ?? DateTime.now();
 
-    if (lastSessionDate != null) {
-      final daysSinceLastSession = currentTime
-          .difference(lastSessionDate)
-          .inDays;
-      if (daysSinceLastSession >= 2) {
-        return "It's been a few days — want to catch up?";
-      }
-    }
+    // Gap duration intentionally not used in greetings (Phase 2A — ADHD UX
+    // constraint: never mention days since last session).
 
     final hour = currentTime.hour;
     if (hour >= 5 && hour < 12) {

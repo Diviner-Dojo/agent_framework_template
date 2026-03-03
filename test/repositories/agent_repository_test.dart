@@ -42,25 +42,47 @@ void main() {
       expect(response.layer, AgentLayer.ruleBasedLocal);
     });
 
-    test('returns gap greeting when last session was 2+ days ago', () async {
-      final now = DateTime(2026, 2, 19, 10, 0);
-      final twoDaysAgo = DateTime(2026, 2, 17, 10, 0);
-      final response = await agent.getGreeting(
-        lastSessionDate: twoDaysAgo,
-        now: now,
-      );
-      expect(response.content, "It's been a few days — want to catch up?");
-    });
+    // Phase 2A — ADHD UX: gap-shaming greeting removed.
+    // After 2+ days the layer falls through to time-of-day greeting.
+    test(
+      'returns time-of-day greeting (not gap greeting) when 2+ days ago (Phase 2A)',
+      () async {
+        final now = DateTime(2026, 2, 19, 10, 0);
+        final twoDaysAgo = DateTime(2026, 2, 17, 10, 0);
+        final response = await agent.getGreeting(
+          lastSessionDate: twoDaysAgo,
+          now: now,
+        );
+        expect(
+          response.content,
+          isNot("It's been a few days — want to catch up?"),
+        );
+        expect(
+          response.content,
+          'Good morning! Any plans or thoughts for today?',
+        );
+      },
+    );
 
-    test('returns gap greeting when last session was 3+ days ago', () async {
-      final now = DateTime(2026, 2, 19, 10, 0);
-      final threeDaysAgo = DateTime(2026, 2, 16, 10, 0);
-      final response = await agent.getGreeting(
-        lastSessionDate: threeDaysAgo,
-        now: now,
-      );
-      expect(response.content, "It's been a few days — want to catch up?");
-    });
+    test(
+      'returns time-of-day greeting (not gap greeting) when 3+ days ago (Phase 2A)',
+      () async {
+        final now = DateTime(2026, 2, 19, 10, 0);
+        final threeDaysAgo = DateTime(2026, 2, 16, 10, 0);
+        final response = await agent.getGreeting(
+          lastSessionDate: threeDaysAgo,
+          now: now,
+        );
+        expect(
+          response.content,
+          isNot("It's been a few days — want to catch up?"),
+        );
+        expect(
+          response.content,
+          'Good morning! Any plans or thoughts for today?',
+        );
+      },
+    );
 
     test(
       'returns time-of-day greeting when last session was 1 day ago',

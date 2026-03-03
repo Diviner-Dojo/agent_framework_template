@@ -16,13 +16,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/app_database.dart';
 import '../../database/daos/message_dao.dart';
 import '../../database/daos/photo_dao.dart';
+import '../../database/daos/questionnaire_dao.dart';
 import '../../database/daos/session_dao.dart';
 import '../../database/daos/video_dao.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
 import '../../utils/timestamp_utils.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/photo_viewer.dart';
+import '../widgets/pulse_check_in_summary.dart';
 import '../widgets/video_player_widget.dart';
 
 /// Read-only transcript view for a past session.
@@ -41,6 +44,8 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   List<JournalMessage>? _messages;
   Map<String, Photo> _photosByMessageId = {};
   Map<String, Video> _videosByVideoId = {};
+  CheckInResponseWithAnswers? _checkInResponse;
+  List<QuestionnaireItem> _checkInItems = [];
   bool _isLoading = true;
   bool _isResuming = false;
 
@@ -50,18 +55,35 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
     _loadData();
   }
 
-  /// Load the session, messages, and photos from the database.
+  /// Load the session, messages, photos, and check-in data from the database.
   Future<void> _loadData() async {
     final db = ref.read(databaseProvider);
     final sessionDao = SessionDao(db);
     final messageDao = MessageDao(db);
     final photoDao = PhotoDao(db);
     final videoDao = VideoDao(db);
+    final questionnaireDao = ref.read(questionnaireDaoProvider);
 
     final session = await sessionDao.getSessionById(widget.sessionId);
     final messages = await messageDao.getMessagesForSession(widget.sessionId);
     final photos = await photoDao.getPhotosForSession(widget.sessionId);
     final videos = await videoDao.getVideosForSession(widget.sessionId);
+
+    // Load check-in response for this session (null if none).
+    final checkInResponse = await questionnaireDao.getResponseForSession(
+      widget.sessionId,
+    );
+    List<QuestionnaireItem> checkInItems = [];
+    if (checkInResponse != null) {
+      final template = await questionnaireDao.getTemplateById(
+        checkInResponse.response.templateId,
+      );
+      if (template != null) {
+        checkInItems = await questionnaireDao.getActiveItemsForTemplate(
+          template.id,
+        );
+      }
+    }
 
     // Index photos by messageId for fast lookup.
     final photoMap = <String, Photo>{};
@@ -83,6 +105,8 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         _messages = messages;
         _photosByMessageId = photoMap;
         _videosByVideoId = videoMap;
+        _checkInResponse = checkInResponse;
+        _checkInItems = checkInItems;
         _isLoading = false;
       });
     }
@@ -164,6 +188,17 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                   label: Text(session.locationName!),
                   visualDensity: VisualDensity.compact,
                 ),
+              ),
+            ),
+
+          // Pulse Check-In summary — shown when a check-in was recorded for
+          // this session (Task 7 / Phase 1 summary card in detail view).
+          if (_checkInResponse != null && _checkInItems.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: PulseCheckInSummary(
+                responseWithAnswers: _checkInResponse!,
+                items: _checkInItems,
               ),
             ),
 

@@ -19,6 +19,7 @@ import '../../providers/calendar_providers.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
+import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
@@ -67,26 +68,47 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
           }
           // Batch-load message counts when the session list changes.
           _refreshMessageCounts(sessions);
-          return _buildGroupedSessionList(context, ref, sessions);
+
+          // Phase 2B — Quick Check-In CTA: show a universally-visible card
+          // offering the check-in as a session entry point.
+          // ADHD UX: shown to ALL users with sessions (not conditioned on gap
+          // duration) to avoid implicit gap-shaming. Dismissal is persisted
+          // at app level (not widget-local) via quickCheckInBannerDismissedProvider
+          // so Back navigation does not re-escalate the banner.
+          // See: REV-20260303-142206 B1/B2.
+          final bannerDismissed = ref.watch(
+            quickCheckInBannerDismissedProvider,
+          );
+
+          return Column(
+            children: [
+              if (!bannerDismissed) _buildRecoveryBanner(context),
+              Expanded(child: _buildGroupedSessionList(context, ref, sessions)),
+            ],
+          );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) =>
             Center(child: Text('Error loading sessions: $error')),
       ),
       // FAB to start a new journaling session.
-      floatingActionButton: FloatingActionButton(
-        onPressed: _isStarting ? null : () => _startNewSession(context),
-        tooltip: 'New journal entry',
-        child: _isStarting
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.add),
+      // Tap: free-form session. Long-press: mode picker bottom sheet.
+      floatingActionButton: GestureDetector(
+        onLongPress: _isStarting ? null : () => _showModePicker(context),
+        child: FloatingActionButton(
+          onPressed: _isStarting ? null : () => _startNewSession(context),
+          tooltip: 'New journal entry (long-press to choose mode)',
+          child: _isStarting
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.add),
+        ),
       ),
     );
   }
@@ -239,11 +261,86 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
     });
   }
 
+  /// Quick Check-In CTA card (Phase 2B).
+  ///
+  /// Shown universally until dismissed. Two options: start a quick check-in
+  /// or browse the journal. No gap duration is referenced — ADHD UX compliant.
+  Widget _buildRecoveryBanner(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      color: theme.colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Good to see you. What would you like to do?',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  color: theme.colorScheme.onPrimaryContainer,
+                  onPressed: () =>
+                      ref
+                              .read(
+                                quickCheckInBannerDismissedProvider.notifier,
+                              )
+                              .state =
+                          true,
+                  tooltip: 'Dismiss',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: _isStarting
+                      ? null
+                      : () => _startNewSession(
+                          context,
+                          journalingMode: 'pulse_check_in',
+                        ),
+                  child: const Text('Quick check-in'),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  onPressed: () =>
+                      ref
+                              .read(
+                                quickCheckInBannerDismissedProvider.notifier,
+                              )
+                              .state =
+                          true,
+                  child: const Text('Just browse'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Start a new journaling session and navigate to it.
-  Future<void> _startNewSession(BuildContext context) async {
+  Future<void> _startNewSession(
+    BuildContext context, {
+    String? journalingMode,
+  }) async {
     setState(() => _isStarting = true);
     try {
-      await ref.read(sessionNotifierProvider.notifier).startSession();
+      await ref
+          .read(sessionNotifierProvider.notifier)
+          .startSession(journalingMode: journalingMode);
       if (context.mounted) {
         Navigator.of(context).pushNamed('/session');
       }
@@ -252,6 +349,59 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
         setState(() => _isStarting = false);
       }
     }
+  }
+
+  /// Show the journaling mode picker bottom sheet.
+  ///
+  /// Allows the user to start a session in a specific mode (Pulse Check-In,
+  /// Gratitude, Dream, Mood Check-In) or the default free-form mode.
+  Future<void> _showModePicker(BuildContext context) async {
+    final modes = [
+      ('Free Journal', null, Icons.edit_note_outlined),
+      ('Pulse Check-In', 'pulse_check_in', Icons.monitor_heart_outlined),
+      ('Gratitude', 'gratitude', Icons.favorite_outline),
+      ('Dream', 'dream', Icons.bedtime_outlined),
+      ('Mood Check-In', 'mood_check_in', Icons.mood_outlined),
+    ];
+
+    final selected = await showModalBottomSheet<String?>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Text(
+                  'Start a session',
+                  style: Theme.of(ctx).textTheme.titleMedium,
+                ),
+              ),
+              const Divider(),
+              ...modes.map(
+                (m) => ListTile(
+                  leading: Icon(m.$3),
+                  title: Text(m.$1),
+                  onTap: () => Navigator.of(ctx).pop(m.$2 ?? '__default__'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (selected == null || !context.mounted) return;
+    final mode = selected == '__default__' ? null : selected;
+    await _startNewSession(context, journalingMode: mode);
   }
 }
 
