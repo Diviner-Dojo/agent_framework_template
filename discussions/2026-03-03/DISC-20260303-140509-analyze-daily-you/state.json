@@ -1,0 +1,13 @@
+{
+  "command": "analyze-project",
+  "discussion_id": "DISC-20260303-140509-analyze-daily-you",
+  "status": "complete",
+  "started_at": "2026-03-03T14:05:14.646329+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "target_resolved",
+    "discussion_created",
+    "adoptions_logged"
+  ],
+  "target": "Demizo/Daily_You"
+}
