@@ -344,4 +344,68 @@ void main() {
       expect(results, isEmpty);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // watchDefaultTemplate
+  // ---------------------------------------------------------------------------
+
+  group('watchDefaultTemplate', () {
+    test('emits null when no system default exists', () async {
+      // No templates inserted — stream should emit null.
+      expect(await dao.watchDefaultTemplate().first, isNull);
+    });
+
+    test(
+      'emits template when system default exists with isActive=true',
+      () async {
+        final id = await dao.insertTemplate(
+          makeTemplate(name: 'Default', isSystemDefault: true),
+        );
+        final result = await dao.watchDefaultTemplate().first;
+        expect(result, isNotNull);
+        expect(result!.id, equals(id));
+        expect(result.isSystemDefault, isTrue);
+      },
+    );
+
+    test('does not emit non-system-default templates', () async {
+      // isSystemDefault=false — should not appear in stream.
+      await dao.insertTemplate(
+        makeTemplate(name: 'Custom', isSystemDefault: false),
+      );
+      expect(await dao.watchDefaultTemplate().first, isNull);
+    });
+
+    test('does not emit system-default template when isActive=false', () async {
+      final id = await dao.insertTemplate(
+        makeTemplate(name: 'Default', isSystemDefault: true),
+      );
+      // Deactivate it.
+      await dao.updateTemplate(
+        id,
+        QuestionnaireTemplatesCompanion(isActive: Value(false)),
+      );
+      expect(await dao.watchDefaultTemplate().first, isNull);
+    });
+
+    test('emits updated template when scale changes', () async {
+      final id = await dao.insertTemplate(
+        makeTemplate(name: 'Default', isSystemDefault: true),
+      );
+
+      final stream = dao.watchDefaultTemplate();
+
+      // First emission: scaleMax=10.
+      final first = await stream.first;
+      expect(first!.scaleMax, equals(10));
+
+      // Update to scaleMax=5.
+      await dao.updateTemplate(
+        id,
+        QuestionnaireTemplatesCompanion(scaleMax: Value(5)),
+      );
+      final second = await stream.first;
+      expect(second!.scaleMax, equals(5));
+    });
+  });
 }

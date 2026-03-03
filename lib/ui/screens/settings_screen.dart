@@ -26,7 +26,11 @@ import 'dart:io';
 import 'package:drift/drift.dart' show Value;
 
 import '../../database/app_database.dart'
-    show QuestionnaireItem, QuestionnaireItemsCompanion;
+    show
+        QuestionnaireItem,
+        QuestionnaireItemsCompanion,
+        QuestionnaireTemplate,
+        QuestionnaireTemplatesCompanion;
 import '../../models/personality_config.dart';
 import '../../providers/auth_providers.dart';
 import '../../services/google_auth_service.dart';
@@ -1005,6 +1009,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   Widget _buildPulseCheckInCard(BuildContext context) {
     final theme = Theme.of(context);
     final itemsAsync = ref.watch(activeCheckInItemsProvider);
+    // Template is optional — scale toggle shows only when template is loaded.
+    final template = ref.watch(activeDefaultTemplateProvider).valueOrNull;
 
     return Card(
       child: ExpansionTile(
@@ -1013,7 +1019,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         subtitle: const Text('Questionnaire questions and order'),
         children: [
           itemsAsync.when(
-            data: (items) => _buildCheckInItemList(context, theme, items),
+            data: (items) =>
+                _buildCheckInItemList(context, theme, items, template),
             loading: () => const Padding(
               padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
@@ -1031,11 +1038,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
-  /// Build the list of check-in items with toggle, reorder, and add controls.
+  /// Build the list of check-in items with scale toggle, toggle, reorder,
+  /// edit, and add controls.
   Widget _buildCheckInItemList(
     BuildContext context,
     ThemeData theme,
     List<QuestionnaireItem> items,
+    QuestionnaireTemplate? template,
   ) {
     final dao = ref.read(questionnaireDaoProvider);
     return Padding(
@@ -1043,6 +1052,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Scale configuration (shown when template is loaded).
+          if (template != null) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Answer scale', style: theme.textTheme.labelLarge),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    style: SegmentedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    segments: const [
+                      ButtonSegment(value: '1-5', label: Text('1 – 5')),
+                      ButtonSegment(value: '1-10', label: Text('1 – 10')),
+                      ButtonSegment(value: '0-100', label: Text('0 – 100')),
+                    ],
+                    selected: {_scaleKey(template.scaleMin, template.scaleMax)},
+                    onSelectionChanged: (selection) async {
+                      final (min, max) = _parseScaleKey(selection.first);
+                      await dao.updateTemplate(
+                        template.id,
+                        QuestionnaireTemplatesCompanion(
+                          scaleMin: Value(min),
+                          scaleMax: Value(max),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Changes the answer range for future check-ins.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+
           // Drag-to-reorder list.
           ReorderableListView.builder(
             shrinkWrap: true,
@@ -1063,29 +1116,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             },
             itemBuilder: (ctx, i) {
               final item = items[i];
-              return SwitchListTile(
+              return ListTile(
                 key: ValueKey(item.id),
+                leading: ReorderableDragStartListener(
+                  index: i,
+                  child: const Icon(Icons.drag_handle),
+                ),
                 title: Text(
                   item.questionText,
                   style: theme.textTheme.bodyMedium,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                secondary: ReorderableDragStartListener(
-                  index: i,
-                  child: const Icon(Icons.drag_handle),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      tooltip: 'Edit question',
+                      onPressed: () =>
+                          _showEditCheckInItemDialog(context, item),
+                    ),
+                    Switch(
+                      value: item.isActive,
+                      onChanged: (enabled) async {
+                        await dao.updateItem(
+                          item.id,
+                          QuestionnaireItemsCompanion(isActive: Value(enabled)),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-                value: item.isActive,
-                onChanged: (enabled) async {
-                  await dao.updateItem(
-                    item.id,
-                    QuestionnaireItemsCompanion(isActive: Value(enabled)),
-                  );
-                },
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                contentPadding: const EdgeInsets.only(left: 16),
               );
             },
           ),
+
           // Add custom item button.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1104,43 +1171,87 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
-  /// Show a dialog to add a custom check-in item.
-  Future<void> _showAddCheckInItemDialog(BuildContext context) async {
-    final controller = TextEditingController();
-    final confirmed = await showDialog<bool>(
+  /// Show a dialog to edit the text of an existing check-in item.
+  Future<void> _showEditCheckInItemDialog(
+    BuildContext context,
+    QuestionnaireItem item,
+  ) async {
+    // Controller is created inside the builder so its lifecycle is tied to
+    // the dialog widget. The Save button captures text before popping to
+    // avoid reading/disposing the controller after dismiss animation starts.
+    final newText = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add question'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'e.g. How motivated do you feel?',
-            border: OutlineInputBorder(),
+      builder: (ctx) {
+        final controller = TextEditingController(text: item.questionText);
+        return AlertDialog(
+          title: const Text('Edit question'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+            autofocus: true,
+            maxLength: 120,
+            textCapitalization: TextCapitalization.sentences,
           ),
-          autofocus: true,
-          maxLength: 120,
-          textCapitalization: TextCapitalization.sentences,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
     );
 
-    if (confirmed != true || controller.text.trim().isEmpty) {
-      controller.dispose();
-      return;
-    }
+    final trimmed = newText?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed == item.questionText) return;
 
-    final questionText = controller.text.trim();
-    controller.dispose();
+    await ref
+        .read(questionnaireDaoProvider)
+        .updateItem(
+          item.id,
+          QuestionnaireItemsCompanion(questionText: Value(trimmed)),
+        );
+  }
+
+  /// Show a dialog to add a custom check-in item.
+  Future<void> _showAddCheckInItemDialog(BuildContext context) async {
+    // Controller is created inside the builder — text captured before pop.
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('Add question'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'e.g. How motivated do you feel?',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+            maxLength: 120,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+
+    final questionText = result?.trim() ?? '';
+    if (questionText.isEmpty) return;
 
     final dao = ref.read(questionnaireDaoProvider);
     final template = await dao.getActiveDefaultTemplate();
@@ -1268,7 +1379,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           // Resolve item text (cached per template).
           final templateId = rwa.response.templateId;
           if (!itemTextCache.containsKey(templateId)) {
-            final items = await questionnaireDao.getActiveItemsForTemplate(
+            // Use getAllItemsForTemplate (not getActiveItemsForTemplate) so
+            // that deactivated items still show their question text in exports.
+            // Matches the same pattern used in checkInHistoryProvider.
+            final items = await questionnaireDao.getAllItemsForTemplate(
               templateId,
             );
             itemTextCache[templateId] = {
@@ -1538,4 +1652,27 @@ class _ClearAllDialogState extends State<_ClearAllDialog> {
       ],
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Scale preset helpers (used by _buildCheckInItemList)
+// ---------------------------------------------------------------------------
+
+/// Map (scaleMin, scaleMax) to a canonical preset key string.
+///
+/// Non-standard combinations fall back to '1-10' to keep the SegmentedButton
+/// in a defined state.
+String _scaleKey(int min, int max) {
+  if (min == 1 && max == 5) return '1-5';
+  if (min == 0 && max == 100) return '0-100';
+  return '1-10';
+}
+
+/// Parse a preset key back to (scaleMin, scaleMax).
+(int, int) _parseScaleKey(String key) {
+  return switch (key) {
+    '1-5' => (1, 5),
+    '0-100' => (0, 100),
+    _ => (1, 10),
+  };
 }

@@ -399,6 +399,17 @@ final checkInCountProvider = StreamProvider<int>((ref) {
   return dao.watchAllResponses().map((r) => r.length);
 });
 
+/// Streams the active system-default questionnaire template.
+///
+/// Used by the settings screen scale toggle. Emits null before the
+/// default template is seeded (first launch). Updates in real-time.
+final activeDefaultTemplateProvider = StreamProvider<QuestionnaireTemplate?>((
+  ref,
+) {
+  final dao = ref.watch(questionnaireDaoProvider);
+  return dao.watchDefaultTemplate();
+});
+
 /// Watches items for the active default template (for settings screen).
 ///
 /// Emits an empty list when no default template exists yet. Updates in
