@@ -70,6 +70,19 @@ class QuestionnaireDao {
         .watch();
   }
 
+  /// Watch the active system-default template for real-time scale config.
+  ///
+  /// Emits null only before [QuestionnaireDefaults.ensureDefaultTemplate] runs.
+  /// Used by [activeDefaultTemplateProvider] to drive the settings scale toggle.
+  Stream<QuestionnaireTemplate?> watchDefaultTemplate() {
+    return (_db.select(_db.questionnaireTemplates)
+          ..where(
+            (t) => t.isSystemDefault.equals(true) & t.isActive.equals(true),
+          )
+          ..limit(1))
+        .watchSingleOrNull();
+  }
+
   /// Update an existing template.
   Future<int> updateTemplate(
     int id,
