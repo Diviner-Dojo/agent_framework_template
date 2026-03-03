@@ -23,6 +23,7 @@ import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
+import '../widgets/quick_mood_tap_sheet.dart';
 import '../widgets/session_card.dart';
 
 /// Home screen showing all past journal sessions with month-year grouping.
@@ -364,14 +365,19 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
   /// Show the journaling mode picker bottom sheet.
   ///
   /// Allows the user to start a session in a specific mode (Pulse Check-In,
-  /// Gratitude, Dream, Mood Check-In) or the default free-form mode.
+  /// Quick Mood Tap, Gratitude, Dream, Mood Check-In) or the default free-form
+  /// mode. Quick Mood Tap is a special case — it opens a minimal overlay sheet
+  /// (no LLM, no session navigation) instead of creating a full session.
   Future<void> _showModePicker(BuildContext context) async {
+    // The sentinel '__quick_mood_tap__' triggers the Quick Mood Tap overlay.
+    // All other values are journaling mode strings (or '__default__' for free).
     final modes = [
-      ('Free Journal', null, Icons.edit_note_outlined),
+      ('Free Journal', '__default__', Icons.edit_note_outlined),
       ('Pulse Check-In', 'pulse_check_in', Icons.monitor_heart_outlined),
+      ('Quick Mood Tap', '__quick_mood_tap__', Icons.mood_outlined),
       ('Gratitude', 'gratitude', Icons.favorite_outline),
       ('Dream', 'dream', Icons.bedtime_outlined),
-      ('Mood Check-In', 'mood_check_in', Icons.mood_outlined),
+      ('Mood Check-In', 'mood_check_in', Icons.chat_bubble_outline_rounded),
     ];
 
     final selected = await showModalBottomSheet<String?>(
@@ -400,7 +406,7 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
                 (m) => ListTile(
                   leading: Icon(m.$3),
                   title: Text(m.$1),
-                  onTap: () => Navigator.of(ctx).pop(m.$2 ?? '__default__'),
+                  onTap: () => Navigator.of(ctx).pop(m.$2),
                 ),
               ),
             ],
@@ -410,6 +416,13 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
     );
 
     if (selected == null || !context.mounted) return;
+
+    // Quick Mood Tap: open the emoji overlay — no LLM, no session navigation.
+    if (selected == '__quick_mood_tap__') {
+      await showQuickMoodTapSheet(context);
+      return;
+    }
+
     final mode = selected == '__default__' ? null : selected;
     await _startNewSession(context, journalingMode: mode);
   }

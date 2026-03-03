@@ -37,7 +37,15 @@ enum JournalingMode {
   /// and collects numeric answers. The LLM is NOT invoked for the check-in
   /// itself — only for the optional free-journal step at the end.
   /// [systemPromptFragment] is intentionally empty for this mode.
-  pulseCheckIn;
+  pulseCheckIn,
+
+  /// Quick Mood Tap — 3-second mood + energy snapshot.
+  ///
+  /// Opens a bottom sheet overlay on the home screen without navigating away.
+  /// No LLM call — the user taps an emoji (mood 1–5) and optionally selects
+  /// energy level (1–3). Saved as a minimal session that is excluded from
+  /// the main session list but queryable by the Check-In History screen.
+  quickMoodTap;
 
   /// Human-readable name for UI display.
   String get displayName => switch (this) {
@@ -47,6 +55,7 @@ enum JournalingMode {
     moodCheckIn => 'Mood Check-In',
     onboarding => 'Onboarding',
     pulseCheckIn => 'Pulse Check-In',
+    quickMoodTap => 'Quick Mood Tap',
   };
 
   /// System prompt fragment appended to the personality prompt.
@@ -62,6 +71,7 @@ enum JournalingMode {
     moodCheckIn => _moodCheckInPrompt,
     onboarding => _onboardingPrompt,
     pulseCheckIn => '', // Form-driven — CheckInNotifier handles sequencing.
+    quickMoodTap => '', // No LLM — tap-to-save snapshot, no conversation.
   };
 
   /// Convert to the string stored in SQLite/Supabase.
@@ -75,6 +85,7 @@ enum JournalingMode {
     moodCheckIn => 'mood_check_in',
     onboarding => 'onboarding',
     pulseCheckIn => 'pulse_check_in',
+    quickMoodTap => 'quick_mood_tap',
   };
 
   /// Parse from a database string value.
@@ -90,6 +101,7 @@ enum JournalingMode {
       'mood_check_in' => JournalingMode.moodCheckIn,
       'onboarding' => JournalingMode.onboarding,
       'pulse_check_in' => JournalingMode.pulseCheckIn,
+      'quick_mood_tap' => JournalingMode.quickMoodTap,
       _ => null,
     };
   }

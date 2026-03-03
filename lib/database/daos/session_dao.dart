@@ -58,6 +58,35 @@ class SessionDao {
         );
   }
 
+  /// Create a complete quick mood tap session in a single atomic INSERT.
+  ///
+  /// Unlike the three-step sequence used by [SessionNotifier] (createSession →
+  /// updateJournalingMode → endSession), this method writes all fields in one
+  /// INSERT so no partial session is left if the app crashes between steps.
+  /// A phantom session with journalingMode=null and endTime=null would be
+  /// picked up by [resumeLatestSession] as a regular journaling session.
+  ///
+  /// [summary] is a pre-built human-readable string, e.g. "Mood: 😐 Neutral".
+  Future<void> createQuickMoodSession(
+    String sessionId,
+    DateTime startTime,
+    String timezone,
+    String summary,
+  ) async {
+    await _db
+        .into(_db.journalSessions)
+        .insert(
+          JournalSessionsCompanion.insert(
+            sessionId: sessionId,
+            startTime: startTime,
+            timezone: Value(timezone),
+            journalingMode: const Value('quick_mood_tap'),
+            endTime: Value(startTime),
+            summary: Value(summary),
+          ),
+        );
+  }
+
   /// Update a session when it ends.
   ///
   /// Sets the end time, AI-generated summary, and extracted metadata.
@@ -133,9 +162,12 @@ class SessionDao {
   /// drift automatically re-emits whenever the journal_sessions table changes,
   /// so the UI stays in sync without manual refresh logic.
   Stream<List<JournalSession>> watchAllSessions() {
-    return (_db.select(_db.journalSessions)..orderBy([
-          (s) => OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
-        ]))
+    return (_db.select(_db.journalSessions)
+          ..where((s) => s.journalingMode.isNotValue('quick_mood_tap'))
+          ..orderBy([
+            (s) =>
+                OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
+          ]))
         .watch();
   }
 
@@ -146,6 +178,7 @@ class SessionDao {
   /// older entries without a separate cursor-based query.
   Stream<List<JournalSession>> watchSessionsPaginated(int limit) {
     return (_db.select(_db.journalSessions)
+          ..where((s) => s.journalingMode.isNotValue('quick_mood_tap'))
           ..orderBy([
             (s) =>
                 OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
