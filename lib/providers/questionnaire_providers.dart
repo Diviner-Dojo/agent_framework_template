@@ -462,15 +462,23 @@ final quickCheckInBannerDismissedProvider = StateProvider<bool>((ref) => false);
 
 /// One annotated check-in entry for the history dashboard.
 ///
-/// Pairs a [CheckInResponseWithAnswers] with the resolved question text
-/// for each answer and the template's scale bounds, so the UI can display
-/// labels and answer bars without extra DAO calls.
+/// Pairs a [CheckInResponseWithAnswers] with the resolved question text,
+/// scale bounds, and per-item reverse-scoring flags so that trend analysis
+/// can apply the same reversal that [CheckInScoreService] applies to the
+/// composite score — ensuring correlation directions are semantically correct.
 class CheckInHistoryEntry {
   /// The response row with its raw answer values.
   final CheckInResponseWithAnswers responseWithAnswers;
 
   /// Map of item id → question text, resolved from the template's item rows.
   final Map<int, String> itemText;
+
+  /// Map of item id → isReversed flag.
+  ///
+  /// Used by the trend pipeline to apply reversal before normalization so that
+  /// reverse-scored dimensions (e.g., Anxiety) correlate in the correct semantic
+  /// direction. Missing item ids default to false (no reversal).
+  final Map<int, bool> itemIsReversed;
 
   /// Scale bounds from the template used for this response.
   final int scaleMin;
@@ -479,6 +487,7 @@ class CheckInHistoryEntry {
   const CheckInHistoryEntry({
     required this.responseWithAnswers,
     required this.itemText,
+    this.itemIsReversed = const {},
     this.scaleMin = 1,
     this.scaleMax = 10,
   });
@@ -499,6 +508,7 @@ final checkInHistoryProvider = StreamProvider<List<CheckInHistoryEntry>>((
     // Resolve question text and scale bounds per template (cached per emission).
     final itemTextCache = <int, Map<int, String>>{};
     final templateCache = <int, QuestionnaireTemplate?>{};
+    final itemIsReversedCache = <int, Map<int, bool>>{};
     for (final rwa in responses) {
       final templateId = rwa.response.templateId;
       if (!itemTextCache.containsKey(templateId)) {
@@ -507,6 +517,9 @@ final checkInHistoryProvider = StreamProvider<List<CheckInHistoryEntry>>((
         final items = await dao.getAllItemsForTemplate(templateId);
         itemTextCache[templateId] = {
           for (final it in items) it.id: it.questionText,
+        };
+        itemIsReversedCache[templateId] = {
+          for (final it in items) it.id: it.isReversed,
         };
       }
       if (!templateCache.containsKey(templateId)) {
@@ -518,6 +531,7 @@ final checkInHistoryProvider = StreamProvider<List<CheckInHistoryEntry>>((
       return CheckInHistoryEntry(
         responseWithAnswers: rwa,
         itemText: itemTextCache[rwa.response.templateId] ?? {},
+        itemIsReversed: itemIsReversedCache[rwa.response.templateId] ?? {},
         scaleMin: template?.scaleMin ?? 1,
         scaleMax: template?.scaleMax ?? 10,
       );

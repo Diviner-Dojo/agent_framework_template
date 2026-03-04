@@ -2,23 +2,23 @@
 // ===========================================================================
 // file: lib/ui/screens/check_in_history_screen.dart
 // purpose: Check-In History Dashboard — interactive trend chart + chronological
-//          cards for all Pulse Check-In responses.
+//          cards for all Pulse Check-In responses, plus Phase 4E Trend tab.
 //
 // Layout:
-//   - Top: _CheckInTrendChart — multi-line fl_chart with 6 series (one per
-//     question), Last-5/Last-10/All filter toggle, horizontal scroll for
-//     dense histories, tap-to-tooltip interaction.
-//   - Bottom: scrollable list of _CheckInEntryCard (expandable detail cards).
+//   Two tabs (shown when entries exist):
+//   - History: _CheckInTrendChart + scrollable _CheckInEntryCard list.
+//   - Trends: _CheckInTrendTab — rolling averages, correlation tiles, insights.
 //
 // ADHD UX:
 //   - No gap dates, no streak counters, no "last check-in" mentions.
 //   - Neutral color palette (no red/green for scores).
 //   - Chart is exploratory, not evaluative.
+//   - Correlation framing: "possible relationship", never causal.
 //
 // Accessed via the insights icon (Icons.insights_outlined) in the home
 // screen AppBar. The icon is hidden until at least one check-in exists.
 //
-// See: SPEC-20260302-adhd-informed-feature-roadmap.md Phase 3E.
+// See: SPEC-20260302-adhd-informed-feature-roadmap.md Phase 3E + Phase 4E.
 // ===========================================================================
 
 import 'dart:math';
@@ -28,7 +28,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/app_database.dart';
+import '../../providers/check_in_trend_provider.dart';
 import '../../providers/questionnaire_providers.dart';
+import '../../services/correlation_service.dart';
 
 /// Dashboard showing Pulse Check-In trend chart and history entries.
 class CheckInHistoryScreen extends ConsumerWidget {
@@ -39,33 +41,59 @@ class CheckInHistoryScreen extends ConsumerWidget {
     final historyAsync = ref.watch(checkInHistoryProvider);
     final itemsAsync = ref.watch(activeCheckInItemsProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Check-In History')),
-      body: historyAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error loading history: $e')),
-        data: (entries) {
-          if (entries.isEmpty) {
-            return _buildEmpty(context);
-          }
-          final items = itemsAsync.valueOrNull ?? [];
-          return Column(
-            children: [
-              _CheckInTrendChart(entries: entries, items: items),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) {
-                    return _CheckInEntryCard(entry: entries[index]);
-                  },
-                ),
-              ),
-            ],
-          );
-        },
+    return historyAsync.when(
+      loading: () => Scaffold(
+        appBar: AppBar(title: const Text('Check-In History')),
+        body: const Center(child: CircularProgressIndicator()),
       ),
+      error: (e, _) => Scaffold(
+        appBar: AppBar(title: const Text('Check-In History')),
+        body: Center(child: Text('Error loading history: $e')),
+      ),
+      data: (entries) {
+        if (entries.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Check-In History')),
+            body: _buildEmpty(context),
+          );
+        }
+        final items = itemsAsync.valueOrNull ?? [];
+        return DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text('Check-In History'),
+              bottom: const TabBar(
+                tabs: [
+                  Tab(text: 'History'),
+                  Tab(text: 'Trends'),
+                ],
+              ),
+            ),
+            body: TabBarView(
+              children: [
+                // History tab: existing chart + chronological list.
+                Column(
+                  children: [
+                    _CheckInTrendChart(entries: entries, items: items),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: entries.length,
+                        itemBuilder: (context, index) =>
+                            _CheckInEntryCard(entry: entries[index]),
+                      ),
+                    ),
+                  ],
+                ),
+                // Trends tab: Phase 4E rolling averages + correlations.
+                const _CheckInTrendTab(),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -105,8 +133,35 @@ class CheckInHistoryScreen extends ConsumerWidget {
 // Trend Chart
 // ---------------------------------------------------------------------------
 
-/// Filter options for the trend chart time window (in calendar days).
+/// Filter options for the history chart time window.
 enum _ChartFilter { last5, last10, all }
+
+/// Window options for the Phase 4E rolling-averages chart.
+enum _TrendWindow { days7, days14, days30 }
+
+extension _TrendWindowX on _TrendWindow {
+  int get days => switch (this) {
+    _TrendWindow.days7 => 7,
+    _TrendWindow.days14 => 14,
+    _TrendWindow.days30 => 30,
+  };
+
+  String get label => switch (this) {
+    _TrendWindow.days7 => '7 days',
+    _TrendWindow.days14 => '14 days',
+    _TrendWindow.days30 => '30 days',
+  };
+}
+
+/// Shared perceptually-distinct hues (no red/green — ADHD non-judgmental palette).
+const _kSeriesColors = [
+  Color(0xFF5B8A9A), // Teal-blue    — Mood
+  Color(0xFF7A6E9E), // Muted violet — Energy
+  Color(0xFF5E9E8A), // Sage green   — Anxiety
+  Color(0xFF9E8A5E), // Warm sand    — Focus
+  Color(0xFF5E7A9E), // Slate blue   — Emotion Reg.
+  Color(0xFF9E6E7A), // Dusty rose   — Sleep
+];
 
 /// One calendar day's averaged Pulse Check-In data.
 ///
@@ -155,16 +210,7 @@ class _CheckInTrendChart extends StatefulWidget {
 class _CheckInTrendChartState extends State<_CheckInTrendChart> {
   _ChartFilter _filter = _ChartFilter.all;
 
-  // Six perceptually-distinct hues derived from the app's teal-blue seed.
-  // No red/green — ADHD clinical UX constraint (non-judgmental palette).
-  static const _seriesColors = [
-    Color(0xFF5B8A9A), // Teal-blue  — Mood
-    Color(0xFF7A6E9E), // Muted violet — Energy
-    Color(0xFF5E9E8A), // Sage green — Anxiety
-    Color(0xFF9E8A5E), // Warm sand  — Focus
-    Color(0xFF5E7A9E), // Slate blue — Emotion Reg.
-    Color(0xFF9E6E7A), // Dusty rose — Sleep
-  ];
+  // Reuses module-level _kSeriesColors (ADHD non-judgmental palette).
 
   @override
   void didUpdateWidget(_CheckInTrendChart old) {
@@ -361,7 +407,7 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
     final lineBars = items.asMap().entries.map((e) {
       final itemIdx = e.key;
       final item = e.value;
-      final color = _seriesColors[itemIdx % _seriesColors.length];
+      final color = _kSeriesColors[itemIdx % _kSeriesColors.length];
 
       final spots = <FlSpot>[];
       for (var di = 0; di < days.length; di++) {
@@ -471,7 +517,7 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
               final dayIdx = spot.x.toInt();
               if (dayIdx < 0 || dayIdx >= days.length) return null;
 
-              final color = _seriesColors[barIdx % _seriesColors.length];
+              final color = _kSeriesColors[barIdx % _kSeriesColors.length];
               final day = days[dayIdx];
               final label = barIdx < items.length
                   ? _shortLabel(items[barIdx].questionText)
@@ -528,7 +574,7 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
       spacing: 14,
       runSpacing: 4,
       children: widget.items.asMap().entries.map((e) {
-        final color = _seriesColors[e.key % _seriesColors.length];
+        final color = _kSeriesColors[e.key % _kSeriesColors.length];
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -550,6 +596,423 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
           ],
         );
       }).toList(),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4E: Trend Tab — rolling averages, correlations, insights
+// ---------------------------------------------------------------------------
+
+/// Full-screen trend analysis tab for Phase 4E.
+///
+/// Consumes [checkInTrendProvider] (rolling-averaged + correlated data) and
+/// presents three sections:
+///   1. Rolling averages line chart (configurable 7/14/30-day window).
+///   2. Dimension correlations — pairs sorted by |r| with directional tint.
+///   3. Plain-language narrative insights with epistemic humility framing.
+///
+/// ADHD UX: no "best/worst day" labelling; no causal claims;
+/// "possible relationship" language; missing-data warnings.
+class _CheckInTrendTab extends ConsumerStatefulWidget {
+  const _CheckInTrendTab();
+
+  @override
+  ConsumerState<_CheckInTrendTab> createState() => _CheckInTrendTabState();
+}
+
+class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
+  _TrendWindow _window = _TrendWindow.days7;
+
+  @override
+  Widget build(BuildContext context) {
+    final trendAsync = ref.watch(checkInTrendProvider);
+    return trendAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Could not load trends: $e')),
+      data: (data) {
+        if (!data.hasSufficientData) {
+          return _buildInsufficient(context);
+        }
+        final svc = ref.read(correlationServiceProvider);
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildWindowToggle(context),
+              const SizedBox(height: 16),
+              _buildRollingSection(context, svc, data),
+              const SizedBox(height: 20),
+              _buildCorrelationSection(context, data),
+              const SizedBox(height: 20),
+              _buildInsightsSection(context, data),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInsufficient(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text(
+          'Complete check-ins on 2 or more days to see trend analysis.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  // ---- Window toggle -------------------------------------------------------
+
+  Widget _buildWindowToggle(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Text('Rolling window', style: theme.textTheme.titleSmall),
+        const Spacer(),
+        SegmentedButton<_TrendWindow>(
+          style: SegmentedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            visualDensity: VisualDensity.compact,
+          ),
+          segments: _TrendWindow.values
+              .map((w) => ButtonSegment(value: w, label: Text(w.label)))
+              .toList(),
+          selected: {_window},
+          onSelectionChanged: (s) => setState(() => _window = s.first),
+        ),
+      ],
+    );
+  }
+
+  // ---- Rolling averages chart ----------------------------------------------
+
+  Widget _buildRollingSection(
+    BuildContext context,
+    CorrelationService svc,
+    CheckInTrendData data,
+  ) {
+    final theme = Theme.of(context);
+
+    // Compute rolling averages for each dimension.
+    final rollingByItem = {
+      for (final id in data.itemIds)
+        id: svc.rollingAverages(
+          days: data.days,
+          itemId: id,
+          windowDays: _window.days,
+        ),
+    };
+
+    final hasValues = rollingByItem.values.any(
+      (pts) => pts.any((p) => p.value != null),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Rolling averages', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (!hasValues)
+          SizedBox(
+            height: 80,
+            child: Center(
+              child: Text(
+                'More check-ins needed for rolling averages.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          )
+        else
+          _buildRollingChart(theme, data, rollingByItem),
+        const SizedBox(height: 6),
+        _buildLegend(theme, data),
+      ],
+    );
+  }
+
+  Widget _buildRollingChart(
+    ThemeData theme,
+    CheckInTrendData data,
+    Map<int, List<RollingPoint>> rollingByItem,
+  ) {
+    final outlineVariant = theme.colorScheme.outlineVariant;
+    final days = data.days;
+
+    final lineBars = data.itemIds.asMap().entries.map((e) {
+      final idx = e.key;
+      final itemId = e.value;
+      final color = _kSeriesColors[idx % _kSeriesColors.length];
+      final points = rollingByItem[itemId] ?? [];
+
+      final spots = <FlSpot>[
+        for (var i = 0; i < points.length; i++)
+          if (points[i].value != null) FlSpot(i.toDouble(), points[i].value!),
+      ];
+
+      return LineChartBarData(
+        spots: spots,
+        isCurved: spots.length > 2,
+        curveSmoothness: 0.3,
+        preventCurveOverShooting: true,
+        color: color,
+        barWidth: 2.5,
+        isStrokeCapRound: true,
+        dotData: FlDotData(show: days.length <= 6),
+        belowBarData: BarAreaData(show: false),
+      );
+    }).toList();
+
+    return SizedBox(
+      height: 180,
+      child: LineChart(
+        LineChartData(
+          minY: 0,
+          maxY: 1,
+          lineBarsData: lineBars,
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 24,
+                interval: 0.5,
+                getTitlesWidget: (v, _) {
+                  if (v == 0.0 || v == 0.5 || v == 1.0) {
+                    return Text(
+                      v.toStringAsFixed(1),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                getTitlesWidget: (value, _) {
+                  final idx = value.toInt();
+                  if (idx < 0 || idx >= days.length) {
+                    return const SizedBox.shrink();
+                  }
+                  final step = max(1, (days.length / 5.0).ceil());
+                  if (idx % step != 0 && idx != days.length - 1) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      _formatDateShort(days[idx].date),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: 0.5,
+            getDrawingHorizontalLine: (v) => FlLine(
+              color: outlineVariant.withValues(alpha: 0.35),
+              strokeWidth: 0.8,
+              dashArray: v == 0.5 ? null : [4, 6],
+            ),
+          ),
+          borderData: FlBorderData(show: false),
+        ),
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      ),
+    );
+  }
+
+  Widget _buildLegend(ThemeData theme, CheckInTrendData data) {
+    return Wrap(
+      spacing: 14,
+      runSpacing: 4,
+      children: data.itemIds.asMap().entries.map((e) {
+        final color = _kSeriesColors[e.key % _kSeriesColors.length];
+        final label = _shortLabel(data.itemText[e.value] ?? 'Q${e.value}');
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 14,
+              height: 3,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(1.5),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  // ---- Correlation tiles ---------------------------------------------------
+
+  Widget _buildCorrelationSection(BuildContext context, CheckInTrendData data) {
+    final theme = Theme.of(context);
+    final withR = data.correlations.where((c) => c.r != null).toList()
+      ..sort((a, b) => b.r!.abs().compareTo(a.r!.abs()));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Dimension correlations', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (withR.isEmpty)
+          Text(
+            'Not enough shared check-in days to compute correlations yet.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          )
+        else
+          ...withR.map((c) => _buildCorrelationTile(theme, c, data.itemText)),
+      ],
+    );
+  }
+
+  Widget _buildCorrelationTile(
+    ThemeData theme,
+    DimensionCorrelation c,
+    Map<int, String> itemText,
+  ) {
+    final r = c.r!;
+    final absR = r.abs();
+    final isPositive = r >= 0;
+
+    // Warm sand for positive (move together), slate blue for negative (move
+    // apart). Opacity scales with |r|. Avoids red/green (ADHD-safe).
+    final tint = isPositive
+        ? const Color(0xFF9E8A5E) // warm sand
+        : const Color(0xFF5E7A9E); // slate blue
+    final bg = tint.withValues(alpha: (absR * 0.3).clamp(0.05, 0.3));
+
+    final labelA = _shortLabel(itemText[c.itemIdA] ?? 'A');
+    final labelB = _shortLabel(itemText[c.itemIdB] ?? 'B');
+    final strength = absR >= 0.7
+        ? 'strong'
+        : absR >= 0.4
+        ? 'moderate'
+        : 'weak';
+    final direction = isPositive ? 'together' : 'opposite';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tint.withValues(alpha: 0.3), width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$labelA & $labelB',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '$strength, move $direction — '
+                    'r = ${r.toStringAsFixed(2)} (${c.pairedCount} days)',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              isPositive ? Icons.trending_up : Icons.trending_down,
+              color: tint,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- Narrative insights --------------------------------------------------
+
+  Widget _buildInsightsSection(BuildContext context, CheckInTrendData data) {
+    final theme = Theme.of(context);
+    if (data.insights.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Insights', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        ...data.insights.map((i) => _buildInsightCard(theme, i)),
+      ],
+    );
+  }
+
+  Widget _buildInsightCard(ThemeData theme, TrendInsight insight) {
+    final isWarning = insight.hasMissingDataWarning;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isWarning
+            ? theme.colorScheme.tertiaryContainer.withValues(alpha: 0.5)
+            : theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isWarning ? Icons.info_outline : Icons.bar_chart_outlined,
+            size: 16,
+            color: isWarning
+                ? theme.colorScheme.tertiary
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(insight.text, style: theme.textTheme.bodySmall)),
+        ],
+      ),
     );
   }
 }
