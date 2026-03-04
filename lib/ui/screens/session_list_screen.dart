@@ -28,6 +28,9 @@ import '../../services/reminder_service.dart';
 import '../../services/weekly_digest_service.dart';
 import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
+import '../../providers/last_capture_mode_provider.dart';
+import '../../providers/voice_providers.dart';
+import '../widgets/quick_capture_palette.dart';
 import '../widgets/quick_mood_tap_sheet.dart';
 import '../widgets/session_card.dart';
 
@@ -133,24 +136,22 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
         error: (error, stack) =>
             Center(child: Text('Error loading sessions: $error')),
       ),
-      // FAB to start a new journaling session.
-      // Tap: free-form session. Long-press: mode picker bottom sheet.
-      floatingActionButton: GestureDetector(
-        onLongPress: _isStarting ? null : () => _showModePicker(context),
-        child: FloatingActionButton(
-          onPressed: _isStarting ? null : () => _startNewSession(context),
-          tooltip: 'New journal entry (long-press to choose mode)',
-          child: _isStarting
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: Colors.white,
-                  ),
-                )
-              : const Icon(Icons.add),
-        ),
+      // FAB: tap to open the Quick Capture Palette (Phase 3A).
+      // The palette presents five large mode tiles; the last-used mode is
+      // pre-highlighted so repeat captures require zero mode-selection overhead.
+      floatingActionButton: FloatingActionButton(
+        onPressed: _isStarting ? null : () => _openQuickCapturePalette(context),
+        tooltip: 'New journal entry',
+        child: _isStarting
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.add),
       ),
     );
   }
@@ -726,60 +727,24 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
     }
   }
 
-  /// Show the journaling mode picker bottom sheet.
+  /// Open the Quick Capture Palette and dispatch to the selected mode.
   ///
-  /// Allows the user to start a session in a specific mode (Pulse Check-In,
-  /// Quick Mood Tap, Gratitude, Dream, Mood Check-In) or the default free-form
-  /// mode. Quick Mood Tap is a special case — it opens a minimal overlay sheet
-  /// (no LLM, no session navigation) instead of creating a full session.
-  Future<void> _showModePicker(BuildContext context) async {
-    // The sentinel '__quick_mood_tap__' triggers the Quick Mood Tap overlay.
-    // All other values are journaling mode strings (or '__default__' for free).
-    final modes = [
-      ('Free Journal', '__default__', Icons.edit_note_outlined),
-      ('Pulse Check-In', 'pulse_check_in', Icons.monitor_heart_outlined),
-      ('Quick Mood Tap', '__quick_mood_tap__', Icons.mood_outlined),
-      ('Gratitude', 'gratitude', Icons.favorite_outline),
-      ('Dream', 'dream', Icons.bedtime_outlined),
-      ('Mood Check-In', 'mood_check_in', Icons.chat_bubble_outline_rounded),
-    ];
+  /// Reads the last-used mode from [lastCaptureModeProvider] to pre-highlight
+  /// the matching tile. After the user selects a mode, persists it and
+  /// dispatches:
+  ///   - 'text'               → free-form text session
+  ///   - 'voice'              → text session with voice mode pre-enabled
+  ///   - '__quick_mood_tap__' → Quick Mood Tap overlay (no full session)
+  ///   - 'pulse_check_in'     → Pulse Check-In slider session
+  Future<void> _openQuickCapturePalette(BuildContext context) async {
+    final lastMode = ref.read(lastCaptureModeProvider);
 
-    final selected = await showModalBottomSheet<String?>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Text(
-                  'Start a session',
-                  style: Theme.of(ctx).textTheme.titleMedium,
-                ),
-              ),
-              const Divider(),
-              ...modes.map(
-                (m) => ListTile(
-                  leading: Icon(m.$3),
-                  title: Text(m.$1),
-                  onTap: () => Navigator.of(ctx).pop(m.$2),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
+    final selected = await showQuickCapturePalette(context, lastMode: lastMode);
     if (selected == null || !context.mounted) return;
+
+    // Persist the chosen mode so it is pre-highlighted on the next open.
+    await ref.read(lastCaptureModeProvider.notifier).setMode(selected);
+    if (!context.mounted) return;
 
     // Quick Mood Tap: open the emoji overlay — no LLM, no session navigation.
     if (selected == '__quick_mood_tap__') {
@@ -787,8 +752,19 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
       return;
     }
 
-    final mode = selected == '__default__' ? null : selected;
-    await _startNewSession(context, journalingMode: mode);
+    // Voice mode: pre-enable the mic before navigating so the voice button
+    // is already active when the session screen opens.
+    if (selected == 'voice') {
+      await ref.read(voiceModeEnabledProvider.notifier).setEnabled(true);
+      if (!context.mounted) return;
+    }
+
+    // All session-based modes route through _startNewSession.
+    // 'pulse_check_in' → /check_in (slider UI); all others → /session (chat).
+    final journalingMode = selected == 'pulse_check_in'
+        ? 'pulse_check_in'
+        : null;
+    await _startNewSession(context, journalingMode: journalingMode);
   }
 }
 
