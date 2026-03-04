@@ -121,6 +121,7 @@ def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess
         cwd=cwd or PROJECT_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
     )
 

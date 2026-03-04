@@ -108,6 +108,13 @@ void main() {
       await tester.pumpWidget(buildScreen());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Digital Assistant'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       expect(find.text('Digital Assistant'), findsOneWidget);
       expect(find.text('Default assistant: No'), findsOneWidget);
     });
@@ -116,11 +123,25 @@ void main() {
       await tester.pumpWidget(buildScreen());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Set as Default Assistant'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       expect(find.text('Set as Default Assistant'), findsOneWidget);
     });
 
     testWidgets('shows manual instructions fallback', (tester) async {
       await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.textContaining('Go to Settings'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Go to Settings'), findsOneWidget);
@@ -132,12 +153,26 @@ void main() {
       await tester.pumpWidget(buildScreen());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Enable voice mode'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       expect(find.text('Voice'), findsOneWidget);
       expect(find.text('Enable voice mode'), findsOneWidget);
     });
 
     testWidgets('voice toggle defaults to off', (tester) async {
       await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Enable voice mode'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       final switchFinder = find.ancestor(
@@ -292,6 +327,13 @@ void main() {
       await tester.pumpWidget(buildScreen());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Auto-save on exit'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       // Auto-save toggle should now be visible.
       expect(find.text('Auto-save on exit'), findsOneWidget);
     });
@@ -305,6 +347,13 @@ void main() {
       await tester.pumpWidget(buildScreen());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Text-to-speech engine'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       // TTS engine selector.
       expect(find.text('Text-to-speech engine'), findsOneWidget);
       // STT engine selector.
@@ -316,6 +365,13 @@ void main() {
       prefs = await SharedPreferences.getInstance();
 
       await tester.pumpWidget(buildScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.textContaining('Playback speed:'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Playback speed:'), findsOneWidget);

@@ -1,0 +1,13 @@
+{
+  "command": "plan",
+  "discussion_id": "DISC-20260304-061753-scheduled-local-notifications-spec-review",
+  "status": "complete",
+  "started_at": "2026-03-04T06:17:58.995289+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "discussion_created",
+    "synthesis"
+  ],
+  "topic": "Scheduled Local Notifications for Timed Reminders",
+  "spec_path": "docs/sprints/SPEC-20260304-061650-scheduled-local-notifications.md"
+}

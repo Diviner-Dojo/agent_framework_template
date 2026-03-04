@@ -67,6 +67,7 @@ void main() {
       title: title,
       notes: notes,
       dueDate: dueDate,
+      isQuickReminder: false,
       status: status,
       syncStatus: syncStatus,
       createdAt: DateTime.utc(2026, 2, 28),

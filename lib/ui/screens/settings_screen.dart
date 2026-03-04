@@ -48,8 +48,11 @@ import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../repositories/sync_repository.dart';
+import '../../providers/theme_providers.dart';
 import '../../providers/voice_providers.dart';
 import '../widgets/llm_model_download_dialog.dart';
+import '../widgets/theme_preview_card.dart';
+import '../../ui/theme/palettes.dart';
 import 'diagnostics_screen.dart';
 
 /// Settings screen showing assistant status and app information.
@@ -98,6 +101,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _buildThemeCard(context),
+          const SizedBox(height: 16),
           _buildAssistantCard(context, assistantStatusAsync),
           const SizedBox(height: 16),
           _buildVoiceCard(context),
@@ -118,6 +123,178 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           const SizedBox(height: 16),
           _buildAboutCard(context),
         ],
+      ),
+    );
+  }
+
+  /// Build the "Theme & Appearance" settings card.
+  ///
+  /// Shows palette selection grid at top level, with light/dark toggle.
+  /// Font scale, card style, and bubble shape are inside a collapsed
+  /// "Advanced" expansion tile (progressive disclosure per spec).
+  Widget _buildThemeCard(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
+    final notifier = ref.read(themeProvider.notifier);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Section header.
+            Row(
+              children: [
+                Icon(
+                  Icons.palette,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Theme & Appearance',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Palette selection grid.
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 0.78,
+              ),
+              itemCount: appPalettes.length,
+              itemBuilder: (context, index) {
+                final palette = appPalettes[index];
+                return ThemePreviewCard(
+                  palette: palette,
+                  isSelected: palette.id == themeState.paletteId,
+                  onTap: () => notifier.selectPalette(palette.id),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Light / Dark / System toggle.
+            Text('Appearance', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  label: Text('System'),
+                  icon: Icon(Icons.brightness_auto),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  label: Text('Light'),
+                  icon: Icon(Icons.light_mode),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  label: Text('Dark'),
+                  icon: Icon(Icons.dark_mode),
+                ),
+              ],
+              selected: {themeState.themeMode},
+              onSelectionChanged: (selection) {
+                notifier.setThemeMode(selection.first);
+              },
+            ),
+            const SizedBox(height: 8),
+
+            // Advanced options (collapsed by default).
+            ExpansionTile(
+              title: const Text('Advanced'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              children: [
+                // Font scale.
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Font Size'),
+                  trailing: DropdownButton<FontScale>(
+                    value: themeState.fontScale,
+                    underline: const SizedBox.shrink(),
+                    onChanged: (value) {
+                      if (value != null) notifier.setFontScale(value);
+                    },
+                    items: FontScale.values
+                        .map(
+                          (s) =>
+                              DropdownMenuItem(value: s, child: Text(s.label)),
+                        )
+                        .toList(),
+                  ),
+                ),
+                // Card style.
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Card Style'),
+                  trailing: DropdownButton<CardStyle>(
+                    value: themeState.cardStyle,
+                    underline: const SizedBox.shrink(),
+                    onChanged: (value) {
+                      if (value != null) notifier.setCardStyle(value);
+                    },
+                    items: CardStyle.values
+                        .map(
+                          (s) =>
+                              DropdownMenuItem(value: s, child: Text(s.label)),
+                        )
+                        .toList(),
+                  ),
+                ),
+                // Bubble shape.
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Bubble Shape'),
+                  trailing: DropdownButton<BubbleShape>(
+                    value: themeState.bubbleShape,
+                    underline: const SizedBox.shrink(),
+                    onChanged: (value) {
+                      if (value != null) notifier.setBubbleShape(value);
+                    },
+                    items: BubbleShape.values
+                        .map(
+                          (s) =>
+                              DropdownMenuItem(value: s, child: Text(s.label)),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+
+            // Reset to defaults.
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final previous = await notifier.resetToDefaults();
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Theme reset to defaults'),
+                      duration: const Duration(seconds: 8),
+                      action: SnackBarAction(
+                        label: 'Undo',
+                        onPressed: () => notifier.restore(previous),
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.restore, size: 18),
+                label: const Text('Reset to defaults'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -25,6 +25,7 @@ import '../../database/daos/video_dao.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
+import '../../providers/theme_providers.dart';
 import '../../utils/timestamp_utils.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/photo_viewer.dart';
@@ -442,6 +443,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                                 videoPath: video.localPath,
                               )
                             : null,
+                        bubbleShape: ref.watch(themeProvider).bubbleShape,
                       );
                     },
                   ),

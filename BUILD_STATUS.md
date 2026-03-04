@@ -5,15 +5,62 @@
 
 ## Current Task
 
-**Status:** Advisory triage A7/A8/A9/A11/A12 shipped (PR pending, v0.25.1+23). Next: Phase 4A Tag Editing.
+**Status:** Phase 5A Visual Identity & Theme Personalization build complete. Quality gate 7/7 (80.2%). Ready for `/review` and commit.
 **Branch:** `develop/adhd-roadmap`
-**Version:** `0.25.1+23`
+**Version:** `0.28.0+26` (will bump on commit)
 
 ### In Progress
-- (none — shipping advisory triage now)
+- **Phase 5A: Visual Identity & Theme Personalization** — build complete, needs `/review` → commit → PR
+  - Spec: SPEC-20260304-063144-visual-identity-theming.md (reviewed)
+  - Spec discussion: DISC-20260304-063144-visual-identity-theming-spec-review (sealed)
+  - Build discussion: DISC-20260304-064221-build-phase-5a-visual-identity-theming (sealed)
+  - Quality gate: 7/7 | Coverage: 80.2% | 112 Phase 5A tests + full suite pass
+  - 7 build tasks completed, 3 checkpoints fired (all APPROVE)
+  - New files: palettes.dart, app_theme.dart (rewritten), theme_providers.dart, theme_preview_card.dart, 5 test files
+  - Modified: chat_bubble.dart, app.dart, settings_screen.dart, journal_session_screen.dart, session_detail_screen.dart
+  - Regression fixes: 8 existing test files updated (sharedPreferencesProvider override + scrollUntilVisible)
+
+### Pending Items
+- **SPEC-20260304-061650: Scheduled Local Notifications** — spec reviewed, awaiting developer approval before `/build_module`
+  - Discussion: DISC-20260304-061753 (sealed)
+- **Bug 1 — Keyboard overflow**: `lib/ui/screens/journal_session_screen.dart` line 722 — `maxLines: null` causes send button to be pushed off screen when typing long messages. Fix: `maxLines: 6`
+- **Bug 2 — STT stops after photo**: `lib/services/voice_session_orchestrator.dart` — `orchestrator.resume()` is a no-op after `capturePhotoDescription()` because the phase is `listening` (not `paused`) after photo description completes. Fix: restore `VoiceLoopPhase.paused` state in `capturePhotoDescription()` before returning.
 
 ### Just Completed
-- **Advisory triage A7/A8/A9/A11/A12** (PR pending, `develop/adhd-roadmap`, v0.25.1+23):
+- **Phase 5A: Visual Identity & Theme Personalization** (build complete, pre-review):
+  - 7 curated palettes (Still Water, Warm Earth, Soft Lavender, Forest Floor, Ember Glow, Midnight Ink, Dawn Light)
+  - `ThemeState` with palette/mode/fontScale/cardStyle/bubbleShape, persisted to SharedPreferences
+  - `ChatBubbleColors` ThemeExtension with WCAG AA contrast validation (56 combinations tested)
+  - Settings Theme card: palette grid, mode selector, advanced options (font size, card style, bubble shape)
+  - Reset to defaults with 8-second SnackBar undo
+  - ADR-0029 compliance: `ref.watch(themeProvider)` safe for MaterialApp theme properties
+
+- **Phase 4D: Adaptive Non-Escalating Reminders** (PR #78, `develop/adhd-roadmap`, v0.28.0+26):
+  - `ReminderService` — synchronous `shouldShow()` guards: enabled, dismissal count < 3, not shown today, in time window
+  - `ReminderWindow` enum: morning (7–9), afternoon (12–2), evening (7–9); `fromPrefValue` round-trip
+  - `reminderServiceProvider` (synchronous Provider<ReminderService>), `dailyReminderVisibleProvider` (Provider<bool> with "has journaled today" check, excludes quick_mood_tap)
+  - `session_list_screen.dart` — reminder card (B-1: `_isStarting` guard on Start Entry; B-2: try/catch on dismiss/snoozeForever), priority chain: reminder > digest > gift
+  - `settings_screen.dart` — reminder settings card (SwitchListTile + morning/afternoon/evening SegmentedButton)
+  - 25 ReminderService unit tests + 5 test files updated to override `dailyReminderVisibleProvider`
+  - Review: REV-20260304-035354 (approve-with-changes, 2 blocking resolved in-review, 22 advisory)
+  - Quality gate: 7/7 | Coverage: 80.4%
+  - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
+  - Open advisories: 22 new from REV-20260304-035354. **Total: 184**
+
+- **Phase 4A: Editable Tag Chips on Session Detail Screen** (PR #77, `develop/adhd-roadmap`, v0.26.0+24):
+  - `updateSessionTags()` in `SessionDao` — partial update of moodTags/people/topicTags columns only
+  - `session_detail_screen.dart` — InputChip rows (Mood/People/Topics) with add/edit/delete dialogs
+  - controller-inside-builder pattern (same as PR #71 fix) prevents dispose-during-animation crash
+  - `deleteButtonTooltipMessage: 'Remove $tag'` — per-tag unique tooltip for test targeting
+  - Tag rows always shown even when empty (ADHD effortless capture — add tags even when AI extracted none)
+  - B-1 resolved in-review: removed BoxConstraints(36dp) + visualDensity.compact from Add IconButton → 48dp
+  - 4 new widget tests: show chips, delete, add, edit — all use real in-memory AppDatabase
+  - Review: REV-20260304-005938 (approve-with-changes, B-1 resolved in-review, 12 advisory)
+  - Quality gate: 7/7 | Coverage: 81.2% | 8/8 tests pass
+  - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
+  - Open advisories: 12 new from REV-20260304-005938. **Total: 162**
+
+- **Advisory triage A7/A8/A9/A11/A12** (PR #76, `develop/adhd-roadmap`, v0.25.1+23):
   - A7: `onSelectionChanged` wrapped in try/catch + "Answer scale updated." / "Could not save..." SnackBars
   - A8: Switch.onChanged wrapped in try/catch (B-1 blocking fix) + Undo SnackBar on confirmed write only
   - A9: `onReorder` wrapped in try/catch + "Could not reorder questions." SnackBar
@@ -339,9 +386,9 @@ Or manually (physical device):
 
 ## Tech Debt
 
-- **Coverage** — 81.0% (above 80% target, 35 new tests in Phase 3D)
+- **Coverage** — 80.4% (above 80% target, 25 new tests in Phase 4D)
 - **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation); REV-20260303-180530 (CheckInHistoryScreen async* stream, completeCheckInSession, _normalizeValue, ADHD UX); REV-20260303-222128 (Phase 3B Quick Mood Tap); REV-20260303-232113 (Phase 3D Weekly Digest)
-- **Review advisories open** — 150 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547
+- **Review advisories open** — 184 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547, 12 from REV-20260304-005938, 22 from REV-20260304-035354
 - **user_checkin_config** deferred to schema v11 (Phase 1 Task 8)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
@@ -359,12 +406,11 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — Advisory triage shipped**. On `develop/adhd-roadmap` (v0.25.1+23).
-   - **PR #75 merged**: Phase 3D Weekly Digest (WeeklyDigestService, weeklyDigestProvider, mutual exclusion guard)
-   - **Advisory triage PR pending**: A7/A8/A9/A11/A12 settings async error handling (SnackBar, Undo, tap targets, helper text)
-   - **Next**: Phase 4A Tag Editing on session detail screen
-2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, advisory A7/A8; REV-20260302-152240 (fallback TTS)
-3. **Open advisory triage** — 150 total. Priority: A-1/A-2 from REV-20260303-235547 (A7/A9 error-branch tests); A6/A9 from REV-20260303-222128 (mood tap in LLM greeting); A-8/A-9 from REV-20260303-232113 (optimistic dismiss, TalkBack)
+1. **ADHD Roadmap — Phase 4D shipped**. On `develop/adhd-roadmap` (v0.28.0+26).
+   - **PR #78 merged**: Phase 4D Adaptive Non-Escalating Reminders (ReminderService, 2 new providers, reminder card, settings card, 25 tests)
+   - **Next**: Check `docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md` for next phase
+2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, Phase 4D; REV-20260302-152240 (fallback TTS)
+3. **Open advisory triage** — 184 total. Priority: A-1/A-2 from REV-20260303-235547 (A7/A9 error-branch tests); A8/A10/A11 from REV-20260304-035354 (undo SnackBar, ExcludeSemantics, touch targets on reminder card)
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*

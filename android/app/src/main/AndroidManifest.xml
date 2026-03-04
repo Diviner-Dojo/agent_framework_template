@@ -6,6 +6,13 @@
          ACCESS_COARSE_LOCATION matches the 2-decimal-place precision (~1.1km).
          ACCESS_FINE_LOCATION deferred until "High precision" toggle is implemented. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Local notifications — OS-level timed reminders (ADR-0033).
+         SCHEDULE_EXACT_ALARM: required for exact alarms on Android 12+.
+         POST_NOTIFICATIONS: required on Android 13+ (API 33+) at runtime.
+         RECEIVE_BOOT_COMPLETED: allows BootReceiver to reschedule alarms after reboot. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:label="agentic_journal"
         android:name="${applicationName}"
@@ -51,6 +58,15 @@
                 android:name="com.android.systemui.action_assist_icon"
                 android:resource="@mipmap/ic_launcher" />
         </activity>
+        <!-- Reschedules local notifications after device reboot (ADR-0033). -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -218,7 +218,13 @@ void main() {
       await tester.tap(find.byIcon(Icons.settings));
       await tester.pumpAndSettle();
 
-      // Should navigate to settings screen.
+      // Should navigate to settings screen. Scroll past Theme card to find it.
+      await tester.scrollUntilVisible(
+        find.text('Digital Assistant'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Digital Assistant'), findsOneWidget);
 
       // Scroll down past Conversation AI card to make Cloud Sync visible.

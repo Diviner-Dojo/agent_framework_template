@@ -2,21 +2,27 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/database/daos/message_dao.dart';
 import 'package:agentic_journal/database/daos/photo_dao.dart';
 import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
+import 'package:agentic_journal/providers/onboarding_providers.dart'
+    show sharedPreferencesProvider;
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/ui/screens/session_detail_screen.dart';
 
 void main() {
   group('SessionDetailScreen', () {
     late AppDatabase database;
+    late SharedPreferences prefs;
 
-    setUp(() {
+    setUp(() async {
       database = AppDatabase.forTesting(NativeDatabase.memory());
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
     });
 
     tearDown(() async {
@@ -26,6 +32,7 @@ void main() {
     Widget buildTestWidget(String sessionId, {AppDatabase? db}) {
       return ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
           databaseProvider.overrideWithValue(db ?? database),
           activeSessionIdProvider.overrideWith((ref) => null),
         ],

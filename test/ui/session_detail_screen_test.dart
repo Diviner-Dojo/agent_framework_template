@@ -13,19 +13,25 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/database/daos/message_dao.dart';
 import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
+import 'package:agentic_journal/providers/onboarding_providers.dart'
+    show sharedPreferencesProvider;
 import 'package:agentic_journal/ui/screens/session_detail_screen.dart';
 
 void main() {
   group('SessionDetailScreen', () {
     late AppDatabase database;
+    late SharedPreferences prefs;
 
-    setUp(() {
+    setUp(() async {
       database = AppDatabase.forTesting(NativeDatabase.memory());
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
     });
 
     tearDown(() async {
@@ -35,7 +41,12 @@ void main() {
     Widget buildTestWidget(String sessionId) {
       return UncontrolledProviderScope(
         container: ProviderContainer(
-          overrides: [databaseProvider.overrideWithValue(database)],
+          overrides: [
+            databaseProvider.overrideWithValue(database),
+            // themeProvider depends on sharedPreferencesProvider — override
+            // it so the theme notifier can initialize without throwing.
+            sharedPreferencesProvider.overrideWithValue(prefs),
+          ],
         ),
         child: MaterialApp(home: SessionDetailScreen(sessionId: sessionId)),
       );

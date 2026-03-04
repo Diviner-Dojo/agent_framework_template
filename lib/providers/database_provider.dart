@@ -18,6 +18,7 @@ import '../database/daos/photo_dao.dart';
 import '../database/daos/session_dao.dart';
 import '../database/daos/task_dao.dart';
 import '../database/daos/video_dao.dart';
+import 'notification_providers.dart';
 
 /// Provides the singleton AppDatabase instance.
 ///
@@ -77,7 +78,10 @@ final calendarEventDaoProvider = Provider<CalendarEventDao>((ref) {
 /// Any provider that needs to read/write tasks should depend on this
 /// rather than creating its own TaskDao instance.
 final taskDaoProvider = Provider<TaskDao>((ref) {
-  return TaskDao(ref.watch(databaseProvider));
+  return TaskDao(
+    ref.watch(databaseProvider),
+    scheduler: ref.watch(notificationSchedulerProvider),
+  );
 });
 
 /// Provides a VideoDao backed by the singleton database.
