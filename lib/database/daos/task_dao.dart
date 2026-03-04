@@ -183,6 +183,35 @@ class TaskDao {
     );
   }
 
+  /// Get tasks with a future [reminderTime] and a stored [notificationId].
+  ///
+  /// Used at app launch to detect OS notifications that may have been cleared
+  /// by a device reboot. Any task returned by this method had a scheduled
+  /// alarm that is no longer in the OS alarm manager — it must be rescheduled.
+  ///
+  /// Only non-completed tasks are returned: a completed task's notification
+  /// was already cancelled at completion time.
+  Future<List<Task>> getTasksWithPendingReminders() {
+    final now = DateTime.now();
+    return (_db.select(_db.tasks)..where(
+          (t) =>
+              t.reminderTime.isBiggerThanValue(now) &
+              t.notificationId.isNotNull() &
+              t.status.isNotIn([TaskStatus.completed]),
+        ))
+        .get();
+  }
+
+  /// Update the [notificationId] stored on a task after rescheduling.
+  ///
+  /// Called after [NotificationSchedulerService.rescheduleFromTasks] returns
+  /// new IDs so the task row reflects the current OS alarm state.
+  Future<int> updateNotificationId(String taskId, int? notificationId) {
+    return (_db.update(_db.tasks)..where((t) => t.taskId.equals(taskId))).write(
+      TasksCompanion(notificationId: Value(notificationId)),
+    );
+  }
+
   /// Get tasks that need syncing to Google Tasks.
   Future<List<Task>> getTasksToSync() {
     return (_db.select(_db.tasks)..where(

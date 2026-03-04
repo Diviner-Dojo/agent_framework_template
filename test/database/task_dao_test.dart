@@ -1,9 +1,27 @@
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/database/daos/task_dao.dart';
 import 'package:agentic_journal/database/daos/session_dao.dart';
+import 'package:agentic_journal/services/notification_scheduler_service.dart';
+
+/// Fake NotificationSchedulerService that records cancellation calls.
+///
+/// Used to assert that TaskDao calls cancelNotification() with the correct
+/// notificationId on deleteTask() and completeTask() (advisory A-2 from
+/// REV-20260304-074715).
+class _FakeScheduler extends NotificationSchedulerService {
+  final List<int?> cancelledIds = [];
+
+  _FakeScheduler() : super(FlutterLocalNotificationsPlugin());
+
+  @override
+  Future<void> cancelNotification(int? notificationId) async {
+    cancelledIds.add(notificationId);
+  }
+}
 
 void main() {
   late AppDatabase database;
@@ -1200,6 +1218,187 @@ void main() {
         (await taskDao.getTaskById('t1'))!.syncStatus,
         TaskSyncStatus.pending,
       );
+    });
+  });
+
+  // Advisory A-2 from REV-20260304-074715: TaskDao notification cancellation
+  // wiring must be tested with an injected mock/fake scheduler.
+  group('notification cancellation wiring', () {
+    late _FakeScheduler fakeScheduler;
+    late TaskDao daoWithScheduler;
+
+    setUp(() {
+      fakeScheduler = _FakeScheduler();
+      daoWithScheduler = TaskDao(database, scheduler: fakeScheduler);
+    });
+
+    test(
+      'deleteTask cancels notification when task has a notificationId',
+      () async {
+        await daoWithScheduler.insertTask(
+          makeTask(taskId: 't1').copyWith(
+            reminderTime: Value(DateTime.now().add(const Duration(hours: 1))),
+            notificationId: const Value(1042),
+          ),
+        );
+
+        await daoWithScheduler.deleteTask('t1');
+
+        expect(fakeScheduler.cancelledIds, contains(1042));
+      },
+    );
+
+    test(
+      'deleteTask is a no-op on notification when task has no notificationId',
+      () async {
+        await daoWithScheduler.insertTask(makeTask(taskId: 't1'));
+
+        await daoWithScheduler.deleteTask('t1');
+
+        // null is passed to cancelNotification, which is a no-op per contract.
+        expect(fakeScheduler.cancelledIds, contains(null));
+      },
+    );
+
+    test(
+      'completeTask cancels notification when task has a notificationId',
+      () async {
+        await daoWithScheduler.insertTask(
+          makeTask(taskId: 't1').copyWith(
+            reminderTime: Value(DateTime.now().add(const Duration(hours: 1))),
+            notificationId: const Value(1099),
+          ),
+        );
+
+        await daoWithScheduler.completeTask('t1', DateTime.utc(2026, 3, 4));
+
+        expect(fakeScheduler.cancelledIds, contains(1099));
+      },
+    );
+
+    test('completeTask clears notificationId from the task row', () async {
+      await daoWithScheduler.insertTask(
+        makeTask(taskId: 't1').copyWith(notificationId: const Value(1099)),
+      );
+
+      await daoWithScheduler.completeTask('t1', DateTime.utc(2026, 3, 4));
+
+      final completed = await daoWithScheduler.getTaskById('t1');
+      expect(completed!.notificationId, isNull);
+    });
+  });
+
+  // Advisory A-2 from REV-20260304-074715: getTasksWithPendingReminders query.
+  group('getTasksWithPendingReminders', () {
+    test(
+      'returns tasks with future reminderTime and a notificationId',
+      () async {
+        final future = DateTime.now().add(const Duration(hours: 2));
+        await taskDao.insertTask(
+          makeTask(taskId: 't1').copyWith(
+            reminderTime: Value(future),
+            notificationId: const Value(1001),
+          ),
+        );
+
+        final results = await taskDao.getTasksWithPendingReminders();
+
+        expect(results.map((t) => t.taskId), contains('t1'));
+      },
+    );
+
+    test('excludes tasks with past reminderTime', () async {
+      final past = DateTime.now().subtract(const Duration(hours: 1));
+      await taskDao.insertTask(
+        makeTask(taskId: 't1').copyWith(
+          reminderTime: Value(past),
+          notificationId: const Value(1002),
+        ),
+      );
+
+      final results = await taskDao.getTasksWithPendingReminders();
+
+      expect(results.map((t) => t.taskId), isNot(contains('t1')));
+    });
+
+    test('excludes tasks with no notificationId', () async {
+      await taskDao.insertTask(
+        makeTask(taskId: 't1').copyWith(
+          reminderTime: Value(DateTime.now().add(const Duration(hours: 1))),
+        ),
+      );
+
+      final results = await taskDao.getTasksWithPendingReminders();
+
+      expect(results.map((t) => t.taskId), isNot(contains('t1')));
+    });
+
+    test('excludes completed tasks', () async {
+      await taskDao.insertTask(
+        makeTask(taskId: 't1', status: TaskStatus.completed).copyWith(
+          reminderTime: Value(DateTime.now().add(const Duration(hours: 1))),
+          notificationId: const Value(1003),
+        ),
+      );
+
+      final results = await taskDao.getTasksWithPendingReminders();
+
+      expect(results.map((t) => t.taskId), isNot(contains('t1')));
+    });
+  });
+
+  // Advisory A-2 from REV-20260304-074715 (blocking fix B2 from
+  // REV-20260304-084207): updateNotificationId must persist the new OS alarm
+  // ID after rescheduling. Without this, stale IDs remain in the database
+  // across reboots.
+  group('updateNotificationId', () {
+    test('updates the notificationId column for an existing task', () async {
+      await taskDao.insertTask(
+        TasksCompanion(
+          taskId: const Value('t-upd-notif'),
+          sessionId: const Value('s1'),
+          title: const Value('Update notif ID'),
+          status: const Value(TaskStatus.active),
+          syncStatus: const Value(TaskSyncStatus.pending),
+          notificationId: const Value(1042),
+          createdAt: Value(DateTime.now().toUtc()),
+          updatedAt: Value(DateTime.now().toUtc()),
+        ),
+      );
+
+      final rowsUpdated = await taskDao.updateNotificationId(
+        't-upd-notif',
+        2000,
+      );
+
+      expect(rowsUpdated, 1);
+      final task = await taskDao.getTaskById('t-upd-notif');
+      expect(task!.notificationId, 2000);
+    });
+
+    test('sets notificationId to null', () async {
+      await taskDao.insertTask(
+        TasksCompanion(
+          taskId: const Value('t-upd-notif-null'),
+          sessionId: const Value('s1'),
+          title: const Value('Clear notif ID'),
+          status: const Value(TaskStatus.active),
+          syncStatus: const Value(TaskSyncStatus.pending),
+          notificationId: const Value(1099),
+          createdAt: Value(DateTime.now().toUtc()),
+          updatedAt: Value(DateTime.now().toUtc()),
+        ),
+      );
+
+      await taskDao.updateNotificationId('t-upd-notif-null', null);
+
+      final task = await taskDao.getTaskById('t-upd-notif-null');
+      expect(task!.notificationId, isNull);
+    });
+
+    test('returns 0 when task does not exist', () async {
+      final rowsUpdated = await taskDao.updateNotificationId('no-such', 1000);
+      expect(rowsUpdated, 0);
     });
   });
 }

@@ -58,10 +58,16 @@
                 android:name="com.android.systemui.action_assist_icon"
                 android:resource="@mipmap/ic_launcher" />
         </activity>
-        <!-- Reschedules local notifications after device reboot (ADR-0033). -->
+        <!-- Reschedules local notifications after device reboot (ADR-0033).
+             android:exported="false": system broadcasts (BOOT_COMPLETED,
+             MY_PACKAGE_REPLACED) are still delivered by the OS regardless of
+             exported state (Android docs). Non-exported blocks third-party
+             explicit intents without requiring android:permission — which would
+             use a normal-level permission acquirable by any app (A-5 fix,
+             REV-20260304-084207). -->
         <receiver
             android:name=".BootReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />

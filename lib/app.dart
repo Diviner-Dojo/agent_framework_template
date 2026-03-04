@@ -32,6 +32,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers/llm_providers.dart';
+import 'providers/notification_providers.dart';
 import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
 import 'providers/settings_providers.dart';
@@ -83,6 +84,9 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
     // App renders immediately; model ready in ~1-3s.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(llmAutoLoadProvider.future);
+      // Restore OS notification alarms cleared by device reboot (ADR-0033).
+      // Non-blocking: runs in background and silently skips past-due tasks.
+      ref.read(notificationBootRestoreProvider.future);
     });
   }
 

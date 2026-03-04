@@ -27,6 +27,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../database/app_database.dart'
+    show Task; // For rescheduleFromTasks parameter type.
+
 /// Minimum notification ID in the task namespace (ADR-0033 §Notification ID Namespace).
 const int _kTaskNotificationIdMin = 1000;
 
@@ -302,6 +305,61 @@ class NotificationSchedulerService {
         '[NotificationSchedulerService] Cancelled notification #$notificationId',
       );
     }
+  }
+
+  /// Reschedule notifications for tasks whose OS alarms were cleared.
+  ///
+  /// OS exact alarms (`exactAllowWhileIdle`) are removed when a device
+  /// reboots. After reboot, the task rows still carry a stale [notificationId]
+  /// that no longer corresponds to any OS alarm. Call this method at app
+  /// launch (after [initialize]) to restore those alarms.
+  ///
+  /// The method skips any task whose [reminderTime] is in the past (the
+  /// reminder window has already elapsed) and any task where the plugin
+  /// fails to schedule (e.g., permission revoked after reboot).
+  ///
+  /// Returns the new `(taskId, newNotificationId)` pairs for successfully
+  /// rescheduled tasks. The caller must persist these IDs back to the
+  /// database (see [TaskDao.updateNotificationId]).
+  ///
+  /// [tasks] — tasks returned by [TaskDao.getTasksWithPendingReminders].
+  Future<List<({String taskId, int newNotificationId})>> rescheduleFromTasks(
+    List<Task> tasks,
+  ) async {
+    if (!_initialized || tasks.isEmpty) return const [];
+
+    final now = DateTime.now();
+    final results = <({String taskId, int newNotificationId})>[];
+
+    for (final task in tasks) {
+      if (task.reminderTime == null || task.notificationId == null) continue;
+      if (task.reminderTime!.isBefore(now)) continue;
+
+      try {
+        final newId = await scheduleNotification(
+          title: task.title,
+          body: 'Reminder: ${task.title}',
+          scheduledAt: task.reminderTime!,
+          requestPermissionIfNeeded: false,
+        );
+        results.add((taskId: task.taskId, newNotificationId: newId));
+      } on PastReminderTimeException {
+        // Race condition: became past between the check above and the call.
+        // Nothing to reschedule — skip silently.
+      } on NotificationPermissionDeniedException {
+        // Permission was revoked since the notification was first scheduled.
+        // Skip silently; user will not receive this reminder.
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[NotificationSchedulerService] '
+        'Rescheduled ${results.length}/${tasks.length} notifications after reboot',
+      );
+    }
+
+    return results;
   }
 
   /// Cancel all scheduled task notifications.
