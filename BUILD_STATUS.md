@@ -5,9 +5,9 @@
 
 ## Current Task
 
-**Status:** Bug fixes + Phase 3A advisories shipped (PR #83, v0.31.1+31). Next: Phase 4B/4C.
+**Status:** Phase 4B/4C shipped (PR #84, v0.32.0+32). Next: Phase 4F or advisory triage.
 **Branch:** `develop/adhd-roadmap`
-**Version:** `0.31.1+31`
+**Version:** `0.32.0+32`
 
 ### In Progress
 - Nothing — selecting next sprint
@@ -18,6 +18,18 @@
 - **Phase 4E advisory follow-ups** (10 open): A1 Y-axis label, A2 window-gate misalignment, A3 remove raw r-value, A4 correlation empty state wording, A5 shrinkWrap tap target, A6 _shortLabel consolidation
 
 ### Just Completed
+- **Phase 4B/4C: Android Quick Capture widget + passive weather metadata** (PR #84, `develop/adhd-roadmap`, v0.32.0+32):
+  - `QuickCaptureWidget.kt`: Android `AppWidgetProvider` — one-tap launches app in last-used capture mode; reads SharedPreferences via `flutter.` prefix (ADR-0034 Decision 3, graceful null fallback)
+  - `WidgetLaunchService`: MethodChannel bridge for cold-start + warm-start dispatch; `_checkWidgetRelaunch()` in `didChangeAppLifecycleState` fixes warm-start silent-drop bug (B5)
+  - Intent extra allowlist in `session_list_screen.dart`: mode validated against `{'text','voice','__quick_mood_tap__','pulse_check_in'}` (B1, security fix for exported MainActivity)
+  - `WeatherService`: Open-Meteo (free, keyless, GDPR-compliant), WMO 306 codes, fire-and-forget; `connectTimeout` + `receiveTimeout` both 5s (B2, TCP hang fix)
+  - Weather columns local-only: excluded from `buildSessionUpsertMap` + load-bearing enforcement test (ADR-0034 Decision 2)
+  - ADR-0034: all 4 decisions documented with alternatives considered
+  - Review: REV-20260304-183306 (request-changes → 5 blocking all resolved, 9 advisory open)
+  - Build: DISC-20260304-165234-build-phase4bc-weather-widget (sealed)
+  - Quality gate: 7/7 | Coverage: 81.1% | Education gate: deferred
+  - **Open advisories from this sprint: 9 new. Total: 243**
+
 - **Bug fixes + Phase 3A advisories A1/A3/A9** (PR #83, `develop/adhd-roadmap`, v0.31.1+31):
   - Bug 1: `TextField maxLines: null → 6` — send button no longer pushed off-screen
   - Bug 2: `capturePhotoDescription()` restores paused phase so `orchestrator.resume()` works
@@ -423,7 +435,7 @@ Or manually (physical device):
 
 - **Coverage** — 80.9% (above 80% target)
 - **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation); REV-20260303-180530 (CheckInHistoryScreen async* stream, completeCheckInSession, _normalizeValue, ADHD UX); REV-20260303-222128 (Phase 3B Quick Mood Tap); REV-20260303-232113 (Phase 3D Weekly Digest); REV-20260304-015709 (Phase 4E statistical concepts + reverse-scoring); REV-20260304-142456 (Phase 3A Quick Capture palette/provider patterns); REV-20260304-145506 (bug fixes sprint)
-- **Review advisories open** — 234 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547, 12 from REV-20260304-005938, 22 from REV-20260304-035354, 13 from REV-20260304-074715, 8 from REV-20260304-085452, 10 from REV-20260304-015709, 8 from REV-20260304-142456 (3 resolved in PR #83), 8 from REV-20260304-145506
+- **Review advisories open** — 243 total (234 + 9 from REV-20260304-183306): 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547, 12 from REV-20260304-005938, 22 from REV-20260304-035354, 13 from REV-20260304-074715, 8 from REV-20260304-085452, 10 from REV-20260304-015709, 8 from REV-20260304-142456 (3 resolved in PR #83), 8 from REV-20260304-145506
 - **user_checkin_config** deferred to schema v11 (Phase 1 Task 8)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
@@ -441,9 +453,9 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — PR #83 merged**. On `develop/adhd-roadmap` (v0.31.1+31).
-   - **PR #83 merged**: Bug 1/Bug 2 fixes + Phase 3A advisories A1/A3/A9
-   - **Next**: Phase 4B/4C from SPEC-20260302-adhd-informed-feature-roadmap.md
+1. **ADHD Roadmap — PR #84 merged**. On `develop/adhd-roadmap` (v0.32.0+32).
+   - **PR #84 merged**: Phase 4B/4C (Quick Capture widget + weather metadata)
+   - **Next**: Phase 4F (timed reminders → phone alert) or advisory triage sprint
 2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, Phase 4D, Phase 4E, Phase 5A, Phase 3A; REV-20260302-152240 (fallback TTS)
 3. **Open advisory triage** — 226 total. Priority: A-4 from REV-20260304-085452 (SCHEDULE_EXACT_ALARM revocation); Bug 1 (keyboard overflow); Bug 2 (STT stops after photo); Phase 3A A1 (dispatch branch tests)
 
