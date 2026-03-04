@@ -62,3 +62,13 @@ final lastCaptureModeProvider =
       final prefs = ref.watch(sharedPreferencesProvider);
       return LastCaptureModeNotifier(prefs);
     });
+
+/// In-memory pending widget launch mode set by app.dart when the app is
+/// launched from the Quick Capture home screen widget (Phase 4B).
+///
+/// SessionListScreen listens for this to become non-null and dispatches the
+/// capture mode immediately. The listener clears the value after consuming it.
+///
+/// Not persisted — null at every cold start until the widget launch path sets
+/// it. A null value means no pending dispatch.
+final pendingWidgetLaunchModeProvider = StateProvider<String?>((_) => null);

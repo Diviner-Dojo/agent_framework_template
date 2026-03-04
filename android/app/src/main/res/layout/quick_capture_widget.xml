@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    quick_capture_widget.xml
+    Layout for the Quick Capture home screen widget (Phase 4B).
+
+    Design: Single tap target — the entire widget is one button.
+    No content preview (privacy-first — journal entries are private).
+    Label shows the app name with a write/capture icon suggestion.
+    Minimum size: 2×1 cells (110dp × 40dp recommended minimum).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center"
+    android:background="@drawable/widget_background"
+    android:clickable="true"
+    android:focusable="true"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/widget_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="✏  New Entry"
+        android:textSize="16sp"
+        android:textColor="#FFFFFFFF"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:contentDescription="Open Agentic Journal to start a new entry" />
+
+</LinearLayout>

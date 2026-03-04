@@ -55,6 +55,53 @@ void main() {
     await database.close();
   });
 
+  group('Sync payload — weather field boundary (ADR-0034)', () {
+    test(
+      'weather columns are excluded from buildSessionUpsertMap (stay local)',
+      () async {
+        // Weather is ambient metadata captured for local journaling context.
+        // It is intentionally excluded from cloud sync — see the comment in
+        // buildSessionUpsertMap and ADR-0034. This test is the load-bearing
+        // assertion that the exclusion is deliberate, not accidental.
+        // (Mirrors the coordinate exclusion test in the location group below,
+        // per the ADR-0019 §3 precedent.)
+        await sessionDao.createSession(
+          'weather-session',
+          DateTime.utc(2026, 3, 4),
+          'America/New_York',
+        );
+        await sessionDao.updateSessionWeather(
+          'weather-session',
+          weatherTempC: 14.5,
+          weatherCode: 1,
+          weatherDescription: 'Mainly clear',
+        );
+
+        final session = await sessionDao.getSessionById('weather-session');
+        expect(session, isNotNull);
+
+        final map = SyncRepository.buildSessionUpsertMap(session!, 'user-1');
+
+        // Weather columns must NOT appear in the sync payload — local-only.
+        expect(
+          map.containsKey('weather_temp_c'),
+          isFalse,
+          reason: 'weather_temp_c must not be synced to cloud (ADR-0034)',
+        );
+        expect(
+          map.containsKey('weather_code'),
+          isFalse,
+          reason: 'weather_code must not be synced to cloud (ADR-0034)',
+        );
+        expect(
+          map.containsKey('weather_description'),
+          isFalse,
+          reason: 'weather_description must not be synced to cloud (ADR-0034)',
+        );
+      },
+    );
+  });
+
   group('Sync payload — location field boundary (ADR-0019 §3)', () {
     test(
       'session with location has locationName available for upload',

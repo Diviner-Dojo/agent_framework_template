@@ -64,6 +64,7 @@ import 'database_provider.dart';
 import 'task_providers.dart';
 import 'llm_providers.dart';
 import 'location_providers.dart';
+import 'weather_providers.dart';
 import 'onboarding_providers.dart';
 import 'personality_providers.dart';
 import 'photo_providers.dart';
@@ -743,6 +744,10 @@ class SessionNotifier extends StateNotifier<SessionState> {
           locationAccuracy: result.accuracy,
           locationName: result.locationName,
         );
+
+        // Piggyback weather capture on the coordinates we just obtained
+        // (Phase 4C). Uses the same privacy-reduced 2 d.p. coordinates.
+        _captureWeatherAsync(sessionId, result.latitude, result.longitude);
       } on Exception catch (e) {
         if (kDebugMode) {
           debugPrint('Location capture failed for $sessionId: $e');
@@ -750,6 +755,49 @@ class SessionNotifier extends StateNotifier<SessionState> {
       } on Error catch (e) {
         if (kDebugMode) {
           debugPrint('Location capture error for $sessionId: $e');
+        }
+      }
+    });
+  }
+
+  /// Fire-and-forget weather capture for a session (Phase 4C).
+  ///
+  /// Called from [_captureLocationAsync] after location coordinates are
+  /// obtained. Uses those coordinates to call Open-Meteo and write the
+  /// result back to the session row. If the weather API call fails for
+  /// any reason, the session continues normally without weather data.
+  ///
+  /// Coordinates are already privacy-reduced (2 d.p.) by LocationService.
+  void _captureWeatherAsync(
+    String sessionId,
+    double latitude,
+    double longitude,
+  ) {
+    Future<void>(() async {
+      try {
+        final weatherService = _ref.read(weatherServiceProvider);
+        final result = await weatherService.getWeather(
+          latitude: latitude,
+          longitude: longitude,
+        );
+        if (result == null) return;
+
+        // Verify session still exists (user may have discarded it).
+        if (state.activeSessionId != sessionId) return;
+
+        await _sessionDao.updateSessionWeather(
+          sessionId,
+          weatherTempC: result.temperatureCelsius,
+          weatherCode: result.weatherCode,
+          weatherDescription: result.description,
+        );
+      } on Exception catch (e) {
+        if (kDebugMode) {
+          debugPrint('Weather capture failed for $sessionId: $e');
+        }
+      } on Error catch (e) {
+        if (kDebugMode) {
+          debugPrint('Weather capture error for $sessionId: $e');
         }
       }
     });

@@ -357,6 +357,29 @@ class SessionDao {
     );
   }
 
+  /// Write weather metadata captured at session start (Phase 4C).
+  ///
+  /// All three fields are written together — the WeatherService returns a
+  /// complete result or nothing. Null is allowed for all fields if the API
+  /// returns an unexpected code that has no human-readable label.
+  Future<int> updateSessionWeather(
+    String sessionId, {
+    required double? weatherTempC,
+    required int? weatherCode,
+    required String? weatherDescription,
+  }) async {
+    return (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        weatherTempC: Value(weatherTempC),
+        weatherCode: Value(weatherCode),
+        weatherDescription: Value(weatherDescription),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
   /// Nullify all location columns across all sessions.
   ///
   /// Called by the "Clear Location Data" button in Settings. Also sets

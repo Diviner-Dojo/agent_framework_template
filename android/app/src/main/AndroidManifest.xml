@@ -58,6 +58,21 @@
                 android:name="com.android.systemui.action_assist_icon"
                 android:resource="@mipmap/ic_launcher" />
         </activity>
+        <!-- Quick Capture home screen widget (Phase 4B).
+             android:exported="true": AppWidgetProvider must be exported so the
+             Android launcher can send ACTION_APPWIDGET_UPDATE broadcasts.
+             The intent-filter restricts delivery to widget-management actions only. -->
+        <receiver
+            android:name=".QuickCaptureWidget"
+            android:exported="true"
+            android:label="Quick Capture">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_capture_widget_info" />
+        </receiver>
         <!-- Reschedules local notifications after device reboot (ADR-0033).
              android:exported="false": system broadcasts (BOOT_COMPLETED,
              MY_PACKAGE_REPLACED) are still delivered by the OS regardless of

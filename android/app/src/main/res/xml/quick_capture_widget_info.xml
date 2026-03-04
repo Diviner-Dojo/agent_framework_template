@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    quick_capture_widget_info.xml
+    AppWidget provider metadata for the Quick Capture home screen widget (Phase 4B).
+
+    minWidth/minHeight: 2×1 cells (≥110dp × ≥40dp). Standard cell width is 70dp
+    with 2dp margin on each side, so 2 cells = 140dp. Using 110dp for flexibility.
+
+    updatePeriodMillis: 0 — the widget content is static (no clock, no data fetch).
+    All content updates happen when the app itself updates SharedPreferences.
+    Setting this to 0 prevents unnecessary wake-locks per best practice.
+
+    resizeMode: horizontal — user can widen the widget but vertical size is fixed.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/quick_capture_widget"
+    android:resizeMode="horizontal"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description" />

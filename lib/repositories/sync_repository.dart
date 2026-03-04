@@ -274,6 +274,13 @@ class SyncRepository {
       'journaling_mode': session.journalingMode,
       // Note: audioFilePath is intentionally excluded — audio files are
       // local-only and not synced to cloud (ADR-0024).
+      //
+      // Note: weatherTempC, weatherCode, and weatherDescription are
+      // intentionally excluded — weather is ambient metadata captured
+      // for local journaling context only. Like raw coordinates (ADR-0019),
+      // it stays on-device. A Supabase migration is not planned; if weather
+      // sync is added in a future phase, a migration and this map must be
+      // updated together. (ADR-0034)
       'sync_status': 'SYNCED',
       'created_at': session.createdAt.toUtc().toIso8601String(),
       'updated_at': DateTime.now().toUtc().toIso8601String(),

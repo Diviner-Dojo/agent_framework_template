@@ -87,6 +87,15 @@ class JournalSessions extends Table {
   RealColumn get locationAccuracy => real().nullable()();
   TextColumn get locationName => text().nullable()();
 
+  // Weather data (Phase 4C — passive metadata).
+  // Captured at session start via Open-Meteo API using the session's location
+  // coordinates. Requires location to be enabled. Never blocks session start
+  // (fire-and-forget). temperature is in Celsius; weatherCode is the WMO
+  // weather interpretation code; weatherDescription is a human-readable label.
+  RealColumn get weatherTempC => real().nullable()();
+  IntColumn get weatherCode => integer().nullable()();
+  TextColumn get weatherDescription => text().nullable()();
+
   // Standard timestamps — createdAt defaults to current time,
   // updatedAt should be set manually whenever the record is modified.
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
