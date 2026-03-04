@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
+import 'package:agentic_journal/providers/reminder_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/ui/screens/session_list_screen.dart';
@@ -31,6 +32,7 @@ void main() {
             overrides: [
               databaseProvider.overrideWithValue(database),
               agentRepositoryProvider.overrideWithValue(AgentRepository()),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
           ),
           child: MaterialApp(
