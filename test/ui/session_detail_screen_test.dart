@@ -96,6 +96,112 @@ void main() {
       expect(find.text('Had a productive day at work.'), findsOneWidget);
     });
 
+    // -----------------------------------------------------------------------
+    // Tag editing (Phase 4A)
+    // -----------------------------------------------------------------------
+
+    group('Tag editing', () {
+      testWidgets('shows tag chips when session has all three tag types', (
+        tester,
+      ) async {
+        final sessionDao = SessionDao(database);
+        final now = DateTime.now().toUtc();
+        await sessionDao.createSession('tag-session', now, 'UTC');
+        await sessionDao.endSession(
+          'tag-session',
+          now.add(const Duration(minutes: 5)),
+          moodTags: '["happy","tired"]',
+          people: '["Alice"]',
+          topicTags: '["work"]',
+        );
+
+        await tester.pumpWidget(buildTestWidget('tag-session'));
+        await tester.pumpAndSettle();
+
+        expect(find.widgetWithText(InputChip, 'happy'), findsOneWidget);
+        expect(find.widgetWithText(InputChip, 'tired'), findsOneWidget);
+        expect(find.widgetWithText(InputChip, 'Alice'), findsOneWidget);
+        expect(find.widgetWithText(InputChip, 'work'), findsOneWidget);
+      });
+
+      testWidgets('deletes a tag chip when delete button tapped', (
+        tester,
+      ) async {
+        // Use one mood chip so the delete-button finder is unambiguous.
+        final sessionDao = SessionDao(database);
+        final now = DateTime.now().toUtc();
+        await sessionDao.createSession('delete-tag-session', now, 'UTC');
+        await sessionDao.endSession(
+          'delete-tag-session',
+          now.add(const Duration(minutes: 5)),
+          moodTags: '["happy"]',
+        );
+
+        await tester.pumpWidget(buildTestWidget('delete-tag-session'));
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(InputChip, 'happy'), findsOneWidget);
+
+        // The delete button has tooltip 'Remove happy' (set via
+        // deleteButtonTooltipMessage on the InputChip).
+        await tester.tap(find.byTooltip('Remove happy'));
+        await tester.pumpAndSettle();
+
+        expect(find.widgetWithText(InputChip, 'happy'), findsNothing);
+      });
+
+      testWidgets('adds a new tag via the add button and dialog', (
+        tester,
+      ) async {
+        final sessionDao = SessionDao(database);
+        final now = DateTime.now().toUtc();
+        await sessionDao.createSession('add-tag-session', now, 'UTC');
+
+        await tester.pumpWidget(buildTestWidget('add-tag-session'));
+        await tester.pumpAndSettle();
+        // No chips yet.
+        expect(find.byType(InputChip), findsNothing);
+
+        // Tap the first "+" add IconButton (Mood row — first of the three).
+        await tester.tap(find.byIcon(Icons.add).first);
+        await tester.pumpAndSettle();
+        expect(find.text('Add tag'), findsOneWidget);
+
+        await tester.enterText(find.byType(TextField), 'energized');
+        await tester.tap(find.text('Add'));
+        await tester.pumpAndSettle();
+
+        expect(find.widgetWithText(InputChip, 'energized'), findsOneWidget);
+      });
+
+      testWidgets('edits an existing tag by tapping the chip', (tester) async {
+        final sessionDao = SessionDao(database);
+        final now = DateTime.now().toUtc();
+        await sessionDao.createSession('edit-tag-session', now, 'UTC');
+        await sessionDao.endSession(
+          'edit-tag-session',
+          now.add(const Duration(minutes: 5)),
+          moodTags: '["happy"]',
+        );
+
+        await tester.pumpWidget(buildTestWidget('edit-tag-session'));
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(InputChip, 'happy'), findsOneWidget);
+
+        // Tap the chip to open the edit dialog.
+        await tester.tap(find.widgetWithText(InputChip, 'happy'));
+        await tester.pumpAndSettle();
+        expect(find.text('Edit tag'), findsOneWidget);
+
+        // Replace pre-filled 'happy' with 'joyful'.
+        await tester.enterText(find.byType(TextField), 'joyful');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        expect(find.widgetWithText(InputChip, 'joyful'), findsOneWidget);
+        expect(find.widgetWithText(InputChip, 'happy'), findsNothing);
+      });
+    });
+
     testWidgets('shows empty message state for session with no messages', (
       tester,
     ) async {

@@ -387,6 +387,35 @@ class SessionDao {
   }
 
   // =========================================================================
+  // Tag editing methods (ADHD Roadmap Phase 4A)
+  // =========================================================================
+
+  /// Update the three tag columns on a session without touching other fields.
+  ///
+  /// Each parameter should be a JSON-encoded array string (e.g. '["happy","tired"]')
+  /// or null to clear that tag category.
+  ///
+  /// Called by the tag-editing UI in SessionDetailScreen whenever the user
+  /// adds, removes, or edits a tag chip.
+  Future<void> updateSessionTags(
+    String sessionId, {
+    String? moodTags,
+    String? people,
+    String? topicTags,
+  }) async {
+    await (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        moodTags: Value(moodTags),
+        people: Value(people),
+        topicTags: Value(topicTags),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
+  // =========================================================================
   // Audio file methods (E7 — ADR-0024)
   // =========================================================================
 
