@@ -408,6 +408,9 @@ class IntentClassifier {
     r'next (week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
     r'tonight|'
     r'this (evening|afternoon|morning)|'
+    r'this (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
+    r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(night|morning|afternoon|evening)|'
+    r'for (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
     r'on (monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b',
     caseSensitive: false,
   );
@@ -449,10 +452,17 @@ class IntentClassifier {
   ///   brand modifier (Google Calendar, Outlook Calendar, iCloud Calendar, etc.)
   ///   without a fixed char limit. Uses [_calendarEventNouns] shared constant.
   /// - "Okay add a meeting" — \b anchor (not ^) allows voice preambles.
+  /// - "calendar item"/"calendar entry" — compound noun is unambiguously scheduling.
   static final _calendarIntentPattern = RegExp(
     r'^(schedule|book|set up|plan|arrange)\b|'
             r'\b(add|put)\b.{0,40}\b(to|on)\s+(my\s+|the\s+)?(google\s+)?calendar\b|'
             r'\b(want to|need to|going to|let.?s|can you|could you)\s+(schedule|book|set up|plan|arrange)\b|'
+            // "calendar item" / "calendar entry" — unambiguous scheduling compound noun,
+            // but only when paired with a scheduling verb (preceding) or a future
+            // temporal preposition (following) to prevent past-narrative false positives
+            // such as "I remember we had a calendar item last week."
+            r'\b(schedule|book|set up|add|create|plan|set|make|put)\b.{0,40}\bcalendar\s+(item|entry)\b|'
+            r'\bcalendar\s+(item|entry)\b.{0,40}\b(for|on|this|next|tomorrow)\b|'
             // Brand-agnostic: "add/set [0–4 words] <event noun>".
             // [\w-]+ treats hyphenated tokens (e.g. "follow-up") as a single word.
             // \b anchor (not ^) allows voice preambles ("Okay add a meeting").
@@ -466,11 +476,18 @@ class IntentClassifier {
   ///
   /// Used to guard eventNoun+temporal scoring so that "I had a meeting
   /// last week" (past narrative) doesn't score as calendar intent.
+  ///
+  /// Covers bare weekday+time-of-day ("friday night", "saturday morning"),
+  /// this-weekday ("this friday"), for-weekday ("for friday"), and the
+  /// existing "on (weekday)" forms.
   static final _futureTemporalPattern = RegExp(
     r'\b(tomorrow|'
     r'next (week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
     r'tonight|'
     r'this (evening|afternoon|morning)|'
+    r'this (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
+    r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(night|morning|afternoon|evening)|'
+    r'for (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
     r'on (monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b',
     caseSensitive: false,
   );
@@ -629,9 +646,9 @@ class IntentClassifier {
     ).hasMatch(text)) {
       return true;
     }
-    // Intent expression: "I want to schedule", "going to add".
+    // Intent expression: "I want to schedule", "going to add", "I need to set".
     if (RegExp(
-      r'\b(want to|need to|going to|let.?s)\s+(schedule|book|add|create|set up|plan|meet|arrange)\b',
+      r'\b(want to|need to|going to|let.?s)\s+(schedule|book|add|create|set up|plan|meet|arrange|set|make)\b',
       caseSensitive: false,
     ).hasMatch(text)) {
       return true;
