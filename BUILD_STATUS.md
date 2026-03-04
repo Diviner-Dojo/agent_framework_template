@@ -1,19 +1,31 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-03 ~23:30 UTC
+> Last updated: 2026-03-04 ~00:00 UTC
 
 ## Current Task
 
-**Status:** Phase 3D shipped (PR pending, v0.25.0+22). Next: Advisory triage A7/A8/A9 (settings async error handling).
+**Status:** Advisory triage A7/A8/A9/A11/A12 shipped (PR pending, v0.25.1+23). Next: Phase 4A Tag Editing.
 **Branch:** `develop/adhd-roadmap`
-**Version:** `0.25.0+22`
+**Version:** `0.25.1+23`
 
 ### In Progress
-- (none — shipping Phase 3D now)
+- (none — shipping advisory triage now)
 
 ### Just Completed
-- **Phase 3D: Weekly Celebratory Digest** (PR pending, `develop/adhd-roadmap`, v0.25.0+22):
+- **Advisory triage A7/A8/A9/A11/A12** (PR pending, `develop/adhd-roadmap`, v0.25.1+23):
+  - A7: `onSelectionChanged` wrapped in try/catch + "Answer scale updated." / "Could not save..." SnackBars
+  - A8: Switch.onChanged wrapped in try/catch (B-1 blocking fix) + Undo SnackBar on confirmed write only
+  - A9: `onReorder` wrapped in try/catch + "Could not reorder questions." SnackBar
+  - A11: Removed `tapTargetSize: MaterialTapTargetSize.shrinkWrap` from SegmentedButton (48dp restored)
+  - A12: Helper text improved: "Applied immediately to all future check-ins. Past answers are unaffected."
+  - 4 new widget tests + `_FakeQuestionnaireDao` pattern to prevent drift FakeAsync timer conflicts
+  - Review: REV-20260303-235547 (approve-with-changes, B-1 resolved in-review, 5 advisory)
+  - Quality gate: 7/7 | Coverage: 81.1% | 19 tests pass
+  - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
+  - Open advisories: 5 new from REV-20260303-235547. **Total: 150**
+
+- **Phase 3D: Weekly Celebratory Digest** (PR #75, `develop/adhd-roadmap`, v0.25.0+22):
   - `WeeklyDigestService` — 7-day look-back window, quick_mood_tap excluded, dismissal TTL via SharedPreferences, highlight = most recent session with summary
   - `weeklyDigestProvider` — FutureProvider<WeeklyDigest?> following Phase 3C pattern
   - `session_list_screen.dart` — `_buildWeeklyDigestCard` + mutual exclusion guard (showDigest/showGift) — ADHD "one card at a time" invariant
@@ -329,7 +341,7 @@ Or manually (physical device):
 
 - **Coverage** — 81.0% (above 80% target, 35 new tests in Phase 3D)
 - **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation); REV-20260303-180530 (CheckInHistoryScreen async* stream, completeCheckInSession, _normalizeValue, ADHD UX); REV-20260303-222128 (Phase 3B Quick Mood Tap); REV-20260303-232113 (Phase 3D Weekly Digest)
-- **Review advisories open** — 145 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113
+- **Review advisories open** — 150 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547
 - **user_checkin_config** deferred to schema v11 (Phase 1 Task 8)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
@@ -347,13 +359,12 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — Phase 3D shipping**. On `develop/adhd-roadmap` (v0.25.0+22).
-   - **PR #74 merged**: Phase 3C Home Screen Resurfacing ("Gifts") (ResurfacingService, gift card, 7d/30d/90d windows)
-   - **PR #73 merged**: Phase 3B Quick Mood Tap (atomic DAO write, 27 new tests)
-   - **Phase 3D PR pending**: Weekly Celebratory Digest (WeeklyDigestService, weeklyDigestProvider, digest card, mutual exclusion guard)
-   - **Next**: Advisory triage A7/A8/A9 from settings async error handling, then Phase 4A Tag Editing
-2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D; REV-20260302-152240 (fallback TTS, voice_providers)
-3. **Open advisory triage** — 145 total. Priority: A6/A9 from REV-20260303-222128 (getRecentCompletedSessions includes mood taps — LLM greeting degradation); A-8/A-9 from REV-20260303-232113 (optimistic dismiss, TalkBack Semantics wrapper)
+1. **ADHD Roadmap — Advisory triage shipped**. On `develop/adhd-roadmap` (v0.25.1+23).
+   - **PR #75 merged**: Phase 3D Weekly Digest (WeeklyDigestService, weeklyDigestProvider, mutual exclusion guard)
+   - **Advisory triage PR pending**: A7/A8/A9/A11/A12 settings async error handling (SnackBar, Undo, tap targets, helper text)
+   - **Next**: Phase 4A Tag Editing on session detail screen
+2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, advisory A7/A8; REV-20260302-152240 (fallback TTS)
+3. **Open advisory triage** — 150 total. Priority: A-1/A-2 from REV-20260303-235547 (A7/A9 error-branch tests); A6/A9 from REV-20260303-222128 (mood tap in LLM greeting); A-8/A-9 from REV-20260303-232113 (optimistic dismiss, TalkBack)
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*

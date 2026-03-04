@@ -1,0 +1,92 @@
+---
+discussion_id: DISC-20260303-235547-review-advisory-a7-a8-a9-settings-snackbar
+started: 2026-03-03T23:56:03.439766+00:00
+ended: 2026-03-04T00:04:18.764146+00:00
+agents: [facilitator, qa-specialist, ux-evaluator]
+total_turns: 4
+---
+
+# Discussion: DISC-20260303-235547-review-advisory-a7-a8-a9-settings-snackbar
+
+## Turn 1 — facilitator (evidence)
+*2026-03-03T23:56:03.439766+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Advisory triage A7/A8/A9/A11/A12 from REV-20260303-204036 (Phase 1 Task 8 checkin settings review) — resolve five UX-evaluator advisory findings in the Pulse Check-In settings section
+- **Files/scope**: lib/ui/screens/settings_screen.dart (modified — _buildCheckInItemList method), test/ui/settings_checkin_questionnaire_test.dart (modified — 4 new tests + 1 helper text test)
+- **Developer-stated motivation**: High-severity advisories A7/A8/A9 address missing error handling and feedback that could leave ADHD users uncertain about save outcomes; A11 restores 48dp touch targets; A12 improves scale helper text clarity
+- **Explicit constraints**: ADHD clinical UX constraints (CLAUDE.md) — changes must confirm outcomes clearly, never leave users uncertain; no new architecture or modules
+
+---
+
+## Turn 2 — qa-specialist (proposal)
+*2026-03-04T00:01:00.071407+00:00 | confidence: 0.87*
+*tags: qa*
+
+## QA Findings — Advisory A7/A8/A9/A11/A12 Settings SnackBar
+
+**F1 (Medium)**: A7 error branch untested — no test exercises 'Could not save scale change. Try again.' path. A throwing DAO stub needed to verify ADHD clinical UX constraint (confirm outcomes on failure).
+
+**F2 (Medium)**: A9 onReorder has zero tests — neither happy-path sortOrder persistence nor error SnackBar is verified. ReorderableListView drag simulation is workable in flutter_test.
+
+**F3 (Low)**: A8 Switch.onChanged has no try/catch on the DAO write itself. If dao.updateItem throws, the 'if (!enabled && context.mounted)' guard still fires because it checks the enabled param, not write outcome — user sees 'Question deactivated.' SnackBar for a write that failed.
+
+**F4 (Low)**: Undo round-trip assertion (items.any((i) => i.id == itemId)) is weaker than needed — does not check list length or exact match. Should use expect(items.length, 1); expect(items.first.id, itemId).
+
+**F5 (Low/Style)**: prefs declared at main() scope but consumed via closure in buildDaoWidget — shared mutable state smell, not an active bug given flutter_test sequential execution.
+
+**Strengths**: test harness design (static streams + real DAO) is correct and avoids drift timer leaks; Undo verified at DAO layer not UI layer; context.mounted guards present on A7 and A9 callsites; on Exception catch (_) pattern consistent with coding_standards.md.
+
+---
+
+## Turn 3 — ux-evaluator (proposal)
+*2026-03-04T00:01:14.023210+00:00 | confidence: 0.88*
+*tags: ux*
+
+## UX Findings — Advisory A7/A8/A9/A11/A12 Settings SnackBar
+
+**F1 (Medium — BLOCKING candidate)**: A8 deactivation write (dao.updateItem) has no try/catch. If the write fails, code falls through to 'if (!enabled && context.mounted)' which shows 'Question deactivated.' SnackBar — implying success for a failed operation. Violates ADHD constraint 'confirm outcomes clearly, never leave users uncertain.' Undo callback also has no error handling.
+
+**F2 (Medium — carry-forward A10)**: ReorderableDragStartListener wraps bare Icon with no Semantics label — screen reader announces icon default, not usage guidance. Not addressed in this triage round.
+
+**F3 (Low — carry-forward A13)**: contentPadding: EdgeInsets.only(left: 16) has no right padding — Switch at risk of Android gesture-zone interception on narrow-bezel devices. Not addressed in this triage round.
+
+**F4 (Low)**: A9 onReorder error SnackBar message ('Could not reorder questions. Try again.') is misleading when partial writes succeed — some sortOrder values persisted, others did not. Message implies total failure, actual state is ambiguous. Requires transactional reorderItems() DAO method (A6) for full fix; interim improvement: update message text.
+
+**Resolutions confirmed**: A7 fully resolved (success + error SnackBars, context.mounted guards). A11 fully resolved (shrinkWrap removed, 48dp restored). A12 fully resolved ('Applied immediately to all future check-ins. Past answers are unaffected.' accurately sets consequence expectations and reassures user that past data is safe — ADHD-appropriate). A8 partially resolved (Undo present but error path unprotected). A9 partially resolved (error SnackBar present, partial-write ambiguity inherited).
+
+---
+
+## Turn 4 — facilitator (synthesis)
+*2026-03-04T00:04:18.764146+00:00 | confidence: 0.9*
+*tags: blocking:1, advisory:5*
+
+## Request Context
+- **What was requested**: Advisory triage A7/A8/A9/A11/A12 from REV-20260303-204036 — resolve five high/medium UX advisory findings in Pulse Check-In settings (_buildCheckInItemList)
+- **Files/scope**: lib/ui/screens/settings_screen.dart, test/ui/settings_checkin_questionnaire_test.dart
+- **Developer-stated motivation**: High-severity advisories address missing error handling and feedback that could leave ADHD users uncertain about save outcomes; A11 restores 48dp touch targets; A12 improves scale helper text clarity
+- **Explicit constraints**: ADHD clinical UX constraints — confirm outcomes clearly, never leave users uncertain; no new architecture
+
+## Synthesis
+
+One blocking finding resolved in-review (B-1): A8 Switch.onChanged had no try/catch on the DAO write — failed write would still show 'Question deactivated.' SnackBar, violating ADHD 'confirm outcomes clearly' constraint. Fixed with try/catch that shows 'Could not update question. Try again.' on exception and returns early before the Undo SnackBar.
+
+Resolutions confirmed (3 fully, 2 partially):
+- A7: Fully resolved — scale toggle shows 'Answer scale updated.' on success, 'Could not save scale change. Try again.' on error, with context.mounted guards on both paths.
+- A8: Fully resolved after B-1 fix — deactivation write wrapped in try/catch, Undo SnackBar shown only on successful write, Undo callback present.
+- A9: Partially resolved — error SnackBar present but partial-write ambiguity inherited (requires transactional DAO method A6 for full fix).
+- A11: Fully resolved — tapTargetSize shrinkWrap removed, 48dp tap targets restored.
+- A12: Fully resolved — helper text improved to 'Applied immediately to all future check-ins. Past answers are unaffected.'
+
+Advisory-only findings (no fix required for merge):
+- A7 error branch untested (QA F1 / medium)
+- A9 has no tests at all (QA F2 / medium)
+- A9 partial-write message misleading (UX F4 / low)
+- Carry-forward A10: drag handle Semantics label (UX F2 / medium)
+- Carry-forward A13: no right tile padding (UX F3 / low)
+- Weak Undo assertion strengthened to items.length == 1 check (QA F4 resolved in-review)
+
+Verdict: approve-with-changes (B-1 resolved in-review)
+
+---
