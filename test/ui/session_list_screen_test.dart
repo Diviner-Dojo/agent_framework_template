@@ -1,8 +1,10 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/calendar_providers.dart';
+import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/last_capture_mode_provider.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
@@ -11,6 +13,7 @@ import 'package:agentic_journal/providers/reminder_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
+import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/ui/screens/session_list_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -858,6 +861,241 @@ void main() {
           );
         },
       );
-    });
+    }); // end '_openQuickCapturePalette dispatch branches'
+
+    // Phase 4B: widget launch dispatch via pendingWidgetLaunchModeProvider.
+    // These tests verify that the ref.listen in build() correctly dispatches
+    // to the right capture mode when the app is opened from the home screen
+    // widget (regression guard — if the ref.listen is removed, these fail).
+    //
+    // Pump strategy: pumpAndSettle() cannot settle after setMode() triggers
+    // _startNewSession() because drift's NativeDatabase creates real async
+    // work that conflicts with fake_async's frame scheduler. Instead:
+    //   1. pump() — fires ref.listen, clears provider, registers callback
+    //   2. pump() — fires postFrameCallback, setMode() completes (mock prefs
+    //      are synchronous microtasks), _startNewSession() begins async work
+    //   3. runAsync() — real event loop processes any pending DB futures
+    //   4. pump() — processes state changes and any navigation that occurred
+    //
+    // We verify lastCaptureModeProvider (set synchronously before startSession
+    // starts its async work) rather than navigation destination — the mode
+    // value determines the route via a simple if/else in _dispatchCaptureMode,
+    // so verifying the mode is equivalent to verifying the routing intent.
+    // ---------------------------------------------------------------------------
+    group('Phase 4B widget launch dispatch (pendingWidgetLaunchModeProvider)', () {
+      // Shared base overrides for the widget launch tests.
+      // db: in-memory AppDatabase so startSession() can write the session row.
+      // activeSessionMessagesProvider: overridden to prevent drift QueryStreams
+      //   from being created — avoids fake_async timer conflicts at teardown.
+      List<Override> baseOverrides({
+        SharedPreferences? prefs,
+        AppDatabase? db,
+      }) {
+        final p = prefs;
+        return [
+          paginatedSessionsProvider.overrideWith(
+            (ref) => Stream.value(<JournalSession>[]),
+          ),
+          photoCountProvider.overrideWith((ref) => Future.value(0)),
+          dailyReminderVisibleProvider.overrideWith((ref) => false),
+          deviceTimezoneProvider.overrideWith(
+            (ref) async => 'America/New_York',
+          ),
+          // Prevent drift QueryStream creation so fake_async doesn't get
+          // zero-duration timer conflicts from StreamQueryStore.markAsClosed.
+          // checkInCountProvider wraps dao.watchAllResponses() (a drift
+          // .watch() query) and must be overridden or disposal creates a
+          // pending timer that fails _verifyInvariants.
+          activeSessionMessagesProvider.overrideWith(
+            (ref) => Stream.value(<JournalMessage>[]),
+          ),
+          checkInCountProvider.overrideWith((ref) => Stream.value(0)),
+          if (p != null) sharedPreferencesProvider.overrideWithValue(p),
+          if (db != null) databaseProvider.overrideWithValue(db),
+          if (db != null)
+            agentRepositoryProvider.overrideWithValue(AgentRepository()),
+        ];
+      }
+
+      testWidgets(
+        'text mode: sets lastCaptureModeProvider to "text" and clears provider',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({});
+          final prefs = await SharedPreferences.getInstance();
+          final database = AppDatabase.forTesting(NativeDatabase.memory());
+          addTearDown(database.close);
+
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: baseOverrides(prefs: prefs, db: database),
+              child: MaterialApp(
+                home: const SessionListScreen(),
+                routes: {
+                  '/session': (_) =>
+                      const Scaffold(body: Text('Session Screen')),
+                  '/check_in': (_) =>
+                      const Scaffold(body: Text('CheckIn Screen')),
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Simulate widget launch by setting the pending mode.
+          final element = tester.element(find.byType(SessionListScreen));
+          final container = ProviderScope.containerOf(element);
+          container.read(pendingWidgetLaunchModeProvider.notifier).state =
+              'text';
+
+          // Step 1: ref.listen fires → provider cleared → postFrameCallback
+          // registered.
+          await tester.pump();
+          // Step 2: postFrameCallback fires → setMode('text') completes
+          // (mock SharedPreferences is synchronous) → _dispatchCaptureMode
+          // starts → _startNewSession begins async DB work.
+          await tester.pump();
+          // Step 3: let real async DB futures resolve (NativeDatabase uses FFI).
+          await tester.runAsync(() async {
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          });
+          // Step 4: process resulting state changes.
+          await tester.pump();
+
+          expect(
+            container.read(lastCaptureModeProvider),
+            equals('text'),
+            reason:
+                'widget launch with mode=text must persist "text" via '
+                'lastCaptureModeProvider before navigation',
+          );
+          expect(
+            container.read(pendingWidgetLaunchModeProvider),
+            isNull,
+            reason:
+                'pendingWidgetLaunchModeProvider must be cleared to null '
+                'after dispatch to prevent double-fire',
+          );
+        },
+      );
+
+      testWidgets(
+        'pulse_check_in mode: sets lastCaptureModeProvider to "pulse_check_in" '
+        'and clears provider',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({});
+          final prefs = await SharedPreferences.getInstance();
+          final database = AppDatabase.forTesting(NativeDatabase.memory());
+          addTearDown(database.close);
+
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: baseOverrides(prefs: prefs, db: database),
+              child: MaterialApp(
+                home: const SessionListScreen(),
+                routes: {
+                  '/session': (_) =>
+                      const Scaffold(body: Text('Session Screen')),
+                  '/check_in': (_) =>
+                      const Scaffold(body: Text('CheckIn Screen')),
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final element = tester.element(find.byType(SessionListScreen));
+          final container = ProviderScope.containerOf(element);
+          container.read(pendingWidgetLaunchModeProvider.notifier).state =
+              'pulse_check_in';
+
+          await tester.pump();
+          await tester.pump();
+          await tester.runAsync(() async {
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          });
+          await tester.pump();
+
+          expect(
+            container.read(lastCaptureModeProvider),
+            equals('pulse_check_in'),
+            reason:
+                'widget launch with mode=pulse_check_in must persist '
+                '"pulse_check_in" via lastCaptureModeProvider',
+          );
+          expect(
+            container.read(pendingWidgetLaunchModeProvider),
+            isNull,
+            reason:
+                'pendingWidgetLaunchModeProvider must be cleared to null '
+                'after dispatch',
+          );
+        },
+      );
+
+      testWidgets(
+        'provider cleared to null after dispatch — no double-dispatch on re-pump',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({});
+          final prefs = await SharedPreferences.getInstance();
+          final database = AppDatabase.forTesting(NativeDatabase.memory());
+          addTearDown(database.close);
+
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: baseOverrides(prefs: prefs, db: database),
+              child: MaterialApp(
+                home: const SessionListScreen(),
+                routes: {
+                  '/session': (_) =>
+                      const Scaffold(body: Text('Session Screen')),
+                  '/check_in': (_) =>
+                      const Scaffold(body: Text('CheckIn Screen')),
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final element = tester.element(find.byType(SessionListScreen));
+          final container = ProviderScope.containerOf(element);
+
+          // Dispatch once.
+          container.read(pendingWidgetLaunchModeProvider.notifier).state =
+              'text';
+          await tester.pump();
+          await tester.pump();
+          await tester.runAsync(() async {
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          });
+          await tester.pump();
+
+          // Provider is cleared — verifies the if (next == null) return guard
+          // prevents re-dispatch when provider was cleared inside the listener.
+          expect(
+            container.read(pendingWidgetLaunchModeProvider),
+            isNull,
+            reason:
+                'pendingWidgetLaunchModeProvider must be cleared to null '
+                'after dispatch to prevent double-fire on rebuild',
+          );
+          // Mode was persisted exactly once.
+          expect(container.read(lastCaptureModeProvider), equals('text'));
+
+          // Additional pumps must NOT re-dispatch (mode key unchanged).
+          await tester.pump();
+          await tester.pump();
+          expect(
+            container.read(lastCaptureModeProvider),
+            equals('text'),
+            reason: 'mode key must not change after a re-pump',
+          );
+          expect(
+            container.read(pendingWidgetLaunchModeProvider),
+            isNull,
+            reason: 'provider must remain null after a re-pump',
+          );
+        },
+      );
+    }); // end 'Phase 4B widget launch dispatch'
   });
 }

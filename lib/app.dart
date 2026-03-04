@@ -35,6 +35,7 @@ import 'providers/llm_providers.dart';
 import 'providers/notification_providers.dart';
 import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
+import 'providers/last_capture_mode_provider.dart';
 import 'providers/settings_providers.dart';
 import 'providers/theme_providers.dart';
 import 'providers/voice_providers.dart';
@@ -70,6 +71,15 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
   /// could re-trigger the assistant launch detection.
   bool _assistantLaunchChecked = false;
 
+  /// Guard to ensure getWidgetLaunchMode() is called exactly once per
+  /// cold start (Phase 4B — Quick Capture widget).
+  bool _widgetLaunchChecked = false;
+
+  /// Guard to prevent double-fire within a single resume event (Phase 4B).
+  /// Resets to false on each resume so subsequent widget taps are handled.
+  /// Distinct from [_widgetLaunchChecked] which is a one-time cold-start guard.
+  bool _widgetRelaunchChecked = false;
+
   /// GlobalKey for the navigator so we can push routes from initState's
   /// post-frame callback, where we don't have a BuildContext from the
   /// MaterialApp's navigator.
@@ -80,6 +90,7 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkAssistantLaunch();
+    _checkWidgetLaunch();
     // Non-blocking: load local LLM model in the background if downloaded.
     // App renders immediately; model ready in ~1-3s.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -100,9 +111,13 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // When the app resumes, re-check if it was brought to foreground
-    // via an assistant gesture (onNewIntent sets the flag in Kotlin).
+    // via an assistant gesture or widget tap (onNewIntent sets the flag
+    // in Kotlin for both paths).
     if (state == AppLifecycleState.resumed) {
       _checkAssistantRelaunch();
+      _checkWidgetRelaunch();
+      // Reset the resume guard so the next resume event is not skipped.
+      _widgetRelaunchChecked = false;
     }
   }
 
@@ -176,6 +191,50 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
       });
     }
   }
+
+  /// Check if the app was launched from the Quick Capture home screen widget.
+  ///
+  /// Called exactly once in initState(). If the widget passed a capture mode,
+  /// we store it in [pendingWidgetLaunchModeProvider] so [SessionListScreen]
+  /// can dispatch it via [ref.listen] on the first rendered frame.
+  // coverage:ignore-start
+  Future<void> _checkWidgetLaunch() async {
+    if (_widgetLaunchChecked) return;
+    _widgetLaunchChecked = true;
+
+    final service = ref.read(widgetLaunchServiceProvider);
+    final mode = await service.getWidgetLaunchMode();
+    if (mode == null || !mounted) return;
+
+    final hasOnboarded = ref.read(onboardingNotifierProvider);
+    if (!hasOnboarded) return;
+
+    ref.read(pendingWidgetLaunchModeProvider.notifier).state = mode;
+  }
+
+  /// Re-check widget launch when the app is already running and brought to
+  /// foreground by tapping the home screen widget (onNewIntent path).
+  ///
+  /// Without this, [_checkWidgetLaunch]'s one-time cold-start guard prevents
+  /// the channel from being read again, so warm-start widget taps are dropped
+  /// silently — the most common real-world usage pattern.
+  ///
+  /// [_widgetRelaunchChecked] prevents double-fire within a single resume
+  /// event and is reset by [didChangeAppLifecycleState] on the next resume.
+  Future<void> _checkWidgetRelaunch() async {
+    if (_widgetRelaunchChecked) return;
+    _widgetRelaunchChecked = true;
+
+    final service = ref.read(widgetLaunchServiceProvider);
+    final mode = await service.getWidgetLaunchMode();
+    if (mode == null || !mounted) return;
+
+    final hasOnboarded = ref.read(onboardingNotifierProvider);
+    if (!hasOnboarded) return;
+
+    ref.read(pendingWidgetLaunchModeProvider.notifier).state = mode;
+  }
+  // coverage:ignore-end
 
   @override
   Widget build(BuildContext context) {

@@ -5,21 +5,29 @@
 
 ## Current Task
 
-**Status:** Phase 3A shipped (PR #82, v0.31.0+30). Selecting next sprint.
+**Status:** Bug fixes + Phase 3A advisories shipped (PR #83, v0.31.1+31). Next: Phase 4B/4C.
 **Branch:** `develop/adhd-roadmap`
-**Version:** `0.31.0+30`
+**Version:** `0.31.1+31`
 
 ### In Progress
 - Nothing — selecting next sprint
 
 ### Pending Items
 - **Advisory A-4**: Handle `SCHEDULE_EXACT_ALARM` revocation (`PlatformException` from `zonedSchedule()`) — clear stale notificationId from task row; elevated from advisory to important given silent failure loop risk (see REV-20260304-085452 A6)
-- **Bug 1 — Keyboard overflow**: `lib/ui/screens/journal_session_screen.dart` line 722 — `maxLines: null` causes send button to be pushed off screen when typing long messages. Fix: `maxLines: 6`
-- **Bug 2 — STT stops after photo**: `lib/services/voice_session_orchestrator.dart` — `orchestrator.resume()` is a no-op after `capturePhotoDescription()` because the phase is `listening` (not `paused`) after photo description completes. Fix: restore `VoiceLoopPhase.paused` state in `capturePhotoDescription()` before returning.
-- **Phase 3A advisory follow-ups** (11 open from REV-20260304-142456): A1 (dispatch branch tests), A2 (setMode ordering), A3 (FAB tooltip during _isStarting), A4 (Check-In descriptor copy), A5 (barrierLabel), A6 (DraggableScrollableSheet), A7 (excludeSemantics), A8 (StateNotifier→Notifier<T>), A9 (voice pre-enable comment), A10 (removed journaling modes ADR), A11 (mode key constants)
+- **Phase 3A advisory follow-ups** (8 open from REV-20260304-142456 + 8 new from REV-20260304-145506): A2 (setMode ordering), A4 (Check-In descriptor copy), A5 (barrierLabel), A6 (DraggableScrollableSheet), A7 (excludeSemantics), A8 (StateNotifier→Notifier<T>), A10 (removed journaling modes ADR), A11 (mode key constants) [from REV-142456]; A1 (capturePhotoDescription non-paused branch test), A2 (pulse_check_in dispatch test), A3 (timing assertion), A4 (silence timeout), A5 (maxLines adaptive + minLines), A6 (textInputAction.send), A7 (FAB disabled visual), A8 (viewPadding→padding) [from REV-145506]
 - **Phase 4E advisory follow-ups** (10 open): A1 Y-axis label, A2 window-gate misalignment, A3 remove raw r-value, A4 correlation empty state wording, A5 shrinkWrap tap target, A6 _shortLabel consolidation
 
 ### Just Completed
+- **Bug fixes + Phase 3A advisories A1/A3/A9** (PR #83, `develop/adhd-roadmap`, v0.31.1+31):
+  - Bug 1: `TextField maxLines: null → 6` — send button no longer pushed off-screen
+  - Bug 2: `capturePhotoDescription()` restores paused phase so `orchestrator.resume()` works
+  - Advisory A1: dispatch branch tests (Mood Tap, Voice pre-enable, Write mode-key)
+  - Advisory A3: FAB tooltip `'Opening...'` during `_isStarting`
+  - Advisory A9: voice pre-enable ordering comment
+  - Review: REV-20260304-145506 (approve-with-changes, 1 blocking resolved, 8 advisory)
+  - Quality gate: 7/7 | Coverage: 80.9% | Education gate: deferred
+  - Open advisories: 8 new. **Total: 234**
+
 - **Phase 3A: Quick Capture Mode** (PR #82, `develop/adhd-roadmap`, v0.31.0+30):
   - `last_capture_mode_provider.dart`: `LastCaptureModeNotifier` (StateNotifier<String?>) backed by SharedPreferences key `last_capture_mode`; null = no preference
   - `quick_capture_palette.dart`: `showQuickCapturePalette()` modal bottom sheet, 4 tiles (Write/Voice/Mood Tap/Check-In), last-used mode pre-highlighted via `primaryContainer`, ADHD framing, VoidCallback onTap from parent context
@@ -27,7 +35,7 @@
   - **B1 blocking fix (resolved in-review)**: Photo tile dispatched as plain text session (provably incorrect) — removed from palette until camera-open dispatch implemented (Bug 2)
   - 16 tests (6 provider + 10 widget), quality gate 7/7, coverage 80.7%
   - Build: DISC-20260304-135245 (sealed); Review: REV-20260304-142456 (approve-with-changes, 1 blocking resolved in-review, 11 advisory)
-  - Open advisories: 11 new. **Total: 226**
+  - Open advisories: 11 new. **Total: 226** (superseded by PR #83 — 3 resolved, 8 added → net 234)
   - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
 
 - **Phase 4E: Pulse Check-In Trend View** (PR #81, `develop/adhd-roadmap`, v0.30.0+29):
@@ -413,9 +421,9 @@ Or manually (physical device):
 
 ## Tech Debt
 
-- **Coverage** — 80.7% (above 80% target, 16 new tests in Phase 3A)
-- **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation); REV-20260303-180530 (CheckInHistoryScreen async* stream, completeCheckInSession, _normalizeValue, ADHD UX); REV-20260303-222128 (Phase 3B Quick Mood Tap); REV-20260303-232113 (Phase 3D Weekly Digest); REV-20260304-015709 (Phase 4E statistical concepts + reverse-scoring); REV-20260304-142456 (Phase 3A Quick Capture palette/provider patterns)
-- **Review advisories open** — 226 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547, 12 from REV-20260304-005938, 22 from REV-20260304-035354, 13 from REV-20260304-074715, 8 from REV-20260304-085452, 10 from REV-20260304-015709, 11 from REV-20260304-142456
+- **Coverage** — 80.9% (above 80% target)
+- **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation); REV-20260303-180530 (CheckInHistoryScreen async* stream, completeCheckInSession, _normalizeValue, ADHD UX); REV-20260303-222128 (Phase 3B Quick Mood Tap); REV-20260303-232113 (Phase 3D Weekly Digest); REV-20260304-015709 (Phase 4E statistical concepts + reverse-scoring); REV-20260304-142456 (Phase 3A Quick Capture palette/provider patterns); REV-20260304-145506 (bug fixes sprint)
+- **Review advisories open** — 234 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547, 12 from REV-20260304-005938, 22 from REV-20260304-035354, 13 from REV-20260304-074715, 8 from REV-20260304-085452, 10 from REV-20260304-015709, 8 from REV-20260304-142456 (3 resolved in PR #83), 8 from REV-20260304-145506
 - **user_checkin_config** deferred to schema v11 (Phase 1 Task 8)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
@@ -433,9 +441,9 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — Phase 3A shipped**. On `develop/adhd-roadmap` (v0.31.0+30).
-   - **PR #82 merged**: Phase 3A Quick Capture Mode (palette, last_capture_mode_provider, FAB wiring, 16 tests)
-   - **Next**: Bug 1/Bug 2 fix sprint, or Phase 3A advisory cleanup (11 open), or Phase 4E advisory cleanup (10 open)
+1. **ADHD Roadmap — PR #83 merged**. On `develop/adhd-roadmap` (v0.31.1+31).
+   - **PR #83 merged**: Bug 1/Bug 2 fixes + Phase 3A advisories A1/A3/A9
+   - **Next**: Phase 4B/4C from SPEC-20260302-adhd-informed-feature-roadmap.md
 2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, Phase 4D, Phase 4E, Phase 5A, Phase 3A; REV-20260302-152240 (fallback TTS)
 3. **Open advisory triage** — 226 total. Priority: A-4 from REV-20260304-085452 (SCHEDULE_EXACT_ALARM revocation); Bug 1 (keyboard overflow); Bug 2 (STT stops after photo); Phase 3A A1 (dispatch branch tests)
 

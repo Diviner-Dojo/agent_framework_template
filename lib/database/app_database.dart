@@ -63,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -260,6 +260,14 @@ class AppDatabase extends _$AppDatabase {
                 'ON tasks (reminder_time) WHERE reminder_time IS NOT NULL',
           ),
         );
+      }
+      if (from < 12) {
+        // Phase 4C: Passive weather metadata — add weather columns to sessions.
+        // All columns are nullable — backward-compatible with existing sessions.
+        // Weather is captured fire-and-forget when location is enabled.
+        await m.addColumn(journalSessions, journalSessions.weatherTempC);
+        await m.addColumn(journalSessions, journalSessions.weatherCode);
+        await m.addColumn(journalSessions, journalSessions.weatherDescription);
       }
     },
   );

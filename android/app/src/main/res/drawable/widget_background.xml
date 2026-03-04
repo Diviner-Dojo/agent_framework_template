@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    widget_background.xml
+    Rounded rectangle background for the Quick Capture widget (Phase 4B).
+    Uses a dark blue-gray tint that matches the app's Midnight Ink palette
+    and remains readable on most home screen wallpapers.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#CC1A237E" />
+    <corners android:radius="12dp" />
+</shape>

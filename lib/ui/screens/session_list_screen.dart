@@ -52,6 +52,36 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
     // Watch the paginated stream of sessions for reactive updates.
     final sessionsAsync = ref.watch(paginatedSessionsProvider);
 
+    // Phase 4B: Quick Capture widget launch — dispatch to the stored mode.
+    // pendingWidgetLaunchModeProvider is set by app.dart when the app is
+    // opened from the home screen widget. We consume it here (clear + dispatch)
+    // so it only fires once even if the build method is called again.
+    ref.listen(pendingWidgetLaunchModeProvider, (previous, next) {
+      if (next == null) return;
+      // Allowlist guard: reject unknown mode strings (Intent extra injection
+      // protection — any on-device app can send a crafted Intent to the
+      // exported MainActivity with an arbitrary mode value).
+      const validWidgetModes = {
+        'text',
+        'voice',
+        '__quick_mood_tap__',
+        'pulse_check_in',
+      };
+      if (!validWidgetModes.contains(next)) {
+        // Clear the invalid value so it does not linger in state.
+        ref.read(pendingWidgetLaunchModeProvider.notifier).state = null;
+        return;
+      }
+      // Clear before dispatching to prevent double-fire on rebuild.
+      ref.read(pendingWidgetLaunchModeProvider.notifier).state = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await ref.read(lastCaptureModeProvider.notifier).setMode(next);
+        if (!mounted) return;
+        await _dispatchCaptureMode(context, next);
+      });
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Agentic Journal'),
@@ -746,8 +776,20 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
     await ref.read(lastCaptureModeProvider.notifier).setMode(selected);
     if (!context.mounted) return;
 
+    await _dispatchCaptureMode(context, selected);
+  }
+
+  /// Dispatch directly to a capture mode without showing the palette.
+  ///
+  /// Called by both [_openQuickCapturePalette] (after palette selection) and
+  /// the widget launch listener (Phase 4B — Quick Capture widget).
+  ///   - 'text'               → start a regular journal session
+  ///   - 'voice'              → start a session with voice mode pre-enabled
+  ///   - '__quick_mood_tap__' → open Quick Mood Tap overlay (no session)
+  ///   - 'pulse_check_in'     → start a Pulse Check-In session
+  Future<void> _dispatchCaptureMode(BuildContext context, String mode) async {
     // Quick Mood Tap: open the emoji overlay — no LLM, no session navigation.
-    if (selected == '__quick_mood_tap__') {
+    if (mode == '__quick_mood_tap__') {
       await showQuickMoodTapSheet(context);
       return;
     }
@@ -756,16 +798,14 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
     // reads voiceModeEnabledProvider as true synchronously when the session
     // is created. If setEnabled were called after navigation, the session
     // screen's initState would already have read the old (false) value.
-    if (selected == 'voice') {
+    if (mode == 'voice') {
       await ref.read(voiceModeEnabledProvider.notifier).setEnabled(true);
       if (!context.mounted) return;
     }
 
     // All session-based modes route through _startNewSession.
     // 'pulse_check_in' → /check_in (slider UI); all others → /session (chat).
-    final journalingMode = selected == 'pulse_check_in'
-        ? 'pulse_check_in'
-        : null;
+    final journalingMode = mode == 'pulse_check_in' ? 'pulse_check_in' : null;
     await _startNewSession(context, journalingMode: journalingMode);
   }
 }

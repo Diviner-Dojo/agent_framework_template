@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/assistant_registration_service.dart';
+import '../services/widget_launch_service.dart';
 import 'database_provider.dart';
 
 /// Provides the app version string from the platform package info.
@@ -35,6 +36,14 @@ final appVersionProvider = FutureProvider<String>((ref) async {
 /// or an instance configured with `isAndroid: true` to test channel calls.
 final assistantServiceProvider = Provider<AssistantRegistrationService>((ref) {
   return AssistantRegistrationService(); // coverage:ignore-line
+});
+
+/// Provider for the widget launch service (Phase 4B).
+///
+/// Override in tests with a WidgetLaunchService configured with a fake
+/// GetWidgetLaunchMode callback to avoid real platform channel invocation.
+final widgetLaunchServiceProvider = Provider<WidgetLaunchService>((ref) {
+  return WidgetLaunchService(); // coverage:ignore-line
 });
 
 /// Provides the current default assistant status.
