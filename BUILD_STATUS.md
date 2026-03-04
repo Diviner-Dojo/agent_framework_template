@@ -1,39 +1,37 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-04 ~00:00 UTC
+> Last updated: 2026-03-04 ~09:00 UTC
 
 ## Current Task
 
-**Status:** Phase 5A Visual Identity & Theme Personalization build complete. Quality gate 7/7 (80.2%). Ready for `/review` and commit.
+**Status:** Phase 5A + Notifications shipped (PR #79, v0.29.0+27). Determining next sprint.
 **Branch:** `develop/adhd-roadmap`
-**Version:** `0.28.0+26` (will bump on commit)
+**Version:** `0.29.0+27`
 
 ### In Progress
-- **Phase 5A: Visual Identity & Theme Personalization** — build complete, needs `/review` → commit → PR
-  - Spec: SPEC-20260304-063144-visual-identity-theming.md (reviewed)
-  - Spec discussion: DISC-20260304-063144-visual-identity-theming-spec-review (sealed)
-  - Build discussion: DISC-20260304-064221-build-phase-5a-visual-identity-theming (sealed)
-  - Quality gate: 7/7 | Coverage: 80.2% | 112 Phase 5A tests + full suite pass
-  - 7 build tasks completed, 3 checkpoints fired (all APPROVE)
-  - New files: palettes.dart, app_theme.dart (rewritten), theme_providers.dart, theme_preview_card.dart, 5 test files
-  - Modified: chat_bubble.dart, app.dart, settings_screen.dart, journal_session_screen.dart, session_detail_screen.dart
-  - Regression fixes: 8 existing test files updated (sharedPreferencesProvider override + scrollUntilVisible)
+- Nothing — selecting next sprint
 
 ### Pending Items
-- **SPEC-20260304-061650: Scheduled Local Notifications** — spec reviewed, awaiting developer approval before `/build_module`
-  - Discussion: DISC-20260304-061753 (sealed)
+- **Advisory A-1 (HIGH)**: BootReceiver reboot rescheduling — ADR-0033 requirement, unimplemented (`BootReceiver.onReceive()` is empty). Required before production merge of notifications. Approach: on app launch AND BOOT_COMPLETED, query tasks where `reminderTime > now AND notificationId IS NOT NULL`, cancel old IDs (orphaned after reboot), reschedule with new IDs via `NotificationSchedulerService`.
+- **Advisory A-2**: Test TaskDao notification cancellation wiring (mock scheduler asserting `cancelNotification()` called on `deleteTask`/`completeTask`)
+- **Advisory A-3**: Test ID wrap-around boundary (seed prefs with 1999, verify wrap to 1000)
+- **Advisory A-4**: Handle `SCHEDULE_EXACT_ALARM` revocation (`PlatformException` from `zonedSchedule()`)
+- **Advisory A-5**: Add `android:permission="android.permission.RECEIVE_BOOT_COMPLETED"` to AndroidManifest BootReceiver
 - **Bug 1 — Keyboard overflow**: `lib/ui/screens/journal_session_screen.dart` line 722 — `maxLines: null` causes send button to be pushed off screen when typing long messages. Fix: `maxLines: 6`
 - **Bug 2 — STT stops after photo**: `lib/services/voice_session_orchestrator.dart` — `orchestrator.resume()` is a no-op after `capturePhotoDescription()` because the phase is `listening` (not `paused`) after photo description completes. Fix: restore `VoiceLoopPhase.paused` state in `capturePhotoDescription()` before returning.
 
 ### Just Completed
-- **Phase 5A: Visual Identity & Theme Personalization** (build complete, pre-review):
+- **Phase 5A Visual Identity + Scheduled Local Notifications (ADR-0033)** (PR #79, `develop/adhd-roadmap`, v0.29.0+27):
   - 7 curated palettes (Still Water, Warm Earth, Soft Lavender, Forest Floor, Ember Glow, Midnight Ink, Dawn Light)
-  - `ThemeState` with palette/mode/fontScale/cardStyle/bubbleShape, persisted to SharedPreferences
-  - `ChatBubbleColors` ThemeExtension with WCAG AA contrast validation (56 combinations tested)
-  - Settings Theme card: palette grid, mode selector, advanced options (font size, card style, bubble shape)
-  - Reset to defaults with 8-second SnackBar undo
-  - ADR-0029 compliance: `ref.watch(themeProvider)` safe for MaterialApp theme properties
+  - `ThemeState`/`ThemeNotifier`, `ChatBubbleColors` ThemeExtension with WCAG AA contrast validation (56 combinations tested)
+  - `NotificationSchedulerService`: fire-once OS alarms, ID namespace 1000–1999, SharedPreferences counter persistence
+  - Schema v11: `reminderTime`, `notificationId`, `isQuickReminder` columns on Tasks table
+  - `TaskDao` notification cancellation wiring (`completeTask`/`deleteTask` cancel pending OS notifications)
+  - Review: REV-20260304-074715 (approve-with-changes, 0.91; 2 blocking resolved in-review, 13 advisory)
+  - Quality gate: 7/7 | Coverage: 80.1%
+  - Education gate: deferred per CLAUDE.md ADHD roadmap autonomous execution authorization
+  - Open advisories: 13 new. **Total: 197**
 
 - **Phase 4D: Adaptive Non-Escalating Reminders** (PR #78, `develop/adhd-roadmap`, v0.28.0+26):
   - `ReminderService` — synchronous `shouldShow()` guards: enabled, dismissal count < 3, not shown today, in time window
@@ -388,7 +386,7 @@ Or manually (physical device):
 
 - **Coverage** — 80.4% (above 80% target, 25 new tests in Phase 4D)
 - **Education gates deferred** — Phase 11 + Phase 12; REV-20260302-152240; REV-20260303-142206 (Phase 1 Pulse Check-In clinical UX + score computation); REV-20260303-180530 (CheckInHistoryScreen async* stream, completeCheckInSession, _normalizeValue, ADHD UX); REV-20260303-222128 (Phase 3B Quick Mood Tap); REV-20260303-232113 (Phase 3D Weekly Digest)
-- **Review advisories open** — 184 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547, 12 from REV-20260304-005938, 22 from REV-20260304-035354
+- **Review advisories open** — 197 total: 12 from REV-20260301-025400, 14 from REV-20260301-215800, 8 from REV-20260302-061043, 7 from REV-20260302-071854, 6 from REV-20260302-152240, 8 from REV-20260302-201931, 6 from REV-20260302-222520, 5 from REV-20260302-230547, 8 from REV-20260303-013421, 10 from REV-20260303-142206, 7 from REV-20260303-163807, 17 from REV-20260303-180530, 13 from REV-20260303-204036, 14 from REV-20260303-222128, 10 from REV-20260303-232113, 5 from REV-20260303-235547, 12 from REV-20260304-005938, 22 from REV-20260304-035354, 13 from REV-20260304-074715
 - **user_checkin_config** deferred to schema v11 (Phase 1 Task 8)
 - **Local LLM disabled** — llamadart SIGILL on Snapdragon 888
 - **PENDING adoptions** — 9 patterns approaching stale threshold 2026-03-05
@@ -406,11 +404,11 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — Phase 4D shipped**. On `develop/adhd-roadmap` (v0.28.0+26).
-   - **PR #78 merged**: Phase 4D Adaptive Non-Escalating Reminders (ReminderService, 2 new providers, reminder card, settings card, 25 tests)
-   - **Next**: Check `docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md` for next phase
-2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, Phase 4D; REV-20260302-152240 (fallback TTS)
-3. **Open advisory triage** — 184 total. Priority: A-1/A-2 from REV-20260303-235547 (A7/A9 error-branch tests); A8/A10/A11 from REV-20260304-035354 (undo SnackBar, ExcludeSemantics, touch targets on reminder card)
+1. **ADHD Roadmap — Phase 5A + Notifications shipped**. On `develop/adhd-roadmap` (v0.29.0+27).
+   - **PR #79 merged**: Phase 5A Visual Identity Theming + SPEC-20260304-061650 Scheduled Local Notifications
+   - **Next**: Address advisory A-1 (BootReceiver reboot rescheduling — high priority) then proceed to Phase 4E (Pulse Check-In Trend View) or Phase 3A (Quick Capture Mode)
+2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, Phase 4D, Phase 5A; REV-20260302-152240 (fallback TTS)
+3. **Open advisory triage** — 197 total. Priority: A-1 from REV-20260304-074715 (BootReceiver); Bug 1 (keyboard overflow); Bug 2 (STT stops after photo)
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*

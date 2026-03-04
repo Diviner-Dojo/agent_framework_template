@@ -7,21 +7,24 @@ import android.content.Intent
 /**
  * Receives BOOT_COMPLETED and MY_PACKAGE_REPLACED broadcasts.
  *
- * flutter_local_notifications exact alarms are cleared when the device
- * reboots. This receiver triggers the Flutter engine to reschedule any
- * pending notifications stored in the app's SQLite database.
+ * flutter_local_notifications exact alarms (exactAllowWhileIdle) are cleared
+ * when the device reboots. The actual rescheduling happens in the Dart layer:
+ * NotificationSchedulerService.rescheduleFromTasks() is called from
+ * AgenticJournalApp.initState() via notificationBootRestoreProvider when the
+ * user next opens the app after a reboot.
  *
- * The actual rescheduling logic lives in NotificationSchedulerService
- * (Dart/Flutter layer) — this Kotlin receiver simply boots the engine.
- * See ADR-0033.
+ * This Kotlin receiver exists solely to hold the RECEIVE_BOOT_COMPLETED
+ * manifest entry (required to receive the system broadcast). It does not
+ * start a background service or trigger a WorkManager job — rescheduling is
+ * deferred until the user opens the app (on-launch approach). See ADR-0033.
+ *
+ * Note: onDidReceiveBackgroundNotificationResponse fires when a user TAPS a
+ * notification, NOT on boot — it is unrelated to reboot rescheduling.
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        // The flutter_local_notifications plugin handles rescheduling
-        // via the onDidReceiveBackgroundNotificationResponse callback and
-        // the plugin's built-in boot reschedule support when
-        // scheduleMode = AndroidScheduleMode.exactAllowWhileIdle.
-        // This receiver exists to satisfy the RECEIVE_BOOT_COMPLETED
-        // manifest requirement and ensure the app process can start.
+        // Rescheduling is handled in the Dart layer at app launch.
+        // See NotificationSchedulerService.rescheduleFromTasks() and
+        // notificationBootRestoreProvider in notification_providers.dart.
     }
 }
