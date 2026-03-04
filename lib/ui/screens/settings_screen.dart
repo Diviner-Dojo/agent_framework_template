@@ -1068,7 +1068,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                   SegmentedButton<String>(
                     style: SegmentedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     segments: const [
                       ButtonSegment(value: '1-5', label: Text('1 – 5')),
@@ -1078,18 +1077,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     selected: {_scaleKey(template.scaleMin, template.scaleMax)},
                     onSelectionChanged: (selection) async {
                       final (min, max) = _parseScaleKey(selection.first);
-                      await dao.updateTemplate(
-                        template.id,
-                        QuestionnaireTemplatesCompanion(
-                          scaleMin: Value(min),
-                          scaleMax: Value(max),
-                        ),
-                      );
+                      try {
+                        await dao.updateTemplate(
+                          template.id,
+                          QuestionnaireTemplatesCompanion(
+                            scaleMin: Value(min),
+                            scaleMax: Value(max),
+                          ),
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Answer scale updated.'),
+                            ),
+                          );
+                        }
+                      } on Exception catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Could not save scale change. Try again.',
+                              ),
+                            ),
+                          );
+                        }
+                      }
                     },
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Changes the answer range for future check-ins.',
+                    'Applied immediately to all future check-ins.'
+                    ' Past answers are unaffected.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -1110,12 +1129,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               final reordered = List<QuestionnaireItem>.from(items);
               final moved = reordered.removeAt(oldIndex);
               reordered.insert(newIndex, moved);
-              // Persist updated sortOrder values.
-              for (var i = 0; i < reordered.length; i++) {
-                await dao.updateItem(
-                  reordered[i].id,
-                  QuestionnaireItemsCompanion(sortOrder: Value(i)),
-                );
+              try {
+                // Persist updated sortOrder values.
+                for (var i = 0; i < reordered.length; i++) {
+                  await dao.updateItem(
+                    reordered[i].id,
+                    QuestionnaireItemsCompanion(sortOrder: Value(i)),
+                  );
+                }
+              } on Exception catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Could not reorder questions. Try again.'),
+                    ),
+                  );
+                }
               }
             },
             itemBuilder: (ctx, i) {
@@ -1144,10 +1173,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                     Switch(
                       value: item.isActive,
                       onChanged: (enabled) async {
-                        await dao.updateItem(
-                          item.id,
-                          QuestionnaireItemsCompanion(isActive: Value(enabled)),
-                        );
+                        try {
+                          await dao.updateItem(
+                            item.id,
+                            QuestionnaireItemsCompanion(
+                              isActive: Value(enabled),
+                            ),
+                          );
+                        } on Exception catch (_) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Could not update question. Try again.',
+                                ),
+                              ),
+                            );
+                          }
+                          return; // abort — do not show Undo SnackBar on write failure
+                        }
+                        // When deactivating, offer an immediate Undo path so
+                        // ADHD users aren't caught off-guard by a question
+                        // silently disappearing from future check-ins.
+                        if (!enabled && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Question deactivated.'),
+                              action: SnackBarAction(
+                                label: 'Undo',
+                                onPressed: () async {
+                                  await dao.updateItem(
+                                    item.id,
+                                    const QuestionnaireItemsCompanion(
+                                      isActive: Value(true),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        }
                       },
                     ),
                   ],
