@@ -88,9 +88,9 @@ void main() {
             builder: (context, ref, _) {
               final themeState = ref.watch(themeProvider);
               final palette = themeState.palette;
-              final theme = AppTheme.withCardElevation(
+              final theme = AppTheme.withCardStyle(
                 AppTheme.fromPalette(palette, Brightness.light),
-                themeState.cardStyle.elevation,
+                themeState.cardStyle,
               );
               return MaterialApp(
                 theme: theme,

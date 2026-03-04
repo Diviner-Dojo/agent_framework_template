@@ -1505,6 +1505,70 @@ void main() {
       });
     });
 
+    // regression: Audio focus gain event fires during capturePhotoDescription,
+    // calling resume() which clears _phaseBeforePause to null. When
+    // capturePhotoDescription finishes and the caller's resume() is invoked,
+    // _phaseBeforePause == null → previousPhase = idle → voice stuck.
+    // Fix: save _phaseBeforePause at the start of capturePhotoDescription and
+    // restore it in the finally block, so the caller's resume() always sees
+    // the correct prior phase regardless of intermediate resume() calls.
+    group('capturePhotoDescription restores _phaseBeforePause after audio focus '
+        'gain during capture (regression)', () {
+      test(
+        'capturePhotoDescription restores _phaseBeforePause after audio '
+        'focus gain during capture (regression)',
+        tags: ['regression'],
+        () async {
+          // Put orchestrator in continuous + listening state.
+          await orchestrator.startContinuousMode('Hello');
+          expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+
+          // Caller pauses for camera (audio focus conflict), saving
+          // _phaseBeforePause = listening.
+          await orchestrator.pause();
+          expect(orchestrator.state.phase, VoiceLoopPhase.paused);
+
+          // Simulate audio focus gain firing mid-capture: call resume()
+          // before capturePhotoDescription (clears _phaseBeforePause).
+          // In production this fires from the Android audio focus handler
+          // at an await boundary inside capturePhotoDescription; in tests
+          // we call it here to replicate the _phaseBeforePause=null state.
+          await orchestrator.resume(silent: true);
+          expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+
+          // Re-pause (simulates camera re-acquiring audio focus after the
+          // spurious gain event — _phaseBeforePause = listening again).
+          await orchestrator.pause();
+
+          // capturePhotoDescription must save _phaseBeforePause before any
+          // async work and restore it in finally, so that a second
+          // intermediate resume() during capture doesn't corrupt the value.
+          final captureTask = orchestrator.capturePhotoDescription();
+          await Future<void>.delayed(Duration.zero);
+          mockStt.emitResult(
+            const SpeechResult(text: 'a sunset over the ocean', isFinal: true),
+          );
+          final description = await captureTask;
+          expect(description, equals('a sunset over the ocean'));
+
+          // Phase must be paused so the caller's resume() is not a no-op.
+          expect(orchestrator.state.phase, VoiceLoopPhase.paused);
+
+          // The caller's resume() (audio focus re-grant) must transition to
+          // listening — if _phaseBeforePause was not restored this would
+          // go to idle instead.
+          await orchestrator.resume(silent: true);
+          expect(
+            orchestrator.state.phase,
+            VoiceLoopPhase.listening,
+            reason:
+                '_phaseBeforePause must be restored by capturePhotoDescription '
+                'so the caller resume() restarts STT (not idle)',
+          );
+        },
+      );
+    });
+
     // regression: capturePhotoDescription() called _startListening() at the
     // end of its flow, leaving phase=listening.  The caller's
     // orchestrator.resume() (which requires phase=paused) was then a silent

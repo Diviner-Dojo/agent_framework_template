@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../providers/theme_providers.dart' show CardStyle;
 import 'palettes.dart';
 
 /// Chat bubble colors that vary per palette.
@@ -151,13 +152,24 @@ class AppTheme {
     );
   }
 
-  /// Build a [ThemeData] with a custom card elevation.
+  /// Build a [ThemeData] with the given [CardStyle] applied.
   ///
-  /// Used by the theme settings to apply Flat (0), Soft (1), or Raised (3)
-  /// card elevation styles.
-  static ThemeData withCardElevation(ThemeData base, double elevation) {
+  /// Flat gets a 1dp outline border (visible without shadow on modern phones).
+  /// Soft (2dp) and Raised (8dp) use shadow only — no border.
+  static ThemeData withCardStyle(ThemeData base, CardStyle style) {
+    final shape = style == CardStyle.flat
+        ? RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: base.colorScheme.outlineVariant, width: 1),
+          )
+        : const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          );
     return base.copyWith(
-      cardTheme: base.cardTheme.copyWith(elevation: elevation),
+      cardTheme: base.cardTheme.copyWith(
+        elevation: style.elevation,
+        shape: shape,
+      ),
     );
   }
 

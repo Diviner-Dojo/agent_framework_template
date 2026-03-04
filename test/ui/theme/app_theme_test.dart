@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:agentic_journal/providers/theme_providers.dart' show CardStyle;
 import 'package:agentic_journal/ui/theme/app_theme.dart';
 import 'package:agentic_journal/ui/theme/palettes.dart';
 
@@ -83,17 +84,38 @@ void main() {
     });
   });
 
-  group('AppTheme.withCardElevation', () {
-    test('overrides card elevation', () {
+  group('AppTheme.withCardStyle', () {
+    test('flat style has 0 elevation and outline border', () {
       final base = AppTheme.fromPalette(
         getPaletteById('still_water'),
         Brightness.light,
       );
-      final flat = AppTheme.withCardElevation(base, 0);
+      final flat = AppTheme.withCardStyle(base, CardStyle.flat);
       expect(flat.cardTheme.elevation, 0);
+      final shape = flat.cardTheme.shape as RoundedRectangleBorder;
+      expect(shape.side.width, greaterThan(0));
+    });
 
-      final raised = AppTheme.withCardElevation(base, 3);
-      expect(raised.cardTheme.elevation, 3);
+    test('soft style has 2 elevation and no border', () {
+      final base = AppTheme.fromPalette(
+        getPaletteById('still_water'),
+        Brightness.light,
+      );
+      final soft = AppTheme.withCardStyle(base, CardStyle.soft);
+      expect(soft.cardTheme.elevation, 2);
+      final shape = soft.cardTheme.shape as RoundedRectangleBorder;
+      expect(shape.side, BorderSide.none);
+    });
+
+    test('raised style has 8 elevation and no border', () {
+      final base = AppTheme.fromPalette(
+        getPaletteById('still_water'),
+        Brightness.light,
+      );
+      final raised = AppTheme.withCardStyle(base, CardStyle.raised);
+      expect(raised.cardTheme.elevation, 8);
+      final shape = raised.cardTheme.shape as RoundedRectangleBorder;
+      expect(shape.side, BorderSide.none);
     });
 
     test('preserves other theme properties', () {
@@ -101,7 +123,7 @@ void main() {
         getPaletteById('still_water'),
         Brightness.light,
       );
-      final modified = AppTheme.withCardElevation(base, 0);
+      final modified = AppTheme.withCardStyle(base, CardStyle.flat);
       expect(modified.useMaterial3, base.useMaterial3);
       expect(modified.colorScheme.primary, base.colorScheme.primary);
     });

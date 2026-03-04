@@ -152,7 +152,7 @@ void main() {
       await tester.tap(find.text('Mood'));
       await tester.pumpAndSettle();
 
-      expect(find.text('No mood found in your journal yet'), findsOneWidget);
+      expect(find.textContaining('No mood tags found'), findsOneWidget);
     });
 
     testWidgets('clear-all icon appears when filters are active', (

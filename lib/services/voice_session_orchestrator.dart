@@ -541,6 +541,13 @@ class VoiceSessionOrchestrator {
     // Only works if STT service is initialized.
     if (!_sttService.isInitialized) return null;
 
+    // Save _phaseBeforePause before any async events fire.
+    //
+    // If an audio focus gain event fires mid-capture (e.g. from the camera
+    // permission dialog releasing focus), resume() will clear _phaseBeforePause
+    // to null. Saving it here and restoring it in the finally block ensures
+    // the caller's subsequent resume() call still sees the correct prior phase.
+    final savedPhaseBeforePause = _phaseBeforePause;
     final wasInContinuousMode = state.isContinuousMode;
     final previousPhase = state.phase;
 
@@ -601,6 +608,9 @@ class VoiceSessionOrchestrator {
     } finally {
       completer.dispose();
       await _stopListening();
+      // Restore _phaseBeforePause so the caller's resume() call works correctly
+      // even if an audio focus gain event cleared it during capture.
+      _phaseBeforePause = savedPhaseBeforePause;
     }
 
     // Restore state before returning.

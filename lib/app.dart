@@ -253,13 +253,13 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
     // initialRoute). See theme_providers.dart for full rationale.
     final themeState = ref.watch(themeProvider);
     final palette = themeState.palette;
-    final lightTheme = AppTheme.withCardElevation(
+    final lightTheme = AppTheme.withCardStyle(
       AppTheme.fromPalette(palette, Brightness.light),
-      themeState.cardStyle.elevation,
+      themeState.cardStyle,
     );
-    final darkTheme = AppTheme.withCardElevation(
+    final darkTheme = AppTheme.withCardStyle(
       AppTheme.fromPalette(palette, Brightness.dark),
-      themeState.cardStyle.elevation,
+      themeState.cardStyle,
     );
 
     return MaterialApp(

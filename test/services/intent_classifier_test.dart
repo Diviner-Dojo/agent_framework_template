@@ -455,4 +455,46 @@ void main() {
       },
     );
   });
+
+  // Regression: "add a task to call mom in 10 minutes" was routed as journal.
+  // Root cause: _temporalPattern did not include relative duration expressions
+  // ("in N minutes/hours"), so the temporal boost (+0.15) never fired, leaving
+  // the task score sub-threshold in some inputs.
+  // Fix: Added "in \d+ (minute|...)" and "in (a|an) (minute|...)" alternates
+  // to _temporalPattern.
+  group('in N minutes routed as task (temporal boost fires) (regression)', () {
+    test(
+      '"add a task to call mom in 10 minutes" classifies as task (regression)',
+      tags: ['regression'],
+      () {
+        final result = classifier.classify(
+          'add a task to call mom in 10 minutes',
+        );
+        expect(result.type, IntentType.task);
+        expect(
+          result.confidence,
+          greaterThanOrEqualTo(0.5),
+          reason: 'temporal boost must fire for "in 10 minutes"',
+        );
+      },
+    );
+
+    test('"add a task in 2 hours" classifies as task', () {
+      final result = classifier.classify('add a task in 2 hours');
+      expect(result.type, IntentType.task);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
+
+    test('"add a task in an hour" classifies as task', () {
+      final result = classifier.classify('add a task in an hour');
+      expect(result.type, IntentType.task);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
+
+    test('"add a task in a minute" classifies as task', () {
+      final result = classifier.classify('add a task in a minute');
+      expect(result.type, IntentType.task);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
+  });
 }

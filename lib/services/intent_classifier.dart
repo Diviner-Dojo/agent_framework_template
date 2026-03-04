@@ -399,6 +399,8 @@ class IntentClassifier {
     r'last (week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|'
     r'(\d+ )?(days?|weeks?|months?) ago|'
     r'in (january|february|march|april|may|june|july|august|september|october|november|december)|'
+    r'in \d+ (minute|minutes|min|mins|hour|hours|hr|hrs|second|seconds|sec|secs)\b|'
+    r'in (a|an) (minute|hour|second|sec)\b|'
     r'this (week|month|year)|'
     r'the other day|'
     r'recently|'

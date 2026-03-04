@@ -613,7 +613,9 @@ class _MultiSelectSheetState extends ConsumerState<_MultiSelectSheet> {
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Center(
                       child: Text(
-                        'No ${widget.title.toLowerCase()} found in your journal yet',
+                        'No ${widget.title.toLowerCase()} tags found.\n'
+                        'Open a past session and add tags using the chip editor.',
+                        textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),

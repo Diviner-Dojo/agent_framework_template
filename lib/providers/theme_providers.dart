@@ -61,8 +61,8 @@ enum FontScale {
 /// Card elevation style options.
 enum CardStyle {
   flat('Flat', 0),
-  soft('Soft', 1),
-  raised('Raised', 3);
+  soft('Soft', 2),
+  raised('Raised', 8);
 
   const CardStyle(this.label, this.elevation);
 
