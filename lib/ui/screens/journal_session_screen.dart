@@ -34,6 +34,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../providers/calendar_providers.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/theme_providers.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
@@ -498,6 +499,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                                 videoPath: video.localPath as String,
                               )
                             : null,
+                        bubbleShape: ref.watch(themeProvider).bubbleShape,
                       );
                     },
                   );

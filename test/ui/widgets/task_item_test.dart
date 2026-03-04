@@ -14,14 +14,18 @@ void main() {
     String title = 'Test Task',
     String? notes,
     DateTime? dueDate,
+    DateTime? reminderTime,
     String status = TaskStatus.active,
     String syncStatus = TaskSyncStatus.pending,
+    bool isQuickReminder = false,
   }) {
     return Task(
       taskId: taskId,
       title: title,
       notes: notes,
       dueDate: dueDate,
+      reminderTime: reminderTime,
+      isQuickReminder: isQuickReminder,
       status: status,
       syncStatus: syncStatus,
       createdAt: DateTime.utc(2026, 2, 28),
@@ -175,6 +179,48 @@ void main() {
         expect(find.text('Due today'), findsNothing);
         expect(find.byIcon(Icons.calendar_today), findsOneWidget);
       });
+    });
+
+    group('reminder time chip', () {
+      testWidgets('shows alarm icon when reminderTime is set', (tester) async {
+        final futureTime = DateTime.now().add(const Duration(hours: 1));
+        await tester.pumpWidget(
+          buildItem(task: makeTask(reminderTime: futureTime)),
+        );
+        expect(find.byIcon(Icons.alarm), findsOneWidget);
+      });
+
+      testWidgets('hides alarm icon when reminderTime is null', (tester) async {
+        await tester.pumpWidget(buildItem(task: makeTask()));
+        expect(find.byIcon(Icons.alarm), findsNothing);
+      });
+
+      testWidgets('shows both due date and reminder chips together', (
+        tester,
+      ) async {
+        final futureTime = DateTime.now().add(const Duration(hours: 2));
+        await tester.pumpWidget(
+          buildItem(
+            task: makeTask(dueDate: today, reminderTime: futureTime),
+          ),
+        );
+        expect(find.byIcon(Icons.calendar_today), findsOneWidget);
+        expect(find.byIcon(Icons.alarm), findsOneWidget);
+      });
+
+      testWidgets(
+        'shows alarm icon alone (no due date) for quick-reminder tasks',
+        (tester) async {
+          final futureTime = DateTime.now().add(const Duration(minutes: 30));
+          await tester.pumpWidget(
+            buildItem(
+              task: makeTask(reminderTime: futureTime, isQuickReminder: true),
+            ),
+          );
+          expect(find.byIcon(Icons.alarm), findsOneWidget);
+          expect(find.byIcon(Icons.calendar_today), findsNothing);
+        },
+      );
     });
   });
 }

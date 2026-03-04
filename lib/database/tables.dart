@@ -509,6 +509,33 @@ class Tasks extends Table {
   /// When the task was marked as completed.
   DateTimeColumn get completedAt => dateTime().nullable()();
 
+  // -------------------------------------------------------------------------
+  // Local notification fields (ADR-0033 — Scheduled Local Notifications)
+  // -------------------------------------------------------------------------
+
+  /// Exact date-time at which the OS notification should fire.
+  ///
+  /// Distinct from [dueDate] which is date-only for display purposes.
+  /// Null when no notification has been scheduled for this task.
+  /// Only set when the user supplies an explicit time; date-only tasks
+  /// do NOT auto-schedule a notification.
+  DateTimeColumn get reminderTime => dateTime().nullable()();
+
+  /// ID of the scheduled OS notification (flutter_local_notifications).
+  ///
+  /// Stored so the notification can be cancelled on task completion
+  /// or deletion. Null when no notification is scheduled.
+  /// Range: 1000–1999 (task namespace — see ADR-0033 §Notification ID Namespace).
+  IntColumn get notificationId => integer().nullable()();
+
+  /// True when this task was created by a pure reminder phrase
+  /// ("give cat meds in an hour") with no project/action context.
+  ///
+  /// Quick-reminder tasks may be surfaced in a separate "Reminders"
+  /// section of the Tasks screen rather than the main task list.
+  BoolColumn get isQuickReminder =>
+      boolean().withDefault(const Constant(false))();
+
   /// Standard timestamps.
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();

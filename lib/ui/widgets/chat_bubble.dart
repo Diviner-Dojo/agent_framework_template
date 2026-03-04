@@ -15,8 +15,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import '../theme/app_theme.dart' show ChatBubbleColors;
 import '../../utils/timestamp_utils.dart';
+import '../../providers/theme_providers.dart' show BubbleShape;
 
 /// Data for a single cited session in a recall bubble.
 ///
@@ -47,6 +48,7 @@ class RecallCitation {
 /// [videoThumbnailPath] if set, renders a video thumbnail with play overlay.
 /// [videoDuration] the video duration in seconds (shown as overlay badge).
 /// [onVideoTap] callback when the video thumbnail is tapped (opens player).
+/// [bubbleShape] controls the border radius style (rounded, soft square, pill).
 class ChatBubble extends StatelessWidget {
   final String content;
   final String role;
@@ -61,6 +63,9 @@ class ChatBubble extends StatelessWidget {
   final String? videoThumbnailPath;
   final int? videoDuration;
   final VoidCallback? onVideoTap;
+
+  /// Controls the border radius shape of the bubble.
+  final BubbleShape bubbleShape;
 
   /// Prefix for the Hero animation tag. Each screen must use a unique prefix
   /// to avoid duplicate Hero tags when multiple screens are in the widget tree.
@@ -82,10 +87,38 @@ class ChatBubble extends StatelessWidget {
     this.videoThumbnailPath,
     this.videoDuration,
     this.onVideoTap,
+    this.bubbleShape = BubbleShape.rounded,
   });
 
   /// Whether this message was sent by the user.
   bool get isUser => role == 'USER';
+
+  /// Compute the border radius for the bubble based on [shape] and sender.
+  ///
+  /// All shapes preserve the asymmetric "tail" corner (smaller radius on the
+  /// sender's bottom corner) to maintain message direction scanning.
+  static BorderRadius _bubbleRadius(BubbleShape shape, bool isUser) {
+    return switch (shape) {
+      BubbleShape.rounded => BorderRadius.only(
+        topLeft: const Radius.circular(16),
+        topRight: const Radius.circular(16),
+        bottomLeft: Radius.circular(isUser ? 16 : 4),
+        bottomRight: Radius.circular(isUser ? 4 : 16),
+      ),
+      BubbleShape.softSquare => BorderRadius.only(
+        topLeft: const Radius.circular(8),
+        topRight: const Radius.circular(8),
+        bottomLeft: Radius.circular(isUser ? 8 : 2),
+        bottomRight: Radius.circular(isUser ? 2 : 8),
+      ),
+      BubbleShape.pill => BorderRadius.only(
+        topLeft: const Radius.circular(24),
+        topRight: const Radius.circular(24),
+        bottomLeft: Radius.circular(isUser ? 24 : 6),
+        bottomRight: Radius.circular(isUser ? 6 : 24),
+      ),
+    };
+  }
 
   /// Format seconds as mm:ss for the duration badge.
   static String _formatSeconds(int seconds) {
@@ -97,19 +130,20 @@ class ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final bubbleColors = theme.extension<ChatBubbleColors>();
 
-    // Determine bubble color based on sender and theme.
+    // Determine bubble color from the active palette's ThemeExtension.
     final bubbleColor = isUser
-        ? (isDark ? AppTheme.userBubbleDark : AppTheme.userBubbleLight)
-        : (isDark
-              ? AppTheme.assistantBubbleDark
-              : AppTheme.assistantBubbleLight);
+        ? (bubbleColors?.userBubble ?? theme.colorScheme.primary)
+        : (bubbleColors?.assistantBubble ??
+              theme.colorScheme.surfaceContainerHighest);
 
-    // User text is white on colored background; assistant is themed text.
+    // Text color from the ThemeExtension with safe fallbacks.
     final textColor = isUser
-        ? Colors.white
-        : theme.textTheme.bodyLarge?.color ?? Colors.black;
+        ? (bubbleColors?.userText ?? theme.colorScheme.onPrimary)
+        : (bubbleColors?.assistantText ??
+              theme.textTheme.bodyLarge?.color ??
+              Colors.black);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -128,13 +162,7 @@ class ChatBubble extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: bubbleColor,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  // Round the corner opposite to the sender's side.
-                  bottomLeft: Radius.circular(isUser ? 16 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 16),
-                ),
+                borderRadius: _bubbleRadius(bubbleShape, isUser),
                 // Recall mode: left border accent (3px primary color).
                 border: isRecall
                     ? Border(

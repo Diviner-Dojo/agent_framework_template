@@ -124,8 +124,66 @@ void main() {
       );
     }
 
+    testWidgets('renders Theme & Appearance card with palette grid', (
+      tester,
+    ) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      // Theme card is the first card — should be visible without scrolling.
+      expect(find.text('Theme & Appearance'), findsOneWidget);
+
+      // All 7 palette names should be rendered.
+      expect(find.text('Still Water'), findsOneWidget);
+      expect(find.text('Warm Earth'), findsOneWidget);
+      expect(find.text('Soft Lavender'), findsOneWidget);
+      expect(find.text('Forest Floor'), findsOneWidget);
+      expect(find.text('Ember Glow'), findsOneWidget);
+      expect(find.text('Midnight Ink'), findsOneWidget);
+      expect(find.text('Dawn Light'), findsOneWidget);
+
+      // Mode toggle segments.
+      expect(find.text('System'), findsOneWidget);
+      expect(find.text('Light'), findsOneWidget);
+      expect(find.text('Dark'), findsOneWidget);
+
+      // Advanced section (collapsed by default).
+      expect(find.text('Advanced'), findsOneWidget);
+    });
+
+    testWidgets('theme card defaults to still_water palette', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      // Default palette is "Still Water" — verify it's displayed.
+      expect(find.text('Still Water'), findsOneWidget);
+      // Default theme mode is System.
+      expect(find.text('System'), findsOneWidget);
+    });
+
+    testWidgets('tapping a palette updates selection', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      // Tap "Ember Glow" palette.
+      await tester.tap(find.text('Ember Glow'));
+      await tester.pumpAndSettle();
+
+      // Verify the preference was persisted.
+      expect(prefs.getString('theme_palette_id'), 'ember_glow');
+    });
+
     testWidgets('renders Digital Assistant card', (tester) async {
       await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      // Scroll past the Theme & Appearance card to make Digital Assistant
+      // visible (Phase 5A theme card is large and pushes it below fold).
+      await tester.scrollUntilVisible(
+        find.text('Digital Assistant'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Digital Assistant'), findsOneWidget);
@@ -138,6 +196,13 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Digital Assistant'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       expect(find.text('Default assistant: No'), findsOneWidget);
     });
 
@@ -146,11 +211,25 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Digital Assistant'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       expect(find.text('Default assistant: Yes'), findsOneWidget);
     });
 
     testWidgets('has Set as Default Assistant button', (tester) async {
       await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Set as Default Assistant'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Set as Default Assistant'), findsOneWidget);
@@ -176,6 +255,13 @@ void main() {
 
     testWidgets('shows manual instructions fallback', (tester) async {
       await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Digital Assistant'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       // The instructions text should be visible.

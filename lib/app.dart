@@ -35,6 +35,7 @@ import 'providers/llm_providers.dart';
 import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
 import 'providers/settings_providers.dart';
+import 'providers/theme_providers.dart';
 import 'providers/voice_providers.dart';
 import 'ui/screens/check_in_history_screen.dart';
 import 'ui/screens/check_in_screen.dart';
@@ -183,15 +184,43 @@ class _AgenticJournalAppState extends ConsumerState<AgenticJournalApp>
     // is handled by Navigator.pushReplacement/pop, not by initialRoute.
     final hasCompletedOnboarding = ref.read(onboardingNotifierProvider);
 
+    // Theme configuration — driven by user preference via themeProvider.
+    // ADR-0029 evaluated: ref.watch() is safe here because theme changes
+    // trigger animated transitions, not Navigator stack collapses (unlike
+    // initialRoute). See theme_providers.dart for full rationale.
+    final themeState = ref.watch(themeProvider);
+    final palette = themeState.palette;
+    final lightTheme = AppTheme.withCardElevation(
+      AppTheme.fromPalette(palette, Brightness.light),
+      themeState.cardStyle.elevation,
+    );
+    final darkTheme = AppTheme.withCardElevation(
+      AppTheme.fromPalette(palette, Brightness.dark),
+      themeState.cardStyle.elevation,
+    );
+
     return MaterialApp(
       title: 'Agentic Journal',
       debugShowCheckedModeBanner: false,
       navigatorKey: _navigatorKey,
 
-      // Theme configuration — follows device light/dark setting.
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      // Dynamic theme from user's palette and card style preferences.
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeState.themeMode,
+
+      // Apply user's font scale preference as an additive offset on the
+      // system text scale, clamped at 0.8–2.0 effective scale.
+      builder: (context, child) {
+        final systemScale = MediaQuery.of(context).textScaler.scale(1.0);
+        final effectiveScale = themeState.fontScaleFactor(systemScale);
+        return MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(effectiveScale)),
+          child: child!,
+        );
+      },
 
       // Initial route depends on onboarding state.
       initialRoute: hasCompletedOnboarding ? '/' : '/onboarding',

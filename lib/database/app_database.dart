@@ -63,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -242,6 +242,22 @@ class AppDatabase extends _$AppDatabase {
             'check_in_answers',
             'CREATE INDEX IF NOT EXISTS idx_checkin_answers_response_id '
                 'ON check_in_answers (response_id)',
+          ),
+        );
+      }
+      if (from < 11) {
+        // ADR-0033: Scheduled Local Notifications — add reminder fields to tasks.
+        // All columns are nullable/have defaults — backward-compatible with
+        // existing task rows which retain null reminderTime and notificationId.
+        await m.addColumn(tasks, tasks.reminderTime);
+        await m.addColumn(tasks, tasks.notificationId);
+        await m.addColumn(tasks, tasks.isQuickReminder);
+        // Index for efficient notification lookup (cancel on complete/delete).
+        await m.createIndex(
+          Index(
+            'tasks',
+            'CREATE INDEX IF NOT EXISTS idx_tasks_reminder_time '
+                'ON tasks (reminder_time) WHERE reminder_time IS NOT NULL',
           ),
         );
       }
