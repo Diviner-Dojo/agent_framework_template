@@ -603,8 +603,17 @@ class VoiceSessionOrchestrator {
       await _stopListening();
     }
 
-    // Resume previous state.
-    if (wasInContinuousMode &&
+    // Restore state before returning.
+    //
+    // If the caller paused the orchestrator before invoking
+    // capturePhotoDescription() (e.g. for audio focus during camera launch),
+    // previousPhase is VoiceLoopPhase.paused.  Restore that state so the
+    // caller's orchestrator.resume() call can handle audio focus re-request
+    // and STT restart via _phaseBeforePause — if we call _startListening()
+    // here instead, resume() sees phase=listening and silently no-ops.
+    if (previousPhase == VoiceLoopPhase.paused) {
+      _updateState(state.copyWith(phase: VoiceLoopPhase.paused));
+    } else if (wasInContinuousMode &&
         previousPhase != VoiceLoopPhase.idle &&
         state.phase != VoiceLoopPhase.idle) {
       await _startListening();

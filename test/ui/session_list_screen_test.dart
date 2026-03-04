@@ -3,12 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/calendar_providers.dart';
+import 'package:agentic_journal/providers/last_capture_mode_provider.dart';
+import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
 import 'package:agentic_journal/providers/questionnaire_providers.dart';
 import 'package:agentic_journal/providers/reminder_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
+import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/ui/screens/session_list_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('SessionListScreen', () {
@@ -710,6 +714,150 @@ void main() {
         expect(find.text('Quick check-in'), findsNothing);
         expect(find.text('Just browse'), findsNothing);
       });
+    });
+
+    // ---------------------------------------------------------------------------
+    // _openQuickCapturePalette dispatch branch tests (Advisory A1 from
+    // REV-20260304-142456 — coverage for the 5 routing branches).
+    // ---------------------------------------------------------------------------
+    group('_openQuickCapturePalette dispatch branches', () {
+      // Shared base overrides that keep the screen buildable for these tests.
+      List<Override> baseOverrides({SharedPreferences? prefs}) {
+        final p = prefs;
+        return [
+          paginatedSessionsProvider.overrideWith(
+            (ref) => Stream.value(<JournalSession>[]),
+          ),
+          photoCountProvider.overrideWith((ref) => Future.value(0)),
+          dailyReminderVisibleProvider.overrideWith((ref) => false),
+          if (p != null) sharedPreferencesProvider.overrideWithValue(p),
+        ];
+      }
+
+      testWidgets(
+        'tapping Mood Tap tile opens QuickMoodTapSheet (mood-tap dispatch)',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({});
+          final prefs = await SharedPreferences.getInstance();
+
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: baseOverrides(prefs: prefs),
+              child: const MaterialApp(home: SessionListScreen()),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Open the Quick Capture Palette.
+          await tester.tap(find.byType(FloatingActionButton));
+          await tester.pumpAndSettle();
+          expect(find.text('Mood Tap'), findsOneWidget);
+
+          // Tap the Mood Tap tile.
+          await tester.tap(find.text('Mood Tap'));
+          await tester.pumpAndSettle();
+
+          // QuickMoodTapSheet should now be visible.
+          expect(
+            find.text('How are you feeling?'),
+            findsOneWidget,
+            reason:
+                'tapping Mood Tap must open QuickMoodTapSheet, not navigate '
+                'to a session screen',
+          );
+        },
+      );
+
+      testWidgets(
+        'tapping Voice tile enables voiceModeEnabledProvider (voice pre-enable dispatch)',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({});
+          final prefs = await SharedPreferences.getInstance();
+
+          // Use a real VoiceModeNotifier so we can read the enabled state.
+          bool? voiceModeEnabled;
+
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                ...baseOverrides(prefs: prefs),
+                // Intercept session start so navigation doesn't fail.
+                paginatedSessionsProvider.overrideWith(
+                  (ref) => Stream.value(<JournalSession>[]),
+                ),
+              ],
+              child: Builder(
+                builder: (context) {
+                  return const MaterialApp(home: SessionListScreen());
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Capture a reference to the ProviderScope's container.
+          // containerOf() requires a descendant element, not the ProviderScope itself.
+          final element = tester.element(find.byType(SessionListScreen));
+          final container = ProviderScope.containerOf(element);
+
+          // Open palette and tap Voice.
+          await tester.tap(find.byType(FloatingActionButton));
+          await tester.pumpAndSettle();
+          expect(find.text('Voice'), findsOneWidget);
+
+          await tester.tap(find.text('Voice'));
+          // Pump a single frame — voice mode is set synchronously before
+          // the async _startNewSession() call.
+          await tester.pump();
+
+          voiceModeEnabled = container.read(voiceModeEnabledProvider);
+          expect(
+            voiceModeEnabled,
+            isTrue,
+            reason:
+                'voice pre-enable must set voiceModeEnabledProvider=true '
+                'before _startNewSession() is called',
+          );
+        },
+      );
+
+      testWidgets(
+        'tapping Write/Check-In tiles persists mode key via lastCaptureModeProvider',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({});
+          final prefs = await SharedPreferences.getInstance();
+
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: baseOverrides(prefs: prefs),
+              child: const MaterialApp(home: SessionListScreen()),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // containerOf() requires a descendant element, not the ProviderScope itself.
+          final element = tester.element(find.byType(SessionListScreen));
+          final container = ProviderScope.containerOf(element);
+
+          // Initially no preference.
+          expect(container.read(lastCaptureModeProvider), isNull);
+
+          // Open palette and tap Write.
+          await tester.tap(find.byType(FloatingActionButton));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Write'));
+          await tester.pump();
+
+          // lastCaptureModeProvider must be persisted before _startNewSession.
+          expect(
+            container.read(lastCaptureModeProvider),
+            equals('text'),
+            reason:
+                'tapping Write must persist mode key "text" via '
+                'lastCaptureModeProvider before navigation',
+          );
+        },
+      );
     });
   });
 }
