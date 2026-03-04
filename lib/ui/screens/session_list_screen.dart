@@ -141,7 +141,7 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
       // pre-highlighted so repeat captures require zero mode-selection overhead.
       floatingActionButton: FloatingActionButton(
         onPressed: _isStarting ? null : () => _openQuickCapturePalette(context),
-        tooltip: 'New journal entry',
+        tooltip: _isStarting ? 'Opening...' : 'New journal entry',
         child: _isStarting
             ? const SizedBox(
                 width: 24,
@@ -752,8 +752,10 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
       return;
     }
 
-    // Voice mode: pre-enable the mic before navigating so the voice button
-    // is already active when the session screen opens.
+    // Voice mode: pre-enable the mic BEFORE navigating so session_providers
+    // reads voiceModeEnabledProvider as true synchronously when the session
+    // is created. If setEnabled were called after navigation, the session
+    // screen's initState would already have read the old (false) value.
     if (selected == 'voice') {
       await ref.read(voiceModeEnabledProvider.notifier).setEnabled(true);
       if (!context.mounted) return;

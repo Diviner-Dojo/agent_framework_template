@@ -341,5 +341,25 @@ void main() {
         findsOneWidget,
       );
     });
+
+    // regression: maxLines: null caused the text field to expand unboundedly,
+    // pushing the send button off screen when the user typed a long message.
+    // Fix: maxLines: 6 caps the visible height while still allowing scrolling.
+    testWidgets(
+      'text field has maxLines: 6 so send button stays on screen (regression)',
+      tags: ['regression'],
+      (tester) async {
+        final container = await buildTestWidget(tester);
+        addTearDown(container.dispose);
+
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(
+          textField.maxLines,
+          equals(6),
+          reason:
+              'maxLines must be 6 to prevent send button overflow on long input',
+        );
+      },
+    );
   });
 }

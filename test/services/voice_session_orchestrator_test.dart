@@ -1504,5 +1504,53 @@ void main() {
         });
       });
     });
+
+    // regression: capturePhotoDescription() called _startListening() at the
+    // end of its flow, leaving phase=listening.  The caller's
+    // orchestrator.resume() (which requires phase=paused) was then a silent
+    // no-op — STT never restarted after the photo was saved.
+    // Fix: when previousPhase==paused, restore paused so resume() works.
+    group('capturePhotoDescription paused-state restoration (regression)', () {
+      test(
+        'capturePhotoDescription restores paused phase so caller resume() '
+        'works (regression)',
+        tags: ['regression'],
+        () async {
+          // Put orchestrator in continuous + listening state.
+          await orchestrator.startContinuousMode('Hello');
+          expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+
+          // Caller pauses for camera (audio focus conflict).
+          await orchestrator.pause();
+          expect(orchestrator.state.phase, VoiceLoopPhase.paused);
+
+          // Start capturePhotoDescription (async) — emit a final STT result
+          // on the next microtask so the description completes immediately
+          // rather than waiting for the 5-second silence timeout.
+          final captureTask = orchestrator.capturePhotoDescription();
+          await Future<void>.delayed(Duration.zero);
+          mockStt.emitResult(
+            const SpeechResult(text: 'a blue couch', isFinal: true),
+          );
+          final description = await captureTask;
+
+          expect(description, equals('a blue couch'));
+
+          // Key assertion: phase must be paused (not listening) so the
+          // caller's orchestrator.resume() call is not a no-op.
+          expect(
+            orchestrator.state.phase,
+            VoiceLoopPhase.paused,
+            reason:
+                'capturePhotoDescription must restore paused state so '
+                'orchestrator.resume() can restart STT',
+          );
+
+          // Verify resume() transitions correctly to listening.
+          await orchestrator.resume(silent: true);
+          expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+        },
+      );
+    });
   });
 }

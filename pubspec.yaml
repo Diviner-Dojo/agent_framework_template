@@ -1,7 +1,7 @@
 name: agentic_journal
 description: "AI-powered journaling app with offline-first architecture"
 publish_to: 'none'
-version: 0.31.0+30
+version: 0.31.1+31
 
 environment:
   sdk: ^3.11.0

@@ -721,7 +721,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                       ? !isWaiting
                       : !isWaiting && !isListening && !isSpeaking,
                   textCapitalization: TextCapitalization.sentences,
-                  maxLines: null, // Allows multi-line input.
+                  maxLines: 6, // Cap growth so send button stays on screen.
                   decoration: InputDecoration(
                     hintText: isListening && !_isTextInputMode
                         ? 'Listening...'
