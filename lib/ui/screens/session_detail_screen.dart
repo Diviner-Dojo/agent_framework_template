@@ -52,6 +52,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   List<QuestionnaireItem> _checkInItems = [];
   bool _isLoading = true;
   bool _isResuming = false;
+  bool _isRegenerating = false;
 
   // Editable tag state (Phase 4A).  Lists are mutable so chip callbacks can
   // modify them in-place and call setState to trigger a rebuild.
@@ -249,6 +250,168 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   }
 
   // ---------------------------------------------------------------------------
+  // Message editing (Phase 4F — voice transcription correction)
+  // ---------------------------------------------------------------------------
+
+  /// Long-press a USER message to open an edit sheet.
+  ///
+  /// On save: updates the DB, reloads the transcript, and regenerates the
+  /// AI session summary so the metadata reflects the corrected content.
+  Future<void> _showEditMessageSheet(JournalMessage message) async {
+    final edited = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        // Controller created inside builder to avoid dispose-during-animation
+        // crashes (same pattern as _showAddTagDialog / PR #71).
+        final controller = TextEditingController(text: message.content);
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Edit message', style: Theme.of(ctx).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: null,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Message text',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () =>
+                        Navigator.of(ctx).pop(controller.text.trim()),
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // B3: reject null, empty, or unchanged edits before any DB write.
+    if (edited == null ||
+        edited.isEmpty ||
+        edited == message.content ||
+        !mounted) {
+      return;
+    }
+
+    final db = ref.read(databaseProvider);
+    final messageDao = MessageDao(db);
+    await messageDao.updateMessageContent(message.messageId, edited);
+
+    // Reload the transcript so the edited bubble is visible immediately.
+    await _loadData();
+
+    // Regenerate summary to reflect corrected content.
+    // B2: wrap in try/finally for loading state and try/catch for API errors.
+    if (!mounted) return;
+    setState(() => _isRegenerating = true);
+    try {
+      await _regenerateSummary();
+    } on Exception {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Summary could not be updated — try again later.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isRegenerating = false);
+    }
+  }
+
+  /// Re-run AI summary generation for a past session and persist the result.
+  ///
+  /// Called after a message edit so the displayed summary and metadata stay
+  /// consistent with the (corrected) transcript.
+  Future<void> _regenerateSummary() async {
+    final db = ref.read(databaseProvider);
+    final messageDao = MessageDao(db);
+    final sessionDao = SessionDao(db);
+    final agent = ref.read(agentRepositoryProvider);
+
+    final messages = await messageDao.getMessagesForSession(widget.sessionId);
+    final userMessages = messages
+        .where((m) => m.role == 'USER')
+        .map((m) => m.content)
+        .toList();
+
+    if (userMessages.isEmpty) return;
+
+    // Reconstruct the full conversation transcript for context.
+    final allMessages = messages
+        .where((m) => m.role == 'USER' || m.role == 'ASSISTANT')
+        .map((m) => {'role': m.role.toLowerCase(), 'content': m.content})
+        .toList();
+
+    final response = await agent.generateSummary(
+      userMessages: userMessages,
+      allMessages: allMessages,
+    );
+
+    final metadata = response.metadata;
+
+    // B1: when Claude metadata is absent (rule-based fallback or offline),
+    // preserve the existing tag columns by writing back the in-memory state
+    // rather than passing null. Passing null to updateSessionMetadata writes
+    // Value(null) to the DB column, silently wiping user-edited or AI-extracted
+    // tags. Only update tag columns when Claude returns structured metadata.
+    final String? newMoodTags;
+    final String? newPeople;
+    final String? newTopicTags;
+    if (metadata != null) {
+      newMoodTags = metadata.moodTags != null
+          ? jsonEncode(metadata.moodTags)
+          : null;
+      newPeople = metadata.people != null ? jsonEncode(metadata.people) : null;
+      newTopicTags = metadata.topicTags != null
+          ? jsonEncode(metadata.topicTags)
+          : null;
+    } else {
+      // Preserve whatever the user last loaded — don't clobber with null.
+      newMoodTags = _moodTags.isEmpty ? null : jsonEncode(_moodTags);
+      newPeople = _people.isEmpty ? null : jsonEncode(_people);
+      newTopicTags = _topicTags.isEmpty ? null : jsonEncode(_topicTags);
+    }
+
+    await sessionDao.updateSessionMetadata(
+      widget.sessionId,
+      summary:
+          metadata?.summary ??
+          (response.content.isNotEmpty ? response.content : null),
+      moodTags: newMoodTags,
+      people: newPeople,
+      topicTags: newTopicTags,
+    );
+
+    // Reload to show the updated summary header.
+    if (mounted) await _loadData();
+  }
+
+  // ---------------------------------------------------------------------------
   // Tag section widget (Phase 4A)
   // ---------------------------------------------------------------------------
 
@@ -364,7 +527,26 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       body: Column(
         children: [
           // Session summary header (if available).
-          if (session.summary != null)
+          // Shows a subtle spinner while summary regeneration is in progress.
+          if (_isRegenerating)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Updating summary\u2026',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            )
+          else if (session.summary != null)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -425,7 +607,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                       final video = msg.videoId != null
                           ? _videosByVideoId[msg.videoId!]
                           : null;
-                      return ChatBubble(
+                      final bubble = ChatBubble(
                         content: msg.content,
                         role: msg.role,
                         timestamp: msg.timestamp,
@@ -445,6 +627,15 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                             : null,
                         bubbleShape: ref.watch(themeProvider).bubbleShape,
                       );
+                      // USER messages are long-press editable to correct voice
+                      // transcription errors (e.g. "Shawn" vs "Sean").
+                      if (msg.role == 'USER') {
+                        return GestureDetector(
+                          onLongPress: () => _showEditMessageSheet(msg),
+                          child: bubble,
+                        );
+                      }
+                      return bubble;
                     },
                   ),
           ),

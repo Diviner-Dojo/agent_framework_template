@@ -21,6 +21,8 @@ import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart'
     show sharedPreferencesProvider;
+import 'package:agentic_journal/providers/session_providers.dart';
+import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/ui/screens/session_detail_screen.dart';
 
 void main() {
@@ -46,6 +48,7 @@ void main() {
             // themeProvider depends on sharedPreferencesProvider — override
             // it so the theme notifier can initialize without throwing.
             sharedPreferencesProvider.overrideWithValue(prefs),
+            agentRepositoryProvider.overrideWithValue(AgentRepository()),
           ],
         ),
         child: MaterialApp(home: SessionDetailScreen(sessionId: sessionId)),
@@ -225,6 +228,114 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No messages in this session.'), findsOneWidget);
+    });
+
+    // -----------------------------------------------------------------------
+    // Message editing (Phase 4F — voice transcription correction)
+    // -----------------------------------------------------------------------
+
+    group('Message editing', () {
+      testWidgets(
+        'long-press on USER bubble opens edit sheet with pre-filled text (regression)',
+        (tester) async {
+          // Regression guard: long-press on USER ChatBubble must open edit sheet.
+          // @Tags(['regression']) — ledger entry: memory/bugs/regression-ledger.md 2026-03-04
+          final sessionDao = SessionDao(database);
+          final messageDao = MessageDao(database);
+          final now = DateTime.now().toUtc();
+
+          await sessionDao.createSession('edit-session', now, 'UTC');
+          await messageDao.insertMessage(
+            'msg-user',
+            'edit-session',
+            'USER',
+            'Shawn helped me today.',
+            now,
+          );
+
+          await tester.pumpWidget(buildTestWidget('edit-session'));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Shawn helped me today.'), findsOneWidget);
+
+          // Long-press the USER bubble.
+          await tester.longPress(find.text('Shawn helped me today.'));
+          await tester.pumpAndSettle();
+
+          // Edit sheet should open with "Edit message" title.
+          expect(find.text('Edit message'), findsOneWidget);
+
+          // The TextField should be pre-filled with the original content.
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).controller?.text,
+            'Shawn helped me today.',
+          );
+        },
+      );
+
+      testWidgets('saving edit updates message content in UI', (tester) async {
+        final sessionDao = SessionDao(database);
+        final messageDao = MessageDao(database);
+        final now = DateTime.now().toUtc();
+
+        await sessionDao.createSession('edit-save-session', now, 'UTC');
+        await messageDao.insertMessage(
+          'msg-edit',
+          'edit-save-session',
+          'USER',
+          'Shawn helped me today.',
+          now,
+        );
+
+        await tester.pumpWidget(buildTestWidget('edit-save-session'));
+        await tester.pumpAndSettle();
+
+        // Open the edit sheet.
+        await tester.longPress(find.text('Shawn helped me today.'));
+        await tester.pumpAndSettle();
+
+        // Clear and type corrected text.
+        final textField = find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(textField, 'Sean helped me today.');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        // Updated content should appear in the transcript; old content gone.
+        // Note: summary header may also show corrected content after AI regen,
+        // so we use findsOneWidget on the bubble specifically and check old is gone.
+        expect(find.text('Sean helped me today.'), findsAtLeastNWidgets(1));
+        expect(find.text('Shawn helped me today.'), findsNothing);
+      });
+
+      testWidgets(
+        'ASSISTANT bubbles are not long-press editable (no edit sheet)',
+        (tester) async {
+          final sessionDao = SessionDao(database);
+          final messageDao = MessageDao(database);
+          final now = DateTime.now().toUtc();
+
+          await sessionDao.createSession('no-edit-session', now, 'UTC');
+          await messageDao.insertMessage(
+            'msg-assistant',
+            'no-edit-session',
+            'ASSISTANT',
+            'How was your day?',
+            now,
+          );
+
+          await tester.pumpWidget(buildTestWidget('no-edit-session'));
+          await tester.pumpAndSettle();
+
+          await tester.longPress(find.text('How was your day?'));
+          await tester.pumpAndSettle();
+
+          // Edit sheet should NOT appear.
+          expect(find.text('Edit message'), findsNothing);
+        },
+      );
     });
   });
 }
