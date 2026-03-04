@@ -5,10 +5,13 @@
 // Shows all messages as chat bubbles (same as the active session screen)
 // but without the text input field — this is a view-only screen.
 // Includes a "Continue Entry" button to resume the session (ADR-0014).
+// Tag chips (mood, people, topics) are editable inline (Phase 4A).
 //
 // Accessed by tapping a SessionCard in the session list screen.
 // The session ID is passed as a route argument.
 // ===========================================================================
+
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,6 +51,12 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   List<QuestionnaireItem> _checkInItems = [];
   bool _isLoading = true;
   bool _isResuming = false;
+
+  // Editable tag state (Phase 4A).  Lists are mutable so chip callbacks can
+  // modify them in-place and call setState to trigger a rebuild.
+  List<String> _moodTags = [];
+  List<String> _people = [];
+  List<String> _topicTags = [];
 
   @override
   void initState() {
@@ -108,8 +117,202 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         _checkInResponse = checkInResponse;
         _checkInItems = checkInItems;
         _isLoading = false;
+        // Parse tag columns from JSON arrays (Phase 4A).
+        if (session != null) {
+          _moodTags = _parseJsonArray(session.moodTags);
+          _people = _parseJsonArray(session.people);
+          _topicTags = _parseJsonArray(session.topicTags);
+        }
       });
     }
+  }
+
+  /// Decode a nullable JSON-array column into a mutable list of strings.
+  ///
+  /// Returns an empty list for null, empty, or malformed values — never throws.
+  static List<String> _parseJsonArray(String? jsonStr) {
+    if (jsonStr == null || jsonStr.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(jsonStr);
+      if (decoded is List) {
+        return List<String>.from(decoded.whereType<String>());
+      }
+      return [];
+    } on FormatException {
+      return [];
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tag editing helpers (Phase 4A)
+  // ---------------------------------------------------------------------------
+
+  /// Persist all three tag lists to the database.
+  ///
+  /// Encodes each list as a JSON array, or null when empty (consistent with
+  /// the format written by [SessionDao.endSession] and AI metadata extraction).
+  Future<void> _saveTags() async {
+    final db = ref.read(databaseProvider);
+    final sessionDao = SessionDao(db);
+    await sessionDao.updateSessionTags(
+      widget.sessionId,
+      moodTags: _moodTags.isEmpty ? null : jsonEncode(_moodTags),
+      people: _people.isEmpty ? null : jsonEncode(_people),
+      topicTags: _topicTags.isEmpty ? null : jsonEncode(_topicTags),
+    );
+  }
+
+  /// Remove [tag] from [list] and persist.  Called by InputChip.onDeleted.
+  void _deleteTag(String tag, List<String> list) {
+    setState(() => list.remove(tag));
+    _saveTags(); // fire-and-forget; local SQLite write is low-risk
+  }
+
+  /// Open an add-tag dialog and append the entered value to [list].
+  ///
+  /// The TextEditingController is created inside the builder callback so it
+  /// stays valid during the pop animation.  Disposing outside the builder
+  /// causes 'TextEditingController used after dispose' crashes (same pattern
+  /// as the fix applied to settings_screen.dart in PR #71).
+  Future<void> _showAddTagDialog(List<String> list) async {
+    final added = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('Add tag'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Enter tag'),
+            textCapitalization: TextCapitalization.words,
+            onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+    if (added != null && added.isNotEmpty && !list.contains(added)) {
+      setState(() => list.add(added));
+      await _saveTags();
+    }
+  }
+
+  /// Open an edit-tag dialog pre-filled with [tag] and replace it in [list].
+  ///
+  /// Controller created inside the builder for the same reason as
+  /// [_showAddTagDialog] — avoids dispose-during-animation crashes.
+  Future<void> _showEditTagDialog(String tag, List<String> list) async {
+    final edited = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final controller = TextEditingController(text: tag);
+        return AlertDialog(
+          title: const Text('Edit tag'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Enter tag'),
+            textCapitalization: TextCapitalization.words,
+            onSubmitted: (v) => Navigator.of(ctx).pop(v.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+    if (edited != null && edited.isNotEmpty && edited != tag) {
+      setState(() {
+        final index = list.indexOf(tag);
+        if (index >= 0) list[index] = edited;
+      });
+      await _saveTags();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tag section widget (Phase 4A)
+  // ---------------------------------------------------------------------------
+
+  /// Render the three editable tag rows (Mood, People, Topics).
+  ///
+  /// Each row has [InputChip]s for existing tags (tap to edit, ×  to remove)
+  /// and an [IconButton] to add a new tag.  Rows are always shown so users
+  /// can add tags even when the AI extracted none.
+  Widget _buildTagSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTagRow('Mood', _moodTags),
+          _buildTagRow('People', _people),
+          _buildTagRow('Topics', _topicTags),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTagRow(String label, List<String> tags) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 56,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ...tags.map(
+                  (tag) => InputChip(
+                    label: Text(tag),
+                    onPressed: () => _showEditTagDialog(tag, tags),
+                    onDeleted: () => _deleteTag(tag, tags),
+                    // Unique per-tag tooltip so tests can find each delete
+                    // button with find.byTooltip('Remove <tag>').
+                    deleteButtonTooltipMessage: 'Remove $tag',
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add, size: 20),
+                  tooltip: 'Add $label tag',
+                  onPressed: () => _showAddTagDialog(tags),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -190,6 +393,10 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                 ),
               ),
             ),
+
+          // Editable tag chips (Phase 4A) — mood, people, topics.
+          // Always shown so users can add tags even when AI extracted none.
+          _buildTagSection(),
 
           // Pulse Check-In summary — shown when a check-in was recorded for
           // this session (Task 7 / Phase 1 summary card in detail view).
