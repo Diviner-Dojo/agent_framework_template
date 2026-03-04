@@ -148,6 +148,73 @@ void main() {
       expect(results.count, 1);
       expect(results.items[0].sessionId, 's2');
     });
+
+    // Regression: filter-only browse returned empty results because
+    // searchEntries returned early when query was empty, ignoring active filters.
+    // Fix: early return only when BOTH query is empty AND no filters are active.
+    test(
+      'filter-only browse: empty query with active mood filter returns results (regression)',
+      () async {
+        await createSessionWith(
+          id: 's1',
+          startTime: DateTime.utc(2026, 2, 19),
+          summary: 'A happy day',
+          moodTags: ['happy'],
+        );
+        await createSessionWith(
+          id: 's2',
+          startTime: DateTime.utc(2026, 2, 18),
+          summary: 'A tough day',
+          moodTags: ['anxious'],
+        );
+
+        final results = await searchRepo.searchEntries(
+          '',
+          filters: SearchFilters(moodTags: ['happy']),
+        );
+        expect(results.count, 1);
+        expect(results.items[0].sessionId, 's1');
+        // Filter-only results come through as summary matches.
+        expect(results.items[0].matchSource, MatchSource.summary);
+      },
+    );
+
+    test(
+      'filter-only browse: empty query with date filter returns sessions in range (regression)',
+      () async {
+        await createSessionWith(
+          id: 's1',
+          startTime: DateTime.utc(2026, 2, 10),
+          summary: 'Early session',
+        );
+        await createSessionWith(
+          id: 's2',
+          startTime: DateTime.utc(2026, 2, 20),
+          summary: 'Late session',
+        );
+
+        final results = await searchRepo.searchEntries(
+          '',
+          filters: SearchFilters(dateStart: DateTime.utc(2026, 2, 15)),
+        );
+        expect(results.count, 1);
+        expect(results.items[0].sessionId, 's2');
+      },
+    );
+
+    test(
+      'empty query with no filters still returns empty results (unchanged behaviour)',
+      () async {
+        await createSessionWith(
+          id: 's1',
+          startTime: DateTime.utc(2026, 2, 19),
+          summary: 'A session',
+        );
+
+        final results = await searchRepo.searchEntries('');
+        expect(results.isEmpty, isTrue);
+      },
+    );
   });
 
   group('SearchRepository.getSessionContext', () {

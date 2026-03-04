@@ -47,11 +47,13 @@ class SearchRepository {
     SearchFilters filters = SearchFilters.empty,
   }) async {
     final trimmed = query.trim();
-    if (trimmed.isEmpty) {
+    if (trimmed.isEmpty && !filters.hasActiveFilters) {
       return SearchResults(query: query);
     }
 
-    // Run session and message search in parallel.
+    // Run session search (always) and message search (only when keyword given).
+    // Filter-only browse has no keyword to match in message content, so message
+    // search is skipped — it would return an empty list anyway.
     final sessionsFuture = _sessionDao.searchSessions(
       trimmed,
       dateStart: filters.dateStart,
@@ -60,7 +62,9 @@ class SearchRepository {
       people: filters.people,
       topicTags: filters.topicTags,
     );
-    final messagesFuture = _messageDao.searchMessages(trimmed);
+    final messagesFuture = trimmed.isNotEmpty
+        ? _messageDao.searchMessages(trimmed)
+        : Future.value([]);
 
     final sessions = await sessionsFuture;
     final messages = await messagesFuture;
@@ -69,8 +73,12 @@ class SearchRepository {
     final summaryMatchIds = <String>{for (final s in sessions) s.sessionId};
 
     // Fetch snippets for all summary matches in parallel.
+    // For filter-only browse (no keyword), snippets will be empty lists —
+    // the result cards still show session metadata (date, summary, tags).
     final summarySnippetFutures = sessions.map(
-      (s) => _messageDao.getMessageSnippets(s.sessionId, trimmed),
+      (s) => trimmed.isNotEmpty
+          ? _messageDao.getMessageSnippets(s.sessionId, trimmed)
+          : Future.value(<String>[]),
     );
     final summarySnippets = await Future.wait(summarySnippetFutures);
 
@@ -88,6 +96,7 @@ class SearchRepository {
     }
 
     // Find sessions that matched via messages but NOT via summary.
+    // Only relevant when a keyword search was run.
     final messageOnlySessionIds = <String>{};
     for (final message in messages) {
       if (!summaryMatchIds.contains(message.sessionId) &&

@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:drift/native.dart';
 
 import 'package:agentic_journal/database/app_database.dart';
+import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/models/search_models.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
@@ -221,6 +222,55 @@ void main() {
       // Should have "Clear date filter" button.
       expect(find.text('Clear date filter'), findsOneWidget);
     });
+  });
+
+  // Regression: _buildResultsBody showed pre-search state ('Search your journal')
+  // when query was empty even if filters were active. Fix: guard now checks
+  // query.isEmpty && !filters.hasActiveFilters.
+  // See: memory/bugs/regression-ledger.md — 'Search filter-only browse'
+  group('Search screen — filter-only browse UI (regression)', () {
+    testWidgets(
+      'active mood filter with empty query shows results, not pre-search state',
+      (tester) async {
+        // Seed a session with a happy mood tag.
+        final sessionDao = SessionDao(database);
+        await sessionDao.createSession('s1', DateTime.utc(2026, 2, 19), 'UTC');
+        await sessionDao.endSession(
+          's1',
+          DateTime.utc(2026, 2, 19, 0, 30),
+          summary: 'Good day',
+          moodTags: '["happy"]',
+        );
+
+        await tester.pumpWidget(buildSearchScreen(moodTags: ['happy']));
+        await tester.pumpAndSettle();
+
+        // Activate mood filter — no query typed.
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(SearchScreen)),
+        );
+        container.read(searchFiltersProvider.notifier).state = SearchFilters(
+          moodTags: ['happy'],
+        );
+        await tester.pumpAndSettle();
+
+        // Pre-search state must NOT appear when filters are active.
+        expect(find.text('Search your journal'), findsNothing);
+        // The session card should appear in the results list.
+        expect(find.text('No entries found'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'no query and no filters shows pre-search state (unchanged behaviour)',
+      (tester) async {
+        await tester.pumpWidget(buildSearchScreen());
+        await tester.pumpAndSettle();
+
+        // Default state: no query, no filters — pre-search prompt must show.
+        expect(find.text('Search your journal'), findsOneWidget);
+      },
+    );
   });
 
   group('Search screen — error state', () {

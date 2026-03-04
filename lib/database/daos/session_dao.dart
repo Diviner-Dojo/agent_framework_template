@@ -558,52 +558,58 @@ class SessionDao {
     List<String>? people,
     List<String>? topicTags,
   }) async {
-    final escaped = escapeLikeWildcards(query);
-    final pattern = '%$escaped%';
-
     final select = _db.select(_db.journalSessions)
       ..where((s) {
-        // Keyword match across summary and metadata columns.
-        Expression<bool> keywordMatch =
-            LikeWithEscape(s.summary, pattern) |
-            LikeWithEscape(s.moodTags, pattern) |
-            LikeWithEscape(s.people, pattern) |
-            LikeWithEscape(s.topicTags, pattern);
+        // Start with keyword match when a query is provided.
+        // When query is empty (filter-only browse), skip the keyword clause
+        // so that all sessions are candidates before tag/date filtering.
+        Expression<bool>? constraint;
+        if (query.isNotEmpty) {
+          final escaped = escapeLikeWildcards(query);
+          final pattern = '%$escaped%';
+          constraint =
+              LikeWithEscape(s.summary, pattern) |
+              LikeWithEscape(s.moodTags, pattern) |
+              LikeWithEscape(s.people, pattern) |
+              LikeWithEscape(s.topicTags, pattern);
+        }
 
         // Apply optional date range filter.
         if (dateStart != null) {
-          keywordMatch =
-              keywordMatch & s.startTime.isBiggerOrEqualValue(dateStart);
+          final c = s.startTime.isBiggerOrEqualValue(dateStart);
+          constraint = constraint == null ? c : constraint & c;
         }
         if (dateEnd != null) {
-          keywordMatch =
-              keywordMatch & s.startTime.isSmallerOrEqualValue(dateEnd);
+          final c = s.startTime.isSmallerOrEqualValue(dateEnd);
+          constraint = constraint == null ? c : constraint & c;
         }
 
         // Apply optional metadata tag filters (AND logic — all must match).
         if (moodTags != null && moodTags.isNotEmpty) {
           for (final tag in moodTags) {
             final tagPattern = '%${escapeLikeWildcards(tag)}%';
-            keywordMatch =
-                keywordMatch & LikeWithEscape(s.moodTags, tagPattern);
+            final c = LikeWithEscape(s.moodTags, tagPattern);
+            constraint = constraint == null ? c : constraint & c;
           }
         }
         if (people != null && people.isNotEmpty) {
           for (final person in people) {
             final personPattern = '%${escapeLikeWildcards(person)}%';
-            keywordMatch =
-                keywordMatch & LikeWithEscape(s.people, personPattern);
+            final c = LikeWithEscape(s.people, personPattern);
+            constraint = constraint == null ? c : constraint & c;
           }
         }
         if (topicTags != null && topicTags.isNotEmpty) {
           for (final tag in topicTags) {
             final tagPattern = '%${escapeLikeWildcards(tag)}%';
-            keywordMatch =
-                keywordMatch & LikeWithEscape(s.topicTags, tagPattern);
+            final c = LikeWithEscape(s.topicTags, tagPattern);
+            constraint = constraint == null ? c : constraint & c;
           }
         }
 
-        return keywordMatch;
+        // If no constraints at all (shouldn't happen — callers guard this),
+        // return all sessions.
+        return constraint ?? const Constant(true);
       })
       ..orderBy([
         (s) => OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),

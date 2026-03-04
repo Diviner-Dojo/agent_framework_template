@@ -54,7 +54,7 @@ final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
   final query = ref.watch(searchQueryProvider);
   final filters = ref.watch(searchFiltersProvider);
 
-  if (query.trim().isEmpty) {
+  if (query.trim().isEmpty && !filters.hasActiveFilters) {
     return SearchResults(query: query);
   }
 

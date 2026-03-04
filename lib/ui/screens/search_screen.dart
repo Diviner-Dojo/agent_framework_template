@@ -152,8 +152,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   ) {
     final theme = Theme.of(context);
 
-    // Pre-search state: no query entered yet.
-    if (query.trim().isEmpty) {
+    // Pre-search state: no query entered yet and no filters active.
+    if (query.trim().isEmpty && !filters.hasActiveFilters) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
