@@ -22,6 +22,7 @@ import 'package:agentic_journal/database/daos/session_dao.dart';
 import 'package:agentic_journal/providers/calendar_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
 import 'package:agentic_journal/providers/questionnaire_providers.dart';
+import 'package:agentic_journal/providers/reminder_providers.dart';
 import 'package:agentic_journal/providers/resurfacing_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
@@ -83,6 +84,7 @@ void main() {
         isGoogleConnectedProvider.overrideWith(
           (ref) => GoogleConnectionNotifier(_fakeAuthService),
         ),
+        dailyReminderVisibleProvider.overrideWith((ref) => false),
       ],
       child: MaterialApp(
         home: const SessionListScreen(),
@@ -241,6 +243,7 @@ void main() {
             isGoogleConnectedProvider.overrideWith(
               (ref) => GoogleConnectionNotifier(_fakeAuthService),
             ),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: MaterialApp(
             home: const SessionListScreen(),
@@ -339,6 +342,7 @@ void main() {
               isGoogleConnectedProvider.overrideWith(
                 (ref) => GoogleConnectionNotifier(_fakeAuthService),
               ),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: MaterialApp(
               home: const SessionListScreen(),
@@ -419,6 +423,7 @@ void main() {
             isGoogleConnectedProvider.overrideWith(
               (ref) => GoogleConnectionNotifier(_fakeAuthService),
             ),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: MaterialApp(
             home: const SessionListScreen(),
@@ -515,6 +520,7 @@ void main() {
                 isGoogleConnectedProvider.overrideWith(
                   (ref) => GoogleConnectionNotifier(_fakeAuthService),
                 ),
+                dailyReminderVisibleProvider.overrideWith((ref) => false),
               ],
               child: MaterialApp(
                 home: const SessionListScreen(),

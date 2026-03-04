@@ -20,9 +20,11 @@ import '../../providers/database_provider.dart';
 import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/questionnaire_providers.dart';
+import '../../providers/reminder_providers.dart';
 import '../../providers/resurfacing_providers.dart';
 import '../../providers/session_providers.dart';
 import '../../providers/weekly_digest_providers.dart';
+import '../../services/reminder_service.dart';
 import '../../services/weekly_digest_service.dart';
 import '../../providers/task_providers.dart';
 import '../../services/google_calendar_service.dart';
@@ -96,14 +98,22 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
           // eligible sessions exist this week.
           final weeklyDigestAsync = ref.watch(weeklyDigestProvider);
 
+          // Phase 4D — daily reminder card: gentle prompt to journal when the
+          // user is in their configured time window and hasn't journaled today.
+          final showReminder = ref.watch(dailyReminderVisibleProvider);
+
           // ADHD UX: show at most one passive-celebration card at a time.
-          // The weekly digest card takes priority — the gift card is shown
-          // only when no digest card qualifies. Showing both simultaneously
-          // creates 6+ competing interactive elements above the session list
-          // and violates the ADHD spec's "one entry at a time" principle.
+          // Priority order: reminder > digest > gift.
+          // The reminder card is action-oriented (start a session) and takes
+          // priority. The weekly digest celebrates past captures. The gift
+          // resurfaces a memory. Showing more than one violates the "one
+          // entry at a time" ADHD spec principle.
           final showDigest =
-              weeklyDigestAsync.hasValue && weeklyDigestAsync.value != null;
+              !showReminder &&
+              weeklyDigestAsync.hasValue &&
+              weeklyDigestAsync.value != null;
           final showGift =
+              !showReminder &&
               !showDigest &&
               resurfacedAsync.hasValue &&
               resurfacedAsync.value != null;
@@ -111,6 +121,7 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
           return Column(
             children: [
               if (!bannerDismissed) _buildRecoveryBanner(context),
+              if (showReminder) _buildReminderCard(context),
               if (showDigest)
                 _buildWeeklyDigestCard(context, weeklyDigestAsync.value!),
               if (showGift) _buildGiftCard(context, resurfacedAsync.value!),
@@ -439,6 +450,128 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Daily journal reminder card (Phase 4D).
+  ///
+  /// Shown in the user's configured time window when they haven't journaled
+  /// today. Follows ADHD non-escalating contract:
+  ///   - "Start Entry" → acknowledges the reminder + starts a new session.
+  ///   - "Dismiss" → records one dismissal; auto-disables after 3 in a row.
+  ///   - "Don't remind me" → permanently disables (snooze forever).
+  ///
+  /// No gap language, no streak pressure — just a gentle nudge.
+  Widget _buildReminderCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final service = ref.read(reminderServiceProvider);
+    final window = service.getWindow(ReminderType.dailyJournal);
+
+    final windowLabel = switch (window) {
+      ReminderWindow.morning => 'morning',
+      ReminderWindow.afternoon => 'afternoon',
+      ReminderWindow.evening => 'evening',
+    };
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      color: theme.colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.edit_note_outlined,
+                  size: 16,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Good $windowLabel — ready to capture a thought?',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await service.snoozeForever(ReminderType.dailyJournal);
+                      if (context.mounted) {
+                        ref.invalidate(dailyReminderVisibleProvider);
+                      }
+                    } on Exception {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Couldn't update reminder. Try again.",
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onPrimaryContainer
+                        .withValues(alpha: 0.7),
+                  ),
+                  child: const Text("Don't remind me"),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await service.dismiss(ReminderType.dailyJournal);
+                      if (context.mounted) {
+                        ref.invalidate(dailyReminderVisibleProvider);
+                      }
+                    } on Exception {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Couldn't dismiss reminder. Try again.",
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onPrimaryContainer
+                        .withValues(alpha: 0.85),
+                  ),
+                  child: const Text('Dismiss'),
+                ),
+                FilledButton.tonal(
+                  onPressed: _isStarting
+                      ? null
+                      : () async {
+                          await service.acknowledge(ReminderType.dailyJournal);
+                          if (context.mounted) {
+                            ref.invalidate(dailyReminderVisibleProvider);
+                            await _startNewSession(context);
+                          }
+                        },
+                  child: const Text('Start Entry'),
+                ),
+              ],
+            ),
           ],
         ),
       ),

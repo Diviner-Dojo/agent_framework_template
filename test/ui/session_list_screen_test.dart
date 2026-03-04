@@ -5,6 +5,7 @@ import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/calendar_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
 import 'package:agentic_journal/providers/questionnaire_providers.dart';
+import 'package:agentic_journal/providers/reminder_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/ui/screens/session_list_screen.dart';
@@ -20,6 +21,7 @@ void main() {
               (ref) => Stream.value(<JournalSession>[]),
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -38,6 +40,7 @@ void main() {
             paginatedSessionsProvider.overrideWith(
               (ref) => Stream.value(<JournalSession>[]),
             ),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -55,6 +58,7 @@ void main() {
             paginatedSessionsProvider.overrideWith(
               (ref) => Stream.value(<JournalSession>[]),
             ),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -73,6 +77,7 @@ void main() {
               (ref) => Stream.value(<JournalSession>[]),
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -92,6 +97,7 @@ void main() {
               (ref) => Stream.value(<JournalSession>[]),
             ),
             photoCountProvider.overrideWith((ref) => Future.value(5)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: MaterialApp(
             home: const SessionListScreen(),
@@ -115,6 +121,7 @@ void main() {
               (ref) => Stream.value(<JournalSession>[]),
             ),
             photoCountProvider.overrideWith((ref) => Future.value(3)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: MaterialApp(
             home: const SessionListScreen(),
@@ -144,6 +151,7 @@ void main() {
               (ref) => Stream<List<JournalSession>>.error('DB error'),
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -165,6 +173,7 @@ void main() {
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
             sessionCountProvider.overrideWith((ref) => Future.value(3)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -184,6 +193,7 @@ void main() {
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
             sessionCountProvider.overrideWith((ref) => Future.value(10)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: MaterialApp(
             home: const SessionListScreen(),
@@ -207,6 +217,7 @@ void main() {
               (ref) => const Stream<List<JournalSession>>.empty(),
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -252,6 +263,7 @@ void main() {
               (ref) => Stream.value(sessions),
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -290,6 +302,7 @@ void main() {
               (ref) => Stream.value(sessions),
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: MaterialApp(
             home: const SessionListScreen(),
@@ -349,6 +362,7 @@ void main() {
             photoCountProvider.overrideWith((ref) => Future.value(0)),
             // Set page size to 2 so 2 sessions triggers "Load older".
             sessionPageSizeProvider.overrideWith((ref) => 2),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -369,6 +383,7 @@ void main() {
             ),
             photoCountProvider.overrideWith((ref) => Future.value(0)),
             sessionCountProvider.overrideWith((ref) => Future.value(10)),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: MaterialApp(
             home: const SessionListScreen(),
@@ -398,6 +413,7 @@ void main() {
               (ref) => Stream.value(<JournalSession>[]),
             ),
             photoCountProvider.overrideWith((ref) => Future<int>.error('fail')),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -419,6 +435,7 @@ void main() {
             sessionCountProvider.overrideWith(
               (ref) => Future<int>.error('fail'),
             ),
+            dailyReminderVisibleProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(home: SessionListScreen()),
         ),
@@ -441,6 +458,7 @@ void main() {
               pendingCalendarEventsCountProvider.overrideWith(
                 (ref) => Future.value(0),
               ),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),
@@ -478,6 +496,7 @@ void main() {
               pendingCalendarEventsCountProvider.overrideWith(
                 (ref) => Future.value(1),
               ),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),
@@ -517,6 +536,7 @@ void main() {
               pendingCalendarEventsCountProvider.overrideWith(
                 (ref) => Future.value(3),
               ),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),
@@ -538,6 +558,7 @@ void main() {
               pendingCalendarEventsCountProvider.overrideWith(
                 (ref) => Future<int>.error('fail'),
               ),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),
@@ -576,6 +597,7 @@ void main() {
               ),
               photoCountProvider.overrideWith((ref) => Future.value(0)),
               quickCheckInBannerDismissedProvider.overrideWith((ref) => false),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),
@@ -596,6 +618,7 @@ void main() {
               ),
               photoCountProvider.overrideWith((ref) => Future.value(0)),
               quickCheckInBannerDismissedProvider.overrideWith((ref) => false),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),
@@ -618,6 +641,7 @@ void main() {
               ),
               photoCountProvider.overrideWith((ref) => Future.value(0)),
               quickCheckInBannerDismissedProvider.overrideWith((ref) => false),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),
@@ -648,6 +672,7 @@ void main() {
               ),
               photoCountProvider.overrideWith((ref) => Future.value(0)),
               quickCheckInBannerDismissedProvider.overrideWith((ref) => false),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),
@@ -674,6 +699,7 @@ void main() {
               photoCountProvider.overrideWith((ref) => Future.value(0)),
               // Start with dismissed = true (persisted from prior navigation).
               quickCheckInBannerDismissedProvider.overrideWith((ref) => true),
+              dailyReminderVisibleProvider.overrideWith((ref) => false),
             ],
             child: const MaterialApp(home: SessionListScreen()),
           ),

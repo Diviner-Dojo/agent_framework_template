@@ -42,6 +42,8 @@ import '../../providers/search_providers.dart';
 import '../../providers/calendar_providers.dart';
 import '../../providers/location_providers.dart';
 import '../../providers/questionnaire_providers.dart';
+import '../../providers/reminder_providers.dart';
+import '../../services/reminder_service.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
 import '../../providers/task_providers.dart';
@@ -105,6 +107,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           _buildCloudSyncCard(context),
           const SizedBox(height: 16),
           _buildLocationCard(context),
+          const SizedBox(height: 16),
+          _buildRemindersCard(context),
           const SizedBox(height: 16),
           _buildCalendarCard(context),
           const SizedBox(height: 16),
@@ -889,6 +893,103 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         if (mounted) setState(() => _isClearingLocation = false);
       }
     }
+  }
+
+  /// Build the "Reminders" settings card (Phase 4D).
+  ///
+  /// Allows the user to enable a daily journal reminder and choose a
+  /// preferred time window (morning / afternoon / evening).
+  ///
+  /// ADHD clinical UX constraints:
+  ///   - Opt-in only (disabled by default).
+  ///   - Auto-disabled after 3 consecutive dismissals (non-escalating).
+  ///   - "Snooze forever" is available from the home screen card.
+  Widget _buildRemindersCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final service = ref.watch(reminderServiceProvider);
+    final enabled = service.isEnabled(ReminderType.dailyJournal);
+    final window = service.getWindow(ReminderType.dailyJournal);
+    final dismissals = service.consecutiveDismissals(ReminderType.dailyJournal);
+    final autoDisabled =
+        dismissals >= ReminderService.maxConsecutiveDismissals && !enabled;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Reminders', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Daily journal reminder'),
+              subtitle: autoDisabled
+                  ? const Text(
+                      'Auto-disabled after 3 dismissals. Toggle to re-enable.',
+                    )
+                  : const Text('A gentle nudge at your preferred time of day.'),
+              value: enabled,
+              onChanged: (value) async {
+                await service.setEnabled(
+                  ReminderType.dailyJournal,
+                  value: value,
+                );
+                // Invalidate so the home screen card re-evaluates immediately.
+                ref.invalidate(dailyReminderVisibleProvider);
+                setState(() {});
+              },
+            ),
+            if (enabled) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Reminder time',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              SegmentedButton<ReminderWindow>(
+                segments: ReminderWindow.values
+                    .map(
+                      (w) => ButtonSegment<ReminderWindow>(
+                        value: w,
+                        label: Text(switch (w) {
+                          ReminderWindow.morning => 'Morning',
+                          ReminderWindow.afternoon => 'Afternoon',
+                          ReminderWindow.evening => 'Evening',
+                        }),
+                      ),
+                    )
+                    .toList(),
+                selected: {window},
+                onSelectionChanged: (selection) async {
+                  await service.setWindow(
+                    ReminderType.dailyJournal,
+                    selection.first,
+                  );
+                  setState(() {});
+                },
+              ),
+              const SizedBox(height: 6),
+              Text(
+                switch (window) {
+                  ReminderWindow.morning =>
+                    'Appears between 7 AM and 9 AM when you open the app.',
+                  ReminderWindow.afternoon =>
+                    'Appears between 12 PM and 2 PM when you open the app.',
+                  ReminderWindow.evening =>
+                    'Appears between 7 PM and 9 PM when you open the app.',
+                },
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   /// Build the "Calendar" settings card (Phase 11 — ADR-0020).
