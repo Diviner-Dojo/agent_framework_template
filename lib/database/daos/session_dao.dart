@@ -58,6 +58,35 @@ class SessionDao {
         );
   }
 
+  /// Create a complete quick mood tap session in a single atomic INSERT.
+  ///
+  /// Unlike the three-step sequence used by [SessionNotifier] (createSession →
+  /// updateJournalingMode → endSession), this method writes all fields in one
+  /// INSERT so no partial session is left if the app crashes between steps.
+  /// A phantom session with journalingMode=null and endTime=null would be
+  /// picked up by [resumeLatestSession] as a regular journaling session.
+  ///
+  /// [summary] is a pre-built human-readable string, e.g. "Mood: 😐 Neutral".
+  Future<void> createQuickMoodSession(
+    String sessionId,
+    DateTime startTime,
+    String timezone,
+    String summary,
+  ) async {
+    await _db
+        .into(_db.journalSessions)
+        .insert(
+          JournalSessionsCompanion.insert(
+            sessionId: sessionId,
+            startTime: startTime,
+            timezone: Value(timezone),
+            journalingMode: const Value('quick_mood_tap'),
+            endTime: Value(startTime),
+            summary: Value(summary),
+          ),
+        );
+  }
+
   /// Update a session when it ends.
   ///
   /// Sets the end time, AI-generated summary, and extracted metadata.
@@ -133,9 +162,12 @@ class SessionDao {
   /// drift automatically re-emits whenever the journal_sessions table changes,
   /// so the UI stays in sync without manual refresh logic.
   Stream<List<JournalSession>> watchAllSessions() {
-    return (_db.select(_db.journalSessions)..orderBy([
-          (s) => OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
-        ]))
+    return (_db.select(_db.journalSessions)
+          ..where((s) => s.journalingMode.isNotValue('quick_mood_tap'))
+          ..orderBy([
+            (s) =>
+                OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
+          ]))
         .watch();
   }
 
@@ -146,6 +178,7 @@ class SessionDao {
   /// older entries without a separate cursor-based query.
   Stream<List<JournalSession>> watchSessionsPaginated(int limit) {
     return (_db.select(_db.journalSessions)
+          ..where((s) => s.journalingMode.isNotValue('quick_mood_tap'))
           ..orderBy([
             (s) =>
                 OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),
@@ -324,6 +357,29 @@ class SessionDao {
     );
   }
 
+  /// Write weather metadata captured at session start (Phase 4C).
+  ///
+  /// All three fields are written together — the WeatherService returns a
+  /// complete result or nothing. Null is allowed for all fields if the API
+  /// returns an unexpected code that has no human-readable label.
+  Future<int> updateSessionWeather(
+    String sessionId, {
+    required double? weatherTempC,
+    required int? weatherCode,
+    required String? weatherDescription,
+  }) async {
+    return (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        weatherTempC: Value(weatherTempC),
+        weatherCode: Value(weatherCode),
+        weatherDescription: Value(weatherDescription),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
   /// Nullify all location columns across all sessions.
   ///
   /// Called by the "Clear Location Data" button in Settings. Also sets
@@ -351,6 +407,35 @@ class SessionDao {
             updatedAt: Value(DateTime.now().toUtc()),
           ),
         );
+  }
+
+  // =========================================================================
+  // Tag editing methods (ADHD Roadmap Phase 4A)
+  // =========================================================================
+
+  /// Update the three tag columns on a session without touching other fields.
+  ///
+  /// Each parameter should be a JSON-encoded array string (e.g. '["happy","tired"]')
+  /// or null to clear that tag category.
+  ///
+  /// Called by the tag-editing UI in SessionDetailScreen whenever the user
+  /// adds, removes, or edits a tag chip.
+  Future<void> updateSessionTags(
+    String sessionId, {
+    String? moodTags,
+    String? people,
+    String? topicTags,
+  }) async {
+    await (_db.update(
+      _db.journalSessions,
+    )..where((s) => s.sessionId.equals(sessionId))).write(
+      JournalSessionsCompanion(
+        moodTags: Value(moodTags),
+        people: Value(people),
+        topicTags: Value(topicTags),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
   }
 
   // =========================================================================
@@ -473,52 +558,58 @@ class SessionDao {
     List<String>? people,
     List<String>? topicTags,
   }) async {
-    final escaped = escapeLikeWildcards(query);
-    final pattern = '%$escaped%';
-
     final select = _db.select(_db.journalSessions)
       ..where((s) {
-        // Keyword match across summary and metadata columns.
-        Expression<bool> keywordMatch =
-            LikeWithEscape(s.summary, pattern) |
-            LikeWithEscape(s.moodTags, pattern) |
-            LikeWithEscape(s.people, pattern) |
-            LikeWithEscape(s.topicTags, pattern);
+        // Start with keyword match when a query is provided.
+        // When query is empty (filter-only browse), skip the keyword clause
+        // so that all sessions are candidates before tag/date filtering.
+        Expression<bool>? constraint;
+        if (query.isNotEmpty) {
+          final escaped = escapeLikeWildcards(query);
+          final pattern = '%$escaped%';
+          constraint =
+              LikeWithEscape(s.summary, pattern) |
+              LikeWithEscape(s.moodTags, pattern) |
+              LikeWithEscape(s.people, pattern) |
+              LikeWithEscape(s.topicTags, pattern);
+        }
 
         // Apply optional date range filter.
         if (dateStart != null) {
-          keywordMatch =
-              keywordMatch & s.startTime.isBiggerOrEqualValue(dateStart);
+          final c = s.startTime.isBiggerOrEqualValue(dateStart);
+          constraint = constraint == null ? c : constraint & c;
         }
         if (dateEnd != null) {
-          keywordMatch =
-              keywordMatch & s.startTime.isSmallerOrEqualValue(dateEnd);
+          final c = s.startTime.isSmallerOrEqualValue(dateEnd);
+          constraint = constraint == null ? c : constraint & c;
         }
 
         // Apply optional metadata tag filters (AND logic — all must match).
         if (moodTags != null && moodTags.isNotEmpty) {
           for (final tag in moodTags) {
             final tagPattern = '%${escapeLikeWildcards(tag)}%';
-            keywordMatch =
-                keywordMatch & LikeWithEscape(s.moodTags, tagPattern);
+            final c = LikeWithEscape(s.moodTags, tagPattern);
+            constraint = constraint == null ? c : constraint & c;
           }
         }
         if (people != null && people.isNotEmpty) {
           for (final person in people) {
             final personPattern = '%${escapeLikeWildcards(person)}%';
-            keywordMatch =
-                keywordMatch & LikeWithEscape(s.people, personPattern);
+            final c = LikeWithEscape(s.people, personPattern);
+            constraint = constraint == null ? c : constraint & c;
           }
         }
         if (topicTags != null && topicTags.isNotEmpty) {
           for (final tag in topicTags) {
             final tagPattern = '%${escapeLikeWildcards(tag)}%';
-            keywordMatch =
-                keywordMatch & LikeWithEscape(s.topicTags, tagPattern);
+            final c = LikeWithEscape(s.topicTags, tagPattern);
+            constraint = constraint == null ? c : constraint & c;
           }
         }
 
-        return keywordMatch;
+        // If no constraints at all (shouldn't happen — callers guard this),
+        // return all sessions.
+        return constraint ?? const Constant(true);
       })
       ..orderBy([
         (s) => OrderingTerm(expression: s.startTime, mode: OrderingMode.desc),

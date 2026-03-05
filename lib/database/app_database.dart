@@ -43,6 +43,10 @@ part 'app_database.g.dart';
     CalendarEvents,
     Videos,
     Tasks,
+    QuestionnaireTemplates,
+    QuestionnaireItems,
+    CheckInResponses,
+    CheckInAnswers,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -59,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   /// When the version changes, the onUpgrade callback in MigrationStrategy
   /// handles migrating existing data to the new schema.
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -113,6 +117,22 @@ class AppDatabase extends _$AppDatabase {
           'tasks',
           'CREATE INDEX IF NOT EXISTS idx_tasks_due_date '
               'ON tasks (due_date)',
+        ),
+      );
+      // Index for check-in response retrieval by session (Phase 1 ADHD — ADR-0032).
+      await m.createIndex(
+        Index(
+          'check_in_responses',
+          'CREATE INDEX IF NOT EXISTS idx_checkin_responses_session_id '
+              'ON check_in_responses (session_id)',
+        ),
+      );
+      // Index for check-in answer retrieval by response.
+      await m.createIndex(
+        Index(
+          'check_in_answers',
+          'CREATE INDEX IF NOT EXISTS idx_checkin_answers_response_id '
+              'ON check_in_answers (response_id)',
         ),
       );
     },
@@ -201,6 +221,53 @@ class AppDatabase extends _$AppDatabase {
                 'ON tasks (due_date)',
           ),
         );
+      }
+      if (from < 10) {
+        // ADHD Roadmap Phase 1: Pulse Check-In tables (ADR-0032).
+        await m.createTable(questionnaireTemplates);
+        await m.createTable(questionnaireItems);
+        await m.createTable(checkInResponses);
+        await m.createTable(checkInAnswers);
+        // Index for retrieving responses by session.
+        await m.createIndex(
+          Index(
+            'check_in_responses',
+            'CREATE INDEX IF NOT EXISTS idx_checkin_responses_session_id '
+                'ON check_in_responses (session_id)',
+          ),
+        );
+        // Index for retrieving answers by response.
+        await m.createIndex(
+          Index(
+            'check_in_answers',
+            'CREATE INDEX IF NOT EXISTS idx_checkin_answers_response_id '
+                'ON check_in_answers (response_id)',
+          ),
+        );
+      }
+      if (from < 11) {
+        // ADR-0033: Scheduled Local Notifications — add reminder fields to tasks.
+        // All columns are nullable/have defaults — backward-compatible with
+        // existing task rows which retain null reminderTime and notificationId.
+        await m.addColumn(tasks, tasks.reminderTime);
+        await m.addColumn(tasks, tasks.notificationId);
+        await m.addColumn(tasks, tasks.isQuickReminder);
+        // Index for efficient notification lookup (cancel on complete/delete).
+        await m.createIndex(
+          Index(
+            'tasks',
+            'CREATE INDEX IF NOT EXISTS idx_tasks_reminder_time '
+                'ON tasks (reminder_time) WHERE reminder_time IS NOT NULL',
+          ),
+        );
+      }
+      if (from < 12) {
+        // Phase 4C: Passive weather metadata — add weather columns to sessions.
+        // All columns are nullable — backward-compatible with existing sessions.
+        // Weather is captured fire-and-forget when location is enabled.
+        await m.addColumn(journalSessions, journalSessions.weatherTempC);
+        await m.addColumn(journalSessions, journalSessions.weatherCode);
+        await m.addColumn(journalSessions, journalSessions.weatherDescription);
       }
     },
   );

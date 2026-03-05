@@ -52,15 +52,10 @@ class LocalLlmLayer implements ConversationLayer {
   }) async {
     final currentTime = now ?? DateTime.now();
     final timeOfDay = getTimeOfDay(currentTime);
-    final daysSinceLast = lastSessionDate != null
-        ? currentTime.difference(lastSessionDate).inDays
-        : null;
 
+    // Gap duration intentionally not used in context hints (Phase 2A — ADHD
+    // UX constraint: never mention days since last session).
     var contextHint = 'Time of day: $timeOfDay.';
-    if (daysSinceLast != null && daysSinceLast >= 2) {
-      contextHint +=
-          " It's been $daysSinceLast days since the user's last session.";
-    }
     if (sessionCount == 0) {
       contextHint += ' This is the user\'s first session ever.';
     }

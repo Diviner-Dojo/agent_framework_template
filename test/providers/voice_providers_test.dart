@@ -6,7 +6,14 @@
 // SharedPreferences persistence for voice settings, and engine
 // selection (ADR-0022).
 // STT/TTS service providers are tested via their service tests.
+//
+// CPP regression tag: This file contains the STT engine default assertion
+// (ADR-0035 Two-PR Pattern gate). See sttEngineProvider group for details.
 // ===========================================================================
+
+// @Tags must be on the library declaration (Dart requirement).
+@Tags(['regression'])
+library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -236,17 +243,42 @@ void main() {
   });
 
   group('sttEngineProvider', () {
-    test('defaults to speechToText', () async {
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
+    // CPP C2 assertion: This test is the machine-enforceable gate for the
+    // STT engine default (ADR-0035, SPEC-20260305-080259).
+    //
+    // Changing this assertion requires: (1) updating CAPABILITY_STATUS.md to
+    // show the new default engine is PROVEN (device-tested), and (2) submitting
+    // the change in a separate PR from the one that introduced the implementation.
+    //
+    // See: .claude/rules/capability_protection.md, docs/conventions/experimental-first.md
+    // Regression: ALL STT broken by default change in same PR as implementation
+    // (commit 328ec44 → e1ad873 fix). See memory/bugs/regression-ledger.md.
+    // @Tags(['regression']) — applied at file level.
+    test(
+      'defaults to speechToText — proven baseline (CPP gate, ADR-0035)',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
 
-      final container = ProviderContainer(
-        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-      );
-      addTearDown(container.dispose);
+        final container = ProviderContainer(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        );
+        addTearDown(container.dispose);
 
-      expect(container.read(sttEngineProvider), SttEngine.speechToText);
-    });
+        // CPP-GATE: If this assertion fails, the STT default was changed without
+        // updating this test. That means the two-PR convention (ADR-0035) was
+        // violated. Update CAPABILITY_STATUS.md and this test in PR N+1 only.
+        expect(
+          container.read(sttEngineProvider),
+          SttEngine.speechToText,
+          reason:
+              'CPP: Default must be speechToText (PROVEN). '
+              'Deepgram is EXPERIMENTAL per CAPABILITY_STATUS.md. '
+              'To change: update CAPABILITY_STATUS.md to PROVEN after device '
+              'testing, then submit a separate PR (ADR-0035 Two-PR Pattern).',
+        );
+      },
+    );
 
     test('can be set to sherpaOnnx', () async {
       SharedPreferences.setMockInitialValues({});

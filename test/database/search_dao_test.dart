@@ -228,6 +228,78 @@ void main() {
         expect(results, isEmpty);
       },
     );
+
+    // Regression: filter-only browse (empty query + active filter) was
+    // returning empty results because the keyword LIKE clause was always
+    // required. Fix: keyword constraint is only added when query is non-empty.
+    test(
+      'filter-only browse: empty query with mood filter returns matching sessions (regression)',
+      () async {
+        await createSessionWithMetadata(
+          's1',
+          DateTime.utc(2026, 2, 19),
+          summary: 'Happy day',
+          moodTags: ['happy'],
+        );
+        await createSessionWithMetadata(
+          's2',
+          DateTime.utc(2026, 2, 18),
+          summary: 'Sad day',
+          moodTags: ['sad'],
+        );
+
+        // Empty query + mood filter — should return only 'happy' session.
+        final results = await sessionDao.searchSessions(
+          '',
+          moodTags: ['happy'],
+        );
+        expect(results.length, 1);
+        expect(results[0].sessionId, 's1');
+      },
+    );
+
+    test(
+      'filter-only browse: empty query with date filter returns all sessions in range (regression)',
+      () async {
+        await createSessionWithMetadata(
+          's1',
+          DateTime.utc(2026, 2, 10),
+          summary: 'Early',
+        );
+        await createSessionWithMetadata(
+          's2',
+          DateTime.utc(2026, 2, 20),
+          summary: 'Late',
+        );
+
+        final results = await sessionDao.searchSessions(
+          '',
+          dateStart: DateTime.utc(2026, 2, 15),
+        );
+        expect(results.length, 1);
+        expect(results[0].sessionId, 's2');
+      },
+    );
+
+    test(
+      'filter-only browse: empty query with no filters returns all sessions (regression)',
+      () async {
+        await createSessionWithMetadata(
+          's1',
+          DateTime.utc(2026, 2, 19),
+          summary: 'A',
+        );
+        await createSessionWithMetadata(
+          's2',
+          DateTime.utc(2026, 2, 18),
+          summary: 'B',
+        );
+
+        // Both callers guard against this, but the DAO handles it gracefully.
+        final results = await sessionDao.searchSessions('');
+        expect(results.length, 2);
+      },
+    );
   });
 
   group('SessionDao.getDistinctMoodTags', () {

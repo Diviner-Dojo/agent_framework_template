@@ -121,6 +121,7 @@ def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess
         cwd=cwd or PROJECT_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
     )
 
@@ -497,6 +498,126 @@ def check_regression_guard() -> bool:
     return True
 
 
+CAPABILITY_STATUS = PROJECT_ROOT / "CAPABILITY_STATUS.md"
+
+# Patterns that indicate a provider default return value (CPP C2 check).
+# Matches lines like: `return SttEngine.deepgram;` or `return TtsEngine.elevenlabs;`
+_DEFAULT_RETURN_PATTERN = r"^\s*return\s+(Stt|Tts)Engine\.\w+"
+
+
+def _parse_capability_status() -> dict[str, str]:
+    """Parse CAPABILITY_STATUS.md and return a dict of {capability_key: status}.
+
+    Capability keys are lowercased strings like 'stt: speech_to_text'.
+    Status is one of PROVEN, EXPERIMENTAL, BROKEN, DEPRECATED.
+    Returns empty dict if the file does not exist.
+    """
+    if not CAPABILITY_STATUS.exists():
+        return {}
+
+    import re
+
+    capabilities: dict[str, str] = {}
+    # Match table rows: | Capability | Status | ...
+    row_re = re.compile(r"^\|\s*([^|]+)\|\s*\*?\*?(\w+)\*?\*?\s*\|")
+    for line in CAPABILITY_STATUS.read_text(encoding="utf-8").splitlines():
+        m = row_re.match(line.strip())
+        if m:
+            cap = m.group(1).strip().lower()
+            status = m.group(2).strip().upper()
+            if status in ("PROVEN", "EXPERIMENTAL", "BROKEN", "DEPRECATED"):
+                capabilities[cap] = status
+    return capabilities
+
+
+def check_capability_gate() -> bool:
+    """CPP C2: Warn when a staged provider default changes to an EXPERIMENTAL capability.
+
+    Detects changes to lines matching `return SttEngine.*` or `return TtsEngine.*`
+    in *_providers.dart files. If the new default is listed as EXPERIMENTAL (or BROKEN)
+    in CAPABILITY_STATUS.md, emits a WARNING. This is a WARNING check (not a hard
+    block) because the Two-PR convention (C5 in ADR-0035) is the primary control.
+
+    See: ADR-0035, .claude/rules/capability_protection.md
+    """
+    import re
+
+    default_re = re.compile(_DEFAULT_RETURN_PATTERN)
+
+    # Get diff of staged *_providers.dart files.
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "-U0", "--", "lib/**/*_providers.dart"],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            timeout=15,
+        )
+        diff_text = result.stdout
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        _skip("Capability gate (git unavailable)")
+        return True
+
+    if not diff_text.strip():
+        _pass("Capability gate (no provider default changes)")
+        return True
+
+    # Extract added lines (start with '+', not '+++').
+    added_defaults: list[str] = []
+    for line in diff_text.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            if default_re.search(line):
+                added_defaults.append(line[1:].strip())  # strip the leading '+'
+
+    if not added_defaults:
+        _pass("Capability gate (no default return changes detected)")
+        return True
+
+    # Check each new default against CAPABILITY_STATUS.md.
+    capabilities = _parse_capability_status()
+    warnings: list[str] = []
+
+    for line in added_defaults:
+        m = re.search(r"return\s+(Stt|Tts)Engine\.(\w+)", line)
+        if not m:
+            continue
+        engine_type = m.group(1).lower()  # 'stt' or 'tts'
+        engine_name = m.group(2)  # e.g. 'deepgram', 'speechToText'
+
+        # Convert camelCase to lowercase search key (e.g. speechToText → speech_to_text)
+        snake = re.sub(r"([A-Z])", r"_\1", engine_name).lower().lstrip("_")
+        search_key = f"{engine_type}: {snake}"  # e.g. 'stt: speech_to_text'
+
+        # Look for a matching entry in CAPABILITY_STATUS.md
+        status = None
+        for cap_key, cap_status in capabilities.items():
+            if snake in cap_key and engine_type in cap_key:
+                status = cap_status
+                break
+
+        if status in ("EXPERIMENTAL", "BROKEN"):
+            warnings.append(
+                f"{engine_type.upper()}Engine.{engine_name} is {status} in CAPABILITY_STATUS.md"
+            )
+
+    if warnings:
+        print(f"  {YELLOW}⚠  Capability gate — WARNING (not blocking){RESET}")
+        for w in warnings:
+            print(f"     {YELLOW}→ {w}{RESET}")
+        print(
+            f"     {YELLOW}Add '# CAPABILITY-GATE: approved by <name> <reason>' to commit message,{RESET}"
+        )
+        print(
+            f"     {YELLOW}or update CAPABILITY_STATUS.md to PROVEN after device testing.{RESET}"
+        )
+        print(f"     {YELLOW}See: ADR-0035, .claude/rules/capability_protection.md{RESET}")
+        # Return True — this is a WARNING, not a hard block.
+        return True
+
+    _pass(f"Capability gate ({len(added_defaults)} default change(s) verified PROVEN)")
+    return True
+
+
 QUALITY_GATE_LOG = PROJECT_ROOT / "metrics" / "quality_gate_log.jsonl"
 
 _CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
@@ -630,6 +751,9 @@ def main() -> int:
     else:
         total += 1
         results.append(check_regression_guard())
+
+    # Check 8: Capability gate (CPP C2 — warning only, never fails the gate)
+    check_capability_gate()
 
     # Summary
     passed = sum(results)

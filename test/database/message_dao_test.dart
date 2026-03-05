@@ -101,6 +101,38 @@ void main() {
     );
   });
 
+  group('updateMessageContent', () {
+    test('updates content and leaves other fields unchanged', () async {
+      final ts = DateTime.utc(2026, 2, 19, 10, 1);
+      await messageDao.insertMessage(
+        'msg-edit',
+        'session-a',
+        'USER',
+        'Shawn helped me today.',
+        ts,
+      );
+
+      await messageDao.updateMessageContent(
+        'msg-edit',
+        'Sean helped me today.',
+      );
+
+      final messages = await messageDao.getMessagesForSession('session-a');
+      expect(messages.length, 1);
+      expect(messages.first.content, 'Sean helped me today.');
+      expect(messages.first.role, 'USER');
+      expect(messages.first.timestamp, ts);
+    });
+
+    test('updating a non-existent messageId is a no-op', () async {
+      // Should not throw — drift update with no matching rows is silent.
+      await expectLater(
+        messageDao.updateMessageContent('ghost-id', 'new content'),
+        completes,
+      );
+    });
+  });
+
   group('getMessageCount', () {
     test('returns 0 for session with no messages', () async {
       final count = await messageDao.getMessageCount('session-a');

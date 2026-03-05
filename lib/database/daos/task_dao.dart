@@ -19,6 +19,7 @@
 import 'package:drift/drift.dart';
 
 import '../app_database.dart';
+import '../../services/notification_scheduler_service.dart';
 
 /// Typed constants for the task lifecycle status column.
 abstract final class TaskStatus {
@@ -38,11 +39,24 @@ abstract final class TaskSyncStatus {
 /// Data Access Object for tasks.
 ///
 /// Provides CRUD operations and reactive streams for the Tasks table.
+///
+/// When a task with a [reminderTime] is created or updated, the caller is
+/// responsible for scheduling the notification via [NotificationSchedulerService]
+/// and storing the returned [notificationId] on the task row.
+///
+/// When a task is completed or deleted, this DAO cancels any pending
+/// notification via the injected [NotificationSchedulerService].
 class TaskDao {
   final AppDatabase _db;
+  final NotificationSchedulerService? _scheduler;
 
   /// Create a TaskDao with the given database.
-  TaskDao(this._db);
+  ///
+  /// [scheduler] is optional to preserve backward compatibility with tests
+  /// that create a TaskDao without a scheduler. When null, notification
+  /// cancellation is skipped (tests that do not exercise notifications).
+  TaskDao(this._db, {NotificationSchedulerService? scheduler})
+    : _scheduler = scheduler;
 
   /// Insert a new task.
   Future<void> insertTask(TasksCompanion task) {
@@ -63,8 +77,14 @@ class TaskDao {
     )..where((t) => t.taskId.equals(taskId))).write(companion);
   }
 
-  /// Delete a single task.
-  Future<int> deleteTask(String taskId) {
+  /// Delete a single task, cancelling any pending notification.
+  Future<int> deleteTask(String taskId) async {
+    // Cancel any pending notification before deletion so the OS alarm
+    // does not fire for a task that no longer exists.
+    final task = await getTaskById(taskId);
+    if (task != null) {
+      await _scheduler?.cancelNotification(task.notificationId);
+    }
     return (_db.delete(_db.tasks)..where((t) => t.taskId.equals(taskId))).go();
   }
 
@@ -132,12 +152,19 @@ class TaskDao {
         .get();
   }
 
-  /// Mark a task as completed.
-  Future<int> completeTask(String taskId, DateTime completedAt) {
+  /// Mark a task as completed, cancelling any pending notification.
+  Future<int> completeTask(String taskId, DateTime completedAt) async {
+    // Cancel any pending notification — the reminder is no longer needed.
+    final task = await getTaskById(taskId);
+    if (task != null) {
+      await _scheduler?.cancelNotification(task.notificationId);
+    }
     return (_db.update(_db.tasks)..where((t) => t.taskId.equals(taskId))).write(
       TasksCompanion(
         status: const Value(TaskStatus.completed),
         completedAt: Value(completedAt),
+        // Clear the notificationId now that the alarm has been cancelled.
+        notificationId: const Value(null),
         syncStatus: const Value(TaskSyncStatus.pending),
         updatedAt: Value(DateTime.now().toUtc()),
       ),
@@ -153,6 +180,35 @@ class TaskDao {
         syncStatus: const Value(TaskSyncStatus.pending),
         updatedAt: Value(DateTime.now().toUtc()),
       ),
+    );
+  }
+
+  /// Get tasks with a future [reminderTime] and a stored [notificationId].
+  ///
+  /// Used at app launch to detect OS notifications that may have been cleared
+  /// by a device reboot. Any task returned by this method had a scheduled
+  /// alarm that is no longer in the OS alarm manager — it must be rescheduled.
+  ///
+  /// Only non-completed tasks are returned: a completed task's notification
+  /// was already cancelled at completion time.
+  Future<List<Task>> getTasksWithPendingReminders() {
+    final now = DateTime.now();
+    return (_db.select(_db.tasks)..where(
+          (t) =>
+              t.reminderTime.isBiggerThanValue(now) &
+              t.notificationId.isNotNull() &
+              t.status.isNotIn([TaskStatus.completed]),
+        ))
+        .get();
+  }
+
+  /// Update the [notificationId] stored on a task after rescheduling.
+  ///
+  /// Called after [NotificationSchedulerService.rescheduleFromTasks] returns
+  /// new IDs so the task row reflects the current OS alarm state.
+  Future<int> updateNotificationId(String taskId, int? notificationId) {
+    return (_db.update(_db.tasks)..where((t) => t.taskId.equals(taskId))).write(
+      TasksCompanion(notificationId: Value(notificationId)),
     );
   }
 
@@ -205,8 +261,15 @@ class TaskDao {
     return result.read(count) ?? 0;
   }
 
-  /// Delete all tasks for a session (cascade delete support).
-  Future<int> deleteTasksBySession(String sessionId) {
+  /// Delete all tasks for a session, cancelling any pending notifications.
+  Future<int> deleteTasksBySession(String sessionId) async {
+    // Cancel notifications for all tasks in this session.
+    final sessionTasks = await (_db.select(
+      _db.tasks,
+    )..where((t) => t.sessionId.equals(sessionId))).get();
+    for (final task in sessionTasks) {
+      await _scheduler?.cancelNotification(task.notificationId);
+    }
     return (_db.delete(
       _db.tasks,
     )..where((t) => t.sessionId.equals(sessionId))).go();

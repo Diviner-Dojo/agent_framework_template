@@ -34,7 +34,9 @@ import 'package:uuid/uuid.dart';
 
 import '../../providers/calendar_providers.dart';
 import '../../providers/database_provider.dart';
+import '../../providers/theme_providers.dart';
 import '../../providers/photo_providers.dart';
+import '../../providers/questionnaire_providers.dart';
 import '../../providers/session_providers.dart';
 import '../../providers/video_providers.dart';
 import '../../providers/voice_providers.dart';
@@ -49,6 +51,7 @@ import '../widgets/model_download_dialog.dart';
 import '../widgets/photo_capture_sheet.dart';
 import '../widgets/photo_preview_dialog.dart';
 import '../widgets/photo_viewer.dart';
+import '../widgets/pulse_check_in_widget.dart';
 import '../widgets/video_player_widget.dart';
 
 /// The active journal conversation screen.
@@ -107,6 +110,8 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     // Wire orchestrator callbacks after the first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _wireOrchestrator();
+      // Auto-start Pulse Check-In if the session was opened in that mode.
+      _maybeStartCheckIn();
     });
   }
 
@@ -188,6 +193,24 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     });
   }
 
+  /// Auto-start the Pulse Check-In flow when the session mode is 'pulse_check_in'.
+  ///
+  /// Called once after the first frame. Also resets any lingering check-in
+  /// state from a previous session — [checkInProvider] is global and does not
+  /// auto-reset on navigation, so without this a completed pulse-check-in would
+  /// persist into a subsequent regular journal session, hiding the text input.
+  void _maybeStartCheckIn() {
+    final sessionState = ref.read(sessionNotifierProvider);
+    if (sessionState.journalingMode == 'pulse_check_in' &&
+        sessionState.activeSessionId != null) {
+      ref.read(checkInProvider.notifier).startCheckIn();
+    } else {
+      // Reset lingering check-in state from a previous session so the text
+      // input field is not hidden on a fresh regular journal entry.
+      ref.read(checkInProvider.notifier).cancelCheckIn();
+    }
+  }
+
   /// Start continuous mode with the greeting message.
   Future<void> _startContinuousModeWithGreeting(String greeting) async {
     final orchestrator = ref.read(voiceOrchestratorProvider);
@@ -223,6 +246,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     final sessionState = ref.watch(sessionNotifierProvider);
     final messagesAsync = ref.watch(activeSessionMessagesProvider);
     final voiceEnabled = ref.watch(voiceModeEnabledProvider);
+    final checkInState = ref.watch(checkInProvider);
     final sessionId = sessionState.activeSessionId;
     final photosAsync = sessionId != null
         ? ref.watch(sessionPhotosProvider(sessionId))
@@ -451,6 +475,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                           ? videoMap[msg.videoId as String]
                           : null;
                       return ChatBubble(
+                        key: ValueKey(msg.messageId),
                         content: msg.content,
                         role: msg.role,
                         timestamp: msg.timestamp,
@@ -475,6 +500,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                                 videoPath: video.localPath as String,
                               )
                             : null,
+                        bubbleShape: ref.watch(themeProvider).bubbleShape,
                       );
                     },
                   );
@@ -498,8 +524,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
             if (sessionState.isWaitingForAgent && !sessionState.isSessionEnding)
               const _ThinkingIndicator(),
 
-            // Text input field — hidden when session is ending.
-            if (!sessionState.isSessionEnding)
+            // Pulse Check-In widget — shown when a check-in flow is active.
+            // Replaces the text input field while check-in is in progress.
+            if (checkInState.isActive && sessionId != null)
+              PulseCheckInWidget(sessionId: sessionId),
+
+            // Text input field — hidden when session is ending or check-in
+            // is active (check-in has its own Next/Skip/Finish controls).
+            if (!sessionState.isSessionEnding && !checkInState.isActive)
               _buildInputField(context, voiceEnabled, orchestrator),
           ],
         ),
@@ -579,7 +611,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     final isListening = voiceState.phase == VoiceLoopPhase.listening;
     final isSpeaking = voiceState.phase == VoiceLoopPhase.speaking;
 
-    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
+    // Use padding.bottom (not viewPadding.bottom) because the Scaffold has
+    // resizeToAvoidBottomInset: true. When the keyboard opens, padding.bottom
+    // collapses to 0 (the keyboard inset is handled by the Scaffold's resize);
+    // viewPadding.bottom stays fixed at the system bar height, which would
+    // double-count the inset when the keyboard is visible (REV-145506-A8).
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
       // Slight elevation to separate from the message list.
@@ -631,7 +668,10 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                 showSelectedIcon: false,
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  // tapTargetSize intentionally omitted to restore 48dp minimum
+                  // (MaterialTapTargetSize.padded). shrinkWrap previously here
+                  // reduced tap area below accessible minimums — parallel fix
+                  // to check_in_history_screen.dart SegmentedButton (REV-145506-A5).
                 ),
               ),
             ),
@@ -690,11 +730,33 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                       ? !isWaiting
                       : !isWaiting && !isListening && !isSpeaking,
                   textCapitalization: TextCapitalization.sentences,
-                  maxLines: null, // Allows multi-line input.
+                  // minLines: 1 starts compact; maxLines: 4 prevents consuming
+                  // too much screen space on 360dp devices with voice controls
+                  // active (REV-145506-A5).
+                  minLines: 1,
+                  maxLines: 4,
+                  // In text-primary mode, Enter submits. In voice+text mode,
+                  // Enter inserts a newline — voice is the primary submit path
+                  // and the hint text implies multi-line input (REV-20260305-164139-A8).
+                  textInputAction: _isTextInputMode
+                      ? TextInputAction.send
+                      : TextInputAction.newline,
                   decoration: InputDecoration(
                     hintText: isListening && !_isTextInputMode
                         ? 'Listening...'
                         : 'Type your thoughts...',
+                    // In voice+text mode, Enter inserts a newline (not submit). Persistent
+                    // helper tells users how to submit (REV-20260305-175417-A3).
+                    // Also suppressed while waiting for agent or TTS is speaking —
+                    // the field is disabled in those states so the affordance would
+                    // be misleading (REV-20260305-190054-A3-NEW).
+                    helperText:
+                        !_isTextInputMode &&
+                            !isListening &&
+                            !isWaiting &&
+                            !isSpeaking
+                        ? 'Tap send icon to submit'
+                        : null,
                   ),
                   onSubmitted: isWaiting ? null : (_) => _sendMessage(),
                 ),

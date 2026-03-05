@@ -455,4 +455,174 @@ void main() {
       },
     );
   });
+
+  // Regression: "add a task to call mom in 10 minutes" was routed as journal.
+  // Root cause: _temporalPattern did not include relative duration expressions
+  // ("in N minutes/hours"), so the temporal boost (+0.15) never fired, leaving
+  // the task score sub-threshold in some inputs.
+  // Fix: Added "in \d+ (minute|...)" and "in (a|an) (minute|...)" alternates
+  // to _temporalPattern.
+  group('in N minutes routed as task (temporal boost fires) (regression)', () {
+    test(
+      '"add a task to call mom in 10 minutes" classifies as task (regression)',
+      tags: ['regression'],
+      () {
+        final result = classifier.classify(
+          'add a task to call mom in 10 minutes',
+        );
+        expect(result.type, IntentType.task);
+        expect(
+          result.confidence,
+          greaterThanOrEqualTo(0.5),
+          reason: 'temporal boost must fire for "in 10 minutes"',
+        );
+      },
+    );
+
+    test('"add a task in 2 hours" classifies as task', () {
+      final result = classifier.classify('add a task in 2 hours');
+      expect(result.type, IntentType.task);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
+
+    test('"add a task in an hour" classifies as task', () {
+      final result = classifier.classify('add a task in an hour');
+      expect(result.type, IntentType.task);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
+
+    test('"add a task in a minute" classifies as task', () {
+      final result = classifier.classify('add a task in a minute');
+      expect(result.type, IntentType.task);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
+  });
+
+  // Regression: "I need to set a calendar item for Friday night with Shawn"
+  // was routed as journal — three gaps:
+  //   1. "calendar item" not matched (only explicit event nouns like "meeting")
+  //   2. "Friday night" not in _futureTemporalPattern (only "on friday", "tonight")
+  //   3. _hasFutureActionContext didn't include "set"/"make" verbs
+  // Fix: Added \bcalendar\s+(item|entry)\b compound pattern to _calendarIntentPattern;
+  //      added weekday+time-of-day, this-weekday, for-weekday to temporal patterns;
+  //      added |set|make to _hasFutureActionContext.
+  // See: memory/bugs/regression-ledger.md — 'Calendar item / Friday night not recognized'
+  group('calendar item and weekday temporal patterns (regression)', () {
+    test(
+      '"I need to set a calendar item for Friday night with Shawn" classifies as calendarEvent (regression)',
+      tags: ['regression'],
+      () {
+        final result = classifier.classify(
+          'I need to set a calendar item for Friday night with Shawn',
+        );
+        expect(result.type, IntentType.calendarEvent);
+        expect(
+          result.confidence,
+          greaterThanOrEqualTo(0.5),
+          reason: '"calendar item" compound pattern must fire',
+        );
+      },
+    );
+
+    test(
+      '"I want to create a calendar entry for Saturday morning" classifies as calendarEvent',
+      () {
+        final result = classifier.classify(
+          'I want to create a calendar entry for Saturday morning',
+        );
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test('"add a dinner for Friday evening" classifies as calendarEvent', () {
+      // event noun "dinner" + future temporal "friday evening" → +0.4 boost
+      final result = classifier.classify('add a dinner for Friday evening');
+      expect(result.type, IntentType.calendarEvent);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
+
+    test('"set a meeting for this Friday" classifies as calendarEvent', () {
+      // "set a meeting" (event noun) + "this friday" (future temporal)
+      final result = classifier.classify('set a meeting for this Friday');
+      expect(result.type, IntentType.calendarEvent);
+      expect(result.confidence, greaterThanOrEqualTo(0.5));
+    });
+
+    test(
+      '"I had a meeting last week" still classifies as journal (no regression)',
+      () {
+        // Past temporal with no scheduling verb — must route to journal.
+        final result = classifier.classify('I had a meeting last week');
+        expect(result.type, IntentType.journal);
+      },
+    );
+
+    // False-positive guards for the \bcalendar\s+(item|entry)\b compound pattern.
+    // The pattern requires a scheduling verb (preceding) or future-temporal preposition
+    // (following) to prevent past-narrative sentences from triggering calendarEvent.
+    test(
+      '"I remember we had a calendar item last week" classifies as journal (false-positive guard)',
+      () {
+        final result = classifier.classify(
+          'I remember we had a calendar item last week',
+        );
+        expect(
+          result.type,
+          IntentType.journal,
+          reason:
+              '"calendar item" without scheduling verb must not route as calendar',
+        );
+      },
+    );
+
+    test(
+      '"The calendar entry got deleted" classifies as journal (false-positive guard)',
+      () {
+        final result = classifier.classify('The calendar entry got deleted');
+        expect(result.type, IntentType.journal);
+      },
+    );
+
+    test(
+      '"I need to set a calendar entry for next Monday" classifies as calendarEvent',
+      () {
+        // Isolates the calendar-entry compound noun pattern (verb arm fires).
+        final result = classifier.classify(
+          'I need to set a calendar entry for next Monday',
+        );
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test(
+      '"I need to make a reservation for Saturday night" classifies as calendarEvent',
+      () {
+        // "make" added to _hasFutureActionContext; "reservation" is an event noun.
+        final result = classifier.classify(
+          'I need to make a reservation for Saturday night',
+        );
+        expect(result.type, IntentType.calendarEvent);
+        expect(result.confidence, greaterThanOrEqualTo(0.5));
+      },
+    );
+
+    test(
+      '"I need to make a note about this Friday" classifies as journal (false-positive guard)',
+      () {
+        // "need to make" fires _hasFutureActionContext, "this friday" fires temporal.
+        // But "note" is not in _eventNounPattern and calendarIntentPattern does not
+        // match — so calendarScore should stay 0 and temporal boost should not fire.
+        final result = classifier.classify(
+          'I need to make a note about this Friday',
+        );
+        expect(
+          result.type,
+          isNot(IntentType.calendarEvent),
+          reason: '"need to make a note" must not route as calendar',
+        );
+      },
+    );
+  });
 }

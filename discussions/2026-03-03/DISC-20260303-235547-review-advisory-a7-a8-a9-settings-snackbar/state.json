@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260303-235547-review-advisory-a7-a8-a9-settings-snackbar",
+  "status": "complete",
+  "started_at": "2026-03-03T23:55:53.233311+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "low",
+  "collaboration_mode": "ensemble",
+  "report_path": "docs/reviews/REV-20260303-235547.md"
+}

@@ -64,6 +64,7 @@ import 'database_provider.dart';
 import 'task_providers.dart';
 import 'llm_providers.dart';
 import 'location_providers.dart';
+import 'weather_providers.dart';
 import 'onboarding_providers.dart';
 import 'personality_providers.dart';
 import 'photo_providers.dart';
@@ -71,6 +72,8 @@ import 'search_providers.dart';
 import 'sync_providers.dart';
 import 'video_providers.dart';
 import 'voice_providers.dart';
+import 'notification_providers.dart';
+import '../services/notification_scheduler_service.dart';
 
 /// IANA timezone for the current device (e.g., 'America/Los_Angeles').
 ///
@@ -741,6 +744,10 @@ class SessionNotifier extends StateNotifier<SessionState> {
           locationAccuracy: result.accuracy,
           locationName: result.locationName,
         );
+
+        // Piggyback weather capture on the coordinates we just obtained
+        // (Phase 4C). Uses the same privacy-reduced 2 d.p. coordinates.
+        _captureWeatherAsync(sessionId, result.latitude, result.longitude);
       } on Exception catch (e) {
         if (kDebugMode) {
           debugPrint('Location capture failed for $sessionId: $e');
@@ -748,6 +755,49 @@ class SessionNotifier extends StateNotifier<SessionState> {
       } on Error catch (e) {
         if (kDebugMode) {
           debugPrint('Location capture error for $sessionId: $e');
+        }
+      }
+    });
+  }
+
+  /// Fire-and-forget weather capture for a session (Phase 4C).
+  ///
+  /// Called from [_captureLocationAsync] after location coordinates are
+  /// obtained. Uses those coordinates to call Open-Meteo and write the
+  /// result back to the session row. If the weather API call fails for
+  /// any reason, the session continues normally without weather data.
+  ///
+  /// Coordinates are already privacy-reduced (2 d.p.) by LocationService.
+  void _captureWeatherAsync(
+    String sessionId,
+    double latitude,
+    double longitude,
+  ) {
+    Future<void>(() async {
+      try {
+        final weatherService = _ref.read(weatherServiceProvider);
+        final result = await weatherService.getWeather(
+          latitude: latitude,
+          longitude: longitude,
+        );
+        if (result == null) return;
+
+        // Verify session still exists (user may have discarded it).
+        if (state.activeSessionId != sessionId) return;
+
+        await _sessionDao.updateSessionWeather(
+          sessionId,
+          weatherTempC: result.temperatureCelsius,
+          weatherCode: result.weatherCode,
+          weatherDescription: result.description,
+        );
+      } on Exception catch (e) {
+        if (kDebugMode) {
+          debugPrint('Weather capture failed for $sessionId: $e');
+        }
+      } on Error catch (e) {
+        if (kDebugMode) {
+          debugPrint('Weather capture error for $sessionId: $e');
         }
       }
     });
@@ -911,6 +961,23 @@ class SessionNotifier extends StateNotifier<SessionState> {
     );
   }
 
+  /// Complete a check-in session without AI summary generation.
+  ///
+  /// Used by [CheckInScreen] when the user finishes all slider questions.
+  /// Since session content is stored in the checkin_responses table (not as
+  /// chat messages), the normal [endSession] path would auto-discard the
+  /// session (empty-session guard). This method writes [endTime] directly
+  /// and resets state so the session appears in the journal list.
+  Future<void> completeCheckInSession() async {
+    final sessionId = state.activeSessionId;
+    if (sessionId == null) return;
+
+    await _sessionDao.endSession(sessionId, nowUtc());
+    _agent.unlockLayer();
+    state = const SessionState();
+    _ref.read(activeSessionIdProvider.notifier).state = null;
+  }
+
   /// Dismiss the completed session and clear all state.
   ///
   /// Called by the UI after the user has read the closing summary and tapped
@@ -1012,29 +1079,136 @@ class SessionNotifier extends StateNotifier<SessionState> {
     await _extractEventDetails(text);
   }
 
-  /// Handle a reminder intent: set pending state and extract details.
+  /// Handle a reminder intent: schedule a local notification.
   ///
-  /// Enforces the 5-event pending cap per ADR-0020 §7.
+  /// Routes to [_handleQuickReminderIntent] — bypasses Google Calendar flow
+  /// (ADR-0033). All IntentType.reminder → OS local notification.
   Future<void> _handleReminderIntent(String text) async {
-    final sessionId = state.activeSessionId;
-    if (sessionId == null) return;
+    await _handleQuickReminderIntent(text);
+  }
 
-    // Enforce pending event cap (ADR-0020 §7).
-    final calendarEventDao = _ref.read(calendarEventDaoProvider);
-    final pendingCount = await calendarEventDao.countPendingForSession(
-      sessionId,
+  /// Schedule a local notification for a quick reminder phrase.
+  ///
+  /// Flow:
+  ///   1. Extract task title and reminderTime from text.
+  ///   2. Create a Task with isQuickReminder=true.
+  ///   3. Schedule OS notification; store notificationId on task row.
+  ///   4. Insert an ASSISTANT message so voice orchestrator speaks confirmation.
+  ///
+  /// Does NOT route to Google Calendar (ADR-0033).
+  Future<void> _handleQuickReminderIntent(String text) async {
+    final sessionId = state.activeSessionId;
+
+    // Extract title and time from the text.
+    final extractionService = _ref.read(taskExtractionServiceProvider);
+    final now = nowUtc();
+    final timezone = await _ref.read(deviceTimezoneProvider.future);
+
+    final result = await extractionService.extract(
+      text,
+      now,
+      timezone: timezone,
     );
-    if (pendingCount >= _maxPendingEventsPerSession) {
+
+    if (result is! TaskExtractionSuccess) {
+      // Extraction failed — let it fall through to the normal journal flow.
+      // The voice orchestrator will resume listening via acknowledgeNoResponse.
       return;
     }
 
-    state = state.copyWith(
-      pendingReminder: text,
-      isExtracting: true,
-      extractionError: null,
-      pendingExtractedEvent: null,
+    final task = result.task;
+    final reminderTime = task.reminderTime;
+
+    if (reminderTime == null) {
+      // No explicit time found — create a regular task without a notification.
+      // Re-route to the standard task intent flow to show a confirmation card.
+      _handleTaskIntent(text);
+      return;
+    }
+
+    // Schedule the OS notification.
+    final scheduler = _ref.read(notificationSchedulerProvider);
+    int? notificationId;
+    String confirmMessage;
+
+    try {
+      notificationId = await scheduler.scheduleNotification(
+        title: task.title,
+        body: 'Tap to view',
+        scheduledAt: reminderTime.toLocal(),
+      );
+      final timeStr = _formatReminderTime(reminderTime.toLocal());
+      confirmMessage =
+          "Got it, I'll remind you at $timeStr. Say cancel to undo.";
+    } on PastReminderTimeException {
+      confirmMessage =
+          "That time has already passed. When would you like the reminder?";
+      notificationId = null;
+    } on NotificationPermissionDeniedException {
+      confirmMessage =
+          "${task.title} saved — enable notifications in Settings to get an alert.";
+      notificationId = null;
+    } on Exception catch (e) {
+      if (kDebugMode) debugPrint('[QuickReminder] Scheduling failed: $e');
+      confirmMessage = "${task.title} saved.";
+      notificationId = null;
+    }
+
+    // Save the task to the local database.
+    final taskDao = _ref.read(taskDaoProvider);
+    final taskId = generateUuid();
+    await taskDao.insertTask(
+      TasksCompanion(
+        taskId: Value(taskId),
+        sessionId: Value.absentIfNull(sessionId),
+        title: Value(task.title),
+        notes: Value.absentIfNull(task.notes),
+        dueDate: Value.absentIfNull(task.dueDate),
+        reminderTime: Value.absentIfNull(reminderTime),
+        notificationId: Value.absentIfNull(notificationId),
+        isQuickReminder: const Value(true),
+        rawUserMessage: Value(text),
+        status: const Value(TaskStatus.active),
+        syncStatus: const Value(TaskSyncStatus.pending),
+        createdAt: Value(nowUtc()),
+        updatedAt: Value(nowUtc()),
+      ),
     );
-    await _extractEventDetails(text);
+
+    // Invalidate task count so UI updates.
+    _ref.invalidate(taskCountProvider);
+
+    // Insert an ASSISTANT message so the voice orchestrator speaks confirmation.
+    if (sessionId != null) {
+      await _messageDao.insertMessage(
+        generateUuid(),
+        sessionId,
+        'ASSISTANT',
+        confirmMessage,
+        nowUtc(),
+      );
+    }
+
+    state = state.copyWith(
+      conversationMessages: [
+        ...state.conversationMessages,
+        {'role': 'assistant', 'content': confirmMessage},
+      ],
+    );
+  }
+
+  /// Format a local DateTime as a human-readable time string (e.g. "3:47pm").
+  static String _formatReminderTime(DateTime local) {
+    final hour12 = local.hour == 0
+        ? 12
+        : local.hour > 12
+        ? local.hour - 12
+        : local.hour;
+    final ampm = local.hour < 12 ? 'am' : 'pm';
+    final minuteStr = local.minute == 0
+        ? ''
+        : ':${local.minute.toString().padLeft(2, '0')}';
+    return '$hour12$minuteStr$ampm';
   }
 
   /// Run event extraction and update pending state with the result.

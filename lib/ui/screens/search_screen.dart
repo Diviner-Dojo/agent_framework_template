@@ -152,8 +152,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   ) {
     final theme = Theme.of(context);
 
-    // Pre-search state: no query entered yet.
-    if (query.trim().isEmpty) {
+    // Pre-search state: no query entered yet and no filters active.
+    if (query.trim().isEmpty && !filters.hasActiveFilters) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -613,7 +613,9 @@ class _MultiSelectSheetState extends ConsumerState<_MultiSelectSheet> {
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Center(
                       child: Text(
-                        'No ${widget.title.toLowerCase()} found in your journal yet',
+                        'No ${widget.title.toLowerCase()} tags found.\n'
+                        'Open a past session and add tags using the chip editor.',
+                        textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),

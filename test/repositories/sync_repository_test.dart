@@ -770,6 +770,7 @@ void main() {
         syncStatus: TaskSyncStatus.pending,
         rawUserMessage: 'Add a task to buy groceries',
         completedAt: null,
+        isQuickReminder: false,
         createdAt: now,
         updatedAt: now,
       );
@@ -799,6 +800,7 @@ void main() {
         title: 'Open-ended task',
         status: TaskStatus.active,
         syncStatus: TaskSyncStatus.pending,
+        isQuickReminder: false,
         createdAt: now,
         updatedAt: now,
       );
@@ -824,6 +826,7 @@ void main() {
         status: TaskStatus.completed,
         syncStatus: TaskSyncStatus.pending,
         completedAt: completedAt,
+        isQuickReminder: false,
         createdAt: now,
         updatedAt: now,
       );

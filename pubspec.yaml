@@ -1,7 +1,7 @@
 name: agentic_journal
 description: "AI-powered journaling app with offline-first architecture"
 publish_to: 'none'
-version: 0.17.4+12
+version: 1.0.0+33
 
 environment:
   sdk: ^3.11.0
@@ -74,7 +74,12 @@ dependencies:
   video_thumbnail: ^0.5.3
   ffmpeg_kit_min_gpl: ^6.0.3
 
+  # Local notifications — OS-level timed reminders (ADR-0033)
+  flutter_local_notifications: ^18.0.1
+
   googleapis_auth: any
+  fl_chart: ^1.1.1
+  timezone: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

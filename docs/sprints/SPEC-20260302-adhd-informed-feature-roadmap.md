@@ -275,6 +275,21 @@ Note: The parser is scale-aware — out-of-range is determined by the active tem
 - Add `pulseCheckIn` to mode selection UI
 - New: `lib/providers/questionnaire_providers.dart`
 
+**Task 10: Dedicated Check-In Screen (UX Correction)**
+
+*Device testing (v0.18.1+14) revealed that the pulse check-in flow running inside `JournalSessionScreen` is disorienting: the full chat UI (message list, text input, "Journal Entry" app bar, Done button) surrounds the slider widget when the user is only moving sliders — no conversation is happening. The original spec (Task 5) specified a "single scrollable screen" — implementation deviated from that intent.*
+
+- New: `lib/ui/screens/check_in_screen.dart` — a lightweight dedicated screen for visual/slider mode. Shows only:
+  - Clean app bar ("Quick Check-In", back button)
+  - Progress indicator ("Question 3 of 6")
+  - `PulseCheckInWidget` (existing slider widget)
+  - After save: `PulseCheckInSummary` card + "Add a journal note?" optional CTA that navigates to a regular journal session
+- Route: `/check_in` — registered in `app.dart` alongside `/session`
+- Navigation: tapping "Quick check-in" on the home screen banner navigates to `/check_in` (not `/session`) when voice mode is off. When voice mode is on, use `/session` (the chat transcript is relevant for voice).
+- **Do NOT duplicate `CheckInNotifier` state** — `check_in_screen.dart` reads `checkInProvider` exactly as `journal_session_screen.dart` does. Only the wrapper UI differs.
+- **Back navigation**: if the check-in is incomplete, back shows a "Discard this check-in?" dialog (same pattern as journal discard). If complete, back returns to home.
+- `JournalSessionScreen` retains the `PulseCheckInWidget` integration for voice mode — do not remove it.
+
 ### Key Files
 
 | File | Action |
@@ -288,9 +303,11 @@ Note: The parser is scale-aware — out-of-range is determined by the active tem
 | `lib/providers/questionnaire_providers.dart` | **New** |
 | `lib/ui/widgets/pulse_check_in_widget.dart` | **New** |
 | `lib/ui/widgets/pulse_check_in_summary.dart` | **New** |
-| `lib/ui/screens/journal_session_screen.dart` | Integrate |
+| `lib/ui/screens/journal_session_screen.dart` | Integrate (voice mode only) |
 | `lib/ui/screens/session_detail_screen.dart` | Show results |
 | `lib/ui/screens/settings_screen.dart` | Config section |
+| `lib/ui/screens/check_in_screen.dart` | **New** (Task 10) |
+| `lib/app.dart` | Add `/check_in` route (Task 10) |
 
 ### Acceptance Criteria (Phase 1)
 
@@ -308,6 +325,10 @@ Note: The parser is scale-aware — out-of-range is determined by the active tem
 - [ ] Settings: item enable/disable, reorder, and add custom item all persist across app restart
 - [ ] Quality gate: `python scripts/quality_gate.py` passes — >= 80% coverage, zero `dart analyze` errors
 - [ ] P0 (pauseFor 5s → 2s) shipped; P1 blocked until ADR-0031 approved
+- [ ] Task 10: "Quick check-in" banner button navigates to `/check_in` (not `/session`) when voice mode is off
+- [ ] Task 10: `CheckInScreen` shows progress indicator, slider widget, and summary card with no chat UI elements visible
+- [ ] Task 10: Back button on incomplete check-in shows discard confirmation dialog
+- [ ] Task 10: "Add a journal note?" CTA after save navigates to a new regular journal session
 
 ### Verification
 
@@ -350,6 +371,47 @@ Note: The parser is scale-aware — out-of-range is determined by the active tem
 
 **File**: `lib/ui/screens/settings_screen.dart`
 
+**Implementation status (v0.18.1+14)**: Partial. Export to public Downloads folder on Android is working. Missing data:
+
+- ❌ **Check-in responses** (`checkin_responses` table: compositeScore, completedAt, templateId)
+- ❌ **Check-in answers** (`check_in_answers` table: per-item value, question text, whether reversed)
+- ❌ **Photos** (file paths + metadata — binary files are too large for JSON inline; export paths with a manifest)
+- ❌ **Videos** (same — export paths + metadata)
+- ❌ **Tasks** (Google Tasks integration data if present)
+
+**Required export schema additions** (add to `_exportData()` in `settings_screen.dart`):
+
+```json
+{
+  "check_in_responses": [
+    {
+      "response_id": "uuid",
+      "session_id": "uuid",
+      "template_name": "Default Pulse Check-In",
+      "completed_at": "2026-03-03T16:00:00Z",
+      "composite_score": 68.5,
+      "answers": [
+        { "question": "How would you rate your overall mood right now?", "value": 8, "reversed": false },
+        { "question": "How anxious or worried do you feel?", "value": 3, "reversed": true }
+      ]
+    }
+  ],
+  "photos": [
+    { "session_id": "uuid", "file_path": "/data/.../photo.jpg", "captured_at": "2026-03-03T12:00:00Z" }
+  ],
+  "videos": [
+    { "session_id": "uuid", "file_path": "/data/.../video.mp4", "captured_at": "2026-03-03T12:00:00Z" }
+  ]
+}
+```
+
+**Acceptance criteria** (complete when all four are exported):
+- [ ] `check_in_responses` array present in export JSON; each response includes composite score and per-item answers with question text
+- [ ] `photos` array present; each entry includes session_id, file_path, and captured_at
+- [ ] `videos` array present; same schema as photos
+- [ ] Export with 0 check-ins / 0 photos still produces valid JSON (empty arrays, not missing keys)
+- [ ] Export file size for a typical 6-month user (100 sessions, 20 check-ins, 30 photos) completes in < 5 seconds
+
 ---
 
 ## Phase 3: Engagement & Retention Features
@@ -388,6 +450,46 @@ Note: The parser is scale-aware — out-of-range is determined by the active tem
 
 **Files**: New digest service + optional notification integration
 
+### 3E: Check-In History Dashboard
+
+*Added after v0.18.1+14 device testing. Device feedback: "Where in the app can I look at my check-in question history? Maybe we need a little icon at the top we can click on to view the quick check-in history as an interactive visual."*
+
+**Problem**: Check-in scores are saved but invisible. There is no way to see a history of your check-ins, no trends, no feedback loop. The check-in has no "close the loop" moment — users do the work but get nothing back. This is the primary reason the feature will stop being used.
+
+**Entry point**: A small chart-icon button (`Icons.insights_outlined`) in the home screen app bar (session list screen), visible only after the user has completed at least one check-in. Tapping it opens the Check-In History screen. This keeps the home screen uncluttered while making the history discoverable.
+
+**Check-In History Screen** (`lib/ui/screens/check_in_history_screen.dart`):
+- **Header**: "Your Check-In History" + date range (last 30 days default, expandable)
+- **Score sparklines**: One small line chart per dimension (mood, energy, anxiety, focus, emotional regulation, sleep). Each sparkline shows the last 14 data points. Tap a sparkline to expand it full-width with date labels.
+- **Recent responses list**: Scrollable list of check-in cards below the charts. Each card shows: date, composite score (0-100), and mini bar for each dimension. Tap a card → opens that session's detail.
+- **ADHD framing**: No "best/worst day" labels. No trend arrows labeled "declining" or "improving." Show patterns without evaluation. Composite score displayed as a neutral number, never as a grade. Missing days are not shown as gaps — the chart simply connects data points that exist.
+
+**Clinical UX constraints** (violations are blocking findings in any review):
+- Never label a data point as a "bad day" or show a downward trend with negative framing
+- Epistemic humility: any correlation noted is phrased "possible relationship" — never causation
+- Missing data gaps on chart are rendered as breaks (dotted line), never as zeros or implied failure
+- No streak counter, no "X days since last check-in" anywhere on this screen
+
+**Relationship to Phase 4E**: 3E is the accessible, everyday history view. 4E (Trend View) extends it with richer statistical analysis, dimension correlations, and optional AI interpretation. 3E must ship before 4E; 4E builds on 3E's screen and data layer.
+
+**Chart library**: Use `fl_chart` (already a common Flutter choice) or `syncfusion_flutter_charts` (more powerful). ADR or inline decision note required if a new dependency is added.
+
+**Files**:
+- New: `lib/ui/screens/check_in_history_screen.dart`
+- New: `lib/providers/check_in_history_provider.dart` — queries `CheckInResponses` + `CheckInAnswers` by date range
+- Modify: `lib/ui/screens/session_list_screen.dart` — add insights icon to app bar
+- Modify: `lib/app.dart` — add `/check_in_history` route
+
+**Acceptance criteria**:
+- [ ] Insights icon visible in home screen app bar only when `checkin_responses` table has >= 1 row
+- [ ] Tapping icon navigates to Check-In History screen
+- [ ] Screen shows one sparkline per active check-in dimension, populated from real `check_in_answers` data
+- [ ] Tapping a sparkline expands it full-width
+- [ ] Recent responses list shows last 10 check-ins with date + composite score
+- [ ] Tapping a response card navigates to that session's detail screen
+- [ ] Check-in data in exports includes all fields needed to reconstruct the history view (per Phase 2C)
+- [ ] ADHD UX: no streak counters, no "bad day" labels, no gap-count displays
+
 ---
 
 ## Phase 4: Polish & Configurability
@@ -418,11 +520,13 @@ Note: The parser is scale-aware — out-of-range is determined by the active tem
 
 **Files**: New reminder service + notification scheduling
 
-### 4E: Pulse Check-In Trend View
+### 4E: Pulse Check-In Trend View (extends Phase 3E)
 
-**Design**: Line charts per dimension over time using check-in data. Correlation signals presented with epistemic humility: "possible relationship" language, confidence bands, missing-data warnings, plain-language disclaimers. Never ranking "best/worst days." Never diagnostic.
+**Dependency**: Phase 3E (Check-In History Dashboard) must ship first. 4E extends the 3E screen with deeper analysis — it does not replace it.
 
-**Files**: New trend screen (likely using `fl_chart` or similar charting package)
+**Design**: Richer statistical analysis on top of 3E's sparkline foundation: correlation heatmap between dimensions (e.g., sleep vs. focus), rolling 7/14/30-day averages, optional AI-generated narrative summary ("You tend to focus better on days when sleep scores are above 7 — possible relationship"). Epistemic humility framing throughout: "possible relationship" language, confidence bands, missing-data warnings, plain-language disclaimers. Never ranking "best/worst days." Never diagnostic.
+
+**Files**: Extends `lib/ui/screens/check_in_history_screen.dart` with optional deeper-analysis tab; new correlation service
 
 ### 4F: GPT-4o Realtime End-to-End Audio (Blocked — future north star)
 

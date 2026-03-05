@@ -96,6 +96,52 @@ void main() {
     });
   });
 
+  group('searchResultsProvider — filter-only browse (regression)', () {
+    // Regression: searchResultsProvider returned empty when query was empty
+    // even when filters were active — the early-return guard did not check
+    // filters.hasActiveFilters. Fix: early return only when both are false.
+    test('active filter with empty query returns matching sessions', () async {
+      final sessionDao = container.read(sessionDaoProvider);
+      await sessionDao.createSession('s1', DateTime.utc(2026, 2, 19), 'UTC');
+      await sessionDao.endSession(
+        's1',
+        DateTime.utc(2026, 2, 19, 0, 30),
+        summary: 'Good day',
+        moodTags: '["happy"]',
+      );
+      await sessionDao.createSession('s2', DateTime.utc(2026, 2, 18), 'UTC');
+      await sessionDao.endSession(
+        's2',
+        DateTime.utc(2026, 2, 18, 0, 30),
+        summary: 'Rough day',
+        moodTags: '["anxious"]',
+      );
+
+      // Empty query but active mood filter.
+      container.read(searchQueryProvider.notifier).state = '';
+      container.read(searchFiltersProvider.notifier).state = SearchFilters(
+        moodTags: ['happy'],
+      );
+      container.invalidate(searchResultsProvider);
+      final results = await container.read(searchResultsProvider.future);
+      expect(results.count, 1);
+      expect(results.items[0].sessionId, 's1');
+    });
+
+    test('empty query with no filters returns empty results', () async {
+      final sessionDao = container.read(sessionDaoProvider);
+      await sessionDao.createSession('s1', DateTime.utc(2026, 2, 19), 'UTC');
+      await sessionDao.endSession('s1', DateTime.utc(2026, 2, 19, 0, 30));
+
+      container.read(searchQueryProvider.notifier).state = '';
+      container.read(searchFiltersProvider.notifier).state =
+          SearchFilters.empty;
+      container.invalidate(searchResultsProvider);
+      final results = await container.read(searchResultsProvider.future);
+      expect(results.isEmpty, isTrue);
+    });
+  });
+
   group('searchResultsProvider with data', () {
     test('returns matching results when query matches summary', () async {
       final sessionDao = container.read(sessionDaoProvider);

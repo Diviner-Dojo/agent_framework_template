@@ -40,6 +40,7 @@ class MainActivity : FlutterActivity() {
     // Channel names must match the Dart side exactly.
     private val CHANNEL = "com.divinerdojo.journal/assistant"
     private val AUDIO_CHANNEL = "com.divinerdojo.journal/audio"
+    private val WIDGET_CHANNEL = "com.divinerdojo.journal/widget"
 
     // Flag to track if we were launched via the assistant gesture.
     // This is set in onCreate and read by Flutter to decide whether
@@ -54,6 +55,11 @@ class MainActivity : FlutterActivity() {
     // Android can send the intent twice in rapid succession (undocumented but
     // documented by Dicio — https://github.com/Stypox/dicio-android).
     private var lastAssistTimestamp: Long = 0
+
+    // The capture mode string passed by the Quick Capture widget (Phase 4B).
+    // Null if the app was not launched from the widget, or if the widget had
+    // no stored mode preference. Cleared after Flutter reads it once.
+    private var widgetLaunchMode: String? = null
 
     // Audio focus management for voice recording (Phase 7A).
     private var audioManager: AudioManager? = null
@@ -84,6 +90,12 @@ class MainActivity : FlutterActivity() {
                 setTurnScreenOn(true)
             }
         }
+
+        // Check if this launch was triggered by the Quick Capture widget (Phase 4B).
+        // The widget passes the last-used capture mode as an Intent extra.
+        intent?.getStringExtra(QuickCaptureWidget.EXTRA_WIDGET_LAUNCH_MODE)?.let {
+            widgetLaunchMode = it
+        }
     }
 
     // Handle the case where the app is already running (singleTop) and the
@@ -98,6 +110,11 @@ class MainActivity : FlutterActivity() {
             launchedAsAssistant = true
             launchedAsVoiceAssistant =
                 intent.action == "android.intent.action.VOICE_ASSIST"
+        }
+
+        // Widget launch when app is already running (singleTop — Phase 4B).
+        intent.getStringExtra(QuickCaptureWidget.EXTRA_WIDGET_LAUNCH_MODE)?.let {
+            widgetLaunchMode = it
         }
     }
 
@@ -153,6 +170,22 @@ class MainActivity : FlutterActivity() {
                         val wasVoice = launchedAsVoiceAssistant
                         launchedAsVoiceAssistant = false
                         result.success(wasVoice)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // Widget launch channel (Phase 4B — Quick Capture widget).
+        // Flutter calls getWidgetLaunchMode() once during initState to check
+        // if the app was opened from the home screen widget. The flag is
+        // cleared after the first read to prevent stale data on navigation.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIDGET_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getWidgetLaunchMode" -> {
+                        val mode = widgetLaunchMode
+                        widgetLaunchMode = null // clear after one read
+                        result.success(mode)
                     }
                     else -> result.notImplemented()
                 }

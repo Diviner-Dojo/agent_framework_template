@@ -29,7 +29,23 @@ enum JournalingMode {
   moodCheckIn,
 
   /// Conversational onboarding — first-launch experience as a real session.
-  onboarding;
+  onboarding,
+
+  /// Pulse Check-In — structured mood/energy/focus questionnaire (ADR-0032).
+  ///
+  /// This mode is form-driven: [CheckInNotifier] drives question sequencing
+  /// and collects numeric answers. The LLM is NOT invoked for the check-in
+  /// itself — only for the optional free-journal step at the end.
+  /// [systemPromptFragment] is intentionally empty for this mode.
+  pulseCheckIn,
+
+  /// Quick Mood Tap — 3-second mood + energy snapshot.
+  ///
+  /// Opens a bottom sheet overlay on the home screen without navigating away.
+  /// No LLM call — the user taps an emoji (mood 1–5) and optionally selects
+  /// energy level (1–3). Saved as a minimal session that is excluded from
+  /// the main session list but queryable by the Check-In History screen.
+  quickMoodTap;
 
   /// Human-readable name for UI display.
   String get displayName => switch (this) {
@@ -38,29 +54,38 @@ enum JournalingMode {
     dreamAnalysis => 'Dream Analysis',
     moodCheckIn => 'Mood Check-In',
     onboarding => 'Onboarding',
+    pulseCheckIn => 'Pulse Check-In',
+    quickMoodTap => 'Quick Mood Tap',
   };
 
   /// System prompt fragment appended to the personality prompt.
   ///
-  /// Returns empty string for [free] mode (no additional guidance).
-  /// Other modes define numbered conversation steps that the LLM follows.
+  /// Returns empty string for [free] and [pulseCheckIn] modes.
+  /// [pulseCheckIn] is intentionally empty — the check-in flow is driven by
+  /// [CheckInNotifier], not by LLM prompt guidance. The LLM is only invoked
+  /// for the optional free-journal step after all questions are answered.
   String get systemPromptFragment => switch (this) {
     free => '',
     gratitude => _gratitudePrompt,
     dreamAnalysis => _dreamAnalysisPrompt,
     moodCheckIn => _moodCheckInPrompt,
     onboarding => _onboardingPrompt,
+    pulseCheckIn => '', // Form-driven — CheckInNotifier handles sequencing.
+    quickMoodTap => '', // No LLM — tap-to-save snapshot, no conversation.
   };
 
   /// Convert to the string stored in SQLite/Supabase.
   ///
-  /// Uses snake_case format: 'free', 'gratitude', 'dream_analysis', 'mood_check_in'.
+  /// Uses snake_case: 'free', 'gratitude', 'dream_analysis', 'mood_check_in',
+  /// 'onboarding', 'pulse_check_in'.
   String toDbString() => switch (this) {
     free => 'free',
     gratitude => 'gratitude',
     dreamAnalysis => 'dream_analysis',
     moodCheckIn => 'mood_check_in',
     onboarding => 'onboarding',
+    pulseCheckIn => 'pulse_check_in',
+    quickMoodTap => 'quick_mood_tap',
   };
 
   /// Parse from a database string value.
@@ -75,6 +100,8 @@ enum JournalingMode {
       'dream_analysis' => JournalingMode.dreamAnalysis,
       'mood_check_in' => JournalingMode.moodCheckIn,
       'onboarding' => JournalingMode.onboarding,
+      'pulse_check_in' => JournalingMode.pulseCheckIn,
+      'quick_mood_tap' => JournalingMode.quickMoodTap,
       _ => null,
     };
   }

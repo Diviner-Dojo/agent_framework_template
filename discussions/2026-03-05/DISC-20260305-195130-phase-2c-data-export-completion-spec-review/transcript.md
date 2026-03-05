@@ -1,0 +1,96 @@
+---
+discussion_id: DISC-20260305-195130-phase-2c-data-export-completion-spec-review
+started: 2026-03-05T19:51:38.442099+00:00
+ended: 2026-03-05T19:55:29.827335+00:00
+agents: [architecture-consultant, facilitator, qa-specialist]
+total_turns: 4
+---
+
+# Discussion: DISC-20260305-195130-phase-2c-data-export-completion-spec-review
+
+## Turn 1 — facilitator (evidence)
+*2026-03-05T19:51:38.442099+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Complete Phase 2C Data Export — add video export, fix conditional key omission (check_ins/photos missing when empty), always-present empty arrays
+- **Files/scope**: SPEC-20260305-195043-phase-2c-data-export-completion.md; implementation in lib/ui/screens/settings_screen.dart _exportData() method
+- **Developer-stated motivation**: All ADHD roadmap phases through Phase 5A are complete; Phase 2C is the last partially-implemented phase with videos and empty-array stability gaps
+- **Explicit constraints**: No schema migration, no new providers, nested export structure preserved, tasks deferred (not in acceptance criteria)
+
+---
+
+## Turn 2 — qa-specialist (critique)
+*2026-03-05T19:54:29.900078+00:00 | confidence: 0.92*
+*tags: spec-review, test-gaps*
+
+## QA Spec Review
+
+**Verdict**: Approve with changes (2 blocking test gaps, 3 advisory)
+
+**F1 [High / missing-test]**: videoDaoProvider not overridden in buildTestWidget() ProviderContainer. After _exportData() gains a ref.read(videoDaoProvider) call, a missing override causes a ProviderException that triggers 'Export failed' SnackBar — and the existing disjunctive test (success OR failure) still passes, masking the error entirely. Both new JSON-structure tests from AC 6/AC 7 require videoDaoProvider.overrideWithValue(VideoDao(database)) in the ProviderContainer overrides.
+
+**F2 [High / missing-test]**: AC 6 and AC 7 (the two unit tests for video JSON structure and empty-array presence) do not exist anywhere in the test suite. The entire structural correctness of this change is untested. Tests must be added: (a) seed a video via VideoDao.insertVideo(), trigger export, parse written JSON, assert videos[0] has video_id/file_path/duration_seconds/timestamp; (b) session with no media → check_ins/photos/videos all equal [] (not absent keys).
+
+**F3 [Medium / schema]**: thumbnail_path listed as optional in spec but is a non-nullable column in the Videos DB table. Spec should either promote thumbnail_path to required field list (alongside video_id, file_path, duration_seconds, captured_at) or acknowledge it is always-present. Implementation must NOT use a null guard on thumbnailPath.
+
+**F4 [Low / confirmation]**: Other nullable scalars (end_time, summary, mood_tags, etc.) are already unconditionally included in the session map (as JSON null when null). The conditional-omission bug is correctly scoped to check_ins, photos, and the new videos key only.
+
+**F5 [Low / weak-assertion]**: Existing disjunctive SnackBar test is acceptable for CI. New JSON-structure tests must not use the disjunctive pattern — they should assert success path only via in-memory DB.
+
+Confidence: 0.92
+
+---
+
+## Turn 3 — architecture-consultant (critique)
+*2026-03-05T19:54:42.460718+00:00 | confidence: 0.88*
+*tags: spec-review, naming*
+
+## Architecture Spec Review
+
+**Verdict**: Approve (2 naming inconsistencies to fix pre-implementation, 3 advisory)
+
+**F1 [Low / naming]**: Spec uses 'captured_at' for video timestamp, but photo export uses 'timestamp' and message export uses 'timestamp'. Using captured_at for videos while photos use timestamp creates schema inconsistency within the same document. Fix: use 'timestamp' consistently.
+
+**F2 [Low / naming]**: Spec uses 'file_path' for video local path, but photo export uses 'local_path' (line 1759 of settings_screen.dart). Fix: use 'local_path' for videos to match convention.
+
+**F3 [Info / schema-versioning]**: No export_version field in the export root. This is the second schema extension. Recommends wrapping the bare array in {export_version: 2, exported_at: '...', sessions: [...]} so future consumers can distinguish v1 from v2 exports. Advisory — acceptable to defer since there is no import feature.
+
+**F4 [Info / boundary]**: _exportData() in UI layer doing all DAO reads + file I/O in a single async method is acceptable for current scale. No performance or architecture concern for the target size (100 sessions, 30 videos). Single-method approach is the least-complex intervention per Principle #8. If tasks/calendar events are added later, extract to ExportService at that point.
+
+**F5 [Info / structure]**: Nested-per-session structure is correct for this use case. Self-contained session objects are easier for both human reading and programmatic ingest. No change needed.
+
+Confidence: 0.88
+
+---
+
+## Turn 4 — facilitator (synthesis)
+*2026-03-05T19:55:29.827335+00:00 | confidence: 0.91*
+*tags: blocking:0, advisory:2*
+
+## Request Context
+- **What was requested**: Complete Phase 2C Data Export — add video export, fix conditional key omission (check_ins/photos missing when empty), always-present empty arrays
+- **Files/scope**: SPEC-20260305-195043-phase-2c-data-export-completion.md; implementation in lib/ui/screens/settings_screen.dart _exportData() method
+- **Developer-stated motivation**: All ADHD roadmap phases through Phase 5A are complete; Phase 2C is the last partially-implemented phase with videos and empty-array stability gaps
+- **Explicit constraints**: No schema migration, no new providers, nested export structure preserved, tasks deferred (not in acceptance criteria)
+
+## Synthesis
+
+Verdict: **approve-with-changes** (spec revised inline before implementation).
+
+### Blocking fixes applied to spec
+
+1. **Field naming corrected**: video schema changed from 'file_path'/'captured_at' to 'local_path'/'timestamp' to match the existing photo/message export convention. Architecture-consultant Findings 1 and 5.
+
+2. **thumbnail_path promoted to required**: Non-nullable in the Videos DB table, so no null guard and always-present. Listing as optional in the spec was misleading. QA Finding 3. Spec AC 4 updated accordingly.
+
+3. **videoDaoProvider override requirement added to test ACs**: Without this override, any ProviderException from the new ref.read(videoDaoProvider) call would surface as 'Export failed' SnackBar, and the existing disjunctive test would pass silently. QA Findings 1 and 2. AC 6 and AC 7 now explicitly require the override.
+
+### Advisory (deferred)
+
+- **Schema versioning** (arch F2): Adding export_version: 2 wrapper recommended but deferred — no import feature exists, no programmatic consumer. Low cost if added now, acceptable to defer.
+- **ExportService extraction** (arch F4): _exportData() doing multi-DAO reads in the UI layer is acceptable at current scale. Defer until tasks/calendar are added.
+
+### No blocking findings remain in the spec. Ready for /build_module.
+
+---

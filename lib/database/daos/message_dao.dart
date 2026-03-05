@@ -66,6 +66,17 @@ class MessageDao {
         );
   }
 
+  /// Update the text content of an existing message.
+  ///
+  /// Used to correct voice transcription errors (e.g., "Shawn" vs "Sean").
+  /// Only the [content] column is modified — timestamp, role, and other
+  /// metadata remain unchanged.
+  Future<void> updateMessageContent(String messageId, String newContent) async {
+    await (_db.update(_db.journalMessages)
+          ..where((m) => m.messageId.equals(messageId)))
+        .write(JournalMessagesCompanion(content: Value(newContent)));
+  }
+
   /// Get all messages for a session, ordered by timestamp ascending.
   ///
   /// This reconstructs the conversation in chronological order.

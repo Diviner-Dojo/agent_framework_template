@@ -532,17 +532,38 @@ void main() {
     // =======================================================================
     // 8. Session persists after end
     // =======================================================================
-    // Tap the "Done" button in the AppBar to end the session.
-    // The overflow menu only has "Discard" — "Done" is the end-session button.
+    // Tap the "Done" button in the AppBar to start the session-end flow.
+    // After PR #54, _endSessionAndPop() does NOT auto-navigate back. Instead:
+    //   1. endSession() generates a closing summary (isClosingComplete = true)
+    //   2. The "Done" button disappears from the AppBar
+    //   3. User presses back to dismiss and navigate home (_dismissAndPop)
     final endDone = find.text('Done');
     expect(endDone, findsOneWidget, reason: 'Done button should be in AppBar');
     await tester.tap(endDone);
 
-    // Wait for endSession() to complete (Claude closing summary) and pop.
-    for (var i = 0; i < 15; i++) {
+    // Step 1: Wait for the closing summary to generate.
+    // The Done button disappears once isSessionEnding = true (immediately).
+    // The closing summary appears after endSession() completes (~10-20s).
+    // Poll for the back button becoming available (canPop = true when
+    // isClosingComplete) OR for "Agentic Journal" if auto-navigation occurs.
+    for (var i = 0; i < 30; i++) {
       await safePump(const Duration(seconds: 1));
-      await safePump();
       if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+      // Done button gone = session end process started/completed.
+      if (find.text('Done').evaluate().isEmpty) break;
+    }
+
+    // Step 2: If still on the journal session screen (closing summary showing),
+    // tap the back button to dismiss and navigate home.
+    if (find.text('Agentic Journal').evaluate().isEmpty) {
+      final backBtn = find.byIcon(Icons.arrow_back);
+      if (backBtn.evaluate().isNotEmpty) {
+        await tester.tap(backBtn);
+      }
+      for (var i = 0; i < 20; i++) {
+        await safePump(const Duration(milliseconds: 500));
+        if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+      }
     }
 
     // Verify we're back on the session list and it's not empty.
@@ -644,10 +665,287 @@ void main() {
       find.byType(Navigator).first,
     );
     navHome2.pushNamedAndRemoveUntil('/', (route) => false);
-    for (var i = 0; i < 15; i++) {
+    for (var i = 0; i < 30; i++) {
       await safePump(const Duration(milliseconds: 200));
       if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
     }
+
+    // =======================================================================
+    // 10. Pulse Check-In: Quick Check-In banner + check-in flow
+    // =======================================================================
+    // We should be on the home screen with at least 1 session (created in
+    // section 7). The Quick Check-In CTA banner is shown universally to users
+    // with sessions (ADHD UX: no gap-shaming, no mention of days absent).
+    //
+    // quickCheckInBannerDismissedProvider starts false for this app launch;
+    // we never dismissed the banner → it should be visible.
+    await safePump(const Duration(milliseconds: 500));
+
+    final bannerContent = find.textContaining('Good to see you');
+    if (bannerContent.evaluate().isNotEmpty) {
+      debugPrint('Section 10: Quick Check-In banner visible — exercising flow');
+
+      // Verify both banner actions are present.
+      expect(
+        find.text('Quick check-in'),
+        findsOneWidget,
+        reason: 'Banner should have "Quick check-in" CTA button',
+      );
+      expect(
+        find.text('Just browse'),
+        findsOneWidget,
+        reason: 'Banner should have "Just browse" dismiss button',
+      );
+
+      // Tap "Quick check-in" to start a Pulse Check-In session.
+      await tester.tap(find.text('Quick check-in'));
+
+      // Wait for the Pulse Check-In widget to appear.
+      // The session starts (Claude greeting), then _maybeStartCheckIn() fires.
+      bool pulseVisible = false;
+      final pulseDeadline = DateTime.now().add(const Duration(seconds: 25));
+      while (DateTime.now().isBefore(pulseDeadline)) {
+        await safePump(const Duration(milliseconds: 200));
+        if (find.text('Pulse Check-In').evaluate().isNotEmpty) {
+          pulseVisible = true;
+          break;
+        }
+      }
+
+      expect(
+        pulseVisible,
+        isTrue,
+        reason:
+            'PulseCheckInWidget should appear after Quick check-in tap. '
+            'Captured errors: $capturedErrors',
+      );
+
+      // Progress label is visible (e.g. "1 of 6").
+      // Use byWidgetPredicate to match exactly "N of M" without matching
+      // chat messages that also contain " of ".
+      final progressLabelFinder = find.byWidgetPredicate((widget) {
+        if (widget is Text && widget.data != null) {
+          return RegExp(r'^\d+ of \d+$').hasMatch(widget.data!);
+        }
+        return false;
+      });
+      expect(
+        progressLabelFinder.evaluate().isNotEmpty,
+        isTrue,
+        reason: 'Progress label ("X of N") should be visible',
+      );
+
+      // Walk through all check-in items.
+      // Skip items 1..N-1 with the "Skip" button.
+      // On the last item ("Finish" visible), interact with the slider to
+      // enable Finish, then submit — this triggers a real save.
+      bool checkInSaved = false;
+      for (var i = 0; i < 12; i++) {
+        await safePump(const Duration(milliseconds: 300));
+
+        // Complete card showing → done.
+        if (find.text('Check-in saved.').evaluate().isNotEmpty) {
+          checkInSaved = true;
+          break;
+        }
+
+        // Widget gone (all-skip path — isActive → false). Normal behavior.
+        if (find.text('Pulse Check-In').evaluate().isEmpty) break;
+
+        final finishBtn = find.text('Finish');
+        if (finishBtn.evaluate().isNotEmpty) {
+          // Last item — drag slider to register an interaction, enabling Finish.
+          final sliders = find.byType(Slider);
+          if (sliders.evaluate().isNotEmpty) {
+            await tester.drag(sliders.first, const Offset(30, 0));
+            await safePump(const Duration(milliseconds: 300));
+          }
+          // Tap Finish (enabled after slider interaction).
+          await tester.tap(finishBtn, warnIfMissed: false);
+          await safePump(const Duration(seconds: 1));
+        } else {
+          // Middle item — tap Skip to advance.
+          final skipBtn = find.text('Skip');
+          if (skipBtn.evaluate().isEmpty) break;
+          await tester.tap(skipBtn);
+        }
+      }
+
+      await safePump(const Duration(seconds: 1));
+      debugPrint(
+        'Section 10: Pulse check-in result: '
+        '${checkInSaved ? "saved (complete card visible)" : "all-skip or incomplete path"}',
+      );
+
+      // If at least one item was answered, verify the complete card.
+      if (checkInSaved) {
+        expect(
+          find.text('Check-in saved.'),
+          findsOneWidget,
+          reason: 'Complete card should show "Check-in saved." text',
+        );
+      }
+
+      // End the Pulse Check-In session using the same two-step pattern as
+      // section 8: tap Done → wait for closing summary → tap back.
+      final endDone3 = find.text('Done');
+      if (endDone3.evaluate().isNotEmpty) {
+        await tester.tap(endDone3);
+
+        // Wait for closing summary (Done button disappears).
+        for (var i = 0; i < 30; i++) {
+          await safePump(const Duration(seconds: 1));
+          if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+          if (find.text('Done').evaluate().isEmpty) break;
+        }
+
+        // Tap back to dismiss the closing summary and return home.
+        if (find.text('Agentic Journal').evaluate().isEmpty) {
+          final backBtn3 = find.byIcon(Icons.arrow_back);
+          if (backBtn3.evaluate().isNotEmpty) {
+            await tester.tap(backBtn3);
+          }
+          for (var i = 0; i < 20; i++) {
+            await safePump(const Duration(milliseconds: 500));
+            if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+          }
+        }
+      } else {
+        // Done not visible — navigate home via navigator.
+        debugPrint(
+          'Section 10: Done button not found — navigating home directly',
+        );
+        final navPulse = tester.state<NavigatorState>(
+          find.byType(Navigator).first,
+        );
+        navPulse.pushNamedAndRemoveUntil('/', (route) => false);
+        for (var i = 0; i < 15; i++) {
+          await safePump(const Duration(milliseconds: 200));
+          if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+        }
+      }
+    } else {
+      debugPrint(
+        'Section 10: Quick Check-In banner not visible (no sessions or '
+        'already dismissed) — skipping Pulse Check-In flow test',
+      );
+    }
+
+    expect(
+      find.text('Agentic Journal'),
+      findsOneWidget,
+      reason: 'Should be on home screen at end of Pulse Check-In test',
+    );
+
+    // =======================================================================
+    // Section 11: Cross-session state check — regular journal after check-in.
+    //
+    // Regression: after a pulse_check_in session completes, checkInProvider
+    // (global StateNotifier) kept isActive=true. Opening a new regular journal
+    // entry rendered the check-in complete card and hid the text input field.
+    // Fix: _maybeStartCheckIn() now calls cancelCheckIn() for non-check-in sessions.
+    // This section verifies the text input field IS visible in a fresh session.
+    // =======================================================================
+    debugPrint('Section 11: Cross-session check-in state regression test');
+
+    // Tap FAB to start a new regular journal entry (text mode).
+    final fabSection11 = find.byType(FloatingActionButton);
+    if (fabSection11.evaluate().isNotEmpty) {
+      await tester.tap(fabSection11);
+      // Wait for session screen to appear.
+      bool sessionOpen = false;
+      final sessionDeadline = DateTime.now().add(const Duration(seconds: 15));
+      while (DateTime.now().isBefore(sessionDeadline)) {
+        await safePump(const Duration(milliseconds: 300));
+        if (find.byType(TextField).evaluate().isNotEmpty) {
+          sessionOpen = true;
+          break;
+        }
+      }
+
+      if (sessionOpen) {
+        // KEY REGRESSION CHECK: text input must be visible.
+        // If checkInProvider.isActive is still true from section 10, the
+        // PulseCheckInWidget replaces the input field — this assertion fails.
+        expect(
+          find.byType(TextField),
+          findsOneWidget,
+          reason:
+              'Section 11 REGRESSION: text input must be visible in a fresh '
+              'regular journal session — check-in state leaking from previous '
+              'pulse_check_in session would suppress it.',
+        );
+        // No stale check-in card should appear.
+        expect(
+          find.text('Pulse Check-In'),
+          findsNothing,
+          reason:
+              'Pulse Check-In card must not appear in a regular journal session',
+        );
+        expect(
+          find.text('Check-in saved.'),
+          findsNothing,
+          reason:
+              'Stale check-in complete card must not appear in a new session',
+        );
+
+        debugPrint('Section 11: text input visible — cross-session state OK');
+
+        // Send a short message to make the session non-empty.
+        await tester.enterText(
+          find.byType(TextField),
+          'Section 11 cross-session test',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        final sendBtn11 = find.byIcon(Icons.send);
+        if (sendBtn11.evaluate().isNotEmpty) {
+          await tester.tap(sendBtn11, warnIfMissed: false);
+          await safePump(const Duration(seconds: 2));
+        }
+
+        // End session (two-step: Done → closing summary → back).
+        final doneBtn11 = find.text('Done');
+        if (doneBtn11.evaluate().isNotEmpty) {
+          await tester.tap(doneBtn11);
+          for (var i = 0; i < 30; i++) {
+            await safePump(const Duration(seconds: 1));
+            if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+            if (find.text('Done').evaluate().isEmpty) break;
+          }
+          if (find.text('Agentic Journal').evaluate().isEmpty) {
+            final back11 = find.byIcon(Icons.arrow_back);
+            if (back11.evaluate().isNotEmpty) {
+              await tester.tap(back11);
+              for (var i = 0; i < 20; i++) {
+                await safePump(const Duration(milliseconds: 500));
+                if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+              }
+            }
+          }
+        }
+      } else {
+        debugPrint(
+          'Section 11: session screen did not open — skipping regression check',
+        );
+        // Navigate home if we ended up somewhere unexpected.
+        final navS11 = tester.state<NavigatorState>(
+          find.byType(Navigator).first,
+        );
+        navS11.pushNamedAndRemoveUntil('/', (route) => false);
+        for (var i = 0; i < 15; i++) {
+          await safePump(const Duration(milliseconds: 200));
+          if (find.text('Agentic Journal').evaluate().isNotEmpty) break;
+        }
+      }
+    } else {
+      debugPrint('Section 11: FAB not found — skipping cross-session test');
+    }
+
+    expect(
+      find.text('Agentic Journal'),
+      findsOneWidget,
+      reason: 'Should be on home screen at end of section 11',
+    );
 
     // =======================================================================
     // Final: Report captured errors for debugging.

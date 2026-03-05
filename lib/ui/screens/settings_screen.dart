@@ -18,7 +18,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:path_provider/path_provider.dart';
 
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:drift/drift.dart' show Value;
+
+import '../../database/app_database.dart'
+    show
+        QuestionnaireItem,
+        QuestionnaireItemsCompanion,
+        QuestionnaireTemplate,
+        QuestionnaireTemplatesCompanion;
 import '../../models/personality_config.dart';
 import '../../providers/auth_providers.dart';
 import '../../services/google_auth_service.dart';
@@ -29,12 +41,18 @@ import '../../providers/photo_providers.dart';
 import '../../providers/search_providers.dart';
 import '../../providers/calendar_providers.dart';
 import '../../providers/location_providers.dart';
+import '../../providers/questionnaire_providers.dart';
+import '../../providers/reminder_providers.dart';
+import '../../services/reminder_service.dart';
 import '../../providers/settings_providers.dart';
 import '../../providers/sync_providers.dart';
 import '../../providers/task_providers.dart';
 import '../../repositories/sync_repository.dart';
+import '../../providers/theme_providers.dart';
 import '../../providers/voice_providers.dart';
 import '../widgets/llm_model_download_dialog.dart';
+import '../widgets/theme_preview_card.dart';
+import '../../ui/theme/palettes.dart';
 import 'diagnostics_screen.dart';
 
 /// Settings screen showing assistant status and app information.
@@ -49,6 +67,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     with WidgetsBindingObserver {
   bool _isClearingLocation = false;
   bool _isSyncing = false;
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -82,6 +101,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _buildThemeCard(context),
+          const SizedBox(height: 16),
           _buildAssistantCard(context, assistantStatusAsync),
           const SizedBox(height: 16),
           _buildVoiceCard(context),
@@ -92,12 +113,188 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           const SizedBox(height: 16),
           _buildLocationCard(context),
           const SizedBox(height: 16),
+          _buildRemindersCard(context),
+          const SizedBox(height: 16),
           _buildCalendarCard(context),
+          const SizedBox(height: 16),
+          _buildPulseCheckInCard(context),
           const SizedBox(height: 16),
           _buildDataManagementCard(context),
           const SizedBox(height: 16),
           _buildAboutCard(context),
         ],
+      ),
+    );
+  }
+
+  /// Build the "Theme & Appearance" settings card.
+  ///
+  /// Shows palette selection grid at top level, with light/dark toggle.
+  /// Font scale, card style, and bubble shape are inside a collapsed
+  /// "Advanced" expansion tile (progressive disclosure per spec).
+  Widget _buildThemeCard(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
+    final notifier = ref.read(themeProvider.notifier);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Section header.
+            Row(
+              children: [
+                Icon(
+                  Icons.palette,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Theme & Appearance',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Palette selection grid.
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 0.78,
+              ),
+              itemCount: appPalettes.length,
+              itemBuilder: (context, index) {
+                final palette = appPalettes[index];
+                return ThemePreviewCard(
+                  palette: palette,
+                  isSelected: palette.id == themeState.paletteId,
+                  onTap: () => notifier.selectPalette(palette.id),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Light / Dark / System toggle.
+            Text('Appearance', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  label: Text('System'),
+                  icon: Icon(Icons.brightness_auto),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.light,
+                  label: Text('Light'),
+                  icon: Icon(Icons.light_mode),
+                ),
+                ButtonSegment(
+                  value: ThemeMode.dark,
+                  label: Text('Dark'),
+                  icon: Icon(Icons.dark_mode),
+                ),
+              ],
+              selected: {themeState.themeMode},
+              onSelectionChanged: (selection) {
+                notifier.setThemeMode(selection.first);
+              },
+            ),
+            const SizedBox(height: 8),
+
+            // Advanced options (collapsed by default).
+            ExpansionTile(
+              title: const Text('Advanced'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              children: [
+                // Font scale.
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Font Size'),
+                  trailing: DropdownButton<FontScale>(
+                    value: themeState.fontScale,
+                    underline: const SizedBox.shrink(),
+                    onChanged: (value) {
+                      if (value != null) notifier.setFontScale(value);
+                    },
+                    items: FontScale.values
+                        .map(
+                          (s) =>
+                              DropdownMenuItem(value: s, child: Text(s.label)),
+                        )
+                        .toList(),
+                  ),
+                ),
+                // Card style.
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Card Style'),
+                  trailing: DropdownButton<CardStyle>(
+                    value: themeState.cardStyle,
+                    underline: const SizedBox.shrink(),
+                    onChanged: (value) {
+                      if (value != null) notifier.setCardStyle(value);
+                    },
+                    items: CardStyle.values
+                        .map(
+                          (s) =>
+                              DropdownMenuItem(value: s, child: Text(s.label)),
+                        )
+                        .toList(),
+                  ),
+                ),
+                // Bubble shape.
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Bubble Shape'),
+                  trailing: DropdownButton<BubbleShape>(
+                    value: themeState.bubbleShape,
+                    underline: const SizedBox.shrink(),
+                    onChanged: (value) {
+                      if (value != null) notifier.setBubbleShape(value);
+                    },
+                    items: BubbleShape.values
+                        .map(
+                          (s) =>
+                              DropdownMenuItem(value: s, child: Text(s.label)),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+
+            // Reset to defaults.
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final previous = await notifier.resetToDefaults();
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Theme reset to defaults'),
+                      duration: const Duration(seconds: 8),
+                      action: SnackBarAction(
+                        label: 'Undo',
+                        onPressed: () => notifier.restore(previous),
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.restore, size: 18),
+                label: const Text('Reset to defaults'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -277,8 +474,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 ),
                 items: const [
                   DropdownMenuItem(
+                    value: SttEngine.deepgram,
+                    child: Text('Deepgram (Experimental)'),
+                  ),
+                  DropdownMenuItem(
                     value: SttEngine.speechToText,
-                    child: Text('Google (No download)'),
+                    child: Text('Google (Default)'),
                   ),
                   DropdownMenuItem(
                     value: SttEngine.sherpaOnnx,
@@ -871,6 +1072,103 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     }
   }
 
+  /// Build the "Reminders" settings card (Phase 4D).
+  ///
+  /// Allows the user to enable a daily journal reminder and choose a
+  /// preferred time window (morning / afternoon / evening).
+  ///
+  /// ADHD clinical UX constraints:
+  ///   - Opt-in only (disabled by default).
+  ///   - Auto-disabled after 3 consecutive dismissals (non-escalating).
+  ///   - "Snooze forever" is available from the home screen card.
+  Widget _buildRemindersCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final service = ref.watch(reminderServiceProvider);
+    final enabled = service.isEnabled(ReminderType.dailyJournal);
+    final window = service.getWindow(ReminderType.dailyJournal);
+    final dismissals = service.consecutiveDismissals(ReminderType.dailyJournal);
+    final autoDisabled =
+        dismissals >= ReminderService.maxConsecutiveDismissals && !enabled;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Reminders', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Daily journal reminder'),
+              subtitle: autoDisabled
+                  ? const Text(
+                      'Auto-disabled after 3 dismissals. Toggle to re-enable.',
+                    )
+                  : const Text('A gentle nudge at your preferred time of day.'),
+              value: enabled,
+              onChanged: (value) async {
+                await service.setEnabled(
+                  ReminderType.dailyJournal,
+                  value: value,
+                );
+                // Invalidate so the home screen card re-evaluates immediately.
+                ref.invalidate(dailyReminderVisibleProvider);
+                setState(() {});
+              },
+            ),
+            if (enabled) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Reminder time',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              SegmentedButton<ReminderWindow>(
+                segments: ReminderWindow.values
+                    .map(
+                      (w) => ButtonSegment<ReminderWindow>(
+                        value: w,
+                        label: Text(switch (w) {
+                          ReminderWindow.morning => 'Morning',
+                          ReminderWindow.afternoon => 'Afternoon',
+                          ReminderWindow.evening => 'Evening',
+                        }),
+                      ),
+                    )
+                    .toList(),
+                selected: {window},
+                onSelectionChanged: (selection) async {
+                  await service.setWindow(
+                    ReminderType.dailyJournal,
+                    selection.first,
+                  );
+                  setState(() {});
+                },
+              ),
+              const SizedBox(height: 6),
+              Text(
+                switch (window) {
+                  ReminderWindow.morning =>
+                    'Appears between 7 AM and 9 AM when you open the app.',
+                  ReminderWindow.afternoon =>
+                    'Appears between 12 PM and 2 PM when you open the app.',
+                  ReminderWindow.evening =>
+                    'Appears between 7 PM and 9 PM when you open the app.',
+                },
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Build the "Calendar" settings card (Phase 11 — ADR-0020).
   Widget _buildCalendarCard(BuildContext context) {
     final theme = Theme.of(context);
@@ -986,6 +1284,346 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
+  /// Build the "Pulse Check-In" questionnaire configuration card.
+  ///
+  /// Shows all items for the active default template with enable/disable
+  /// toggles, drag-to-reorder, and an add-custom-item button.
+  Widget _buildPulseCheckInCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final itemsAsync = ref.watch(activeCheckInItemsProvider);
+    // Template is optional — scale toggle shows only when template is loaded.
+    final template = ref.watch(activeDefaultTemplateProvider).valueOrNull;
+
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.monitor_heart_outlined),
+        title: const Text('Pulse Check-In'),
+        subtitle: const Text('Questionnaire questions and order'),
+        children: [
+          itemsAsync.when(
+            data: (items) =>
+                _buildCheckInItemList(context, theme, items, template),
+            loading: () => const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (_, _) => Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Could not load questions.',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build the list of check-in items with scale toggle, toggle, reorder,
+  /// edit, and add controls.
+  Widget _buildCheckInItemList(
+    BuildContext context,
+    ThemeData theme,
+    List<QuestionnaireItem> items,
+    QuestionnaireTemplate? template,
+  ) {
+    final dao = ref.read(questionnaireDaoProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Scale configuration (shown when template is loaded).
+          if (template != null) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Answer scale', style: theme.textTheme.labelLarge),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    style: SegmentedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    segments: const [
+                      ButtonSegment(value: '1-5', label: Text('1 – 5')),
+                      ButtonSegment(value: '1-10', label: Text('1 – 10')),
+                      ButtonSegment(value: '0-100', label: Text('0 – 100')),
+                    ],
+                    selected: {_scaleKey(template.scaleMin, template.scaleMax)},
+                    onSelectionChanged: (selection) async {
+                      final (min, max) = _parseScaleKey(selection.first);
+                      try {
+                        await dao.updateTemplate(
+                          template.id,
+                          QuestionnaireTemplatesCompanion(
+                            scaleMin: Value(min),
+                            scaleMax: Value(max),
+                          ),
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Answer scale updated.'),
+                            ),
+                          );
+                        }
+                      } on Exception catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Could not save scale change. Try again.',
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Applied immediately to all future check-ins.'
+                    ' Past answers are unaffected.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+
+          // Drag-to-reorder list.
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            onReorder: (oldIndex, newIndex) async {
+              if (newIndex > oldIndex) newIndex--;
+              final reordered = List<QuestionnaireItem>.from(items);
+              final moved = reordered.removeAt(oldIndex);
+              reordered.insert(newIndex, moved);
+              try {
+                // Persist updated sortOrder values.
+                for (var i = 0; i < reordered.length; i++) {
+                  await dao.updateItem(
+                    reordered[i].id,
+                    QuestionnaireItemsCompanion(sortOrder: Value(i)),
+                  );
+                }
+              } on Exception catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Could not reorder questions. Try again.'),
+                    ),
+                  );
+                }
+              }
+            },
+            itemBuilder: (ctx, i) {
+              final item = items[i];
+              return ListTile(
+                key: ValueKey(item.id),
+                leading: ReorderableDragStartListener(
+                  index: i,
+                  child: const Icon(Icons.drag_handle),
+                ),
+                title: Text(
+                  item.questionText,
+                  style: theme.textTheme.bodyMedium,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      tooltip: 'Edit question',
+                      onPressed: () =>
+                          _showEditCheckInItemDialog(context, item),
+                    ),
+                    Switch(
+                      value: item.isActive,
+                      onChanged: (enabled) async {
+                        try {
+                          await dao.updateItem(
+                            item.id,
+                            QuestionnaireItemsCompanion(
+                              isActive: Value(enabled),
+                            ),
+                          );
+                        } on Exception catch (_) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Could not update question. Try again.',
+                                ),
+                              ),
+                            );
+                          }
+                          return; // abort — do not show Undo SnackBar on write failure
+                        }
+                        // When deactivating, offer an immediate Undo path so
+                        // ADHD users aren't caught off-guard by a question
+                        // silently disappearing from future check-ins.
+                        if (!enabled && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Question deactivated.'),
+                              action: SnackBarAction(
+                                label: 'Undo',
+                                onPressed: () async {
+                                  await dao.updateItem(
+                                    item.id,
+                                    const QuestionnaireItemsCompanion(
+                                      isActive: Value(true),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                contentPadding: const EdgeInsets.only(left: 16),
+              );
+            },
+          ),
+
+          // Add custom item button.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () => _showAddCheckInItemDialog(context),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add custom question'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show a dialog to edit the text of an existing check-in item.
+  Future<void> _showEditCheckInItemDialog(
+    BuildContext context,
+    QuestionnaireItem item,
+  ) async {
+    // Controller is created inside the builder so its lifecycle is tied to
+    // the dialog widget. The Save button captures text before popping to
+    // avoid reading/disposing the controller after dismiss animation starts.
+    final newText = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final controller = TextEditingController(text: item.questionText);
+        return AlertDialog(
+          title: const Text('Edit question'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+            autofocus: true,
+            maxLength: 120,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    final trimmed = newText?.trim() ?? '';
+    if (trimmed.isEmpty || trimmed == item.questionText) return;
+
+    await ref
+        .read(questionnaireDaoProvider)
+        .updateItem(
+          item.id,
+          QuestionnaireItemsCompanion(questionText: Value(trimmed)),
+        );
+  }
+
+  /// Show a dialog to add a custom check-in item.
+  Future<void> _showAddCheckInItemDialog(BuildContext context) async {
+    // Controller is created inside the builder — text captured before pop.
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('Add question'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'e.g. How motivated do you feel?',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+            maxLength: 120,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+
+    final questionText = result?.trim() ?? '';
+    if (questionText.isEmpty) return;
+
+    final dao = ref.read(questionnaireDaoProvider);
+    final template = await dao.getActiveDefaultTemplate();
+    if (template == null) return;
+
+    // Determine next sortOrder.
+    final existingItems = await dao.getActiveItemsForTemplate(template.id);
+    final nextSort = existingItems.isEmpty
+        ? 0
+        : existingItems
+                  .map((i) => i.sortOrder)
+                  .reduce((a, b) => a > b ? a : b) +
+              1;
+
+    await dao.insertItem(
+      QuestionnaireItemsCompanion(
+        templateId: Value(template.id),
+        questionText: Value(questionText),
+        sortOrder: Value(nextSort),
+        isActive: const Value(true),
+        isReversed: const Value(false),
+      ),
+    );
+  }
+
   Widget _buildDataManagementCard(BuildContext context) {
     final theme = Theme.of(context);
     final sessionCountAsync = ref.watch(sessionCountProvider);
@@ -1021,6 +1659,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               error: (_, _) => const Text('Could not count photos'),
             ),
             const SizedBox(height: 12),
+            // Export data button (Phase 2C — data sovereignty).
+            OutlinedButton.icon(
+              onPressed: _isExporting ? null : () => _exportData(context),
+              icon: _isExporting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.download_outlined),
+              label: Text(_isExporting ? 'Exporting...' : 'Export My Data'),
+            ),
+            const SizedBox(height: 8),
             // Clear all button.
             OutlinedButton.icon(
               onPressed: () => _showClearAllDialog(context),
@@ -1037,6 +1688,179 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
         ),
       ),
     );
+  }
+
+  /// Export all journal data to a JSON file in the public Downloads folder.
+  ///
+  /// On Android writes to `/storage/emulated/0/Download/` (accessible from
+  /// the Files app or any file manager). Falls back to the app documents
+  /// directory on non-Android platforms.
+  ///
+  /// Filename: `agentic_journal_export_<UTC-timestamp>.json`
+  /// Phase 2C — data sovereignty: users can always export and delete their data.
+  /// Includes: sessions, messages, check-in responses/answers, photo paths,
+  /// and video paths. All three media arrays are always present (empty when
+  /// no data exists), ensuring a stable schema across all users.
+  Future<void> _exportData(BuildContext context) async {
+    setState(() => _isExporting = true);
+    try {
+      final sessionDao = ref.read(sessionDaoProvider);
+      final messageDao = ref.read(messageDaoProvider);
+      final questionnaireDao = ref.read(questionnaireDaoProvider);
+      final photoDao = ref.read(photoDaoProvider);
+      final videoDao = ref.read(videoDaoProvider);
+
+      // Cache: templateId → {itemId → questionText}
+      final itemTextCache = <int, Map<int, String>>{};
+
+      final sessions = await sessionDao.getAllSessionsByDate();
+      final exportData = <Map<String, dynamic>>[];
+
+      for (final session in sessions) {
+        final messages = await messageDao.getMessagesForSession(
+          session.sessionId,
+        );
+
+        // Check-in data for this session.
+        final checkInResponses = await questionnaireDao
+            .getAllResponsesForSession(session.sessionId);
+        final checkInsJson = <Map<String, dynamic>>[];
+        for (final rwa in checkInResponses) {
+          // Resolve item text (cached per template).
+          final templateId = rwa.response.templateId;
+          if (!itemTextCache.containsKey(templateId)) {
+            // Use getAllItemsForTemplate (not getActiveItemsForTemplate) so
+            // that deactivated items still show their question text in exports.
+            // Matches the same pattern used in checkInHistoryProvider.
+            final items = await questionnaireDao.getAllItemsForTemplate(
+              templateId,
+            );
+            itemTextCache[templateId] = {
+              for (final it in items) it.id: it.questionText,
+            };
+          }
+          final itemTexts = itemTextCache[templateId]!;
+          checkInsJson.add({
+            'completed_at': rwa.response.completedAt.toIso8601String(),
+            'composite_score': rwa.response.compositeScore,
+            'answers': rwa.answers
+                .map(
+                  (a) => {
+                    'question': itemTexts[a.itemId] ?? 'Unknown',
+                    'value': a.value,
+                  },
+                )
+                .toList(),
+          });
+        }
+
+        // Photo paths for this session.
+        final photos = await photoDao.getPhotosForSession(session.sessionId);
+        final photosJson = photos
+            .map(
+              (p) => {
+                'local_path': p.localPath,
+                'timestamp': p.timestamp.toIso8601String(),
+                if (p.description != null) 'description': p.description,
+              },
+            )
+            .toList();
+
+        // Video paths for this session.
+        final videos = await videoDao.getVideosForSession(session.sessionId);
+        final videosJson = videos
+            .map(
+              (v) => {
+                'video_id': v.videoId,
+                'local_path': v.localPath,
+                'thumbnail_path': v.thumbnailPath,
+                'duration_seconds': v.durationSeconds,
+                'timestamp': v.timestamp.toIso8601String(),
+                if (v.description != null) 'description': v.description,
+                if (v.width != null) 'width': v.width,
+                if (v.height != null) 'height': v.height,
+                if (v.fileSizeBytes != null) 'file_size_bytes': v.fileSizeBytes,
+              },
+            )
+            .toList();
+
+        exportData.add({
+          'session_id': session.sessionId,
+          'start_time': session.startTime.toIso8601String(),
+          'end_time': session.endTime?.toIso8601String(),
+          'summary': session.summary,
+          'mood_tags': session.moodTags,
+          'topic_tags': session.topicTags,
+          'journaling_mode': session.journalingMode,
+          'messages': messages
+              .map(
+                (m) => {
+                  'role': m.role,
+                  'content': m.content,
+                  'timestamp': m.timestamp.toIso8601String(),
+                },
+              )
+              .toList(),
+          // Always include all three arrays even when empty so the export
+          // schema is stable regardless of how much data the user has.
+          'check_ins': checkInsJson,
+          'photos': photosJson,
+          'videos': videosJson,
+        });
+      }
+
+      // Use the public Downloads folder on Android (accessible via Files app).
+      // No WRITE_EXTERNAL_STORAGE permission needed on API 29+.
+      final Directory dir;
+      if (Platform.isAndroid) {
+        dir = Directory('/storage/emulated/0/Download');
+        if (!dir.existsSync()) await dir.create(recursive: true);
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+
+      final timestamp = DateTime.now().toUtc().toIso8601String().replaceAll(
+        ':',
+        '-',
+      );
+      final file = File('${dir.path}/agentic_journal_export_$timestamp.json');
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(exportData),
+        encoding: utf8,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Export saved to your Downloads folder.'),
+            duration: Duration(seconds: 6),
+          ),
+        );
+      }
+    } on FileSystemException {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Export failed: could not write to Downloads folder. '
+              'Check available storage space.',
+            ),
+            duration: Duration(seconds: 8),
+          ),
+        );
+      }
+    } on Exception {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Export failed. Please try again.'),
+            duration: Duration(seconds: 8),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   /// Show a two-step confirmation dialog for clearing all data.
@@ -1212,4 +2036,27 @@ class _ClearAllDialogState extends State<_ClearAllDialog> {
       ],
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Scale preset helpers (used by _buildCheckInItemList)
+// ---------------------------------------------------------------------------
+
+/// Map (scaleMin, scaleMax) to a canonical preset key string.
+///
+/// Non-standard combinations fall back to '1-10' to keep the SegmentedButton
+/// in a defined state.
+String _scaleKey(int min, int max) {
+  if (min == 1 && max == 5) return '1-5';
+  if (min == 0 && max == 100) return '0-100';
+  return '1-10';
+}
+
+/// Parse a preset key back to (scaleMin, scaleMax).
+(int, int) _parseScaleKey(String key) {
+  return switch (key) {
+    '1-5' => (1, 5),
+    '0-100' => (0, 100),
+    _ => (1, 10),
+  };
 }

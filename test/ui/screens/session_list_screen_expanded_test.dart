@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/calendar_providers.dart';
 import 'package:agentic_journal/providers/photo_providers.dart';
+import 'package:agentic_journal/providers/reminder_providers.dart';
 import 'package:agentic_journal/providers/search_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/task_providers.dart';
@@ -74,6 +75,9 @@ void main() {
         isGoogleConnectedProvider.overrideWith(
           (ref) => GoogleConnectionNotifier(_fakeAuthService),
         ),
+        // Reminder provider depends on sharedPreferencesProvider (synchronous)
+        // which is unimplemented in tests. Override the computed result directly.
+        dailyReminderVisibleProvider.overrideWith((ref) => false),
       ],
       child: MaterialApp(
         home: const SessionListScreen(),

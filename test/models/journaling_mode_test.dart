@@ -3,8 +3,8 @@ import 'package:agentic_journal/models/journaling_mode.dart';
 
 void main() {
   group('JournalingMode', () {
-    test('has five values', () {
-      expect(JournalingMode.values, hasLength(5));
+    test('has seven values', () {
+      expect(JournalingMode.values, hasLength(7));
     });
 
     test('displayName returns human-readable names', () {
@@ -13,6 +13,8 @@ void main() {
       expect(JournalingMode.dreamAnalysis.displayName, 'Dream Analysis');
       expect(JournalingMode.moodCheckIn.displayName, 'Mood Check-In');
       expect(JournalingMode.onboarding.displayName, 'Onboarding');
+      expect(JournalingMode.pulseCheckIn.displayName, 'Pulse Check-In');
+      expect(JournalingMode.quickMoodTap.displayName, 'Quick Mood Tap');
     });
 
     test('systemPromptFragment is empty for free mode', () {
@@ -24,6 +26,17 @@ void main() {
       expect(JournalingMode.dreamAnalysis.systemPromptFragment, isNotEmpty);
       expect(JournalingMode.moodCheckIn.systemPromptFragment, isNotEmpty);
       expect(JournalingMode.onboarding.systemPromptFragment, isNotEmpty);
+    });
+
+    test('pulseCheckIn systemPromptFragment is empty (form-driven mode)', () {
+      // pulseCheckIn is driven by CheckInNotifier — the LLM is not prompted
+      // to read questionnaire items. The prompt fragment must be empty.
+      expect(JournalingMode.pulseCheckIn.systemPromptFragment, isEmpty);
+    });
+
+    test('quickMoodTap systemPromptFragment is empty (no LLM)', () {
+      // quickMoodTap saves a minimal session without any AI conversation.
+      expect(JournalingMode.quickMoodTap.systemPromptFragment, isEmpty);
     });
 
     test('gratitude prompt contains numbered steps', () {
@@ -63,6 +76,8 @@ void main() {
       expect(JournalingMode.dreamAnalysis.toDbString(), 'dream_analysis');
       expect(JournalingMode.moodCheckIn.toDbString(), 'mood_check_in');
       expect(JournalingMode.onboarding.toDbString(), 'onboarding');
+      expect(JournalingMode.pulseCheckIn.toDbString(), 'pulse_check_in');
+      expect(JournalingMode.quickMoodTap.toDbString(), 'quick_mood_tap');
     });
   });
 
@@ -84,6 +99,14 @@ void main() {
       expect(
         JournalingMode.fromDbString('onboarding'),
         JournalingMode.onboarding,
+      );
+      expect(
+        JournalingMode.fromDbString('pulse_check_in'),
+        JournalingMode.pulseCheckIn,
+      );
+      expect(
+        JournalingMode.fromDbString('quick_mood_tap'),
+        JournalingMode.quickMoodTap,
       );
     });
 

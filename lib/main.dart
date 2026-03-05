@@ -11,7 +11,8 @@
 //   2. SharedPreferences (onboarding state)
 //   3. Supabase client (auth + cloud sync, Phase 4 — conditional)
 //   4. ConnectivityService (network monitoring for Layer B)
-//   5. runApp with ProviderScope overrides
+//   5. NotificationSchedulerService (OS notification channel + ID counter — ADR-0033)
+//   6. runApp with ProviderScope overrides
 // ===========================================================================
 
 import 'package:flutter/material.dart';
@@ -19,12 +20,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
 import 'app.dart';
 import 'config/environment.dart';
+import 'providers/notification_providers.dart';
 import 'providers/onboarding_providers.dart';
 import 'providers/session_providers.dart';
 import 'services/app_logger.dart';
 import 'services/connectivity_service.dart';
+import 'services/notification_scheduler_service.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized before any async work.
@@ -75,15 +80,33 @@ void main() async {
     AppLogger.e('init', 'Connectivity init failed: $e');
   }
 
+  // Initialize the OS notification scheduler (ADR-0033).
+  // Creates the Android notification channel and restores the ID counter
+  // from SharedPreferences to prevent collision with pending OS notifications
+  // from a previous app session.
+  final notificationPlugin = FlutterLocalNotificationsPlugin();
+  final notificationScheduler = NotificationSchedulerService(
+    notificationPlugin,
+  );
+  try {
+    await notificationScheduler.initialize();
+    AppLogger.i('init', 'Notification scheduler initialized');
+  } on Exception catch (e) {
+    AppLogger.e('init', 'Notification scheduler init failed: $e');
+  }
+
   runApp(
     // ProviderScope makes all Riverpod providers available to the widget tree.
     // Overrides inject pre-initialized instances that need async setup:
     //   - SharedPreferences for onboarding state
     //   - ConnectivityService for network monitoring (pre-initialized)
+    //   - NotificationSchedulerService for OS-level scheduled alarms (ADR-0033)
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         connectivityServiceProvider.overrideWithValue(connectivityService),
+        flutterLocalNotificationsProvider.overrideWithValue(notificationPlugin),
+        notificationSchedulerProvider.overrideWithValue(notificationScheduler),
       ],
       child: const AgenticJournalApp(),
     ),

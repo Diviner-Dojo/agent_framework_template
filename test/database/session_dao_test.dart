@@ -134,6 +134,93 @@ void main() {
     });
   });
 
+  group('createQuickMoodSession', () {
+    test('creates session with quick_mood_tap mode and end time set', () async {
+      final now = DateTime.utc(2026, 3, 3, 10, 0);
+      await sessionDao.createQuickMoodSession(
+        'qmt-1',
+        now,
+        'UTC+05:00',
+        'Mood: 😐 Neutral · Energy: Medium',
+      );
+
+      final session = await sessionDao.getSessionById('qmt-1');
+      expect(session, isNotNull);
+      expect(session!.sessionId, 'qmt-1');
+      expect(session.startTime, now);
+      expect(session.timezone, 'UTC+05:00');
+      expect(session.journalingMode, 'quick_mood_tap');
+      expect(session.endTime, now);
+      expect(session.summary, 'Mood: 😐 Neutral · Energy: Medium');
+    });
+
+    test('stores mood-only summary when energy is omitted', () async {
+      final now = DateTime.utc(2026, 3, 3, 11, 0);
+      await sessionDao.createQuickMoodSession(
+        'qmt-2',
+        now,
+        'UTC',
+        'Mood: 😄 Great',
+      );
+
+      final session = await sessionDao.getSessionById('qmt-2');
+      expect(session?.summary, 'Mood: 😄 Great');
+      expect(session?.journalingMode, 'quick_mood_tap');
+    });
+  });
+
+  group('watchAllSessions quick_mood_tap filter', () {
+    test('excludes quick_mood_tap sessions from stream', () async {
+      final t1 = DateTime.utc(2026, 3, 3, 9, 0);
+      final t2 = DateTime.utc(2026, 3, 3, 10, 0);
+
+      // Insert a regular session and a quick mood tap session.
+      await sessionDao.createSession('regular-1', t1, 'UTC');
+      await sessionDao.createQuickMoodSession(
+        'qmt-1',
+        t2,
+        'UTC',
+        'Mood: 😐 Neutral',
+      );
+
+      final sessions = await sessionDao.watchAllSessions().first;
+
+      final ids = sessions.map((s) => s.sessionId).toList();
+      expect(ids, contains('regular-1'));
+      expect(ids, isNot(contains('qmt-1')));
+    });
+
+    test('includes regular sessions with explicit non-quick modes', () async {
+      final t = DateTime.utc(2026, 3, 3, 9, 0);
+      await sessionDao.createSession('sess-gratitude', t, 'UTC');
+      await sessionDao.updateJournalingMode('sess-gratitude', 'gratitude');
+
+      final sessions = await sessionDao.watchAllSessions().first;
+      expect(sessions.any((s) => s.sessionId == 'sess-gratitude'), isTrue);
+    });
+  });
+
+  group('watchSessionsPaginated quick_mood_tap filter', () {
+    test('excludes quick_mood_tap sessions from paginated stream', () async {
+      final t1 = DateTime.utc(2026, 3, 3, 9, 0);
+      final t2 = DateTime.utc(2026, 3, 3, 10, 0);
+
+      await sessionDao.createSession('regular-2', t1, 'UTC');
+      await sessionDao.createQuickMoodSession(
+        'qmt-2',
+        t2,
+        'UTC',
+        'Mood: 🙂 Good',
+      );
+
+      final sessions = await sessionDao.watchSessionsPaginated(20).first;
+
+      final ids = sessions.map((s) => s.sessionId).toList();
+      expect(ids, contains('regular-2'));
+      expect(ids, isNot(contains('qmt-2')));
+    });
+  });
+
   group('updateJournalingMode', () {
     test('persists mode on correct session', () async {
       await sessionDao.createSession('sess-1', DateTime.utc(2026, 1, 1), 'UTC');

@@ -225,8 +225,22 @@ void main() {
     expect(fab, findsOneWidget);
     await tester.tap(fab, warnIfMissed: false);
 
+    // Phase 3A added the Quick Capture Palette — FAB opens the palette, not
+    // the session directly. Wait for palette and tap "Voice" option.
+    for (var i = 0; i < 10; i++) {
+      await safePump(const Duration(milliseconds: 300));
+      if (find.text('Voice').evaluate().isNotEmpty) break;
+    }
+    if (find.text('Voice').evaluate().isNotEmpty) {
+      debugPrint('VOICE TEST: Quick Capture Palette appeared, tapping Voice');
+      await tester.tap(find.text('Voice').first, warnIfMissed: false);
+      await safePump(const Duration(milliseconds: 500));
+    } else {
+      debugPrint('VOICE TEST: No palette found — continuing (may have started directly)');
+    }
+
     // Wait for session screen (Claude API generates greeting, ~5-15s).
-    for (var i = 0; i < 15; i++) {
+    for (var i = 0; i < 20; i++) {
       await safePump(const Duration(seconds: 1));
       await safePump();
       if (find.text('Journal Entry').evaluate().isNotEmpty) break;

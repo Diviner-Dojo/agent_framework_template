@@ -1504,5 +1504,166 @@ void main() {
         });
       });
     });
+
+    // regression: Audio focus gain event fires during capturePhotoDescription,
+    // calling resume() which clears _phaseBeforePause to null. When
+    // capturePhotoDescription finishes and the caller's resume() is invoked,
+    // _phaseBeforePause == null → previousPhase = idle → voice stuck.
+    // Fix: save _phaseBeforePause at the start of capturePhotoDescription and
+    // restore it in the finally block, so the caller's resume() always sees
+    // the correct prior phase regardless of intermediate resume() calls.
+    group('capturePhotoDescription restores _phaseBeforePause after audio focus '
+        'gain during capture (regression)', () {
+      test(
+        'capturePhotoDescription restores _phaseBeforePause after audio '
+        'focus gain during capture (regression)',
+        tags: ['regression'],
+        () async {
+          // Put orchestrator in continuous + listening state.
+          await orchestrator.startContinuousMode('Hello');
+          expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+
+          // Caller pauses for camera (audio focus conflict), saving
+          // _phaseBeforePause = listening.
+          await orchestrator.pause();
+          expect(orchestrator.state.phase, VoiceLoopPhase.paused);
+
+          // Simulate audio focus gain firing mid-capture: call resume()
+          // before capturePhotoDescription (clears _phaseBeforePause).
+          // In production this fires from the Android audio focus handler
+          // at an await boundary inside capturePhotoDescription; in tests
+          // we call it here to replicate the _phaseBeforePause=null state.
+          await orchestrator.resume(silent: true);
+          expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+
+          // Re-pause (simulates camera re-acquiring audio focus after the
+          // spurious gain event — _phaseBeforePause = listening again).
+          await orchestrator.pause();
+
+          // capturePhotoDescription must save _phaseBeforePause before any
+          // async work and restore it in finally, so that a second
+          // intermediate resume() during capture doesn't corrupt the value.
+          final captureTask = orchestrator.capturePhotoDescription();
+          await Future<void>.delayed(Duration.zero);
+          mockStt.emitResult(
+            const SpeechResult(text: 'a sunset over the ocean', isFinal: true),
+          );
+          final description = await captureTask;
+          expect(description, equals('a sunset over the ocean'));
+
+          // Phase must be paused so the caller's resume() is not a no-op.
+          expect(orchestrator.state.phase, VoiceLoopPhase.paused);
+
+          // The caller's resume() (audio focus re-grant) must transition to
+          // listening — if _phaseBeforePause was not restored this would
+          // go to idle instead.
+          await orchestrator.resume(silent: true);
+          expect(
+            orchestrator.state.phase,
+            VoiceLoopPhase.listening,
+            reason:
+                '_phaseBeforePause must be restored by capturePhotoDescription '
+                'so the caller resume() restarts STT (not idle)',
+          );
+        },
+      );
+    });
+
+    // Advisory REV-145506-A1: non-paused continuous case — confirms that
+    // capturePhotoDescription path 2 (wasInContinuousMode && previousPhase !=
+    // idle) calls _startListening() so STT resumes automatically.
+    //
+    // Contrast with the paused-state regression below: that test confirms the
+    // PAUSED path (previousPhase==paused) restores paused state so the CALLER's
+    // resume() works. This test confirms the NON-PAUSED path restarts STT
+    // directly without requiring a caller resume().
+    group('capturePhotoDescription non-paused continuous mode (path 2)', () {
+      test(
+        'capturePhotoDescription restarts STT in continuous mode when not paused',
+        () async {
+          // Path 2 preconditions: wasInContinuousMode=true, previousPhase=listening.
+          // Do NOT call pause() — this tests the branch for a user who starts
+          // photo capture while voice is already actively listening.
+          await orchestrator.startContinuousMode('Hello');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          expect(
+            orchestrator.state.phase,
+            VoiceLoopPhase.listening,
+            reason: 'precondition: orchestrator must be in listening state',
+          );
+
+          // Start capturePhotoDescription — emit a final result immediately
+          // so the description completes without the 5-second silence timeout.
+          final captureTask = orchestrator.capturePhotoDescription();
+          await Future<void>.delayed(Duration.zero);
+          mockStt.emitResult(
+            const SpeechResult(text: 'a red bicycle', isFinal: true),
+          );
+          final description = await captureTask;
+
+          expect(description, equals('a red bicycle'));
+
+          // Path 2: wasInContinuousMode=true && previousPhase=listening (not idle)
+          // → _startListening() was called in the finally block.
+          // Assert STT is active again (not requiring a caller resume() call).
+          expect(
+            mockStt.isListening,
+            isTrue,
+            reason:
+                'capturePhotoDescription path 2 (wasInContinuousMode && '
+                'previousPhase != idle) must call _startListening() so STT '
+                'resumes without requiring orchestrator.resume() from caller',
+          );
+        },
+      );
+    });
+
+    // regression: capturePhotoDescription() called _startListening() at the
+    // end of its flow, leaving phase=listening.  The caller's
+    // orchestrator.resume() (which requires phase=paused) was then a silent
+    // no-op — STT never restarted after the photo was saved.
+    // Fix: when previousPhase==paused, restore paused so resume() works.
+    group('capturePhotoDescription paused-state restoration (regression)', () {
+      test(
+        'capturePhotoDescription restores paused phase so caller resume() '
+        'works (regression)',
+        tags: ['regression'],
+        () async {
+          // Put orchestrator in continuous + listening state.
+          await orchestrator.startContinuousMode('Hello');
+          expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+
+          // Caller pauses for camera (audio focus conflict).
+          await orchestrator.pause();
+          expect(orchestrator.state.phase, VoiceLoopPhase.paused);
+
+          // Start capturePhotoDescription (async) — emit a final STT result
+          // on the next microtask so the description completes immediately
+          // rather than waiting for the 5-second silence timeout.
+          final captureTask = orchestrator.capturePhotoDescription();
+          await Future<void>.delayed(Duration.zero);
+          mockStt.emitResult(
+            const SpeechResult(text: 'a blue couch', isFinal: true),
+          );
+          final description = await captureTask;
+
+          expect(description, equals('a blue couch'));
+
+          // Key assertion: phase must be paused (not listening) so the
+          // caller's orchestrator.resume() call is not a no-op.
+          expect(
+            orchestrator.state.phase,
+            VoiceLoopPhase.paused,
+            reason:
+                'capturePhotoDescription must restore paused state so '
+                'orchestrator.resume() can restart STT',
+          );
+
+          // Verify resume() transitions correctly to listening.
+          await orchestrator.resume(silent: true);
+          expect(orchestrator.state.phase, VoiceLoopPhase.listening);
+        },
+      );
+    });
   });
 }

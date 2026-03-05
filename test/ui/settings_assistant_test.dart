@@ -73,6 +73,14 @@ void main() {
       await tester.pumpWidget(buildSettingsScreen());
       await tester.pumpAndSettle();
 
+      // Scroll past Theme card to make Conversation AI visible.
+      await tester.scrollUntilVisible(
+        find.text('Conversation AI'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       // Card title
       expect(find.text('Conversation AI'), findsOneWidget);
 
@@ -92,6 +100,13 @@ void main() {
       await tester.pumpWidget(buildSettingsScreen());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Prefer Claude when online'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       final switchFinder = find.widgetWithText(
         SwitchListTile,
         'Prefer Claude when online',
@@ -108,6 +123,13 @@ void main() {
       await tester.pumpWidget(buildSettingsScreen());
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.text('Journal only mode'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       final switchFinder = find.widgetWithText(
         SwitchListTile,
         'Journal only mode',
@@ -122,6 +144,13 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(buildSettingsScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Prefer Claude when online'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       // Tap the Prefer Claude switch (defaults to on, so toggling turns it off).
@@ -167,6 +196,13 @@ void main() {
       prefs = await SharedPreferences.getInstance();
 
       await tester.pumpWidget(buildSettingsScreen());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Prefer Claude when online'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
 
       final switchFinder = find.widgetWithText(

@@ -20,6 +20,16 @@
 7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
 8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
 
+## Autonomous Execution Authorization
+
+When implementing work tracked against `develop/adhd-roadmap` (SPEC-20260302-adhd-informed-feature-roadmap):
+
+- **Proceed without asking permission** before commits, pushes, PRs, or merges — execute the full workflow and present results afterward.
+- **All work stays in `develop/adhd-roadmap`**: every feature branch PRs into `develop/adhd-roadmap`, never directly into `main`. `main` is the rollback point — do NOT merge `develop/adhd-roadmap` → `main` without explicit developer instruction.
+- **Run all framework gates automatically** (quality gate, `/review`, specialist checkpoints) as part of the workflow. Do not pause for approval before running them — only halt if a review returns **request-changes** or **reject**, then present findings before proceeding.
+- **Education gates**: defer by default for ADHD roadmap work and log the deferral in BUILD_STATUS.md. Do not block implementation on education gates unless the developer explicitly requests them.
+- **This authorization does not extend to**: pushing to `main`, deleting branches, modifying `.claude/settings.json`, or any action outside `develop/adhd-roadmap` and its feature branches.
+
 ## Clinical UX Constraints
 
 Features touching greeting/microcopy, AI response framing, reminder/notification logic, session-gap tracking, or any feature that references session history to motivate behavior must comply with ADHD clinical UX constraints defined in `docs/sprints/SPEC-20260302-adhd-informed-feature-roadmap.md` under `## Design Principles`.

@@ -72,6 +72,19 @@ class Environment {
   /// See: ADR-0022 (Voice Engine Swap)
   String get elevenlabsProxyUrl => '$supabaseUrl/functions/v1/elevenlabs-proxy';
 
+  /// The WebSocket URL for the Deepgram STT proxy Edge Function.
+  ///
+  /// Converts the HTTPS Supabase URL to WSS for WebSocket connections.
+  /// The Deepgram API key lives in Supabase secrets — never in client code.
+  ///
+  /// See: ADR-0031 (Deepgram Nova-3 STT)
+  String get deepgramProxyWsUrl {
+    final wsBase = supabaseUrl
+        .replaceFirst('https://', 'wss://')
+        .replaceFirst('http://', 'ws://');
+    return '$wsBase/functions/v1/deepgram-proxy';
+  }
+
   /// Whether the environment is fully configured for Claude API access.
   ///
   /// Returns false when --dart-define values are missing. When false,
