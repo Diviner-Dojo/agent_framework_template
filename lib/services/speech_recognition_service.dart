@@ -216,7 +216,14 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
         _resultController?.addError(error);
       },
       onDone: () {
-        // Audio stream ended (recorder stopped).
+        // Audio stream ended (recorder stopped or OS error).
+        // Release microphone unconditionally — same pattern as DeepgramSttService.
+        // stopListening() guards on _isListening=false and would skip recorder
+        // cleanup if the audio stream ends unexpectedly.
+        _audioSubscription?.cancel();
+        _audioSubscription = null;
+        _recorder?.stop().then((_) => _recorder?.dispose()).catchError((_) {});
+        _recorder = null;
         _isListening = false;
       },
     );
@@ -318,8 +325,13 @@ class SherpaOnnxSpeechRecognitionService implements SpeechRecognitionService {
 
   @override
   void dispose() {
+    // Release microphone unconditionally — same pattern as DeepgramSttService.
+    _audioSubscription?.cancel();
+    _audioSubscription = null;
+    _recorder?.stop().then((_) => _recorder?.dispose()).catchError((_) {});
+    _recorder = null;
     if (_isListening) {
-      // Fire-and-forget cleanup.
+      // Fire-and-forget cleanup (recorder already null above).
       stopListening();
     }
     _stream?.free();

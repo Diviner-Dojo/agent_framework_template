@@ -119,15 +119,25 @@ class DeepgramSttService implements SpeechRecognitionService {
   /// Opens the WebSocket connection and starts the audio capture loop.
   Future<void> _connectAndCapture() async {
     // Connect to the Deepgram proxy with Bearer auth header.
+    debugPrint('[Deepgram] Connecting to proxy WebSocket...');
     _socket = await WebSocket.connect(
       _proxyWsUrl,
       headers: {'Authorization': 'Bearer $_authToken'},
     );
+    debugPrint(
+      '[Deepgram] WebSocket connected. readyState=${_socket!.readyState}',
+    );
 
     // Listen for Deepgram JSON transcription events.
     _socket!.listen(
-      _onSocketMessage,
+      (dynamic rawMessage) {
+        debugPrint(
+          '[Deepgram] Message received: ${rawMessage.toString().substring(0, (rawMessage.toString().length).clamp(0, 120))}',
+        );
+        _onSocketMessage(rawMessage);
+      },
       onError: (Object error) {
+        debugPrint('[Deepgram] WebSocket error: $error');
         if (_resultController != null && !_resultController!.isClosed) {
           _resultController!.addError(
             StateError('Deepgram WebSocket error: $error'),
@@ -136,6 +146,24 @@ class DeepgramSttService implements SpeechRecognitionService {
       },
       onDone: () {
         // Socket closed — end the result stream if still listening.
+        debugPrint(
+          '[Deepgram] WebSocket closed. readyState=${_socket?.readyState}, '
+          'closeCode=${_socket?.closeCode}, closeReason=${_socket?.closeReason}, '
+          'isListening=$_isListening',
+        );
+        // Release the microphone unconditionally before updating _isListening.
+        //
+        // CRITICAL: stopListening() guards on `_isListening == false` and
+        // returns early without stopping the recorder. When the WebSocket closes
+        // due to an error (code 1011), _isListening is set to false here, which
+        // causes any subsequent stopListening() call to skip recorder cleanup.
+        // The AudioRecorder stays running, holding the microphone indefinitely
+        // and blocking all other STT engines (speech_to_text, sherpa_onnx).
+        // Fire-and-forget: we're in a synchronous callback and cannot await.
+        _audioSubscription?.cancel();
+        _audioSubscription = null;
+        _recorder?.stop().then((_) => _recorder?.dispose()).catchError((_) {});
+        _recorder = null;
         if (_isListening) {
           _isListening = false;
           _resultController?.close();
@@ -145,13 +173,13 @@ class DeepgramSttService implements SpeechRecognitionService {
 
     // Start audio capture: PCM16 at 16kHz mono (Deepgram linear16 format).
     //
-    // Audio source: AndroidAudioSource.voiceRecognition
-    //   This is Android's dedicated source for STT apps (Google Voice Search
-    //   uses the same source). Unlike VOICE_COMMUNICATION, it does NOT require
-    //   MODE_IN_COMMUNICATION audio mode, so it works correctly after
-    //   just_audio TTS playback on Samsung Galaxy S21 Ultra (Android 14) and
-    //   similar OEM devices where MODE_IN_COMMUNICATION conflicts with
-    //   just_audio's MODE_NORMAL, producing an empty audio stream.
+    // Audio source: AndroidAudioSource.unprocessed
+    //   Raw microphone input — bypasses all Samsung OEM post-processing.
+    //   VOICE_RECOGNITION (source 6) still produced silent PCM on Samsung
+    //   Galaxy S21 Ultra (SM_G998U1, Android 14, One UI 6) after just_audio
+    //   TTS playback. UNPROCESSED bypasses the OEM audio routing layer
+    //   entirely, getting raw PCM directly from the hardware microphone.
+    //   Available since Android API 24; no special permissions required.
     //
     // echoCancel/noiseSuppress/autoGain all disabled: these flags would
     //   switch the source to VOICE_COMMUNICATION on some OEMs regardless of
@@ -161,6 +189,7 @@ class DeepgramSttService implements SpeechRecognitionService {
     //   which also requires MODE_IN_COMMUNICATION and can cause the same
     //   empty-stream failure when Bluetooth audio devices are connected.
     _recorder = AudioRecorder();
+    debugPrint('[Deepgram] Starting audio stream (UNPROCESSED source)...');
     final audioStream = await _recorder!.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
@@ -170,14 +199,29 @@ class DeepgramSttService implements SpeechRecognitionService {
         echoCancel: false,
         noiseSuppress: false,
         androidConfig: AndroidRecordConfig(
-          audioSource: AndroidAudioSource.voiceRecognition,
+          audioSource: AndroidAudioSource.unprocessed,
           manageBluetooth: false,
         ),
       ),
     );
+    debugPrint('[Deepgram] Audio stream started.');
 
+    // Diagnostic: log silence status of the first 5 chunks.
+    var chunkCount = 0;
     _audioSubscription = audioStream.listen(
       (List<int> chunk) {
+        chunkCount++;
+        // Log the first 5 chunks to detect silent audio.
+        if (chunkCount <= 5) {
+          final maxVal = chunk.isEmpty
+              ? 0
+              : chunk.reduce((a, b) => a > b ? a : b);
+          debugPrint(
+            '[Deepgram] Chunk #$chunkCount: ${chunk.length} bytes, '
+            'max=$maxVal (${maxVal == 0 ? "SILENT" : "has audio"})',
+          );
+        }
+
         // E7 (ADR-0024): Tee raw PCM16 bytes to WAV file before forwarding.
         _audioFileService?.writeChunk(chunk);
 
@@ -186,9 +230,15 @@ class DeepgramSttService implements SpeechRecognitionService {
             _socket!.readyState == WebSocket.open &&
             _isListening) {
           _socket!.add(chunk);
+        } else if (chunkCount <= 5) {
+          debugPrint(
+            '[Deepgram] Chunk #$chunkCount NOT sent: '
+            'socket=${_socket?.readyState}, listening=$_isListening',
+          );
         }
       },
       onError: (Object error) {
+        debugPrint('[Deepgram] Audio stream error: $error');
         if (_resultController != null && !_resultController!.isClosed) {
           _resultController!.addError(error);
         }
@@ -350,6 +400,12 @@ class DeepgramSttService implements SpeechRecognitionService {
 
   @override
   void dispose() {
+    // Release microphone unconditionally — _isListening may already be false
+    // if the WebSocket closed with an error, leaving the recorder still running.
+    _audioSubscription?.cancel();
+    _audioSubscription = null;
+    _recorder?.stop().then((_) => _recorder?.dispose()).catchError((_) {});
+    _recorder = null;
     if (_isListening) {
       stopListening();
     }

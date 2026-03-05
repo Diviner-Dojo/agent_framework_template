@@ -5,12 +5,31 @@
 
 ## Current Task
 
-**Status:** Phase 4F (message editing) shipped (3d398f2). Deepgram proxy deployed + `DEEPGRAM_API_KEY` secret set. Ready to test Deepgram on device.
+**Status:** Microphone leak fix committed + Deepgram proxy `?access_token=` fix deployed. Awaiting device test.
 **Branch:** `develop/adhd-roadmap`
 **Version:** `0.32.0+32`
 
 ### In Progress
-- Nothing
+- Device test: confirm all three STT engines work after microphone leak fix
+  - Deepgram: verify proxy connects and ?access_token= resolves 401
+  - speech_to_text: verify Android SpeechRecognizer acquires mic (was blocked by leaked recorder)
+  - sherpa_onnx: verify mic released (same fix applied to SherpaOnnxSpeechRecognitionService)
+
+### Root Cause Found — ALL STT broken
+- **Bug**: `DeepgramSttService.onDone` set `_isListening=false` but never stopped `AudioRecorder`. `stopListening()` and `dispose()` both guarded on `_isListening` → skipped recorder cleanup. Recorder held OS microphone indefinitely, blocking all subsequent STT engines.
+- **Fix**: Unconditional fire-and-forget recorder cleanup in `onDone` + `dispose()` for both `DeepgramSttService` and `SherpaOnnxSpeechRecognitionService` (same pattern found by specialist review).
+- **Deepgram 401**: Changed `?token=` to `?access_token=` in proxy WebSocket URL — matches `/v1/auth/grant` response field name per Deepgram's browser streaming convention.
+- **Audio source**: Kept `UNPROCESSED` (confirmed non-silent audio max=255 on SM_G998U1 vs voiceRecognition which was silent).
+
+### Recently Completed — Deepgram STT device fixes (commit 9a19f69)
+
+- **Deepgram STT silence fix (Samsung Galaxy S21 Ultra)**: `AndroidAudioSource.voiceRecognition` + `manageBluetooth:false` in `deepgram_stt_service.dart`. Root cause: Samsung One UI `defaultSource`/`MIC` produces silent PCM after just_audio TTS. VOICE_RECOGNITION uses MODE_NORMAL (same as Google Voice Search).
+- **Platform-conditional TTS delay**: `ttsReleaseDelay: Platform.isAndroid ? 500ms : Duration.zero`. Was unconditional 500ms; iOS gets zero penalty.
+- **USER-only summary regeneration**: `_regenerateSummary()` now passes USER-only messages to Claude. Stale ASSISTANT messages with pre-edit names (e.g., "Shawn") no longer corrupt metadata extraction.
+- **Regression test**: `_SpyAgentRepository` captures `allMessages` arg, asserts no `assistant` role entries.
+- Review: REV-20260305-004829 (approve-with-changes, 2 blocking resolved in-review, 7 advisory)
+- Quality gate: 7/7 | Coverage: 81.3%
+- **Open advisories: 7 new. Total: 262**
 
 ### Recently Completed — Phase 4F + Deepgram proxy deployment
 
@@ -40,7 +59,7 @@ All four device bugs found after v0.32.0+32 deployment fixed and deployed to SM_
   - **Open advisories from this sprint: 4 new. Total: 247**
 
 ### Pending Items
-- **Test Deepgram on device**: Deploy to SM_G998U1, go Settings → Voice Engine → Deepgram, start a voice session and verify STT works (no "I can't hear you" message).
+- **Test Deepgram on device**: Reconnect Samsung Galaxy S21 Ultra (R5CR10LW2FE), deploy (`python scripts/deploy.py --install-only`), start voice session, verify STT transcribes (no "I didn't catch anything" message).
 - **Advisory A-4**: Handle `SCHEDULE_EXACT_ALARM` revocation (`PlatformException` from `zonedSchedule()`) — clear stale notificationId from task row; elevated from advisory to important given silent failure loop risk (see REV-20260304-085452 A6)
 - **Phase 3A advisory follow-ups** (8 open from REV-20260304-142456 + 8 new from REV-20260304-145506): A2 (setMode ordering), A4 (Check-In descriptor copy), A5 (barrierLabel), A6 (DraggableScrollableSheet), A7 (excludeSemantics), A8 (StateNotifier→Notifier<T>), A10 (removed journaling modes ADR), A11 (mode key constants) [from REV-142456]; A1 (capturePhotoDescription non-paused branch test), A2 (pulse_check_in dispatch test), A3 (timing assertion), A4 (silence timeout), A5 (maxLines adaptive + minLines), A6 (textInputAction.send), A7 (FAB disabled visual), A8 (viewPadding→padding) [from REV-145506]
 - **Phase 4E advisory follow-ups** (10 open): A1 Y-axis label, A2 window-gate misalignment, A3 remove raw r-value, A4 correlation empty state wording, A5 shrinkWrap tap target, A6 _shortLabel consolidation
