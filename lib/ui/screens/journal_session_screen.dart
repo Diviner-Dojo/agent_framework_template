@@ -746,7 +746,14 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                         : 'Type your thoughts...',
                     // In voice+text mode, Enter inserts a newline (not submit). Persistent
                     // helper tells users how to submit (REV-20260305-175417-A3).
-                    helperText: !_isTextInputMode && !isListening
+                    // Also suppressed while waiting for agent or TTS is speaking —
+                    // the field is disabled in those states so the affordance would
+                    // be misleading (REV-20260305-190054-A3-NEW).
+                    helperText:
+                        !_isTextInputMode &&
+                            !isListening &&
+                            !isWaiting &&
+                            !isSpeaking
                         ? 'Tap send icon to submit'
                         : null,
                   ),

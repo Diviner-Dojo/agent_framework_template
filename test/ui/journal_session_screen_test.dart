@@ -423,5 +423,60 @@ void main() {
         );
       },
     );
+
+    // A-3 regression guard: helperText conditional correctness.
+    // voice+text idle → 'Tap send icon to submit'; text-primary → null.
+    // Guards against accidental removal or copy revert (REV-20260305-190054-A1-NEW).
+
+    testWidgets(
+      'helperText shows submit hint in voice+text idle mode (regression)',
+      tags: ['regression'],
+      (tester) async {
+        final container = await buildTestWidget(tester);
+        addTearDown(container.dispose);
+
+        // Default state: voice+text mode, not listening, not waiting.
+        // helperText must show to inform users that Enter inserts newline,
+        // not submits (REV-20260305-175417-A3).
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(
+          textField.decoration?.helperText,
+          equals('Tap send icon to submit'),
+          reason:
+              'In voice+text idle state the submit-path hint must be visible '
+              'so users discover the send icon (REV-20260305-175417-A3; '
+              'regression guard for copy revert — REV-20260305-190054-A1-NEW)',
+        );
+      },
+    );
+
+    testWidgets(
+      'helperText is null in text-primary mode (regression)',
+      tags: ['regression'],
+      (tester) async {
+        // Seed voice_mode_enabled=true so the Voice/Text SegmentedButton
+        // is rendered (required to tap 'Text' segment).
+        SharedPreferences.setMockInitialValues({voiceModeEnabledKey: true});
+        prefs = await SharedPreferences.getInstance();
+
+        final container = await buildTestWidget(tester);
+        addTearDown(container.dispose);
+
+        // Tap the 'Text' segment to activate text-primary mode.
+        await tester.tap(find.text('Text'));
+        await tester.pumpAndSettle();
+
+        // In text-primary mode Enter submits — no helper needed.
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(
+          textField.decoration?.helperText,
+          isNull,
+          reason:
+              'In text-primary mode Enter already submits — showing the '
+              '"Tap send icon" hint would be redundant and confusing '
+              '(REV-20260305-175417-A3; REV-20260305-190054-A1-NEW)',
+        );
+      },
+    );
   });
 }

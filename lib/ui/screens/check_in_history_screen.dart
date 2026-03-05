@@ -455,19 +455,27 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
         leftTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            reservedSize: 24,
+            // reservedSize: 36 accommodates 'High' (4 chars) at elevated text
+            // scales; 24 would clip at 200% accessibility scale (REV-20260305-190054-A6-NEW).
+            reservedSize: 36,
             interval: 3,
             getTitlesWidget: (value, meta) {
-              final v = value.toInt();
-              if (v == 1 || v == 4 || v == 7 || v == 10) {
-                return Text(
-                  v.toString(),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                );
-              }
-              return const SizedBox.shrink();
+              // Two orientation anchors: Low(1) and High(10).
+              // 'Mid' omitted — interval:3 places the nearest tick at 7/10
+              // (67th percentile), which would misrepresent the scale midpoint
+              // to users (REV-20260305-190054-A4-NEW; inline fix REV-20260305-192424).
+              final label = switch (value.toInt()) {
+                1 => 'Low',
+                10 => 'High',
+                _ => null,
+              };
+              if (label == null) return const SizedBox.shrink();
+              return Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              );
             },
           ),
         ),
@@ -799,7 +807,9 @@ class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 24,
+                // reservedSize: 36 accommodates 'High' (4 chars) at elevated text
+                // scales (REV-20260305-190054-A6-NEW).
+                reservedSize: 36,
                 interval: 0.5,
                 getTitlesWidget: (v, _) {
                   final label = switch (v) {

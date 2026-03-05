@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260305-192424-review-advisory-closeout-round2",
+  "status": "complete",
+  "started_at": "2026-03-05T19:24:29.844979+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "low",
+  "collaboration_mode": "ensemble",
+  "report_path": "docs/reviews/REV-20260305-193138.md"
+}
