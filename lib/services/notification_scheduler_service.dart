@@ -22,6 +22,7 @@
 // ===========================================================================
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -307,6 +308,24 @@ class NotificationSchedulerService {
     }
   }
 
+  /// Result type for [rescheduleFromTasks].
+  ///
+  /// [rescheduled] — tasks that were successfully rescheduled with new IDs.
+  /// [failedTaskIds] — task IDs whose reschedule failed due to
+  /// [PlatformException] (e.g., [SCHEDULE_EXACT_ALARM] permission revoked).
+  /// The caller must clear the stale [notificationId] from these rows so the
+  /// boot-restore does not retry them on every subsequent cold start.
+  // Static final (not const) — Dart const records with typed empty list
+  // literals have corner-case compile issues in some SDK versions.
+  // List.unmodifiable() prevents callers from mutating the shared sentinel
+  // (mutation would corrupt subsequent calls that return this same instance).
+  static final _emptyRescheduleResult = (
+    rescheduled: List<({String taskId, int newNotificationId})>.unmodifiable(
+      [],
+    ),
+    failedTaskIds: List<String>.unmodifiable([]),
+  );
+
   /// Reschedule notifications for tasks whose OS alarms were cleared.
   ///
   /// OS exact alarms (`exactAllowWhileIdle`) are removed when a device
@@ -314,22 +333,31 @@ class NotificationSchedulerService {
   /// that no longer corresponds to any OS alarm. Call this method at app
   /// launch (after [initialize]) to restore those alarms.
   ///
-  /// The method skips any task whose [reminderTime] is in the past (the
-  /// reminder window has already elapsed) and any task where the plugin
-  /// fails to schedule (e.g., permission revoked after reboot).
+  /// Returns a record with:
+  /// - [rescheduled]: new `(taskId, newNotificationId)` pairs for successfully
+  ///   rescheduled tasks. The caller must persist these IDs to the database
+  ///   via [TaskDao.updateNotificationId].
+  /// - [failedTaskIds]: task IDs where [PlatformException] was thrown (e.g.,
+  ///   [SCHEDULE_EXACT_ALARM] was revoked by the user after the notification
+  ///   was first scheduled). The caller must null out the stale
+  ///   [notificationId] on these rows to break the silent retry loop.
   ///
-  /// Returns the new `(taskId, newNotificationId)` pairs for successfully
-  /// rescheduled tasks. The caller must persist these IDs back to the
-  /// database (see [TaskDao.updateNotificationId]).
+  /// The service does NOT mutate the database directly — it returns the data
+  /// and delegates persistence to the provider (ADR-0033 service boundary).
   ///
   /// [tasks] — tasks returned by [TaskDao.getTasksWithPendingReminders].
-  Future<List<({String taskId, int newNotificationId})>> rescheduleFromTasks(
-    List<Task> tasks,
-  ) async {
-    if (!_initialized || tasks.isEmpty) return const [];
+  Future<
+    ({
+      List<({String taskId, int newNotificationId})> rescheduled,
+      List<String> failedTaskIds,
+    })
+  >
+  rescheduleFromTasks(List<Task> tasks) async {
+    if (!_initialized || tasks.isEmpty) return _emptyRescheduleResult;
 
     final now = DateTime.now();
-    final results = <({String taskId, int newNotificationId})>[];
+    final rescheduled = <({String taskId, int newNotificationId})>[];
+    final failedTaskIds = <String>[];
 
     for (final task in tasks) {
       if (task.reminderTime == null || task.notificationId == null) continue;
@@ -342,25 +370,51 @@ class NotificationSchedulerService {
           scheduledAt: task.reminderTime!,
           requestPermissionIfNeeded: false,
         );
-        results.add((taskId: task.taskId, newNotificationId: newId));
+        rescheduled.add((taskId: task.taskId, newNotificationId: newId));
       } on PastReminderTimeException {
         // Race condition: became past between the check above and the call.
         // Nothing to reschedule — skip silently.
       } on NotificationPermissionDeniedException {
         // Permission was revoked since the notification was first scheduled.
         // Skip silently; user will not receive this reminder.
+      } on PlatformException {
+        // Broad catch — catches SCHEDULE_EXACT_ALARM revocation AND any other
+        // PlatformException (e.g., channel serialization errors on degraded
+        // devices). Over-catch is intentional: the recovery action (nullify
+        // stale notificationId) is safe regardless of the underlying cause.
+        // The worst case is a transient error silently clearing an ID; on the
+        // next session-save the user can re-set the reminder. The ADHD
+        // contract requires no re-escalation — silent skip is preferable to
+        // a crash or error dialog (ADR-0033 §6, over-catch risk accepted).
+        // Do NOT log task.title — may contain sensitive content (ADR-0033 §5).
+        if (kDebugMode) {
+          debugPrint(
+            '[NotificationSchedulerService] PlatformException rescheduling '
+            'task ${task.taskId} — stale notificationId will be cleared',
+          );
+        }
+        failedTaskIds.add(task.taskId);
       }
     }
 
     if (kDebugMode) {
       debugPrint(
         '[NotificationSchedulerService] '
-        'Rescheduled ${results.length}/${tasks.length} notifications after reboot',
+        'Rescheduled ${rescheduled.length}/${tasks.length} notifications; '
+        '${failedTaskIds.length} failed (permission revoked)',
       );
     }
 
-    return results;
+    return (rescheduled: rescheduled, failedTaskIds: failedTaskIds);
   }
+
+  /// Sets [_initialized] to true without calling platform-specific setup.
+  ///
+  /// **For testing only.** Allows unit tests to exercise code paths guarded by
+  /// [_initialized] (e.g., [rescheduleFromTasks] loop body) without invoking
+  /// real platform channels. Do not call in production code.
+  @visibleForTesting
+  void setInitializedForTesting() => _initialized = true;
 
   /// Cancel all scheduled task notifications.
   ///

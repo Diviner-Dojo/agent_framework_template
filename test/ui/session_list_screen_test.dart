@@ -861,6 +861,73 @@ void main() {
           );
         },
       );
+      // Advisory REV-145506-A2: tapping Check-In tile in the palette must
+      // dispatch to the /check_in route. Uses a real in-memory AppDatabase so
+      // _startNewSession() can create the session row before Navigator.pushNamed.
+      testWidgets(
+        'tapping Check-In tile navigates to /check_in route (pulse_check_in dispatch)',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({});
+          final prefs = await SharedPreferences.getInstance();
+          final database = AppDatabase.forTesting(NativeDatabase.memory());
+          addTearDown(database.close);
+
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                ...baseOverrides(prefs: prefs),
+                databaseProvider.overrideWithValue(database),
+                agentRepositoryProvider.overrideWithValue(AgentRepository()),
+                checkInCountProvider.overrideWith((ref) => Stream.value(0)),
+                activeSessionMessagesProvider.overrideWith(
+                  (ref) => Stream.value(<JournalMessage>[]),
+                ),
+                deviceTimezoneProvider.overrideWith(
+                  (ref) async => 'America/New_York',
+                ),
+              ],
+              child: MaterialApp(
+                home: const SessionListScreen(),
+                routes: {
+                  '/session': (_) =>
+                      const Scaffold(body: Text('Session Screen')),
+                  '/check_in': (_) =>
+                      const Scaffold(body: Text('CheckIn Screen')),
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Open the Quick Capture Palette via the FAB.
+          await tester.tap(find.byType(FloatingActionButton));
+          await tester.pumpAndSettle();
+          expect(
+            find.text('Check-In'),
+            findsOneWidget,
+            reason: 'palette must show a Check-In tile',
+          );
+
+          // Tap the Check-In tile.
+          await tester.tap(find.text('Check-In'));
+          await tester.pump();
+
+          // Let the async DB write (startSession) complete.
+          await tester.runAsync(() async {
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          });
+          await tester.pumpAndSettle();
+
+          // Navigation should have pushed /check_in.
+          expect(
+            find.text('CheckIn Screen'),
+            findsOneWidget,
+            reason:
+                'tapping Check-In in the palette must push /check_in route '
+                '(pulse_check_in dispatch path — REV-145506-A2)',
+          );
+        },
+      );
     }); // end '_openQuickCapturePalette dispatch branches'
 
     // Phase 4B: widget launch dispatch via pendingWidgetLaunchModeProvider.

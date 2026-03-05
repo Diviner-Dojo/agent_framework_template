@@ -63,6 +63,11 @@ final notificationSchedulerProvider = Provider<NotificationSchedulerService>((
 ///
 /// Tasks that cannot be rescheduled (past due, permission revoked) are
 /// silently skipped — the user simply will not receive that reminder.
+///
+/// When [SCHEDULE_EXACT_ALARM] has been revoked by the user, the service
+/// returns the affected task IDs in [failedTaskIds]. This provider nullifies
+/// their stale [notificationId] so the boot-restore loop does not retry them
+/// on every subsequent cold start (ADR-0033 PlatformException handling).
 final notificationBootRestoreProvider = FutureProvider<void>((ref) async {
   final scheduler = ref.read(notificationSchedulerProvider);
   final taskDao = ref.read(taskDaoProvider);
@@ -70,8 +75,17 @@ final notificationBootRestoreProvider = FutureProvider<void>((ref) async {
   final tasks = await taskDao.getTasksWithPendingReminders();
   if (tasks.isEmpty) return;
 
-  final updates = await scheduler.rescheduleFromTasks(tasks);
-  for (final (:taskId, :newNotificationId) in updates) {
+  final result = await scheduler.rescheduleFromTasks(tasks);
+
+  // Persist new notification IDs for successfully rescheduled tasks.
+  for (final (:taskId, :newNotificationId) in result.rescheduled) {
     await taskDao.updateNotificationId(taskId, newNotificationId);
+  }
+
+  // Nullify stale IDs for tasks that failed due to PlatformException
+  // (e.g., SCHEDULE_EXACT_ALARM revoked). Without this, every cold start
+  // retries the failing reschedule — a silent failure loop (ADR-0033).
+  for (final taskId in result.failedTaskIds) {
+    await taskDao.updateNotificationId(taskId, null);
   }
 });

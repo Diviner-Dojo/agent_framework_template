@@ -5,20 +5,47 @@
 // Tests the pure-logic paths that fire BEFORE any plugin call:
 //   - Past-time guard (PastReminderTimeException, Requirement 8)
 //   - cancelNotification(null) is a no-op (returns immediately)
+//   - rescheduleFromTasks early return when !_initialized (A2, ADR-0033)
+//   - rescheduleFromTasks PlatformException path adds to failedTaskIds (A-4, ADR-0033)
 //
 // The OS-scheduling path (zonedSchedule) is tested on-device only because
 // FlutterLocalNotificationsPlugin is a platform singleton that requires
 // real platform channels for scheduling. The past-time and null-id guards
 // are verified here since they fire before any plugin interaction.
 //
-// See: SPEC-20260304-061650, ADR-0033
+// See: SPEC-20260304-061650, SPEC-20260305-144939, ADR-0033
 // ===========================================================================
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:agentic_journal/database/app_database.dart' show Task;
 import 'package:agentic_journal/services/notification_scheduler_service.dart';
+
+/// A [NotificationSchedulerService] that throws [PlatformException]
+/// from [scheduleNotification] to simulate SCHEDULE_EXACT_ALARM revocation
+/// (Android 12+ permission revoked by user after initial grant).
+///
+/// [FlutterLocalNotificationsPlugin] uses a private constructor and cannot
+/// be subclassed. We override [scheduleNotification] instead — the public
+/// method that [rescheduleFromTasks] calls — which is the actual catch site.
+///
+/// Used by the rescheduleFromTasks PlatformException path test.
+class _ThrowingSchedulerService extends NotificationSchedulerService {
+  _ThrowingSchedulerService() : super(FlutterLocalNotificationsPlugin());
+
+  @override
+  Future<int> scheduleNotification({
+    required String title,
+    required String body,
+    required DateTime scheduledAt,
+    bool requestPermissionIfNeeded = true,
+  }) async {
+    throw PlatformException(code: 'SCHEDULE_EXACT_ALARM_NOT_ALLOWED');
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -83,6 +110,95 @@ void main() {
     test('toString is descriptive', () {
       const e = NotificationPermissionDeniedException();
       expect(e.toString(), contains('NotificationPermissionDeniedException'));
+    });
+  });
+
+  // Advisory A-2 from REV-20260304-085452: rescheduleFromTasks must return
+  // empty result immediately when service is not initialized.
+  //
+  // The test uses a NON-EMPTY task list to confirm the early return is triggered
+  // by !_initialized, not by tasks.isEmpty (different code path).
+  group('rescheduleFromTasks — early return when not initialized', () {
+    test(
+      'returns empty rescheduled and failedTaskIds when service is not initialized',
+      () async {
+        // Do NOT call initialize() or setInitializedForTesting() — _initialized stays false.
+        final service = NotificationSchedulerService(
+          FlutterLocalNotificationsPlugin(),
+        );
+        final futureTime = DateTime.now().add(const Duration(days: 1));
+        // Non-empty task list with valid reminderTime + notificationId.
+        // This ensures early return tests !_initialized, not tasks.isEmpty.
+        final task = Task(
+          taskId: 't-uninit-01',
+          title: 'Uninitialized service test',
+          status: 'ACTIVE',
+          syncStatus: 'PENDING',
+          isQuickReminder: false,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+          reminderTime: futureTime,
+          notificationId: 1042,
+        );
+
+        final result = await service.rescheduleFromTasks([task]);
+
+        expect(
+          result.rescheduled,
+          isEmpty,
+          reason: 'No reschedules when service is not initialized',
+        );
+        expect(
+          result.failedTaskIds,
+          isEmpty,
+          reason: 'No failures when service is not initialized (early return)',
+        );
+      },
+    );
+  });
+
+  // Advisory A-4 + QA-specialist F1 from SPEC-20260305-144939:
+  // rescheduleFromTasks must add task ID to failedTaskIds when zonedSchedule
+  // throws PlatformException (simulates SCHEDULE_EXACT_ALARM revocation on
+  // Android 12+ after the notification was initially scheduled).
+  //
+  // Recovery path: provider calls taskDao.updateNotificationId(taskId, null)
+  // to clear the stale ID, breaking the silent retry loop (ADR-0033 §Amendment).
+  group('rescheduleFromTasks — PlatformException path', () {
+    test('adds task ID to failedTaskIds and leaves rescheduled empty when '
+        'zonedSchedule throws PlatformException', () async {
+      final service = _ThrowingSchedulerService();
+      // Bypass initialize() — setInitializedForTesting() skips platform channels
+      // while still enabling the rescheduleFromTasks loop body.
+      service.setInitializedForTesting();
+
+      final futureTime = DateTime.now().add(const Duration(days: 1));
+      final task = Task(
+        taskId: 't-platform-ex-01',
+        title: 'Platform exception test',
+        status: 'ACTIVE',
+        syncStatus: 'PENDING',
+        isQuickReminder: false,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        reminderTime: futureTime,
+        notificationId: 1099, // stale ID from before permission revocation
+      );
+
+      final result = await service.rescheduleFromTasks([task]);
+
+      expect(
+        result.failedTaskIds,
+        contains('t-platform-ex-01'),
+        reason:
+            'PlatformException from zonedSchedule should be caught and '
+            'task ID added to failedTaskIds for caller to null out stale ID',
+      );
+      expect(
+        result.rescheduled,
+        isEmpty,
+        reason: 'No successful reschedules when zonedSchedule throws',
+      );
     });
   });
 

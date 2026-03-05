@@ -415,6 +415,40 @@ void main() {
       // "sleep" should appear in the narrative (first non-stopword).
       expect(insights.first.text.toLowerCase(), contains('sleep'));
     });
+
+    // Advisory A8 from REV-20260304-015709: hasMissingDataWarning boundary
+    // test. When pairedCount < totalDays (sparse overlap), both the warning
+    // flag AND a narrative insight card should be present. This guards against
+    // a degenerate implementation that returns only the low-data sentinel
+    // (hasMissingDataWarning=true, no narrative) instead of the combined
+    // warning-with-insight behavior.
+    test('hasMissingDataWarning=true AND insight present when pairedCount < '
+        'totalDays and r >= 0.5 threshold', () {
+      // pairedCount: 7 < totalDays: 14 → missing-data flag should be set.
+      // r: 0.75 ≥ 0.5 threshold → a narrative card should also be present.
+      final correlations = [
+        DimensionCorrelation(itemIdA: 1, itemIdB: 2, r: 0.75, pairedCount: 7),
+      ];
+      final insights = svc.generateInsights(
+        correlations: correlations,
+        itemText: {1: 'Mood', 2: 'Energy'},
+        totalDays: 14,
+      );
+      expect(
+        insights.any((i) => i.hasMissingDataWarning),
+        isTrue,
+        reason:
+            'pairedCount (7) < totalDays (14) must set hasMissingDataWarning',
+      );
+      expect(
+        insights.isNotEmpty,
+        isTrue,
+        reason:
+            'r=0.75 >= threshold must produce at least one narrative insight '
+            'even when hasMissingDataWarning is set — guards against a '
+            'degenerate pass that returns only the warning sentinel',
+      );
+    });
   });
 }
 

@@ -1569,6 +1569,55 @@ void main() {
       );
     });
 
+    // Advisory REV-145506-A1: non-paused continuous case — confirms that
+    // capturePhotoDescription path 2 (wasInContinuousMode && previousPhase !=
+    // idle) calls _startListening() so STT resumes automatically.
+    //
+    // Contrast with the paused-state regression below: that test confirms the
+    // PAUSED path (previousPhase==paused) restores paused state so the CALLER's
+    // resume() works. This test confirms the NON-PAUSED path restarts STT
+    // directly without requiring a caller resume().
+    group('capturePhotoDescription non-paused continuous mode (path 2)', () {
+      test(
+        'capturePhotoDescription restarts STT in continuous mode when not paused',
+        () async {
+          // Path 2 preconditions: wasInContinuousMode=true, previousPhase=listening.
+          // Do NOT call pause() — this tests the branch for a user who starts
+          // photo capture while voice is already actively listening.
+          await orchestrator.startContinuousMode('Hello');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          expect(
+            orchestrator.state.phase,
+            VoiceLoopPhase.listening,
+            reason: 'precondition: orchestrator must be in listening state',
+          );
+
+          // Start capturePhotoDescription — emit a final result immediately
+          // so the description completes without the 5-second silence timeout.
+          final captureTask = orchestrator.capturePhotoDescription();
+          await Future<void>.delayed(Duration.zero);
+          mockStt.emitResult(
+            const SpeechResult(text: 'a red bicycle', isFinal: true),
+          );
+          final description = await captureTask;
+
+          expect(description, equals('a red bicycle'));
+
+          // Path 2: wasInContinuousMode=true && previousPhase=listening (not idle)
+          // → _startListening() was called in the finally block.
+          // Assert STT is active again (not requiring a caller resume() call).
+          expect(
+            mockStt.isListening,
+            isTrue,
+            reason:
+                'capturePhotoDescription path 2 (wasInContinuousMode && '
+                'previousPhase != idle) must call _startListening() so STT '
+                'resumes without requiring orchestrator.resume() from caller',
+          );
+        },
+      );
+    });
+
     // regression: capturePhotoDescription() called _startListening() at the
     // end of its flow, leaving phase=listening.  The caller's
     // orchestrator.resume() (which requires phase=paused) was then a silent

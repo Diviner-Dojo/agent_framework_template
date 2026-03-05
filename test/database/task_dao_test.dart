@@ -1401,4 +1401,76 @@ void main() {
       expect(rowsUpdated, 0);
     });
   });
+
+  // Advisory A-1 from REV-20260304-085452: deleteTasksBySession cancellation
+  // wiring was not tested with the _FakeScheduler — a refactor removing the
+  // loop would not be caught by CI.
+  group('deleteTasksBySession cancellation wiring', () {
+    late _FakeScheduler fakeScheduler;
+    late TaskDao daoWithScheduler;
+
+    setUp(() {
+      fakeScheduler = _FakeScheduler();
+      daoWithScheduler = TaskDao(database, scheduler: fakeScheduler);
+    });
+
+    test(
+      'cancels all notification IDs for tasks in the deleted session',
+      () async {
+        await daoWithScheduler.insertTask(
+          makeTask(
+            taskId: 't1',
+            sessionId: 's-del',
+          ).copyWith(notificationId: const Value(1042)),
+        );
+        await daoWithScheduler.insertTask(
+          makeTask(
+            taskId: 't2',
+            sessionId: 's-del',
+          ).copyWith(notificationId: const Value(1099)),
+        );
+
+        await daoWithScheduler.deleteTasksBySession('s-del');
+
+        expect(fakeScheduler.cancelledIds, containsAll([1042, 1099]));
+        expect(
+          fakeScheduler.cancelledIds,
+          hasLength(2),
+          reason: 'exactly two notifications cancelled — one per task',
+        );
+      },
+    );
+  });
+
+  // Advisory A-4 from REV-20260304-085452: getTasksWithPendingReminders uses
+  // isNotIn([completed]) — PENDING_CREATE tasks should be included. Verify
+  // that an isIn([active]) change would be caught as a regression.
+  group('getTasksWithPendingReminders PENDING_CREATE inclusion', () {
+    test(
+      'includes PENDING_CREATE tasks with future reminderTime and notificationId',
+      () async {
+        final future = DateTime.now().add(const Duration(hours: 3));
+        await taskDao.insertTask(
+          makeTask(
+            taskId: 't-pending-create',
+            status: TaskStatus.pendingCreate,
+          ).copyWith(
+            reminderTime: Value(future),
+            notificationId: const Value(1050),
+          ),
+        );
+
+        final results = await taskDao.getTasksWithPendingReminders();
+
+        expect(
+          results.map((t) => t.taskId),
+          contains('t-pending-create'),
+          reason:
+              'PENDING_CREATE tasks with pending reminders must be rescheduled '
+              'after reboot — isNotIn([completed]) logic must include '
+              'pendingCreate (regression guard against isIn([active]) change)',
+        );
+      },
+    );
+  });
 }

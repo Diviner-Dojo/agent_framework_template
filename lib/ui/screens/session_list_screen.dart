@@ -772,10 +772,11 @@ class _SessionListScreenState extends ConsumerState<SessionListScreen> {
     final selected = await showQuickCapturePalette(context, lastMode: lastMode);
     if (selected == null || !context.mounted) return;
 
-    // Persist the chosen mode so it is pre-highlighted on the next open.
+    // Persist the chosen mode AFTER the mounted check (line above) so that
+    // the mode is only saved when navigation actually proceeds. Previously
+    // setMode ran before the mounted check, persisting even when the context
+    // was disposed during the palette await (REV-20260304-142456-A2).
     await ref.read(lastCaptureModeProvider.notifier).setMode(selected);
-    if (!context.mounted) return;
-
     await _dispatchCaptureMode(context, selected);
   }
 

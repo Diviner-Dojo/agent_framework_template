@@ -132,6 +132,26 @@ instead. This protects potentially sensitive content (health reminders, personal
 - Notification ID namespace segmentation anticipates future digest/nudge notification
   types without schema changes
 
+## Amendment — PlatformException Handling (2026-03-05)
+
+**Change**: `rescheduleFromTasks` now returns a structured result record
+`({rescheduled, failedTaskIds})` instead of a flat list. When `PlatformException`
+is thrown during reschedule (e.g., `SCHEDULE_EXACT_ALARM` revoked by user on
+Android 12+), the task ID is added to `failedTaskIds`. The provider
+(`notificationBootRestoreProvider`) iterates `failedTaskIds` and calls
+`taskDao.updateNotificationId(taskId, null)` to clear the stale ID.
+
+**Service boundary preserved**: The service does NOT write to the database. It
+returns data; the provider persists it. The `Task` model import in the service is
+limited to the method parameter type — this bidirectional import was accepted in
+the original ADR and remains intentional.
+
+**ADHD contract unchanged**: Silent skip is the correct behavior. No re-escalation,
+no error dialog. The only user-visible effect is that the reminder does not fire
+if the permission has been revoked — which is the OS-enforced outcome regardless.
+
+**Spec reference**: SPEC-20260305-144939 (advisory triage sprint, Group 1 A-4 fix).
+
 ## Linked Discussion
 
 See: discussions/2026-03-04/DISC-20260304-061753-scheduled-local-notifications-spec-review/

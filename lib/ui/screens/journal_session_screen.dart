@@ -610,7 +610,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
     final isListening = voiceState.phase == VoiceLoopPhase.listening;
     final isSpeaking = voiceState.phase == VoiceLoopPhase.speaking;
 
-    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
+    // Use padding.bottom (not viewPadding.bottom) because the Scaffold has
+    // resizeToAvoidBottomInset: true. When the keyboard opens, padding.bottom
+    // collapses to 0 (the keyboard inset is handled by the Scaffold's resize);
+    // viewPadding.bottom stays fixed at the system bar height, which would
+    // double-count the inset when the keyboard is visible (REV-145506-A8).
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
       // Slight elevation to separate from the message list.
@@ -662,7 +667,10 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                 showSelectedIcon: false,
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  // tapTargetSize intentionally omitted to restore 48dp minimum
+                  // (MaterialTapTargetSize.padded). shrinkWrap previously here
+                  // reduced tap area below accessible minimums — parallel fix
+                  // to check_in_history_screen.dart SegmentedButton (REV-145506-A5).
                 ),
               ),
             ),
@@ -721,7 +729,15 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                       ? !isWaiting
                       : !isWaiting && !isListening && !isSpeaking,
                   textCapitalization: TextCapitalization.sentences,
-                  maxLines: 6, // Cap growth so send button stays on screen.
+                  // minLines: 1 starts compact; maxLines: 4 prevents consuming
+                  // too much screen space on 360dp devices with voice controls
+                  // active (REV-145506-A5).
+                  minLines: 1,
+                  maxLines: 4,
+                  // TextInputAction.send so the keyboard Enter key submits the
+                  // message. Without this, multi-line mode defaults Enter to
+                  // newline — users had to tap the send button (REV-145506-A6).
+                  textInputAction: TextInputAction.send,
                   decoration: InputDecoration(
                     hintText: isListening && !_isTextInputMode
                         ? 'Listening...'

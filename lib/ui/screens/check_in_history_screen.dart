@@ -346,7 +346,10 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
             style: SegmentedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              // tapTargetSize intentionally omitted to restore the default
+              // MaterialTapTargetSize.padded (48dp minimum) per Material spec.
+              // shrinkWrap was previously here but reduced tap targets below
+              // accessible minimums (REV-20260304-015709-A5).
             ),
             segments: segments,
             selected: {_filter},
@@ -720,6 +723,12 @@ class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Rolling averages', style: theme.textTheme.titleSmall),
+        Text(
+          'Values normalized to 0–1 (1 = highest recorded)',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
         const SizedBox(height: 8),
         if (!hasValues)
           SizedBox(
@@ -894,7 +903,7 @@ class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
         const SizedBox(height: 8),
         if (withR.isEmpty)
           Text(
-            'Not enough shared check-in days to compute correlations yet.',
+            'Correlations appear after 5 or more days with data for the same dimensions.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -952,8 +961,7 @@ class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
                     ),
                   ),
                   Text(
-                    '$strength, move $direction — '
-                    'r = ${r.toStringAsFixed(2)} (${c.pairedCount} days)',
+                    '$strength, move $direction — ${c.pairedCount} days',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -1216,6 +1224,17 @@ class _AnswerRow extends StatelessWidget {
 ///
 /// Guards against a degenerate template where [scaleMin] == [scaleMax] —
 /// returns 0.0 rather than dividing by zero.
+///
+/// **Asymmetry with [CorrelationService.normalizeAnswer]**: This screen-side
+/// function returns 0.0 for a degenerate range; `CorrelationService.normalizeAnswer`
+/// returns 0.5 for the same case. This is intentional:
+///   - 0.0 here prevents a chart point from appearing at the midpoint for
+///     degenerate data (a bar at 50% would mislead the user into thinking a
+///     real value was recorded).
+///   - 0.5 in the service is neutral for Pearson r computation (placing the
+///     degenerate dimension at the centre of the correlation space avoids
+///     artificially inflating or deflating correlations).
+/// Do not unify these — they serve different consumers (ADR-0033 §A7 note).
 double _normalizeValue(int value, int scaleMin, int scaleMax) {
   final range = scaleMax - scaleMin;
   if (range <= 0) return 0.0;

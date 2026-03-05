@@ -344,9 +344,12 @@ void main() {
 
     // regression: maxLines: null caused the text field to expand unboundedly,
     // pushing the send button off screen when the user typed a long message.
-    // Fix: maxLines: 6 caps the visible height while still allowing scrolling.
+    // Fix: minLines: 1 + maxLines: 4 keeps the field compact on 360dp devices
+    // with voice controls active while still preventing overflow (REV-145506-A5).
+    // textInputAction: TextInputAction.send wires the keyboard Enter key to
+    // submit (REV-145506-A6 — multi-line default would insert newline instead).
     testWidgets(
-      'text field has maxLines: 6 so send button stays on screen (regression)',
+      'text field has minLines: 1, maxLines: 4 and textInputAction.send (regression)',
       tags: ['regression'],
       (tester) async {
         final container = await buildTestWidget(tester);
@@ -355,9 +358,22 @@ void main() {
         final textField = tester.widget<TextField>(find.byType(TextField));
         expect(
           textField.maxLines,
-          equals(6),
+          equals(4),
           reason:
-              'maxLines must be 6 to prevent send button overflow on long input',
+              'maxLines: 4 prevents send button overflow on 360dp devices '
+              'with voice controls active (REV-145506-A5)',
+        );
+        expect(
+          textField.minLines,
+          equals(1),
+          reason: 'minLines: 1 keeps the field compact when empty',
+        );
+        expect(
+          textField.textInputAction,
+          equals(TextInputAction.send),
+          reason:
+              'TextInputAction.send wires keyboard Enter to submit; '
+              'without it multi-line mode inserts newline (REV-145506-A6)',
         );
       },
     );
