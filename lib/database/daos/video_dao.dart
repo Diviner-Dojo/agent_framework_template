@@ -95,6 +95,15 @@ class VideoDao {
         .watch();
   }
 
+  /// Update the user-authored description of a video.
+  ///
+  /// Called from the session detail edit sheet when a user edits the caption
+  /// on a video bubble (mirrors PhotoDao.updateDescription — see ADR-0021).
+  Future<void> updateDescription(String videoId, String description) async {
+    await (_db.update(_db.videos)..where((v) => v.videoId.equals(videoId)))
+        .write(VideosCompanion(description: Value(description)));
+  }
+
   /// Update the cloud URL after successful upload.
   Future<void> updateCloudUrl(String videoId, String cloudUrl) async {
     await (_db.update(

@@ -17,7 +17,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/database/daos/message_dao.dart';
+import 'package:agentic_journal/database/daos/photo_dao.dart';
 import 'package:agentic_journal/database/daos/session_dao.dart';
+import 'package:agentic_journal/database/daos/video_dao.dart';
 import 'package:agentic_journal/models/agent_response.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart'
@@ -428,6 +430,169 @@ void main() {
           expect(
             spy.capturedAllMessages!.every((m) => m['role'] == 'user'),
             isTrue,
+          );
+        },
+      );
+    });
+
+    // Photo/video message editing (bug fix 2026-03-05)
+    // -----------------------------------------------------------------------
+    // Long-press on a photo or video bubble must edit photo.description /
+    // video.description, not message.content ('[Photo]'/'[Video]'). Prior to
+    // this fix, the edit sheet opened with '[Photo]' pre-filled and saved to
+    // the wrong field, leaving the visible caption unchanged.
+    // Ledger entries: memory/bugs/regression-ledger.md 2026-03-05.
+
+    group('Photo and video message editing', () {
+      testWidgets(
+        'long-press on photo message opens "Edit photo caption" with existing description (regression)',
+        tags: ['regression'],
+        (tester) async {
+          final sessionDao = SessionDao(database);
+          final messageDao = MessageDao(database);
+          final photoDao = PhotoDao(database);
+          final now = DateTime.now().toUtc();
+
+          await sessionDao.createSession('photo-edit-session', now, 'UTC');
+          await photoDao.insertPhoto(
+            photoId: 'photo-001',
+            sessionId: 'photo-edit-session',
+            localPath: '/fake/photo.jpg',
+            timestamp: now,
+            messageId: 'msg-photo-1',
+            description: 'My cat sleeping',
+          );
+          await messageDao.insertMessage(
+            'msg-photo-1',
+            'photo-edit-session',
+            'USER',
+            '[Photo]',
+            now,
+            photoId: 'photo-001',
+          );
+
+          await tester.pumpWidget(buildTestWidget('photo-edit-session'));
+          await tester.pumpAndSettle();
+
+          // Long-press the '[Photo]' content text (always rendered for photo
+          // messages regardless of whether the image file exists on disk).
+          await tester.longPress(find.text('[Photo]'));
+          await tester.pumpAndSettle();
+
+          expect(
+            find.text('Edit photo caption'),
+            findsOneWidget,
+            reason:
+                'Photo messages must open "Edit photo caption", not "Edit message"',
+          );
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).controller?.text,
+            'My cat sleeping',
+            reason:
+                'Edit sheet must pre-fill with photo.description, not message.content',
+          );
+        },
+      );
+
+      testWidgets(
+        'saving photo caption updates photo.description in DB, not message.content (regression)',
+        tags: ['regression'],
+        (tester) async {
+          final sessionDao = SessionDao(database);
+          final messageDao = MessageDao(database);
+          final photoDao = PhotoDao(database);
+          final now = DateTime.now().toUtc();
+
+          await sessionDao.createSession('photo-save-session', now, 'UTC');
+          await photoDao.insertPhoto(
+            photoId: 'photo-002',
+            sessionId: 'photo-save-session',
+            localPath: '/fake/photo.jpg',
+            timestamp: now,
+            messageId: 'msg-photo-2',
+            description: 'Old caption',
+          );
+          await messageDao.insertMessage(
+            'msg-photo-2',
+            'photo-save-session',
+            'USER',
+            '[Photo]',
+            now,
+            photoId: 'photo-002',
+          );
+
+          await tester.pumpWidget(buildTestWidget('photo-save-session'));
+          await tester.pumpAndSettle();
+
+          await tester.longPress(find.text('[Photo]'));
+          await tester.pumpAndSettle();
+
+          final textField = find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(TextField),
+          );
+          await tester.enterText(textField, 'Updated caption');
+          await tester.tap(find.text('Save'));
+          await tester.pumpAndSettle();
+
+          // photo.description must be updated in DB.
+          final updated = await photoDao.getPhotoById('photo-002');
+          expect(updated?.description, 'Updated caption');
+
+          // message.content must remain '[Photo]' (was not touched).
+          final msgs = await messageDao.getMessagesForSession(
+            'photo-save-session',
+          );
+          expect(msgs.first.content, '[Photo]');
+        },
+      );
+
+      testWidgets(
+        'long-press on video message opens "Edit video description" with existing description (regression)',
+        tags: ['regression'],
+        (tester) async {
+          final sessionDao = SessionDao(database);
+          final messageDao = MessageDao(database);
+          final videoDao = VideoDao(database);
+          final now = DateTime.now().toUtc();
+
+          await sessionDao.createSession('video-edit-session', now, 'UTC');
+          await videoDao.insertVideo(
+            videoId: 'video-001',
+            sessionId: 'video-edit-session',
+            localPath: '/fake/video.mp4',
+            thumbnailPath: '/fake/thumb.jpg',
+            durationSeconds: 30,
+            timestamp: now,
+            messageId: 'msg-video-1',
+            description: 'Walk in the park',
+          );
+          await messageDao.insertMessage(
+            'msg-video-1',
+            'video-edit-session',
+            'USER',
+            '[Video]',
+            now,
+            videoId: 'video-001',
+          );
+
+          await tester.pumpWidget(buildTestWidget('video-edit-session'));
+          await tester.pumpAndSettle();
+
+          await tester.longPress(find.text('[Video]'));
+          await tester.pumpAndSettle();
+
+          expect(
+            find.text('Edit video description'),
+            findsOneWidget,
+            reason:
+                'Video messages must open "Edit video description", not "Edit message"',
+          );
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).controller?.text,
+            'Walk in the park',
+            reason:
+                'Edit sheet must pre-fill with video.description, not message.content',
           );
         },
       );

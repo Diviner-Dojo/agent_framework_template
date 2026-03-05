@@ -255,16 +255,47 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
 
   /// Long-press a USER message to open an edit sheet.
   ///
-  /// On save: updates the DB, reloads the transcript, and regenerates the
-  /// AI session summary so the metadata reflects the corrected content.
+  /// Behaviour varies by message type:
+  /// - **Photo messages** (`photoId != null`): edits `photo.description` (the
+  ///   user-visible caption). Does NOT touch `message.content` ('[Photo]') and
+  ///   does NOT regenerate the AI summary (captions are not part of the text
+  ///   Claude summarises).
+  /// - **Video messages** (`videoId != null`): same pattern as photos, edits
+  ///   `video.description`.
+  /// - **Regular messages**: edits `message.content` and regenerates the AI
+  ///   summary so the metadata reflects the corrected transcription.
   Future<void> _showEditMessageSheet(JournalMessage message) async {
+    // Resolve which field we are editing and the initial value to show.
+    final photo = message.photoId != null
+        ? _photosByMessageId[message.messageId]
+        : null;
+    final video = message.videoId != null
+        ? _videosByVideoId[message.videoId!]
+        : null;
+
+    final isPhotoMessage = photo != null;
+    final isVideoMessage = video != null;
+    final initialText = isPhotoMessage
+        ? (photo.description ?? '')
+        : isVideoMessage
+        ? (video.description ?? '')
+        : message.content;
+    final sheetTitle = isPhotoMessage
+        ? 'Edit photo caption'
+        : isVideoMessage
+        ? 'Edit video description'
+        : 'Edit message';
+    final hintText = isPhotoMessage || isVideoMessage
+        ? 'Describe this media'
+        : 'Message text';
+
     final edited = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
         // Controller created inside builder to avoid dispose-during-animation
         // crashes (same pattern as _showAddTagDialog / PR #71).
-        final controller = TextEditingController(text: message.content);
+        final controller = TextEditingController(text: initialText);
         return Padding(
           padding: EdgeInsets.only(
             left: 16,
@@ -276,15 +307,15 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Edit message', style: Theme.of(ctx).textTheme.titleMedium),
+              Text(sheetTitle, style: Theme.of(ctx).textTheme.titleMedium),
               const SizedBox(height: 12),
               TextField(
                 controller: controller,
                 autofocus: true,
                 maxLines: null,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Message text',
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  hintText: hintText,
                 ),
               ),
               const SizedBox(height: 12),
@@ -309,17 +340,30 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       },
     );
 
-    // B3: reject null, empty, or unchanged edits before any DB write.
-    if (edited == null ||
-        edited.isEmpty ||
-        edited == message.content ||
-        !mounted) {
+    // B3: reject null or unchanged edits before any DB write.
+    // Empty is allowed for captions (user may want to clear a description).
+    if (edited == null || edited == initialText || !mounted) return;
+
+    final db = ref.read(databaseProvider);
+
+    if (isPhotoMessage) {
+      // Update photo description only — no summary regen needed.
+      await PhotoDao(db).updateDescription(photo.photoId, edited);
+      await _loadData();
       return;
     }
 
-    final db = ref.read(databaseProvider);
-    final messageDao = MessageDao(db);
-    await messageDao.updateMessageContent(message.messageId, edited);
+    if (isVideoMessage) {
+      // Update video description only — no summary regen needed.
+      await VideoDao(db).updateDescription(video.videoId, edited);
+      await _loadData();
+      return;
+    }
+
+    // Regular message: update content and regenerate AI summary.
+    // B3 (text-only): also reject empty edits for regular messages.
+    if (edited.isEmpty) return;
+    await MessageDao(db).updateMessageContent(message.messageId, edited);
 
     // Reload the transcript so the edited bubble is visible immediately.
     await _loadData();
