@@ -144,15 +144,35 @@ class DeepgramSttService implements SpeechRecognitionService {
     );
 
     // Start audio capture: PCM16 at 16kHz mono (Deepgram linear16 format).
+    //
+    // Audio source: AndroidAudioSource.voiceRecognition
+    //   This is Android's dedicated source for STT apps (Google Voice Search
+    //   uses the same source). Unlike VOICE_COMMUNICATION, it does NOT require
+    //   MODE_IN_COMMUNICATION audio mode, so it works correctly after
+    //   just_audio TTS playback on Samsung Galaxy S21 Ultra (Android 14) and
+    //   similar OEM devices where MODE_IN_COMMUNICATION conflicts with
+    //   just_audio's MODE_NORMAL, producing an empty audio stream.
+    //
+    // echoCancel/noiseSuppress/autoGain all disabled: these flags would
+    //   switch the source to VOICE_COMMUNICATION on some OEMs regardless of
+    //   androidConfig. Deepgram's server-side noise reduction handles quality.
+    //
+    // manageBluetooth: false — prevents automatic Bluetooth SCO connection,
+    //   which also requires MODE_IN_COMMUNICATION and can cause the same
+    //   empty-stream failure when Bluetooth audio devices are connected.
     _recorder = AudioRecorder();
     final audioStream = await _recorder!.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,
         numChannels: 1,
-        autoGain: true,
-        echoCancel: true,
-        noiseSuppress: true,
+        autoGain: false,
+        echoCancel: false,
+        noiseSuppress: false,
+        androidConfig: AndroidRecordConfig(
+          audioSource: AndroidAudioSource.voiceRecognition,
+          manageBluetooth: false,
+        ),
       ),
     );
 

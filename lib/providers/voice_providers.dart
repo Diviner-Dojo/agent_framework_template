@@ -367,6 +367,13 @@ final voiceOrchestratorProvider = Provider<VoiceSessionOrchestrator>((ref) {
     sttService: stt,
     ttsService: tts,
     audioFocusService: audioFocus,
+    // Increased from default 150ms on Android: Samsung Galaxy S21 Ultra
+    // (Android 14, One UI) needs extra time for just_audio to relinquish
+    // audio focus after ElevenLabs TTS before `record` can acquire the mic.
+    // iOS audio session routing is handled differently — no delay needed.
+    ttsReleaseDelay: Platform.isAndroid
+        ? const Duration(milliseconds: 500)
+        : Duration.zero,
   );
 
   ref.onDispose(() => orchestrator.dispose());

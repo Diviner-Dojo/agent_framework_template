@@ -18,12 +18,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/database/daos/message_dao.dart';
 import 'package:agentic_journal/database/daos/session_dao.dart';
+import 'package:agentic_journal/models/agent_response.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart'
     show sharedPreferencesProvider;
 import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/ui/screens/session_detail_screen.dart';
+
+/// Spy subclass that captures the allMessages argument passed to generateSummary.
+///
+/// Used to verify the USER-only filter regression fix:
+/// _regenerateSummary() must never pass ASSISTANT messages to generateSummary()
+/// (regression guard for session_detail_screen.dart _regenerateSummary).
+/// Ledger entry: memory/bugs/regression-ledger.md 2026-03-05.
+class _SpyAgentRepository extends AgentRepository {
+  List<Map<String, String>>? capturedAllMessages;
+
+  @override
+  Future<AgentResponse> generateSummary({
+    required List<String> userMessages,
+    List<Map<String, String>>? allMessages,
+  }) async {
+    capturedAllMessages = allMessages;
+    return const AgentResponse(
+      content: 'Test summary.',
+      layer: AgentLayer.ruleBasedLocal,
+    );
+  }
+}
 
 void main() {
   group('SessionDetailScreen', () {
@@ -40,7 +63,10 @@ void main() {
       await database.close();
     });
 
-    Widget buildTestWidget(String sessionId) {
+    Widget buildTestWidget(
+      String sessionId, {
+      AgentRepository? agentRepository,
+    }) {
       return UncontrolledProviderScope(
         container: ProviderContainer(
           overrides: [
@@ -48,7 +74,9 @@ void main() {
             // themeProvider depends on sharedPreferencesProvider — override
             // it so the theme notifier can initialize without throwing.
             sharedPreferencesProvider.overrideWithValue(prefs),
-            agentRepositoryProvider.overrideWithValue(AgentRepository()),
+            agentRepositoryProvider.overrideWithValue(
+              agentRepository ?? AgentRepository(),
+            ),
           ],
         ),
         child: MaterialApp(home: SessionDetailScreen(sessionId: sessionId)),
@@ -334,6 +362,73 @@ void main() {
 
           // Edit sheet should NOT appear.
           expect(find.text('Edit message'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        '_regenerateSummary passes only USER messages to generateSummary (regression)',
+        (tester) async {
+          // Regression guard: _regenerateSummary must NOT include ASSISTANT
+          // messages in allMessages passed to generateSummary(). ASSISTANT
+          // messages may reference stale names from before the edit (e.g.,
+          // "How did working with Shawn go?" after user corrects "Shawn"→"Sean").
+          // @Tags(['regression']) — ledger entry: memory/bugs/regression-ledger.md 2026-03-05
+          final sessionDao = SessionDao(database);
+          final messageDao = MessageDao(database);
+          final spy = _SpyAgentRepository();
+          final now = DateTime.now().toUtc();
+
+          await sessionDao.createSession('regen-session', now, 'UTC');
+          await sessionDao.endSession(
+            'regen-session',
+            now.add(const Duration(minutes: 5)),
+            summary: 'A colleague helped out today.',
+          );
+          await messageDao.insertMessage(
+            'msg-user',
+            'regen-session',
+            'USER',
+            'Shawn helped me today.',
+            now,
+          );
+          await messageDao.insertMessage(
+            'msg-assistant',
+            'regen-session',
+            'ASSISTANT',
+            'How did working with Shawn go?',
+            now.add(const Duration(seconds: 1)),
+          );
+
+          await tester.pumpWidget(
+            buildTestWidget('regen-session', agentRepository: spy),
+          );
+          await tester.pumpAndSettle();
+
+          // Long-press and edit the USER message to correct the name.
+          await tester.longPress(find.text('Shawn helped me today.'));
+          await tester.pumpAndSettle();
+
+          final textField = find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(TextField),
+          );
+          await tester.enterText(textField, 'Sean helped me today.');
+          await tester.tap(find.text('Save'));
+          await tester.pumpAndSettle();
+
+          // _regenerateSummary must have been called with USER-only messages.
+          expect(spy.capturedAllMessages, isNotNull);
+          expect(
+            spy.capturedAllMessages!.any((m) => m['role'] == 'assistant'),
+            isFalse,
+            reason:
+                'allMessages must contain only USER messages — '
+                'ASSISTANT messages are excluded to prevent stale name extraction.',
+          );
+          expect(
+            spy.capturedAllMessages!.every((m) => m['role'] == 'user'),
+            isTrue,
+          );
         },
       );
     });

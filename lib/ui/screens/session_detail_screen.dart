@@ -359,12 +359,17 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         .map((m) => m.content)
         .toList();
 
+    // Safe early return: caller's finally block resets _isRegenerating.
     if (userMessages.isEmpty) return;
 
-    // Reconstruct the full conversation transcript for context.
+    // Use only USER messages for regeneration. ASSISTANT messages are excluded
+    // because they were generated before the edit and may still reference the
+    // old (uncorrected) text. Passing allMessages containing stale ASSISTANT
+    // content (e.g. "How did working with Sean go?") causes Claude to extract
+    // the old name instead of the corrected one from the USER message.
     final allMessages = messages
-        .where((m) => m.role == 'USER' || m.role == 'ASSISTANT')
-        .map((m) => {'role': m.role.toLowerCase(), 'content': m.content})
+        .where((m) => m.role == 'USER')
+        .map((m) => {'role': 'user', 'content': m.content})
         .toList();
 
     final response = await agent.generateSummary(

@@ -5,14 +5,42 @@
 
 ## Current Task
 
-**Status:** Phase 4B/4C shipped (PR #84, v0.32.0+32). Next: Phase 4F or advisory triage.
+**Status:** Phase 4F (message editing) shipped (3d398f2). Deepgram proxy deployed + `DEEPGRAM_API_KEY` secret set. Ready to test Deepgram on device.
 **Branch:** `develop/adhd-roadmap`
 **Version:** `0.32.0+32`
 
 ### In Progress
-- Nothing — selecting next sprint
+- Nothing
+
+### Recently Completed — Phase 4F + Deepgram proxy deployment
+
+- **Phase 4F: Long-press message editing + summary regeneration** (commit 3d398f2):
+  - `MessageDao.updateMessageContent()` — partial drift update (content column only)
+  - `GestureDetector(onLongPress)` on USER-role ChatBubble → `showModalBottomSheet` edit sheet
+  - `_regenerateSummary()` re-runs Claude summary after edit, preserves tags when offline (B1 fix)
+  - `_isRegenerating` state + loading spinner + SnackBar on failure (B2 fix)
+  - Empty-string guard prevents spurious DB write (B3 fix)
+  - Review: REV-20260304-231632 (approve-with-changes, 3 blocking resolved in-review)
+  - Quality gate: 7/7 | Coverage: 81.2% | Education gate: deferred
+  - **Open advisories: 5 new. Total: 255**
+
+- **Deepgram proxy fully operational**: `deepgram-proxy` Edge Function deployed + `DEEPGRAM_API_KEY` secret set via Supabase CLI (server-side only — not in any committed file). Ready to test on device.
+
+### Recently Completed — Device Testing Bug Fixes (commits 778b3d4 + 2164c42)
+
+All four device bugs found after v0.32.0+32 deployment fixed and deployed to SM_G998U1:
+
+- **Bug 1 (Card styles imperceptible)**: Elevation Soft 1→2dp, Raised 3→8dp; `withCardStyle(CardStyle)` adds 1dp outlineVariant border for Flat. Confirmed working on emulator.
+- **Bug 2 ("In N minutes" task time)**: Added relative duration patterns to `_temporalPattern` in intent_classifier.dart. Confirmed working on emulator.
+- **Bug 3 (Photo capture kills voice)**: Save/restore `_phaseBeforePause` in `capturePhotoDescription()` finally block. Confirmed working on emulator.
+- **Bug 4 (Search filters return no results)**: Three-layer fix — session_dao.searchSessions keyword clause conditional; search_repository + search_providers early return gated on hasActiveFilters; search_screen pre-search state only shown when no query AND no filters.
+  - Review: REV-20260304-214110 (approve-with-changes, 2 blocking resolved in-review, 4 advisory)
+  - Quality gate: 7/7 | Coverage: 81.1%
+  - Deployed: emulator (32.6s) + SM_G998U1 (1m 7.7s)
+  - **Open advisories from this sprint: 4 new. Total: 247**
 
 ### Pending Items
+- **Test Deepgram on device**: Deploy to SM_G998U1, go Settings → Voice Engine → Deepgram, start a voice session and verify STT works (no "I can't hear you" message).
 - **Advisory A-4**: Handle `SCHEDULE_EXACT_ALARM` revocation (`PlatformException` from `zonedSchedule()`) — clear stale notificationId from task row; elevated from advisory to important given silent failure loop risk (see REV-20260304-085452 A6)
 - **Phase 3A advisory follow-ups** (8 open from REV-20260304-142456 + 8 new from REV-20260304-145506): A2 (setMode ordering), A4 (Check-In descriptor copy), A5 (barrierLabel), A6 (DraggableScrollableSheet), A7 (excludeSemantics), A8 (StateNotifier→Notifier<T>), A10 (removed journaling modes ADR), A11 (mode key constants) [from REV-142456]; A1 (capturePhotoDescription non-paused branch test), A2 (pulse_check_in dispatch test), A3 (timing assertion), A4 (silence timeout), A5 (maxLines adaptive + minLines), A6 (textInputAction.send), A7 (FAB disabled visual), A8 (viewPadding→padding) [from REV-145506]
 - **Phase 4E advisory follow-ups** (10 open): A1 Y-axis label, A2 window-gate misalignment, A3 remove raw r-value, A4 correlation empty state wording, A5 shrinkWrap tap target, A6 _shortLabel consolidation
