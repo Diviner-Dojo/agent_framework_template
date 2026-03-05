@@ -1,13 +1,37 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-04 ~09:30 UTC
+> Last updated: 2026-03-05 ~19:05 UTC
 
 ## Current Task
 
-**Status:** Advisory triage sprint complete. Commit 8a42e14. Ready for next ADHD roadmap phase.
+**Status:** Advisory close-out sprint A-3/A-4/A-5/A-6 complete. Commit pending. Ready for next ADHD roadmap phase.
 **Branch:** `develop/adhd-roadmap`
 **Version:** `0.32.0+32`
+
+### Just Completed — Advisory Close-Out Sprint A-3/A-4/A-5/A-6 (commit pending)
+
+Closed 4 actionable advisories from REV-20260305-175417:
+
+- **A-3 (UX, Medium)**: `helperText: 'Tap send icon to submit'` added to `InputDecoration` in `journal_session_screen.dart`. Shows only in voice+text idle mode; suppressed during listening (hintText takes over) and text-primary mode.
+- **A-4 (UX, Medium)**: Y-axis labels on rolling check-in chart changed from numeric (`0.0`/`0.5`/`1.0`) to semantic (`Low`/`Mid`/`High`) using switch expression. ADHD clinical UX compliance.
+- **A-5 (QA, Low)**: 4th test added to `test/providers/notification_providers_test.dart`: mixed-mode guard — seeds `t-mixed-ok` (→ updated to 2002) and `t-mixed-fail` (→ nullified). `_MixedSchedulerService` fake added.
+- **A-6 (QA, Low)**: Subtitle copy regression test added to `test/ui/check_in_history_screen_test.dart`. Seeds 2 check-ins on different days (backdating via `database.update()`), taps Trends tab, asserts plain-language subtitle. Tagged `@Tags(['regression'])`.
+- **Review**: REV-20260305-190054 (approve-with-changes, 0 blocking, 6 advisory). DISC-20260305-185500 sealed.
+- **Quality gate**: 7/7 pass, 81.7% coverage (2494 tests, 0 failures). Education gate: deferred.
+- **Open advisories from this review**: 6 new (A-1-NEW/A-2-NEW: missing regression tests for helperText + y-axis labels; A-3-NEW/A-4-NEW: UX disabled-state suppression + History/Trends vocab split; A-5-NEW/A-6-NEW: ledger entries + reservedSize).
+
+### Just Completed — Advisory Follow-Up Sprint A2+A8+A9 (commit 9dfdb2d)
+
+Closed 3 actionable advisories from REV-20260305-164139:
+
+- **A2 (QA, Medium)**: New `test/providers/notification_providers_test.dart` — ProviderContainer integration tests for `notificationBootRestoreProvider` `failedTaskIds` null-out path. 3 tests: fail-path nullifies notificationId, success-path preserves new ID, empty-DB completes without error.
+- **A8 (UX, Medium)**: `textInputAction` conditioned on `_isTextInputMode` in `journal_session_screen.dart`. voice+text: `TextInputAction.newline`; text-primary: `TextInputAction.send`. Regression test updated + companion test added for text-primary arm.
+- **A9 (UX, Medium)**: Check-in history subtitle updated to ADHD-compliant plain language: "Chart scaled to your own range — top of chart is your personal highest".
+- **Regression ledger**: Line 30 updated to reflect new test names and mode-conditional behavior (A-2 from REV-20260305-175417).
+- **Review**: REV-20260305-175417 (approve-with-changes, 0 blocking, 6 advisory). DISC-20260305-174906 sealed.
+- **Quality gate**: 7/7 pass, 81.7% coverage (2492 tests, 0 failures). Education gate: deferred.
+- **All 6 advisories from this review now closed** (A-1 inline; A-3/A-4/A-5/A-6 in this sprint).
 
 ### Just Completed — Advisory Triage Sprint (commit 8a42e14)
 
@@ -45,7 +69,9 @@
 ### Pending Items
 
 - **Continue ADHD roadmap**: Next phase TBD (see SPEC-20260302-adhd-informed-feature-roadmap.md)
-- **Open advisories from triage sprint**: 11 new (A1–A12 in REV-20260305-164139). Priority: A2 (provider integration test for failedTaskIds), A8 (textInputAction hint text), A9 (normalization subtitle plain language)
+- **Open advisories carry-forward** (8 total):
+  - REV-20260305-175417: A-3 (UX: helperText discoverability for Enter-to-newline in voice+text mode), A-4 (UX: Y-axis labels 0.0/0.5/1.0 vs plain-language subtitle — consider Low/Mid/High), A-5 (QA: mixed-mode provider test in notification_providers_test.dart), A-6 (QA: copy regression test for check_in_history subtitle)
+  - REV-20260305-164139: remaining open advisories (A1–A12, minus A2/A8/A9 resolved)
 
 ### Recently Completed — Device test + CAPABILITY_STATUS.md update (2026-03-05)
 

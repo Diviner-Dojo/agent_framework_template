@@ -180,7 +180,108 @@ void main() {
         completes,
       );
     });
+
+    test('updates rescheduled task and nullifies failed task in one invocation '
+        '(A-5: mixed-mode shared-state guard, REV-20260305-175417)', () async {
+      database = AppDatabase.forTesting(NativeDatabase.memory());
+
+      final futureReminder = DateTime.now().add(const Duration(hours: 1));
+
+      // Seed t-mixed-ok: reschedule will succeed → ID updated to 2002.
+      await database
+          .into(database.tasks)
+          .insert(
+            TasksCompanion(
+              taskId: const Value('t-mixed-ok'),
+              title: const Value('OK task'),
+              status: const Value(TaskStatus.active),
+              syncStatus: const Value(TaskSyncStatus.pending),
+              reminderTime: Value(futureReminder),
+              notificationId: const Value(2001),
+              createdAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(DateTime.now().toUtc()),
+            ),
+          );
+
+      // Seed t-mixed-fail: reschedule will fail → ID nullified.
+      await database
+          .into(database.tasks)
+          .insert(
+            TasksCompanion(
+              taskId: const Value('t-mixed-fail'),
+              title: const Value('Failing task'),
+              status: const Value(TaskStatus.active),
+              syncStatus: const Value(TaskSyncStatus.pending),
+              reminderTime: Value(futureReminder),
+              notificationId: const Value(2003),
+              createdAt: Value(DateTime.now().toUtc()),
+              updatedAt: Value(DateTime.now().toUtc()),
+            ),
+          );
+
+      container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          notificationSchedulerProvider.overrideWithValue(
+            _MixedSchedulerService(),
+          ),
+        ],
+      );
+
+      await container.read(notificationBootRestoreProvider.future);
+
+      final okTask = await (database.select(
+        database.tasks,
+      )..where((t) => t.taskId.equals('t-mixed-ok'))).getSingleOrNull();
+      final failTask = await (database.select(
+        database.tasks,
+      )..where((t) => t.taskId.equals('t-mixed-fail'))).getSingleOrNull();
+
+      expect(okTask, isNotNull);
+      expect(
+        okTask!.notificationId,
+        2002,
+        reason:
+            'rescheduled task must have its notificationId updated to '
+            'the new ID returned by the scheduler',
+      );
+
+      expect(failTask, isNotNull);
+      expect(
+        failTask!.notificationId,
+        isNull,
+        reason:
+            'failed task must have its notificationId nullified so '
+            'the boot-restore loop does not retry it on every cold start',
+      );
+    });
   });
+}
+
+/// A [NotificationSchedulerService] that returns both a rescheduled entry
+/// and a failed entry in the same invocation.
+///
+/// Used to verify that the provider's rescheduled loop and failedTaskIds loop
+/// operate independently without shared-state interference (A-5,
+/// REV-20260305-175417).
+class _MixedSchedulerService extends NotificationSchedulerService {
+  _MixedSchedulerService() : super(FlutterLocalNotificationsPlugin());
+
+  @override
+  Future<
+    ({
+      List<({String taskId, int newNotificationId})> rescheduled,
+      List<String> failedTaskIds,
+    })
+  >
+  rescheduleFromTasks(List<Task> tasks) async {
+    return (
+      rescheduled: <({String taskId, int newNotificationId})>[
+        (taskId: 't-mixed-ok', newNotificationId: 2002),
+      ],
+      failedTaskIds: List<String>.unmodifiable(['t-mixed-fail']),
+    );
+  }
 }
 
 /// A [NotificationSchedulerService] that returns a preset rescheduled list.

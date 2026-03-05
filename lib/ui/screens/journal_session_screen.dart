@@ -744,6 +744,11 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                     hintText: isListening && !_isTextInputMode
                         ? 'Listening...'
                         : 'Type your thoughts...',
+                    // In voice+text mode, Enter inserts a newline (not submit). Persistent
+                    // helper tells users how to submit (REV-20260305-175417-A3).
+                    helperText: !_isTextInputMode && !isListening
+                        ? 'Tap send icon to submit'
+                        : null,
                   ),
                   onSubmitted: isWaiting ? null : (_) => _sendMessage(),
                 ),

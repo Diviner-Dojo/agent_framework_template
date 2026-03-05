@@ -802,15 +802,19 @@ class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
                 reservedSize: 24,
                 interval: 0.5,
                 getTitlesWidget: (v, _) {
-                  if (v == 0.0 || v == 0.5 || v == 1.0) {
-                    return Text(
-                      v.toStringAsFixed(1),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    );
-                  }
-                  return const SizedBox.shrink();
+                  final label = switch (v) {
+                    0.0 => 'Low',
+                    0.5 => 'Mid',
+                    1.0 => 'High',
+                    _ => null,
+                  };
+                  if (label == null) return const SizedBox.shrink();
+                  return Text(
+                    label,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  );
                 },
               ),
             ),
