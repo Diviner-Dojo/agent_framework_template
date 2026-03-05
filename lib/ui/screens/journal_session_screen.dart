@@ -734,10 +734,12 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                   // active (REV-145506-A5).
                   minLines: 1,
                   maxLines: 4,
-                  // TextInputAction.send so the keyboard Enter key submits the
-                  // message. Without this, multi-line mode defaults Enter to
-                  // newline — users had to tap the send button (REV-145506-A6).
-                  textInputAction: TextInputAction.send,
+                  // In text-primary mode, Enter submits. In voice+text mode,
+                  // Enter inserts a newline — voice is the primary submit path
+                  // and the hint text implies multi-line input (REV-20260305-164139-A8).
+                  textInputAction: _isTextInputMode
+                      ? TextInputAction.send
+                      : TextInputAction.newline,
                   decoration: InputDecoration(
                     hintText: isListening && !_isTextInputMode
                         ? 'Listening...'

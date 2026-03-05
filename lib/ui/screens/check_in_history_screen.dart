@@ -724,7 +724,7 @@ class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
       children: [
         Text('Rolling averages', style: theme.textTheme.titleSmall),
         Text(
-          'Values normalized to 0–1 (1 = highest recorded)',
+          'Chart scaled to your own range — top of chart is your personal highest',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

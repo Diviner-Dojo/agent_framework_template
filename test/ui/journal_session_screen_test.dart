@@ -23,6 +23,7 @@ import 'package:agentic_journal/database/app_database.dart';
 import 'package:agentic_journal/providers/database_provider.dart';
 import 'package:agentic_journal/providers/onboarding_providers.dart';
 import 'package:agentic_journal/providers/session_providers.dart';
+import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/providers/questionnaire_providers.dart';
 import 'package:agentic_journal/ui/screens/journal_session_screen.dart';
@@ -346,10 +347,16 @@ void main() {
     // pushing the send button off screen when the user typed a long message.
     // Fix: minLines: 1 + maxLines: 4 keeps the field compact on 360dp devices
     // with voice controls active while still preventing overflow (REV-145506-A5).
-    // textInputAction: TextInputAction.send wires the keyboard Enter key to
-    // submit (REV-145506-A6 — multi-line default would insert newline instead).
+    //
+    // textInputAction is conditioned on _isTextInputMode (REV-20260305-164139-A8):
+    //   - voice+text mode (default): TextInputAction.newline — voice is the
+    //     primary submit path; hint text "Type your thoughts…" implies multi-line
+    //   - text-primary mode: TextInputAction.send — Enter submits
+    //
+    // This supersedes REV-145506-A6 which set send unconditionally; the
+    // contradiction between hint text and keyboard action was resolved in A8.
     testWidgets(
-      'text field has minLines: 1, maxLines: 4 and textInputAction.send (regression)',
+      'text field has minLines: 1, maxLines: 4; textInputAction is newline in voice+text mode (regression)',
       tags: ['regression'],
       (tester) async {
         final container = await buildTestWidget(tester);
@@ -368,12 +375,51 @@ void main() {
           equals(1),
           reason: 'minLines: 1 keeps the field compact when empty',
         );
+        // Default state is voice+text mode (_isTextInputMode = false).
+        // In this mode Enter inserts a newline — voice is the primary submit
+        // path and the hint text "Type your thoughts…" implies multi-line entry
+        // (REV-20260305-164139-A8 supersedes REV-145506-A6 unconditional .send).
+        expect(
+          textField.textInputAction,
+          equals(TextInputAction.newline),
+          reason:
+              'In voice+text mode Enter inserts a newline so users can write '
+              'multi-thought entries; voice or the send button submits '
+              '(REV-20260305-164139-A8)',
+        );
+      },
+    );
+
+    // regression (companion to above): text-primary mode must use send.
+    // If the conditional were accidentally inverted, both mode arms would
+    // assert the same value — neither test would catch the inversion alone.
+    // This test activates _isTextInputMode by tapping the 'Text' segment.
+    // Requires voice mode enabled so the Voice/Text toggle is rendered
+    // (REV-20260305-175417-A1 companion to REV-20260305-164139-A8).
+    testWidgets(
+      'textInputAction is send in text-primary mode (regression)',
+      tags: ['regression'],
+      (tester) async {
+        // Seed voice_mode_enabled=true so the Voice/Text SegmentedButton
+        // is rendered (it is only shown when voiceModeEnabledProvider is true).
+        SharedPreferences.setMockInitialValues({voiceModeEnabledKey: true});
+        prefs = await SharedPreferences.getInstance();
+
+        final container = await buildTestWidget(tester);
+        addTearDown(container.dispose);
+
+        // Tap the 'Text' segment to activate text-primary mode.
+        await tester.tap(find.text('Text'));
+        await tester.pumpAndSettle();
+
+        final textField = tester.widget<TextField>(find.byType(TextField));
         expect(
           textField.textInputAction,
           equals(TextInputAction.send),
           reason:
-              'TextInputAction.send wires keyboard Enter to submit; '
-              'without it multi-line mode inserts newline (REV-145506-A6)',
+              'In text-primary mode Enter submits — voice is not the primary '
+              'path and users expect keyboard Enter to send '
+              '(REV-20260305-164139-A8; companion to newline-mode test)',
         );
       },
     );
