@@ -5,23 +5,57 @@
 
 ## Current Task
 
-**Status:** Microphone leak fix committed + Deepgram proxy `?access_token=` fix deployed. Awaiting device test.
+**Status:** Advisory triage sprint complete. Commit 8a42e14. Ready for next ADHD roadmap phase.
 **Branch:** `develop/adhd-roadmap`
 **Version:** `0.32.0+32`
 
-### In Progress
-- Device test: confirm all three STT engines work after microphone leak fix
-  - Deepgram: verify proxy connects and ?access_token= resolves 401
-  - speech_to_text: verify Android SpeechRecognizer acquires mic (was blocked by leaked recorder)
-  - sherpa_onnx: verify mic released (same fix applied to SherpaOnnxSpeechRecognitionService)
+### Just Completed — Advisory Triage Sprint (commit 8a42e14)
 
-### Root Cause Found — ALL STT broken
-- **Bug**: `DeepgramSttService.onDone` set `_isListening=false` but never stopped `AudioRecorder`. `stopListening()` and `dispose()` both guarded on `_isListening` → skipped recorder cleanup. Recorder held OS microphone indefinitely, blocking all subsequent STT engines.
-- **Fix**: Unconditional fire-and-forget recorder cleanup in `onDone` + `dispose()` for both `DeepgramSttService` and `SherpaOnnxSpeechRecognitionService` (same pattern found by specialist review).
-- **Deepgram 401**: Changed `?token=` to `?access_token=` in proxy WebSocket URL — matches `/v1/auth/grant` response field name per Deepgram's browser streaming convention.
-- **Audio source**: Kept `UNPROCESSED` (confirmed non-silent audio max=255 on SM_G998U1 vs voiceRecognition which was silent).
+**SPEC-20260305-144939** implemented across 9 tasks:
 
-### Recently Completed — Deepgram STT device fixes (commit 9a19f69)
+- **A-4 fix (notification)**: `rescheduleFromTasks` now catches `PlatformException` and returns `({rescheduled, failedTaskIds})`; provider nullifies stale `notificationId` for failed tasks (breaks silent retry loop). `_emptyRescheduleResult` uses `List.unmodifiable()`.
+- **Phase 3A fixes (REV-142456/145506)**: `setMode()` ordering fix; `padding.bottom` (not `viewPadding.bottom`); `minLines:1/maxLines:4`; `textInputAction.send`; Voice/Text toggle 48dp tap target restored.
+- **Phase 4E fixes (REV-015709)**: Normalization subtitle; actionable empty-state text; removed raw `r` value from correlation tiles; restored 48dp tap targets on chart filter toggle; `_normalizeValue` asymmetry comment.
+- **Tests**: 9 new tests across 6 test files. 2483 total, 81.2% coverage.
+- **Review**: REV-20260305-164139 (approve-with-changes, 1 blocking fixed in-review, 11 advisory)
+- **Build**: DISC-20260305-155130 (sealed); **Review**: DISC-20260305-163248 (sealed)
+- **Open advisories: 11 new. Total: 273**
+- Education gate: deferred
+
+### Just Completed — Voice Stabilization + CPP (commits e1ad873 + 7e5e7cb)
+
+**Root cause**: Deepgram WebSocket 401 failures triggered a microphone resource leak in `onDone` (AudioRecorder not stopped before `_isListening=false`). All three STT engines blocked from OS microphone. Fixed in `e1ad873`.
+
+**Stabilization** (commit 7e5e7cb):
+- STT default reverted: `deepgram` → `speechToText` (proven baseline, PR #52)
+- Deepgram labeled "Experimental" in settings UI
+- `voice_mode_test.dart`: updated for Quick Capture Palette, emulator PASS (1m 10.9s)
+- `SpeechRecognitionService` interface: OS resource lifecycle invariant doc comments added
+- CPP gate assertion test: asserts sttEngineProvider default is speechToText
+
+**Capability Protection Protocol** (ADR-0035):
+- `CAPABILITY_STATUS.md` — capability registry (PROVEN/EXPERIMENTAL/BROKEN)
+- `docs/adr/ADR-0035-capability-protection-protocol.md` — framework methodology decision
+- `docs/adr/ADR-0031-deepgram-stt-integration.md` — amended (revert recorded)
+- `scripts/quality_gate.py` — C2: default-change WARNING check
+- `.claude/commands/review.md` — C3: independent-perspective auto-trigger
+- `.claude/rules/capability_protection.md` — enforcement rules
+- `docs/conventions/experimental-first.md` — Two-PR Pattern convention
+
+### Pending Items
+
+- **Continue ADHD roadmap**: Next phase TBD (see SPEC-20260302-adhd-informed-feature-roadmap.md)
+- **Open advisories from triage sprint**: 11 new (A1–A12 in REV-20260305-164139). Priority: A2 (provider integration test for failedTaskIds), A8 (textInputAction hint text), A9 (normalization subtitle plain language)
+
+### Recently Completed — Device test + CAPABILITY_STATUS.md update (2026-03-05)
+
+Device test on SM_G998U1 (Android 14) confirmed:
+- **speech_to_text**: ✓ PROVEN — re-verified 2026-03-05 after CPP revert (commit 7e5e7cb)
+- **sherpa_onnx**: ✓ PROVEN — first device test; Snapdragon 888 ADR-0017 SIGILL risk did not manifest
+- **deepgram**: ✗ still EXPERIMENTAL — WebSocket 401 persists on device despite ?access_token= proxy fix (e1ad873)
+- CAPABILITY_STATUS.md updated accordingly
+
+### Recently Completed — Deepgram STT device fixes (commit 9a19f69, 9a19f69 + mic leak fix e1ad873, CPP 7e5e7cb)
 
 - **Deepgram STT silence fix (Samsung Galaxy S21 Ultra)**: `AndroidAudioSource.voiceRecognition` + `manageBluetooth:false` in `deepgram_stt_service.dart`. Root cause: Samsung One UI `defaultSource`/`MIC` produces silent PCM after just_audio TTS. VOICE_RECOGNITION uses MODE_NORMAL (same as Google Voice Search).
 - **Platform-conditional TTS delay**: `ttsReleaseDelay: Platform.isAndroid ? 500ms : Duration.zero`. Was unconditional 500ms; iOS gets zero penalty.
@@ -58,9 +92,6 @@ All four device bugs found after v0.32.0+32 deployment fixed and deployed to SM_
   - Deployed: emulator (32.6s) + SM_G998U1 (1m 7.7s)
   - **Open advisories from this sprint: 4 new. Total: 247**
 
-### Pending Items
-- **Test Deepgram on device**: Reconnect Samsung Galaxy S21 Ultra (R5CR10LW2FE), deploy (`python scripts/deploy.py --install-only`), start voice session, verify STT transcribes (no "I didn't catch anything" message).
-- **Advisory A-4**: Handle `SCHEDULE_EXACT_ALARM` revocation (`PlatformException` from `zonedSchedule()`) — clear stale notificationId from task row; elevated from advisory to important given silent failure loop risk (see REV-20260304-085452 A6)
 - **Phase 3A advisory follow-ups** (8 open from REV-20260304-142456 + 8 new from REV-20260304-145506): A2 (setMode ordering), A4 (Check-In descriptor copy), A5 (barrierLabel), A6 (DraggableScrollableSheet), A7 (excludeSemantics), A8 (StateNotifier→Notifier<T>), A10 (removed journaling modes ADR), A11 (mode key constants) [from REV-142456]; A1 (capturePhotoDescription non-paused branch test), A2 (pulse_check_in dispatch test), A3 (timing assertion), A4 (silence timeout), A5 (maxLines adaptive + minLines), A6 (textInputAction.send), A7 (FAB disabled visual), A8 (viewPadding→padding) [from REV-145506]
 - **Phase 4E advisory follow-ups** (10 open): A1 Y-axis label, A2 window-gate misalignment, A3 remove raw r-value, A4 correlation empty state wording, A5 shrinkWrap tap target, A6 _shortLabel consolidation
 
@@ -500,11 +531,13 @@ Or manually (physical device):
 
 ## Resume Instructions
 
-1. **ADHD Roadmap — PR #84 merged**. On `develop/adhd-roadmap` (v0.32.0+32).
-   - **PR #84 merged**: Phase 4B/4C (Quick Capture widget + weather metadata)
-   - **Next**: Phase 4F (timed reminders → phone alert) or advisory triage sprint
-2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, Phase 4D, Phase 4E, Phase 5A, Phase 3A; REV-20260302-152240 (fallback TTS)
-3. **Open advisory triage** — 226 total. Priority: A-4 from REV-20260304-085452 (SCHEDULE_EXACT_ALARM revocation); Bug 1 (keyboard overflow); Bug 2 (STT stops after photo); Phase 3A A1 (dispatch branch tests)
+1. **Advisory triage sprint complete** (commit 8a42e14). On `develop/adhd-roadmap` (v0.32.0+32).
+   - A-4 SCHEDULE_EXACT_ALARM loop: FIXED ✓
+   - Phase 3A/4E advisories: FIXED ✓ (11 new advisories in REV-20260305-164139)
+   - CAPABILITY_STATUS.md current: speech_to_text PROVEN, sherpa_onnx PROVEN, deepgram EXPERIMENTAL
+   - **Next**: Next ADHD roadmap phase (see SPEC-20260302-adhd-informed-feature-roadmap.md)
+2. **Education gates deferred** — Phase 1 Pulse Check-In, Phase 3B, Phase 3D, Phase 4D, Phase 4E, Phase 5A, Phase 3A, advisory triage sprint; REV-20260302-152240 (fallback TTS)
+3. **Open advisory total** — 273 (262 prior + 11 from triage sprint). Priority: A2 provider test, A8 textInputAction hint, A9 normalization subtitle
 
 ---
 *This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
