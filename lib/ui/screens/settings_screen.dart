@@ -1831,19 +1831,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Saved to Downloads: agentic_journal_export_$timestamp.json',
-            ),
-            duration: const Duration(seconds: 6),
+          const SnackBar(
+            content: Text('Export saved to your Downloads folder.'),
+            duration: Duration(seconds: 6),
           ),
         );
       }
-    } on Exception catch (e) {
+    } on FileSystemException {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Export failed: could not write to Downloads folder. '
+              'Check storage permissions and available space.',
+            ),
+            duration: Duration(seconds: 8),
+          ),
+        );
+      }
+    } on Exception {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Export failed. Please try again.'),
+            duration: Duration(seconds: 8),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);

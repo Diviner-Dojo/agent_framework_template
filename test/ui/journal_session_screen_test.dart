@@ -13,6 +13,8 @@
 //   - Auto-discard SnackBar on empty session (Phase 6)
 // ===========================================================================
 
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +28,11 @@ import 'package:agentic_journal/providers/session_providers.dart';
 import 'package:agentic_journal/providers/voice_providers.dart';
 import 'package:agentic_journal/repositories/agent_repository.dart';
 import 'package:agentic_journal/providers/questionnaire_providers.dart';
+import 'package:agentic_journal/services/audio_file_service.dart';
+import 'package:agentic_journal/services/audio_focus_service.dart';
+import 'package:agentic_journal/services/speech_recognition_service.dart';
+import 'package:agentic_journal/services/text_to_speech_service.dart';
+import 'package:agentic_journal/services/voice_session_orchestrator.dart';
 import 'package:agentic_journal/ui/screens/journal_session_screen.dart';
 
 void main() {
@@ -478,5 +485,156 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'helperText is null while agent is processing response (regression)',
+      tags: ['regression'],
+      (tester) async {
+        final container = await buildTestWidget(tester);
+        addTearDown(container.dispose);
+
+        // Simulate agent processing state (active between message send and response).
+        // ignore: invalid_use_of_protected_member
+        container.read(sessionNotifierProvider.notifier).state = container
+            .read(sessionNotifierProvider)
+            .copyWith(isWaitingForAgent: true);
+        await tester.pump();
+
+        // Input is disabled during wait — showing the submit-path hint
+        // would be confusing (REV-20260305-193138-A1).
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(
+          textField.decoration?.helperText,
+          isNull,
+          reason:
+              'helperText must be null while isWaitingForAgent=true — '
+              'the input is disabled during this state '
+              '(REV-20260305-193138-A1)',
+        );
+      },
+    );
+
+    testWidgets(
+      'helperText is null while TTS is speaking (regression)',
+      tags: ['regression'],
+      (tester) async {
+        // Build with a pre-configured orchestrator (phase=speaking) so the
+        // initial render sees isSpeaking=true (REV-20260305-193138-A1).
+        final audioFocus = _NoopAudioFocusService();
+        final fakeOrchestrator =
+            VoiceSessionOrchestrator(
+                sttService: _NoopSpeechRecognitionService(),
+                ttsService: _NoopTextToSpeechService(),
+                audioFocusService: audioFocus,
+              )
+              ..stateNotifier.value = const VoiceOrchestratorState(
+                phase: VoiceLoopPhase.speaking,
+              );
+        addTearDown(() {
+          fakeOrchestrator.dispose();
+          audioFocus.dispose();
+        });
+
+        late ProviderContainer container;
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container = ProviderContainer(
+              overrides: [
+                sharedPreferencesProvider.overrideWithValue(prefs),
+                databaseProvider.overrideWithValue(database),
+                agentRepositoryProvider.overrideWithValue(AgentRepository()),
+                deviceTimezoneProvider.overrideWith(
+                  (ref) async => 'America/New_York',
+                ),
+                voiceOrchestratorProvider.overrideWithValue(fakeOrchestrator),
+              ],
+            ),
+            child: MaterialApp(
+              initialRoute: '/session',
+              routes: {
+                '/': (_) => const Scaffold(body: Text('Session List')),
+                '/session': (_) => const JournalSessionScreen(),
+              },
+            ),
+          ),
+        );
+        await container.read(sessionNotifierProvider.notifier).startSession();
+        await tester.pumpAndSettle();
+        addTearDown(container.dispose);
+
+        // phase=speaking → helperText suppressed (user is hearing the response).
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(
+          textField.decoration?.helperText,
+          isNull,
+          reason:
+              'helperText must be null while TTS is speaking — showing the '
+              '"Tap send icon" hint during playback creates visual noise '
+              '(REV-20260305-193138-A1)',
+        );
+      },
+    );
   });
+}
+
+// ===========================================================================
+// Private fakes for isSpeaking regression test (A-1, REV-20260305-193138)
+// ===========================================================================
+
+class _NoopAudioFocusService implements AudioFocusService {
+  final _controller = StreamController<AudioFocusEvent>.broadcast();
+
+  @override
+  Future<bool> requestFocus() async => true;
+
+  @override
+  Future<void> abandonFocus() async {}
+
+  @override
+  Stream<AudioFocusEvent> get onFocusChanged => _controller.stream;
+
+  @override
+  void dispose() => _controller.close();
+}
+
+class _NoopSpeechRecognitionService implements SpeechRecognitionService {
+  @override
+  Future<void> initialize({required String modelPath}) async {}
+
+  @override
+  Stream<SpeechResult> startListening({
+    AudioFileService? audioFileService,
+  }) async* {}
+
+  @override
+  Future<void> stopListening() async {}
+
+  @override
+  bool get isListening => false;
+
+  @override
+  bool get isInitialized => false;
+
+  @override
+  void dispose() {}
+}
+
+class _NoopTextToSpeechService implements TextToSpeechService {
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<void> speak(String text) async {}
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  bool get isSpeaking => false;
+
+  @override
+  Future<void> setSpeechRate(double rate) async {}
+
+  @override
+  void dispose() {}
 }

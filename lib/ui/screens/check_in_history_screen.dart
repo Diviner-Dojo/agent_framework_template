@@ -482,7 +482,7 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
         bottomTitles: AxisTitles(
           sideTitles: SideTitles(
             showTitles: true,
-            reservedSize: 28,
+            reservedSize: 36,
             getTitlesWidget: (value, meta) {
               final idx = value.toInt();
               if (idx < 0 || idx >= days.length) {
@@ -831,7 +831,7 @@ class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 28,
+                reservedSize: 36,
                 getTitlesWidget: (value, _) {
                   final idx = value.toInt();
                   if (idx < 0 || idx >= days.length) {

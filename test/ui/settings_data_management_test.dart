@@ -283,12 +283,15 @@ void main() {
       });
       await tester.pump();
 
-      // SnackBar must contain 'Saved to Downloads:' (success) OR
-      // 'Export failed:' (platform-specific failure is acceptable in CI).
+      // SnackBar must show success or failure feedback after export.
+      // Success: 'Export saved to your Downloads folder.' (UX-A1, REV-20260305-203427).
+      // Failure: 'Export failed' prefix (platform-specific failure is acceptable in CI).
       // The key requirement: the export path executes without throwing
       // unhandled and the user receives feedback.
-      final successSnackBar = find.textContaining('Saved to Downloads:');
-      final failureSnackBar = find.textContaining('Export failed:');
+      final successSnackBar = find.textContaining(
+        'Export saved to your Downloads folder',
+      );
+      final failureSnackBar = find.textContaining('Export failed');
       expect(
         successSnackBar.evaluate().isNotEmpty ||
             failureSnackBar.evaluate().isNotEmpty,
@@ -426,9 +429,24 @@ void main() {
         expect(video['thumbnail_path'], '/data/test/thumb.jpg');
         expect(video['duration_seconds'], 42);
         expect(
-          video.containsKey('timestamp'),
-          isTrue,
-          reason: '"timestamp" field is required in video export schema',
+          video['timestamp'],
+          '2026-03-05T12:00:00.000Z',
+          reason:
+              '"timestamp" must be the ISO-8601 UTC string of the seeded '
+              'DateTime.utc(2026, 3, 5, 12, 0, 0) '
+              '(QA-A2 from REV-20260305-203427)',
+        );
+        // QA-A3: video-only test seeds no check_ins or photos — both arrays
+        // must be present but empty (stable schema per SPEC-20260305-195043).
+        expect(
+          session['check_ins'],
+          isEmpty,
+          reason: 'No check-ins seeded in this test — check_ins must be []',
+        );
+        expect(
+          session['photos'],
+          isEmpty,
+          reason: 'No photos seeded in this test — photos must be []',
         );
       },
     );
