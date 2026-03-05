@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260305-202956-phase-2c-data-export-review",
+  "status": "complete",
+  "started_at": "2026-03-05T20:30:02.596174+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "low",
+  "collaboration_mode": "ensemble",
+  "report_path": "docs/reviews/REV-20260305-203427.md"
+}

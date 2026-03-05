@@ -5,7 +5,7 @@
 
 ## Current Task
 
-**Status:** Advisory close-out sprint A-3/A-4/A-5/A-6 complete. Commit pending. Ready for next ADHD roadmap phase.
+**Status:** Advisory close-out rounds 1 + 2 complete. Commits 709d6d4 + ad90153. Ready for next ADHD roadmap phase.
 **Branch:** `develop/adhd-roadmap`
 **Version:** `0.32.0+32`
 

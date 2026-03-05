@@ -1698,7 +1698,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   ///
   /// Filename: `agentic_journal_export_<UTC-timestamp>.json`
   /// Phase 2C — data sovereignty: users can always export and delete their data.
-  /// Includes: sessions, messages, check-in responses/answers, photo paths.
+  /// Includes: sessions, messages, check-in responses/answers, photo paths,
+  /// and video paths. All three media arrays are always present (empty when
+  /// no data exists), ensuring a stable schema across all users.
   Future<void> _exportData(BuildContext context) async {
     setState(() => _isExporting = true);
     try {
@@ -1706,6 +1708,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       final messageDao = ref.read(messageDaoProvider);
       final questionnaireDao = ref.read(questionnaireDaoProvider);
       final photoDao = ref.read(photoDaoProvider);
+      final videoDao = ref.read(videoDaoProvider);
 
       // Cache: templateId → {itemId → questionText}
       final itemTextCache = <int, Map<int, String>>{};
@@ -1763,6 +1766,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             )
             .toList();
 
+        // Video paths for this session.
+        final videos = await videoDao.getVideosForSession(session.sessionId);
+        final videosJson = videos
+            .map(
+              (v) => {
+                'video_id': v.videoId,
+                'local_path': v.localPath,
+                'thumbnail_path': v.thumbnailPath,
+                'duration_seconds': v.durationSeconds,
+                'timestamp': v.timestamp.toIso8601String(),
+                if (v.description != null) 'description': v.description,
+                if (v.width != null) 'width': v.width,
+                if (v.height != null) 'height': v.height,
+                if (v.fileSizeBytes != null) 'file_size_bytes': v.fileSizeBytes,
+              },
+            )
+            .toList();
+
         exportData.add({
           'session_id': session.sessionId,
           'start_time': session.startTime.toIso8601String(),
@@ -1780,8 +1801,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 },
               )
               .toList(),
-          if (checkInsJson.isNotEmpty) 'check_ins': checkInsJson,
-          if (photosJson.isNotEmpty) 'photos': photosJson,
+          // Always include all three arrays even when empty so the export
+          // schema is stable regardless of how much data the user has.
+          'check_ins': checkInsJson,
+          'photos': photosJson,
+          'videos': videosJson,
         });
       }
 
