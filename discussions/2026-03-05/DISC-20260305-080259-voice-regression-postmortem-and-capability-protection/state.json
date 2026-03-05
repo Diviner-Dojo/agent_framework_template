@@ -1,0 +1,13 @@
+{
+  "command": "plan",
+  "discussion_id": "DISC-20260305-080259-voice-regression-postmortem-and-capability-protection",
+  "status": "in_progress",
+  "started_at": "2026-03-05T08:03:05.002839+00:00",
+  "current_phase": "specialist_dispatch",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created"
+  ],
+  "risk_level": "high",
+  "collaboration_mode": "structured-dialogue"
+}
