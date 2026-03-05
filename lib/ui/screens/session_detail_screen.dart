@@ -605,6 +605,8 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
 

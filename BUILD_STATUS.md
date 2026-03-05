@@ -1,13 +1,29 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-05 ~20:35 UTC
+> Last updated: 2026-03-05 ~23:30 UTC
 
 ## Current Task
 
-**Status:** Phase 2C complete (commit fea0a63). All ADHD roadmap phases through Phase 5A now complete. Phase 4F still blocked. Ready for next effort.
+**Status:** Advisory sprint + display fix complete (commit bcd1857). Awaiting user all-clear before ship (emulator smoke test still needed).
 **Branch:** `develop/adhd-roadmap`
 **Version:** `0.32.0+32`
+
+### Just Completed — Advisory Close-Out Sprint (commit e655ef4)
+
+Closed all 8 open advisories from REV-20260305-193138 and REV-20260305-203427:
+
+- **A-1 (QA)**: `isWaiting=true` + `isSpeaking=true` helperText suppression regression tests added to `journal_session_screen_test.dart`. Three fake service classes (`_NoopAudioFocusService`, `_NoopSpeechRecognitionService`, `_NoopTextToSpeechService`). `isWaiting` test uses `// ignore: invalid_use_of_protected_member` state mutation; `isSpeaking` test overrides `voiceOrchestratorProvider`.
+- **A-2 (QA)**: Extended crash-guard test comment to document `reservedSize: 36` not testable via flutter_test.
+- **A-3 (QA)**: `find.textContaining('/ 100')` → `find.byType(TabBar)` (format-independent assertion).
+- **A-4 (UX, layout)**: `reservedSize: 28` → `reservedSize: 36` on bottom axis of `_buildDailyScoreChart` and `_buildRollingChart` (prevents date label clipping).
+- **UX-A1**: Success SnackBar: filename-exposing string → `const 'Export saved to your Downloads folder.'` (6s).
+- **UX-A2**: Error handling split into `on FileSystemException` (storage space message, 8s) + `on Exception` (generic fallback, 8s).
+- **QA-A2**: Timestamp assertion: presence-only → exact `'2026-03-05T12:00:00.000Z'` value check.
+- **QA-A3**: Added `isEmpty` assertions for `check_ins` and `photos` in video-seeded test.
+- **Review**: REV-20260305-223132 (approve, 0 blocking, 8 new advisory — all Low). DISC-20260305-222735 sealed.
+- **Quality gate**: 7/7, 82.3% coverage. Education gate: deferred.
+- **Open advisories from this review (8 — all Low)**: QA-A1 (isListening test gap), QA-A2 (TabBar weak assertion, documented), QA-A3 (isWaiting protected member pattern), QA-A4 (export retry loop CI timing), UX-A1 (FileSystemException copy), UX-A2 (export button TalkBack), UX-A3 (chart 200% text scale), UX-A4 (correlation tile phrasing).
 
 ### Just Completed — Phase 2C: Data Export Completion (commit fea0a63)
 
