@@ -475,11 +475,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
                 items: const [
                   DropdownMenuItem(
                     value: SttEngine.deepgram,
-                    child: Text('Deepgram Nova-3 (Recommended)'),
+                    child: Text('Deepgram (Experimental)'),
                   ),
                   DropdownMenuItem(
                     value: SttEngine.speechToText,
-                    child: Text('Google (Fallback, no download)'),
+                    child: Text('Google (Default)'),
                   ),
                   DropdownMenuItem(
                     value: SttEngine.sherpaOnnx,

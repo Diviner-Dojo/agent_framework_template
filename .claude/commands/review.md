@@ -148,6 +148,25 @@ Select specialists based on what's being reviewed:
 - **High/Critical risk**: independent-perspective
 - **Security-related**: security-specialist (adversarial mode)
 
+### CPP C3: Default-Change Trigger (ADR-0035)
+
+Before assembling the panel, check the diff for provider default changes:
+
+```bash
+git diff HEAD --name-only | grep "_providers.dart" | xargs grep -l "return.*Engine\." 2>/dev/null
+```
+
+If any `*_providers.dart` file has an added line matching `return SttEngine.*` or
+`return TtsEngine.*` (or similar capability-default return), automatically add
+`independent-perspective` to the specialist panel. Ask specifically:
+
+> "Does this change replace a PROVEN capability with an EXPERIMENTAL or untested one?
+> What is the rollback plan if the new default fails on physical device?
+> Has CAPABILITY_STATUS.md been updated to reflect this change?"
+
+This trigger fires in addition to any other specialist selection — it does not replace
+the standard panel assembly. See: `.claude/rules/capability_protection.md`, ADR-0035.
+
 ## Step 5: Dispatch Specialists
 
 For each specialist, use the Task tool with the code content and review context:

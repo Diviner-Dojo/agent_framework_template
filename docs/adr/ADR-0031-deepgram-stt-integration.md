@@ -1,8 +1,9 @@
 ---
 adr_id: ADR-0031
 title: "Deepgram Nova-3 as Primary STT Engine"
-status: accepted
+status: amended
 date: 2026-03-03
+amended: 2026-03-05
 risk_level: medium
 confidence: 0.85
 tags: [voice, stt, deepgram, adhd-roadmap]
@@ -12,6 +13,31 @@ superseded_by: null
 decision_makers: [Developer]
 required_before: SPEC-20260302-adhd-informed-feature-roadmap Phase 3A (Pulse Check-In voice flow)
 ---
+
+## Amendment — 2026-03-05 (SPEC-20260305-080259, ADR-0035)
+
+**The designation of Deepgram as the primary STT default has been reverted.**
+
+The decision to make Deepgram the production default (commit `328ec44`, PR #72) was
+implemented without physical device testing. Deepgram's WebSocket 401 authentication
+failures triggered a latent microphone resource leak (`onDone` callback did not stop
+`AudioRecorder` before setting `_isListening = false`). This blocked ALL three STT
+engines from acquiring the OS microphone, making voice mode completely non-functional.
+
+The microphone leak is fixed in commit `e1ad873` (2026-03-05). The Deepgram proxy
+WebSocket URL parameter is corrected (`?access_token=` per `/v1/auth/grant` response).
+However, Deepgram has NOT been device-tested since the fix.
+
+**Current state after amendment:**
+- Default STT engine: `SttEngine.speechToText` (proven baseline, device-verified PR #52)
+- Deepgram status: `EXPERIMENTAL` — available as opt-in, NOT the default
+- The `deepgram-proxy` Edge Function remains deployed and operational
+- Users who had Deepgram stored in SharedPreferences retain it until they manually change
+
+Deepgram may be promoted back to default in a future PR (PR N+1 pattern per ADR-0035)
+after confirmed end-to-end device testing with the corrected proxy authentication.
+
+**This amendment is governed by ADR-0035 (Capability Protection Protocol).**
 
 ## Context
 

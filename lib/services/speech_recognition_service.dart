@@ -75,6 +75,31 @@ class SpeechResult {
 /// Implementations wrap a specific STT engine (e.g., sherpa_onnx Zipformer).
 /// The abstract interface enables mock implementations for testing, since
 /// native STT engines cannot run in CI.
+///
+/// ## OS Resource Lifecycle Invariant (CPP — SPEC-20260305-080259)
+///
+/// Implementors MUST guarantee OS resource release under ALL termination paths,
+/// including abnormal termination triggered by out-of-band events (e.g., a
+/// WebSocket closing with an error, an audio stream ending unexpectedly).
+///
+/// Key invariant: `dispose()` MUST release the OS microphone unconditionally,
+/// regardless of the value of [isListening]. Do NOT gate `dispose()` on
+/// `isListening` — the flag may already be false when dispose() is called.
+///
+/// Key invariant: Any `onDone` / `onError` callback attached to an internal
+/// stream (audio stream, WebSocket stream) MUST stop the underlying recorder
+/// unconditionally before modifying [isListening]. Failure to do so causes
+/// the recorder to hold the OS microphone after the stream ends, blocking all
+/// subsequent STT engines from acquiring the microphone.
+///
+/// Pattern for fire-and-forget cleanup in synchronous callbacks:
+/// ```dart
+/// _recorder?.stop().then((_) => _recorder?.dispose()).catchError((_) {});
+/// _recorder = null;
+/// ```
+///
+/// This pattern (and the root cause of a past multi-engine failure) is
+/// documented in `memory/bugs/regression-ledger.md` and ADR-0035.
 abstract class SpeechRecognitionService {
   /// Initialize the STT engine with model files at [modelPath].
   ///
@@ -95,6 +120,11 @@ abstract class SpeechRecognitionService {
   Stream<SpeechResult> startListening({AudioFileService? audioFileService});
 
   /// Stop listening and clean up the audio stream.
+  ///
+  /// Implementations MUST release the OS microphone and stop the underlying
+  /// audio recorder. This method must be safe to call after an abnormal
+  /// termination has already set [isListening] to false — do not gate the
+  /// recorder cleanup on the [isListening] flag.
   Future<void> stopListening();
 
   /// Whether the service is currently capturing audio and recognizing.
@@ -103,7 +133,13 @@ abstract class SpeechRecognitionService {
   /// Whether the model is loaded and ready for recognition.
   bool get isInitialized;
 
-  /// Release all native resources (recognizer, audio recorder).
+  /// Release all native resources (recognizer, audio recorder, network connections).
+  ///
+  /// MUST be safe to call in any state — whether or not [isListening] is true.
+  /// MUST release the OS microphone unconditionally. Do NOT gate this on
+  /// [isListening]. This is the last-resort cleanup path under abnormal
+  /// termination. See the OS Resource Lifecycle Invariant doc comment on this
+  /// class for the required implementation pattern.
   void dispose();
 }
 

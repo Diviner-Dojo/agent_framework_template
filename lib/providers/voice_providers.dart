@@ -202,8 +202,15 @@ final ttsFallbackActiveProvider = StateProvider<bool>((ref) => false);
 
 /// Controls which STT engine is used. Persisted in SharedPreferences.
 ///
-/// Defaults to [SttEngine.deepgram] (primary per ADR-0031).
-/// Falls back to [SttEngine.speechToText] if the stored value is unrecognized.
+/// Defaults to [SttEngine.speechToText] — the proven baseline (device-verified
+/// on SM_G998U1, PR #52, 2026-03-01). Deepgram is available as an opt-in
+/// EXPERIMENTAL engine; it remains unavailable as default until the proxy
+/// WebSocket 401 is resolved and device-tested (SPEC-20260305-080259, ADR-0035).
+///
+/// CPP (Capability Protection Protocol): Any change to the default return value
+/// requires: (1) an entry in CAPABILITY_STATUS.md showing the new default is PROVEN,
+/// (2) a separate PR from the one that introduced the implementation.
+/// See: .claude/rules/capability_protection.md, ADR-0035.
 class SttEngineNotifier extends Notifier<SttEngine> {
   @override
   SttEngine build() {
@@ -212,7 +219,8 @@ class SttEngineNotifier extends Notifier<SttEngine> {
     if (stored == 'deepgram') return SttEngine.deepgram;
     if (stored == 'sherpaOnnx') return SttEngine.sherpaOnnx;
     if (stored == 'speechToText') return SttEngine.speechToText;
-    return SttEngine.deepgram; // Default: Deepgram primary (ADR-0031).
+    return SttEngine
+        .speechToText; // CPP: proven baseline (SPEC-20260305-080259).
   }
 
   /// Set the STT engine. Persists to SharedPreferences.
