@@ -1,15 +1,28 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-03-05 ~19:05 UTC
+> Last updated: 2026-03-05 ~20:35 UTC
 
 ## Current Task
 
-**Status:** Advisory close-out rounds 1 + 2 complete. Commits 709d6d4 + ad90153. Ready for next ADHD roadmap phase.
+**Status:** Phase 2C complete (commit fea0a63). All ADHD roadmap phases through Phase 5A now complete. Phase 4F still blocked. Ready for next effort.
 **Branch:** `develop/adhd-roadmap`
 **Version:** `0.32.0+32`
 
-### Just Completed — Advisory Close-Out Sprint A-3/A-4/A-5/A-6 (commit pending)
+### Just Completed — Phase 2C: Data Export Completion (commit fea0a63)
+
+**SPEC-20260305-195043** — last unfinished ADHD roadmap phase:
+
+- **Video export**: Added `videoDao.getVideosForSession()` per session in `_exportData()`. Required fields: `video_id`, `local_path`, `thumbnail_path`, `duration_seconds`, `timestamp`. Optional: `description`, `width`, `height`, `file_size_bytes`.
+- **Stable schema**: Removed `if (list.isNotEmpty)` guards on `check_ins` and `photos`. All three media arrays always present (even when empty) for schema consistency across users.
+- **Test wiring**: `videoDaoProvider.overrideWithValue(VideoDao(database))` added to `buildTestWidget()`.
+- **Tests**: 2 new regression tests in `settings_data_management_test.dart`. `_FakeExportPathProvider` for controlled I/O. `runAsync+pump` interleave loop with `FormatException` retry for Windows file-write race.
+- **Regression ledger**: 2 entries added for both bugs fixed.
+- **Review**: REV-20260305-203427 (approve-with-changes, 0 blocking, 5 advisory). DISC-20260305-202956 sealed.
+- **Quality gate**: 7/7, 82.0% coverage. Education gate: deferred.
+- **Open advisories from this review** (5): UX-A1 (success SnackBar filename overflow), UX-A2 (error SnackBar raw exception + 4s duration), QA-A1 (timestamp sanitization latent gap), QA-A2 (timestamp value assertion vs presence-only), QA-A3 (video test check_ins/photos isEmpty).
+
+### Just Completed — Advisory Close-Out Sprint A-3/A-4/A-5/A-6 (commits 709d6d4 + ad90153)
 
 Closed 4 actionable advisories from REV-20260305-175417:
 
