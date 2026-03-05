@@ -493,12 +493,19 @@ class _CheckInTrendChartState extends State<_CheckInTrendChart> {
               if (idx % step != 0 && idx != days.length - 1) {
                 return const SizedBox.shrink();
               }
-              return Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  _formatDateShort(days[idx].date),
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+              // Cap textScaler to noScaling so date labels don't overflow
+              // reservedSize: 36 at 200% system text scale (UX-A3).
+              return MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.noScaling),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _formatDateShort(days[idx].date),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               );
@@ -841,12 +848,19 @@ class _CheckInTrendTabState extends ConsumerState<_CheckInTrendTab> {
                   if (idx % step != 0 && idx != days.length - 1) {
                     return const SizedBox.shrink();
                   }
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      _formatDateShort(days[idx].date),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                  // Cap textScaler to noScaling so date labels don't overflow
+                  // reservedSize: 36 at 200% system text scale (UX-A3).
+                  return MediaQuery(
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(textScaler: TextScaler.noScaling),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        _formatDateShort(days[idx].date),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   );

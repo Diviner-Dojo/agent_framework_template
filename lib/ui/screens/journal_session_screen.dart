@@ -475,6 +475,7 @@ class _JournalSessionScreenState extends ConsumerState<JournalSessionScreen>
                           ? videoMap[msg.videoId as String]
                           : null;
                       return ChatBubble(
+                        key: ValueKey(msg.messageId),
                         content: msg.content,
                         role: msg.role,
                         timestamp: msg.timestamp,

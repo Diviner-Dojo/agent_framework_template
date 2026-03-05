@@ -1843,7 +1843,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           const SnackBar(
             content: Text(
               'Export failed: could not write to Downloads folder. '
-              'Check storage permissions and available space.',
+              'Check available storage space.',
             ),
             duration: Duration(seconds: 8),
           ),

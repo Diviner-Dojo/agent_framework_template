@@ -657,6 +657,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                           ? _videosByVideoId[msg.videoId!]
                           : null;
                       final bubble = ChatBubble(
+                        key: ValueKey(msg.messageId),
                         content: msg.content,
                         role: msg.role,
                         timestamp: msg.timestamp,

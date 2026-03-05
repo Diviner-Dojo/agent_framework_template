@@ -493,7 +493,13 @@ void main() {
         final container = await buildTestWidget(tester);
         addTearDown(container.dispose);
 
-        // Simulate agent processing state (active between message send and response).
+        // Direct state mutation via the protected `state` setter is used here
+        // because SessionNotifier.sendMessage() is async and involves real I/O.
+        // Using overrideWith(SessionNotifier) would require a full mock DAO and
+        // agent stack just to simulate the isWaitingForAgent=true moment. The
+        // protected setter is the pragmatic choice for this narrow regression
+        // guard. If SessionNotifier migrates to Riverpod 2 Notifier, update
+        // this test to use overrideWith. (QA-A3 from REV-20260305-223132)
         // ignore: invalid_use_of_protected_member
         container.read(sessionNotifierProvider.notifier).state = container
             .read(sessionNotifierProvider)
@@ -571,6 +577,68 @@ void main() {
               'helperText must be null while TTS is speaking — showing the '
               '"Tap send icon" hint during playback creates visual noise '
               '(REV-20260305-193138-A1)',
+        );
+      },
+    );
+
+    testWidgets(
+      'helperText is null while microphone is listening (regression)',
+      tags: ['regression'],
+      (tester) async {
+        // Build with a pre-configured orchestrator (phase=listening) so the
+        // initial render sees isListening=true (QA-A1 from REV-20260305-223132).
+        final audioFocus = _NoopAudioFocusService();
+        final fakeOrchestrator =
+            VoiceSessionOrchestrator(
+                sttService: _NoopSpeechRecognitionService(),
+                ttsService: _NoopTextToSpeechService(),
+                audioFocusService: audioFocus,
+              )
+              ..stateNotifier.value = const VoiceOrchestratorState(
+                phase: VoiceLoopPhase.listening,
+              );
+        addTearDown(() {
+          fakeOrchestrator.dispose();
+          audioFocus.dispose();
+        });
+
+        late ProviderContainer container;
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container = ProviderContainer(
+              overrides: [
+                sharedPreferencesProvider.overrideWithValue(prefs),
+                databaseProvider.overrideWithValue(database),
+                agentRepositoryProvider.overrideWithValue(AgentRepository()),
+                deviceTimezoneProvider.overrideWith(
+                  (ref) async => 'America/New_York',
+                ),
+                voiceOrchestratorProvider.overrideWithValue(fakeOrchestrator),
+              ],
+            ),
+            child: MaterialApp(
+              initialRoute: '/session',
+              routes: {
+                '/': (_) => const Scaffold(body: Text('Session List')),
+                '/session': (_) => const JournalSessionScreen(),
+              },
+            ),
+          ),
+        );
+        await container.read(sessionNotifierProvider.notifier).startSession();
+        await tester.pumpAndSettle();
+        addTearDown(container.dispose);
+
+        // phase=listening → helperText suppressed; hintText already shows
+        // 'Listening...' so showing the submit hint would create visual noise.
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(
+          textField.decoration?.helperText,
+          isNull,
+          reason:
+              'helperText must be null while microphone is listening — '
+              'the hintText already shows "Listening..." '
+              '(QA-A1 from REV-20260305-223132)',
         );
       },
     );

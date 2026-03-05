@@ -311,15 +311,26 @@ class ChatBubble extends StatelessWidget {
                   if (isRecall && isOfflineRecall)
                     _OfflineRecallHeader(textColor: textColor),
 
-                  // Message text.
-                  Text(
-                    content,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 15,
-                      height: 1.4,
+                  // Message text — long USER messages collapse to 5 lines
+                  // with a "Show more" toggle (display fix, REV-20260305-223132).
+                  if (isUser)
+                    _CollapsibleMessageText(
+                      content: content,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 15,
+                        height: 1.4,
+                      ),
+                    )
+                  else
+                    Text(
+                      content,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 15,
+                        height: 1.4,
+                      ),
                     ),
-                  ),
 
                   // Citation chips (recall mode only).
                   if (isRecall && citations.isNotEmpty) ...[
@@ -390,6 +401,87 @@ class ChatBubble extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Collapses long USER message text to [_kCollapseLines] lines with a
+/// "Show more / Show less" toggle.
+///
+/// Applied only to USER messages. Messages under [_kCollapseThreshold]
+/// characters are always shown in full.
+class _CollapsibleMessageText extends StatefulWidget {
+  final String content;
+  final TextStyle? style;
+
+  const _CollapsibleMessageText({required this.content, this.style});
+
+  @override
+  State<_CollapsibleMessageText> createState() =>
+      _CollapsibleMessageTextState();
+}
+
+class _CollapsibleMessageTextState extends State<_CollapsibleMessageText> {
+  /// Character count above which the text collapses.
+  static const _kCollapseThreshold = 300;
+
+  /// Lines shown in the collapsed state.
+  static const _kCollapseLines = 5;
+
+  bool _isExpanded = false;
+
+  @override
+  void didUpdateWidget(_CollapsibleMessageText old) {
+    super.didUpdateWidget(old);
+    // Reset to collapsed when content changes (e.g. after long-press edit).
+    if (old.content != widget.content) {
+      _isExpanded = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isLong = widget.content.length > _kCollapseThreshold;
+
+    final textWidget = Text(
+      widget.content,
+      style: widget.style,
+      maxLines: isLong && !_isExpanded ? _kCollapseLines : null,
+      overflow: isLong && !_isExpanded
+          ? TextOverflow.ellipsis
+          : TextOverflow.clip,
+    );
+
+    if (!isLong) return textWidget;
+
+    final label = _isExpanded ? 'Show less' : 'Show more';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        textWidget,
+        Semantics(
+          button: true,
+          label: _isExpanded
+              ? 'Show less of this message'
+              : 'Show more of this message',
+          hint: _isExpanded ? 'Collapses text' : 'Expands full message',
+          child: InkWell(
+            onTap: () => setState(() => _isExpanded = !_isExpanded),
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              // Vertical padding brings the effective tap area to >=48dp.
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
