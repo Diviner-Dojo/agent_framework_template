@@ -222,8 +222,61 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 2: SETUP ==================== -->
+  <!-- ==================== SLIDE 2: FRAME YOUR IDEA ==================== -->
   <div class="slide" data-slide="2">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Before You Start</p>
+      <h2 class="anim-fade-up-d1">Frame Your Idea First</h2>
+      <p class="subtitle anim-fade-up-d2">This framework turns your application ideas into real software. But Claude needs you to describe your idea clearly before you start coding. Spend 10 minutes writing this down <em>before</em> you touch the repo.</p>
+
+      <div class="two-col anim-fade-up-d3">
+        <div>
+          <h3>What to Write Down</h3>
+          <div class="card" style="margin-top:12px; margin-bottom:12px;">
+            <p><strong style="color:var(--green);">1. What does your app do?</strong></p>
+            <p style="color:var(--text-secondary); margin-top:4px;">Describe it in 2&ndash;3 plain sentences. &ldquo;A web app that lets small landlords track maintenance requests from tenants and schedule contractors.&rdquo;</p>
+          </div>
+          <div class="card" style="margin-bottom:12px;">
+            <p><strong style="color:var(--green);">2. Who is it for?</strong></p>
+            <p style="color:var(--text-secondary); margin-top:4px;">Name your users specifically. &ldquo;Landlords with 1&ndash;10 rental units who currently use spreadsheets or paper.&rdquo;</p>
+          </div>
+          <div class="card" style="margin-bottom:12px;">
+            <p><strong style="color:var(--green);">3. What are the core actions?</strong></p>
+            <p style="color:var(--text-secondary); margin-top:4px;">List the 3&ndash;5 things a user must be able to do. Not features &mdash; actions. &ldquo;Submit a request. Assign a contractor. Mark it complete.&rdquo;</p>
+          </div>
+          <div class="card">
+            <p><strong style="color:var(--green);">4. What does &ldquo;done&rdquo; look like?</strong></p>
+            <p style="color:var(--text-secondary); margin-top:4px;">Describe your minimum viable version. What&rsquo;s the simplest thing that would be useful?</p>
+          </div>
+        </div>
+        <div>
+          <h3>How to Tell Claude</h3>
+          <div class="card" style="margin-top:12px; margin-bottom:16px;">
+            <p style="color:var(--text-secondary);">Once you&rsquo;ve cloned the template and opened it in VS Code with Claude Code, start your first conversation like this:</p>
+          </div>
+          <div class="code-block">
+            <div><span class="comment"># Your first message to Claude:</span></div>
+            <div style="margin-top:8px; color:var(--text-primary);">I want to build <span style="color:var(--green);">[your 2-3 sentence description]</span>.</div>
+            <div style="margin-top:4px; color:var(--text-primary);">The users are <span style="color:var(--green);">[who it&rsquo;s for]</span>.</div>
+            <div style="margin-top:4px; color:var(--text-primary);">They need to be able to:</div>
+            <div style="color:var(--green);">- [action 1]</div>
+            <div style="color:var(--green);">- [action 2]</div>
+            <div style="color:var(--green);">- [action 3]</div>
+            <div style="margin-top:8px; color:var(--text-primary);">Let&rsquo;s start with <span style="color:var(--accent-light);">/plan</span> to create a spec for the first feature.</div>
+          </div>
+          <div class="card" style="margin-top:16px;">
+            <p><strong style="color:var(--accent-light);">Why /plan first?</strong></p>
+            <p style="color:var(--text-secondary); margin-top:4px;">The <code style="color:var(--green);">/plan</code> command turns your idea into a structured spec that specialists review before any code is written. This prevents the &ldquo;build first, think later&rdquo; trap.</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="tagline anim-fade-up-d4" style="margin-top:8px;">&ldquo;A clear idea, plainly stated, is worth more than a vague idea with perfect code.&rdquo;</p>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 3: SETUP ==================== -->
+  <div class="slide" data-slide="3">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Getting Started</p>
       <h2 class="anim-fade-up-d1">Setup in 3 Minutes</h2>
@@ -258,8 +311,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 3: DAILY WORKFLOW ==================== -->
-  <div class="slide" data-slide="3">
+  <!-- ==================== SLIDE 4: DAILY WORKFLOW ==================== -->
+  <div class="slide" data-slide="4">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Daily Pattern</p>
       <h2 class="anim-fade-up-d1">The Typical Development Flow</h2>
@@ -303,8 +356,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 4: /review ==================== -->
-  <div class="slide" data-slide="4">
+  <!-- ==================== SLIDE 5: /review ==================== -->
+  <div class="slide" data-slide="5">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Core Command</p>
       <h2 class="anim-fade-up-d1">/review &mdash; Multi-Agent Code Review</h2>
@@ -357,8 +410,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 5: /plan + /build_module ==================== -->
-  <div class="slide" data-slide="5">
+  <!-- ==================== SLIDE 6: /plan + /build_module ==================== -->
+  <div class="slide" data-slide="6">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Building Features</p>
       <h2 class="anim-fade-up-d1">/plan + /build_module &mdash; Spec-Driven Development</h2>
@@ -402,8 +455,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 6: /deliberate ==================== -->
-  <div class="slide" data-slide="6">
+  <!-- ==================== SLIDE 7: /deliberate ==================== -->
+  <div class="slide" data-slide="7">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Decision Making</p>
       <h2 class="anim-fade-up-d1">/deliberate &mdash; Structured Multi-Agent Discussion</h2>
@@ -455,8 +508,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 7: LEARNING COMMANDS ==================== -->
-  <div class="slide" data-slide="7">
+  <!-- ==================== SLIDE 8: LEARNING COMMANDS ==================== -->
+  <div class="slide" data-slide="8">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Learning &amp; Growth</p>
       <h2 class="anim-fade-up-d1">Commands That Make You Better</h2>
@@ -493,8 +546,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 8: PROCESS IMPROVEMENT ==================== -->
-  <div class="slide" data-slide="8">
+  <!-- ==================== SLIDE 9: PROCESS IMPROVEMENT ==================== -->
+  <div class="slide" data-slide="9">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Continuous Improvement</p>
       <h2 class="anim-fade-up-d1">The Framework Improves Itself</h2>
@@ -556,8 +609,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 9: QUALITY GATE ==================== -->
-  <div class="slide" data-slide="9">
+  <!-- ==================== SLIDE 10: QUALITY GATE ==================== -->
+  <div class="slide" data-slide="10">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Safety Net</p>
       <h2 class="anim-fade-up-d1">The Quality Gate &mdash; Your Last Line of Defense</h2>
@@ -615,8 +668,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 10: LINEAGE & SHIP ==================== -->
-  <div class="slide" data-slide="10">
+  <!-- ==================== SLIDE 11: LINEAGE & SHIP ==================== -->
+  <div class="slide" data-slide="11">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Release &amp; Lineage</p>
       <h2 class="anim-fade-up-d1">Shipping and Tracking Your Fork</h2>
@@ -659,8 +712,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 11: CHEAT SHEET ==================== -->
-  <div class="slide" data-slide="11">
+  <!-- ==================== SLIDE 12: CHEAT SHEET ==================== -->
+  <div class="slide" data-slide="12">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Reference</p>
       <h2 class="anim-fade-up-d1">Command Cheat Sheet</h2>
@@ -709,8 +762,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 12: GET STARTED ==================== -->
-  <div class="slide" data-slide="12">
+  <!-- ==================== SLIDE 13: GET STARTED ==================== -->
+  <div class="slide" data-slide="13">
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up" style="width:80px; height:80px;">
@@ -747,17 +800,17 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
   </div>
   <div class="nav-controls">
     <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
-    <span class="slide-counter" id="slideCounter">1 / 12</span>
+    <span class="slide-counter" id="slideCounter">1 / 13</span>
     <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">&#8594;</button>
   </div>
 </div>
 
-<div class="progress-bar" id="progressBar" style="width: 8.33%;"></div>
+<div class="progress-bar" id="progressBar" style="width: 7.69%;"></div>
 
 <script>
 // ===== SLIDE NAVIGATION =====
 let currentSlide = 1;
-const totalSlides = 12;
+const totalSlides = 13;
 
 function showSlide(n) {
   if (n < 1 || n > totalSlides) return;
