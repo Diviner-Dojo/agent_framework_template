@@ -236,9 +236,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
             <div><span class="cmd">pip install -r</span> requirements.txt</div>
             <div style="margin-top:12px;"><span class="comment"># 2. Initialize the metrics database</span></div>
             <div><span class="cmd">python</span> scripts/init_db.py</div>
-            <div style="margin-top:12px;"><span class="comment"># 3. Run the test project</span></div>
-            <div><span class="cmd">uvicorn</span> src.main:app <span class="flag">--reload</span></div>
-            <div style="margin-top:12px;"><span class="comment"># 4. Run tests to verify</span></div>
+            <div style="margin-top:12px;"><span class="comment"># 3. Run tests to verify</span></div>
             <div><span class="cmd">pytest</span> tests/ <span class="flag">-v</span></div>
           </div>
         </div>
@@ -249,7 +247,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           </div>
           <div class="card" style="margin-bottom:12px;">
             <h3>What You Get</h3>
-            <p style="margin-top:6px;">A working Todo API (the reference implementation) wrapped in the full framework: 11 agents, 16 commands, 7 hooks, and the four-layer capture stack. Everything works out of the box.</p>
+            <p style="margin-top:6px;">The full framework infrastructure: 11 agents, 16 commands, 7 hooks, and the four-layer capture stack. Add your application code to <code style="color:var(--green);">src/</code> and start building.</p>
           </div>
           <div class="card">
             <h3>For Existing Projects</h3>

@@ -133,7 +133,7 @@ Each run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend an
 
 ## Error Handling
 
-The application uses a structured exception hierarchy (`src/exceptions.py`) with centralized error handling (`src/error_handlers.py`). All application errors inherit from `AppError` and carry `(message, error_code, details, status_code)`. New projects extend the hierarchy with domain-specific subclasses. Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the centralized handler converts them to consistent JSON responses.
+The recommended error handling pattern uses a structured exception hierarchy with centralized handling. All application errors should inherit from an `AppError` base class carrying `(message, error_code, details, status_code)`. Projects extend the hierarchy with domain-specific subclasses. Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — a centralized handler converts them to consistent JSON responses. See `.claude/skills/python-project-patterns/SKILL.md` for implementation guidance.
 
 ## Hooks
 

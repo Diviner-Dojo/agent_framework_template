@@ -752,7 +752,7 @@ Each entry records:
 - **Sightings**: 1
 - **Score**: 16/25 (prevalence:4, elegance:3, evidence:4, fit:2, maintenance:3)
 - **Status**: REJECTED
-- **Decision**: Standard for stateful processing systems but our Todo API has no long-running operations.
+- **Decision**: Standard for stateful processing systems but simple CRUD apps have no long-running operations.
 
 ### Pattern: AI-Powered Config Auto-Repair
 - **First seen**: ContractorVerification (2026-02-19)
