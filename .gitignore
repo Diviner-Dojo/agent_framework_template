@@ -16,3 +16,4 @@ build/
 .mypy_cache/
 *.sqlite3
 .coverage
+BUILD_STATUS.md

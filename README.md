@@ -6,6 +6,8 @@ A structured, multi-agent development framework for Claude Code that transforms 
 
 ## Quick Start
 
+This is a **framework template**, not a standalone application. It provides the agentic development infrastructure — agents, commands, rules, hooks, and capture pipelines — that you build your project on top of.
+
 ### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
@@ -16,23 +18,20 @@ pip install -r requirements.txt
 python scripts/init_db.py
 ```
 
-### 3. Run the Todo API (test project)
-```bash
-uvicorn src.main:app --reload
-```
-
-### 4. Run tests
+### 3. Run tests
 ```bash
 pytest tests/ -v
 ```
 
-### 5. Try the framework commands
-In Claude Code:
+### 4. Start building
+Add your application code to `src/` and your tests to `tests/`, then use the framework commands in Claude Code:
 - `/review src/` — Run a multi-agent code review
-- `/deliberate "topic"` — Start a structured discussion
 - `/plan "feature"` — Plan a feature with spec-driven development
+- `/build_module` — Build a module from a spec with integrated quality gates
+- `/deliberate "topic"` — Start a structured discussion
 - `/walkthrough src/routes.py` — Get a guided code walkthrough
 - `/quiz src/routes.py` — Take a comprehension quiz
+- `/analyze-project owner/repo` — Analyze an external project for patterns worth adopting
 - `/lineage` — Check framework lineage and drift status
 - `/ship 1.0.0` — Run the full release workflow
 
@@ -61,7 +60,7 @@ metrics/        — Layer 2: SQLite relational index (evaluation.db)
 scripts/        — Capture pipeline utilities (Python)
   lineage/      — Lineage tracking utilities (drift detection, manifest)
 
-src/            — Application source code (Todo API test project)
+src/            — Your application source code (empty in template)
 tests/          — Test suite
 framework-lineage.yaml  — Lineage manifest (project-template relationship)
 ```
@@ -91,6 +90,17 @@ framework-lineage.yaml  — Lineage manifest (project-template relationship)
 - **Spec-Driven Development**: Every significant change starts with an approved spec
 - **Lineage Tracking**: Steward agent tracks project-to-template relationships via `framework-lineage.yaml`, detecting drift and managing divergences
 - **Build Review Protocol**: Mid-build checkpoint reviews enforce independence (Principle #4) during `/build_module` execution
+
+## External Project Analysis & Attribution
+
+The `/analyze-project` command lets you study external projects (public GitHub repos or local codebases) to discover architectural patterns worth adopting. The framework extracts **ideas and design patterns**, not code — and attributes everything back to the source.
+
+- Every adopted pattern is permanently linked to its source project in `memory/lessons/adoption-log.md`
+- License checks run before analysis begins, with risk-appropriate framing (permissive, copyleft, or unlicensed)
+- The Rule of Three requires patterns to appear in 3+ independent projects before priority consideration
+- Target projects are read-only — never modified during analysis
+
+See `/discover-projects` to find candidates and `/analyze-project` to run the analysis.
 
 ## Framework Spec
 
