@@ -689,9 +689,9 @@ The quality gate runs automatically via the git pre-commit hook ([`.claude/hooks
 - *Quality gate script adopted from* ***ContractorVerification*** *(Score: 22/25,* [*ANALYSIS-20260219-010900*](reviews/ANALYSIS-20260219-010900-contractor-verification.md)*).*
 - *ADR completeness validator adopted from* ***AgenticAKM*** *(Score: 20/25,* [*ANALYSIS-20260219-043753*](reviews/ANALYSIS-20260219-043753-agenticakm.md)*).*
 
-### Structured Exception Hierarchy
+### Recommended: Structured Exception Hierarchy
 
-[`src/exceptions.py`](../src/exceptions.py) defines a semantic exception tree:
+Projects built on this template should implement a semantic exception hierarchy in `src/exceptions.py`:
 
 ```
 AppError (base)
@@ -700,27 +700,23 @@ AppError (base)
 └── ConflictError      → 409
 ```
 
-[`src/error_handlers.py`](../src/error_handlers.py) provides centralized error handling that converts exceptions to consistent JSON responses with `(message, error_code, details, status_code)`.
+A centralized error handler (`src/error_handlers.py`) converts these exceptions to consistent JSON responses with `(message, error_code, details, status_code)`. Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the handler converts them to consistent JSON.
 
-Routes raise semantic exceptions (e.g., `NotFoundError("todo", id)`) — the centralized handler converts them to consistent JSON.
-
-*Adopted from* ***ContractorVerification*** *(Score: 23/25,* [*ANALYSIS-20260219-010900*](reviews/ANALYSIS-20260219-010900-contractor-verification.md)*).*
+*Pattern adopted from* ***ContractorVerification*** *(Score: 23/25,* [*ANALYSIS-20260219-010900*](reviews/ANALYSIS-20260219-010900-contractor-verification.md)*).*
 
 ### Test Infrastructure
 
 **Configuration**: [`pyproject.toml`](../pyproject.toml) — Python ≥ 3.11, asyncio_mode=auto, coverage source=`src`, fail_under=80.
 
-**Test Files**:
+**Test Organization**: Test files mirror the source structure. As you add application modules, create corresponding test files:
 
-| File | Tests | Scope |
-|------|-------|-------|
-| [`tests/test_routes.py`](../tests/test_routes.py) | 15 | Async tests across 5 endpoint classes |
-| [`tests/test_capture_pipeline.py`](../tests/test_capture_pipeline.py) | 24 | init_db, create_discussion, write_event, generate_transcript, ingest_events, record_education |
-| [`tests/test_backup_utils.py`](../tests/test_backup_utils.py) | 12 | Path containment, backup, restore, detect_conflicts, prune |
-| [`tests/test_redact_secrets.py`](../tests/test_redact_secrets.py) | ~20 | All 15 secret patterns, non-secrets, multiple matches |
-| [`tests/test_simulated_review.py`](../tests/test_simulated_review.py) | 2 | End-to-end simulated `/review` workflow |
+| Source File | Test File | Example Scope |
+|-------------|-----------|---------------|
+| `src/routes.py` | `tests/test_routes.py` | Async tests for API endpoints |
+| `src/models.py` | `tests/test_models.py` | Model validation and constraints |
+| `src/services.py` | `tests/test_services.py` | Business logic unit tests |
 
-**Fixtures**: [`tests/conftest.py`](../tests/conftest.py) provides `test_db`, `client`, and `sample_todo` fixtures plus LLM/slow marker gating.
+The template includes [`tests/test_lineage.py`](../tests/test_lineage.py) for framework lineage verification. Add a `tests/conftest.py` with shared fixtures (e.g., `test_db`, `client`) as your test suite grows.
 
 ### LLM-Gated Test Markers
 
@@ -744,8 +740,8 @@ Codified in [`.claude/rules/testing_requirements.md`](../.claude/rules/testing_r
 - Every test must have meaningful assertions
 - Test both success paths and error/edge cases
 - Tests must be deterministic — no flaky tests
-- Test files mirror source structure: `src/routes.py` → `tests/test_routes.py`
-- Use descriptive test names: `test_create_todo_with_empty_title_returns_422`
+- Test files mirror source structure: `src/module.py` → `tests/test_module.py`
+- Use descriptive test names: `test_create_item_with_empty_title_returns_422`
 
 Detailed strategies in the [testing-playbook skill](../.claude/skills/testing-playbook/SKILL.md).
 

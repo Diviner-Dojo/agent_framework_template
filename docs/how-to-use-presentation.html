@@ -222,57 +222,57 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 2: PRACTICAL GUIDANCE ==================== -->
+  <!-- ==================== SLIDE 2: FROM IDEA TO CODE ==================== -->
   <div class="slide" data-slide="2">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Before You Start</p>
-      <h2 class="anim-fade-up-d1">Putting It Into Practice</h2>
+      <h2 class="anim-fade-up-d1">From Idea to Code: Five Phases</h2>
+      <p class="subtitle anim-fade-up-d2">Most of the planning happens <em>before</em> you write a line of code. This is the suggested approach &mdash; research first, validate second, build last.</p>
 
-      <div class="two-col anim-fade-up-d2">
-        <div>
-          <h3>Your First Message to Claude</h3>
-          <div class="card" style="margin-top:12px; margin-bottom:16px;">
-            <p style="color:var(--text-secondary);">After cloning the template, open it in VS Code with Claude Code and describe your idea plainly:</p>
-          </div>
-          <div class="code-block">
-            <div><span class="comment"># What to tell Claude:</span></div>
-            <div style="margin-top:8px; color:var(--text-primary);">I want to build <span style="color:var(--green);">[2-3 sentence description]</span>.</div>
-            <div style="margin-top:4px; color:var(--text-primary);">The users are <span style="color:var(--green);">[who it&rsquo;s for]</span>.</div>
-            <div style="margin-top:4px; color:var(--text-primary);">They need to:</div>
-            <div style="color:var(--green);">- [core action 1]</div>
-            <div style="color:var(--green);">- [core action 2]</div>
-            <div style="color:var(--green);">- [core action 3]</div>
-            <div style="margin-top:8px; color:var(--text-primary);">Here are my research notes: <span style="color:var(--text-muted);">[paste or summarize]</span></div>
-            <div style="margin-top:4px; color:var(--text-primary);">Let&rsquo;s start with <span style="color:var(--accent-light);">/deliberate</span> to evaluate this approach.</div>
-          </div>
+      <div class="flow anim-fade-up-d3" style="margin-bottom:8px;">
+        <span class="flow-step" style="border-color:var(--gold); color:var(--gold);">1. Seed</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--accent); color:var(--accent-light);">2. Anchor</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--blue); color:var(--blue);">3. Scout</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--green); color:var(--green);">4. Reconcile</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--green); color:var(--green); border-width:2px;">5. Specify</span>
+      </div>
 
-          <div class="card" style="margin-top:16px;">
-            <h3 style="color:var(--accent-light);">Tip: Save Your Research</h3>
-            <p style="color:var(--text-secondary); margin-top:4px;">Save each research session as <code style="color:var(--green);">docs/research/RESEARCH-YYYYMMDD-slug.md</code> with source, date, key findings, and open questions. This preserves the reasoning trail from day one.</p>
-          </div>
+      <div class="card-grid cols-2 anim-fade-up-d3" style="gap:12px;">
+        <div class="card" style="padding:18px;">
+          <h3><span style="color:var(--gold);">1. Seed</span> &mdash; Research Your Idea</h3>
+          <p style="margin-top:6px;">Use Claude Deep Research, Gemini, or manual reading to explore your domain. Save each session as a markdown file. Note key findings, competing approaches, and open questions.</p>
+          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Happens outside the framework. Pure ideation.</p>
         </div>
-        <div>
-          <h3>When to Skip Phases</h3>
-          <p style="color:var(--text-secondary); font-size:14px; margin-top:12px; margin-bottom:12px;">Not every project needs all five phases. Match the process to the complexity.</p>
+        <div class="card" style="padding:18px;">
+          <h3><span style="color:var(--accent-light);">2. Anchor</span> &mdash; Pressure-Test with Specialists</h3>
+          <p style="margin-top:6px;">Paste your research findings into <code style="color:var(--accent-light);">/deliberate</code>. The agent panel evaluates from architecture, security, UX, and anti-groupthink perspectives. One deliberation per major theme.</p>
+          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Bridges external research into framework-captured reasoning.</p>
+        </div>
+        <div class="card" style="padding:18px;">
+          <h3><span style="color:var(--blue);">3. Scout</span> &mdash; Find Real-World Validation</h3>
+          <p style="margin-top:6px;">Use <code style="color:var(--blue);">/discover-projects</code> to find reference implementations on GitHub, then <code style="color:var(--blue);">/analyze-project</code> to score their patterns. If 3+ projects implement a pattern well, that&rsquo;s strong evidence.</p>
+          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Grounds research against actual working code.</p>
+        </div>
+        <div class="card" style="padding:18px;">
+          <h3><span style="color:var(--green);">4. Reconcile</span> &mdash; Make Decisions</h3>
+          <p style="margin-top:6px;">Run <code style="color:var(--green);">/deliberate</code> again with all evidence &mdash; research, specialist findings, and project analysis scores. Produce ADRs documenting your architectural decisions with full alternatives considered.</p>
+          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Synthesizes everything into traceable decisions.</p>
+        </div>
+      </div>
 
-          <div class="card" style="margin-bottom:10px; padding:14px 18px;">
-            <p><strong style="color:var(--green);">Small feature, well-understood domain</strong></p>
-            <p style="color:var(--text-secondary); margin-top:4px; font-size:13px;">Skip to Phase 5 &mdash; just run <code style="color:var(--green);">/plan</code>. The specialist review gives you enough validation.</p>
+      <div class="card anim-fade-up-d4" style="padding:18px; border-color:var(--green); border-width:2px; margin-top:-4px;">
+        <div style="display:flex; align-items:center; gap:16px;">
+          <div style="flex:1;">
+            <h3><span style="color:var(--green);">5. Specify</span> &mdash; Create the Executable Plan</h3>
+            <p style="margin-top:6px;">Run <code style="color:var(--green);">/plan</code> to produce a structured spec. Specialists review it. Once approved, <code style="color:var(--green);">/build_module</code> takes over and builds it with integrated quality gates.</p>
           </div>
-          <div class="card" style="margin-bottom:10px; padding:14px 18px;">
-            <p><strong style="color:var(--blue);">Cloning an existing project&rsquo;s approach</strong></p>
-            <p style="color:var(--text-secondary); margin-top:4px; font-size:13px;">Start at Phase 3 &mdash; run <code style="color:var(--blue);">/analyze-project</code> on the reference implementation, then plan.</p>
+          <div style="font-size:12px; color:var(--text-muted); text-align:center; min-width:140px; padding:12px; background:var(--bg-card); border-radius:var(--radius-sm);">
+            <div style="color:var(--green); font-weight:600;">This is where<br>coding begins.</div>
           </div>
-          <div class="card" style="margin-bottom:10px; padding:14px 18px;">
-            <p><strong style="color:var(--accent-light);">Two competing approaches, no unknowns</strong></p>
-            <p style="color:var(--text-secondary); margin-top:4px; font-size:13px;">Start at Phase 2 &mdash; run <code style="color:var(--accent-light);">/deliberate</code> in Dialectic mode to reconcile, then plan.</p>
-          </div>
-          <div class="card" style="padding:14px 18px;">
-            <p><strong style="color:var(--gold);">Greenfield with no prior art</strong></p>
-            <p style="color:var(--text-secondary); margin-top:4px; font-size:13px;">Run all five phases. Phase 3 is especially valuable for finding reference implementations you didn&rsquo;t know existed.</p>
-          </div>
-
-          <p class="tagline" style="margin-top:16px; text-align:center;">&ldquo;A clear idea, plainly stated, is worth more than a vague idea with perfect code.&rdquo;</p>
         </div>
       </div>
     </div>
@@ -287,8 +287,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         <div>
           <div class="code-block">
             <div><span class="comment"># 1. Clone and install</span></div>
-            <div><span class="cmd">git clone</span> <span class="file">https://github.com/Diviner-Dojo/agent-framework-template</span></div>
-            <div><span class="cmd">cd</span> agent-framework-template</div>
+            <div><span class="cmd">git clone</span> <a href="https://github.com/Diviner-Dojo/agent_framework_template" target="_blank" class="file" style="color:var(--blue); text-decoration:none;">https://github.com/Diviner-Dojo/agent_framework_template</a></div>
+            <div><span class="cmd">cd</span> agent_framework_template</div>
             <div><span class="cmd">pip install -r</span> requirements.txt</div>
             <div style="margin-top:12px;"><span class="comment"># 2. Initialize the metrics database</span></div>
             <div><span class="cmd">python</span> scripts/init_db.py</div>
@@ -305,9 +305,15 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
             <h3>What You Get</h3>
             <p style="margin-top:6px;">The full framework infrastructure: 11 agents, 16 commands, 7 hooks, and the four-layer capture stack. Add your application code to <code style="color:var(--green);">src/</code> and start building.</p>
           </div>
-          <div class="card">
+          <div class="card" style="border-left: 3px solid var(--gold);">
             <h3>For Existing Projects</h3>
-            <p style="margin-top:6px;">Use <code style="color:var(--green);">/onboard</code> to adopt the framework into an existing codebase. It maps your project, reverse-engineers ADRs, and proposes standards.</p>
+            <p style="margin-top:6px;">Already have a codebase? Use <code style="color:var(--gold);">/onboard</code> instead of cloning. It runs the &ldquo;takeover&rdquo; protocol:</p>
+            <div style="margin-top:8px; font-size:13px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px;">
+              <div>1. Maps your existing code structure</div>
+              <div>2. Reverse-engineers ADRs from your architecture</div>
+              <div>3. Proposes coding standards based on your patterns</div>
+              <div>4. Creates a stabilization plan and debt ledger</div>
+            </div>
           </div>
         </div>
       </div>
@@ -511,8 +517,50 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 8: LEARNING COMMANDS ==================== -->
+  <!-- ==================== SLIDE 8: WHAT DO I DO WHEN ==================== -->
   <div class="slide" data-slide="8">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Quick Reference</p>
+      <h2 class="anim-fade-up-d1">What Do I Do When&hellip;</h2>
+      <div class="card-grid cols-2 anim-fade-up-d2" style="gap:12px;">
+        <div class="card" style="padding:18px; border-left: 3px solid var(--green);">
+          <h3 style="font-size:14px;">&ldquo;I have an idea but don&rsquo;t know where to start&rdquo;</h3>
+          <p style="margin-top:6px;">Research first (Phase 1), then <code style="color:var(--accent-light);">/deliberate</code> to pressure-test, then <code style="color:var(--green);">/plan</code> to create a spec.</p>
+        </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--blue);">
+          <h3 style="font-size:14px;">&ldquo;I&rsquo;m choosing between two approaches&rdquo;</h3>
+          <p style="margin-top:6px;">Run <code style="color:var(--accent-light);">/deliberate</code> with both options. The specialist panel will surface trade-offs you might miss.</p>
+        </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--accent);">
+          <h3 style="font-size:14px;">&ldquo;I want to see how others solved this&rdquo;</h3>
+          <p style="margin-top:6px;"><code style="color:var(--blue);">/discover-projects</code> to find reference repos, then <code style="color:var(--blue);">/analyze-project</code> to score their patterns for your project.</p>
+        </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--gold);">
+          <h3 style="font-size:14px;">&ldquo;I wrote code and need a second opinion&rdquo;</h3>
+          <p style="margin-top:6px;"><code style="color:var(--blue);">/review src/</code> &mdash; the specialist panel reviews from security, architecture, performance, and quality perspectives.</p>
+        </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--red);">
+          <h3 style="font-size:14px;">&ldquo;I found a bug and fixed it&rdquo;</h3>
+          <p style="margin-top:6px;">Write a regression test tagged <code style="color:var(--gold);">@pytest.mark.regression</code>, add it to the regression ledger, then <code style="color:var(--blue);">/review</code> the fix.</p>
+        </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--green);">
+          <h3 style="font-size:14px;">&ldquo;AI wrote code I don&rsquo;t fully understand&rdquo;</h3>
+          <p style="margin-top:6px;"><code style="color:var(--accent-light);">/walkthrough</code> for a guided explanation, then <code style="color:var(--gold);">/quiz</code> to verify you actually get it before shipping.</p>
+        </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--blue);">
+          <h3 style="font-size:14px;">&ldquo;I have an existing project I want to improve&rdquo;</h3>
+          <p style="margin-top:6px;"><code style="color:var(--gold);">/onboard</code> maps your codebase, reverse-engineers decisions, and creates a stabilization plan with a debt ledger.</p>
+        </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--accent);">
+          <h3 style="font-size:14px;">&ldquo;The sprint is over &mdash; what now?&rdquo;</h3>
+          <p style="margin-top:6px;"><code style="color:var(--green);">/retro</code> analyzes all discussions, surfaces recurring patterns, and proposes process improvements. Run <code style="color:var(--blue);">/batch-evaluate</code> to audit pending adoptions.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 9: LEARNING COMMANDS ==================== -->
+  <div class="slide" data-slide="9">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Learning &amp; Growth</p>
       <h2 class="anim-fade-up-d1">Commands That Make You Better</h2>
@@ -549,8 +597,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 9: PROCESS IMPROVEMENT ==================== -->
-  <div class="slide" data-slide="9">
+  <!-- ==================== SLIDE 10: PROCESS IMPROVEMENT ==================== -->
+  <div class="slide" data-slide="10">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Continuous Improvement</p>
       <h2 class="anim-fade-up-d1">The Framework Improves Itself</h2>
@@ -603,17 +651,21 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
               </div>
             </div>
           </div>
-          <div class="card" style="margin-top:12px;">
+          <div class="card" style="margin-top:12px; margin-bottom:12px;">
             <h3>/promote <span style="color:var(--text-muted); font-weight:400;">&mdash; Layer 3</span></h3>
             <p style="font-size:13px; margin-top:4px;">When a pattern proves valuable across multiple reviews, promote it to curated memory with <code style="color:var(--green);">/promote</code>. Requires your explicit approval (Principle #7).</p>
+          </div>
+          <div class="card">
+            <h3>/batch-evaluate <span style="color:var(--text-muted); font-weight:400;">&mdash; Audit</span></h3>
+            <p style="font-size:13px; margin-top:4px;">Reviews all PENDING pattern adoptions from <code style="color:var(--green);">/analyze-project</code> runs. Checks whether each pattern was actually implemented, verifies evidence, and presents verdicts for your approval.</p>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 10: QUALITY GATE ==================== -->
-  <div class="slide" data-slide="10">
+  <!-- ==================== SLIDE 11: QUALITY GATE ==================== -->
+  <div class="slide" data-slide="11">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Safety Net</p>
       <h2 class="anim-fade-up-d1">The Quality Gate &mdash; Your Last Line of Defense</h2>
@@ -659,6 +711,13 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
               </div>
             </div>
             <div class="step-item">
+              <div class="step-num" style="background:var(--gold-dim); color:var(--gold); font-size:12px;">&#9888;</div>
+              <div class="step-info">
+                <h3>Branch Protection</h3>
+                <p>Blocks direct pushes to <code>main</code>. Create a feature branch, open a PR, then merge. Keeps your history clean.</p>
+              </div>
+            </div>
+            <div class="step-item">
               <div class="step-num" style="background:var(--blue-dim); color:var(--blue); font-size:14px;">&#8635;</div>
               <div class="step-info">
                 <h3>Session Continuity</h3>
@@ -671,8 +730,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 11: LINEAGE & SHIP ==================== -->
-  <div class="slide" data-slide="11">
+  <!-- ==================== SLIDE 12: LINEAGE & SHIP ==================== -->
+  <div class="slide" data-slide="12">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Release &amp; Lineage</p>
       <h2 class="anim-fade-up-d1">Shipping and Tracking Your Fork</h2>
@@ -715,8 +774,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 12: CHEAT SHEET ==================== -->
-  <div class="slide" data-slide="12">
+  <!-- ==================== SLIDE 13: CHEAT SHEET ==================== -->
+  <div class="slide" data-slide="13">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Reference</p>
       <h2 class="anim-fade-up-d1">Command Cheat Sheet</h2>
@@ -765,8 +824,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 13: GET STARTED ==================== -->
-  <div class="slide" data-slide="13">
+  <!-- ==================== SLIDE 14: GET STARTED ==================== -->
+  <div class="slide" data-slide="14">
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up" style="width:80px; height:80px;">
@@ -774,15 +833,15 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
       <p class="subtitle anim-fade-up-d2">The framework adds structure to AI-assisted development<br>without slowing you down.</p>
       <div class="code-block anim-fade-up-d3" style="text-align:left; max-width:550px;">
         <div><span class="comment"># Clone, install, go</span></div>
-        <div><span class="cmd">git clone</span> <span class="file">https://github.com/Diviner-Dojo/agent-framework-template</span></div>
-        <div><span class="cmd">cd</span> agent-framework-template</div>
+        <div><span class="cmd">git clone</span> <a href="https://github.com/Diviner-Dojo/agent_framework_template" target="_blank" class="file" style="color:var(--blue); text-decoration:none;">https://github.com/Diviner-Dojo/agent_framework_template</a></div>
+        <div><span class="cmd">cd</span> agent_framework_template</div>
         <div><span class="cmd">pip install -r</span> requirements.txt</div>
         <div><span class="cmd">python</span> scripts/init_db.py</div>
         <div style="margin-top:8px;"><span class="comment"># Your first command</span></div>
         <div><span class="cmd">/review</span> <span class="file">src/</span></div>
       </div>
       <div class="anim-fade-up-d4" style="margin-top:28px;">
-        <a href="https://github.com/Diviner-Dojo/agent-framework-template" target="_blank" style="display:inline-flex; align-items:center; gap:8px; padding:14px 32px; background:var(--accent); color:white; border:none; border-radius:var(--radius-sm); font-size:16px; font-weight:600; font-family:var(--font); cursor:pointer; transition:var(--transition); text-decoration:none;">
+        <a href="https://github.com/Diviner-Dojo/agent_framework_template" target="_blank" style="display:inline-flex; align-items:center; gap:8px; padding:14px 32px; background:var(--accent); color:white; border:none; border-radius:var(--radius-sm); font-size:16px; font-weight:600; font-family:var(--font); cursor:pointer; transition:var(--transition); text-decoration:none;">
           View on GitHub &rarr;
         </a>
       </div>
@@ -803,17 +862,17 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
   </div>
   <div class="nav-controls">
     <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
-    <span class="slide-counter" id="slideCounter">1 / 13</span>
+    <span class="slide-counter" id="slideCounter">1 / 14</span>
     <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">&#8594;</button>
   </div>
 </div>
 
-<div class="progress-bar" id="progressBar" style="width: 7.69%;"></div>
+<div class="progress-bar" id="progressBar" style="width: 7.14%;"></div>
 
 <script>
 // ===== SLIDE NAVIGATION =====
 let currentSlide = 1;
-const totalSlides = 13;
+const totalSlides = 14;
 
 function showSlide(n) {
   if (n < 1 || n > totalSlides) return;

@@ -4,7 +4,7 @@
 **Date:** 2026-03-07  
 **Status:** Architectural Proposal  
 **Parent Framework:** Sovereign Architect AI-Native Agentic Development Framework (v2.1)  
-**ADR Reference:** ADR-NNNN (to be assigned upon adoption)
+**ADR Reference:** ADR-0002
 
 ---
 
