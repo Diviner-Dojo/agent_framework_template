@@ -23,17 +23,7 @@ RED = "\033[91m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-# Pattern to match adoption log entries
-# Looks for lines like: | Pattern Name | Status | ... | YYYY-MM-DD | ...
-ENTRY_PATTERN = re.compile(
-    r"\|\s*(?P<pattern>[^|]+?)\s*\|"  # pattern name
-    r"\s*(?P<status>[^|]+?)\s*\|"  # status
-    r"(?:.*?\|)*?"  # skip middle columns
-    r"\s*(?P<date>\d{4}-\d{2}-\d{2})\s*\|",  # date
-    re.IGNORECASE,
-)
-
-# Alternative: match PENDING entries in various formats
+# Pattern to match PENDING status and dates
 STATUS_PATTERN = re.compile(r"\bPENDING\b", re.IGNORECASE)
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 

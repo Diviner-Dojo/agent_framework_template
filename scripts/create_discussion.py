@@ -24,6 +24,7 @@ _COMMAND_TYPE_PREFIXES = {
     "deliberate-": "deliberate",
     "analyze-": "analyze_project",
     "batch-evaluate-": "batch_evaluate",
+    "lineage-": "lineage",
 }
 
 

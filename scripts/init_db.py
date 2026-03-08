@@ -156,6 +156,33 @@ def init_db(db_path: Path = DB_PATH) -> None:
             computed_at     DATETIME NOT NULL
         );
 
+        -- Lineage tracking tables (Steward Phase 1)
+
+        CREATE TABLE IF NOT EXISTS lineage_nodes (
+            id              TEXT PRIMARY KEY,
+            name            TEXT NOT NULL,
+            type            TEXT NOT NULL CHECK(type IN ('template', 'derived', 'soft-fork', 'hard-fork')),
+            created_at      TEXT NOT NULL,
+            current_version TEXT NOT NULL,
+            upstream_version TEXT,
+            metadata        TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS lineage_file_drift (
+            lineage_id      TEXT NOT NULL REFERENCES lineage_nodes(id),
+            file_path       TEXT NOT NULL,
+            drift_status    TEXT NOT NULL CHECK(drift_status IN (
+                'current', 'modified', 'pinned', 'deleted', 'added'
+            )),
+            is_intentional  BOOLEAN DEFAULT FALSE,
+            pin_reason      TEXT,
+            adr_reference   TEXT,
+            template_hash   TEXT,
+            local_hash      TEXT,
+            last_checked    TEXT NOT NULL,
+            PRIMARY KEY (lineage_id, file_path)
+        );
+
         -- Indexes for common query patterns
         CREATE INDEX IF NOT EXISTS idx_turns_discussion ON turns(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_turns_agent ON turns(agent);
@@ -177,6 +204,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_agent_effectiveness_agent ON agent_effectiveness(agent);
         CREATE INDEX IF NOT EXISTS idx_agent_effectiveness_discussion ON agent_effectiveness(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_promotion_candidates_category ON promotion_candidates(category);
+        CREATE INDEX IF NOT EXISTS idx_lineage_file_drift_lineage ON lineage_file_drift(lineage_id);
+        CREATE INDEX IF NOT EXISTS idx_lineage_file_drift_status ON lineage_file_drift(drift_status);
     """)
 
     # Create views for knowledge pipeline reporting

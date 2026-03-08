@@ -4,7 +4,7 @@ Usage:
     python scripts/ingest_events.py <discussion_id>
 
 Reads the events.jsonl for the given discussion and inserts all events
-into the turns table with SHA-256 content hashes.
+into the turns table with SHA-256 content hashes, content excerpts, and tags.
 """
 
 import argparse

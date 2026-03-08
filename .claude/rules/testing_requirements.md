@@ -2,44 +2,42 @@
 
 ## Coverage
 - Unit tests for all business logic functions
-- Widget tests for all UI components
+- Integration tests for all API endpoints
 - Target >= 80% code coverage for new and modified code
-- Generated files (`*.g.dart`, `*.freezed.dart`) excluded from coverage calculations
 
 ## Test Quality
 - Every test must have meaningful assertions (not just "no exception thrown")
 - Test both success paths and error/edge cases
-- Edge cases to always consider: empty inputs, boundary values, null, duplicate entries, not-found scenarios
-- Use `expect()` with specific matchers — avoid bare `isTrue`/`isFalse` when a more descriptive matcher exists
+- Edge cases to always consider: empty inputs, boundary values, None/null, duplicate entries, not-found scenarios
 
 ## Test Isolation
 - Tests must not depend on shared mutable state
-- Use in-memory databases for DAO tests: `AppDatabase.forTesting(NativeDatabase.memory())`
 - Each test must set up and tear down its own data
+- Use fixtures for common setup patterns
 - Tests must be deterministic — no flaky tests
-- Use `setUp()` and `tearDown()` for common setup patterns
 
 ## Test Organization
-- Test files mirror source file structure: `lib/utils/keyword_extractor.dart` → `test/utils/keyword_extractor_test.dart`
-- Use descriptive test names: `'creates session with correct default values'`
-- Group related tests with `group()` when it improves readability
-- Widget tests use `testWidgets()` and `WidgetTester`
+- Test files mirror source file structure: `src/routes.py` -> `tests/test_routes.py`
+- Use descriptive test names: `test_create_todo_with_empty_title_returns_422`
+- Group related tests in classes when it improves readability
+- Use `pytest.mark.parametrize` for testing multiple input variations
 
 ## Running Tests
-- `flutter test` runs the full suite
-- `flutter test -v` for verbose output
-- `flutter test --coverage` generates `coverage/lcov.info`
-- `flutter test test/specific_test.dart` runs a single test file
-- `python scripts/quality_gate.py` runs tests as part of the full quality gate
+- `pytest tests/` runs the full suite (deterministic tests only)
+- `pytest tests/ -v` for verbose output
+- `pytest tests/ --cov=src` for coverage report
+- `pytest tests/ --run-llm` includes tests that call real LLM APIs
+- `pytest tests/ --run-slow` includes slow-running tests
 
-## Test Tags (when LLM-dependent tests are introduced)
-- Use `@Tags(['uses_llm'])` to mark tests that call real LLM APIs
-- Use `@Tags(['slow'])` to mark slow-running tests
+## Test Markers
+- `@pytest.mark.uses_llm` — marks tests that call real LLM APIs (skipped by default, requires `--run-llm`)
+- `@pytest.mark.slow` — marks slow tests (skipped by default, requires `--run-slow`)
+- `@pytest.mark.regression` — marks regression tests that guard against specific fixed bugs
 - The quality gate runs deterministic tests only. LLM-dependent and slow tests are opt-in.
 
 ## Regression Tests
 - Every bug fix MUST include a regression test that would fail under the old buggy code
-- Tag regression tests with `@Tags(['regression'])` and include a comment referencing the bug
-- Regression test names should describe the bug being prevented: `'speed setting persists across audio source changes (regression)'`
+- Tag regression tests with `@pytest.mark.regression` and include a comment referencing the bug
+- Regression test names should describe the bug being prevented: `test_speed_setting_persists_across_audio_source_changes`
 - When modifying a file that has existing regression tests, verify they still pass and still test the right behavior
 - Regression tests must NOT be deleted or weakened without explicit developer approval

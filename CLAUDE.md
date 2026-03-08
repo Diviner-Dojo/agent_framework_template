@@ -16,7 +16,7 @@
 3. **Collaboration precedes adversarial rigor.** Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review (red-teaming), fault injection/stress testing, anti-groupthink checks.
 4. **Independence prevents confirmation loops.** The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review.
 5. **ADRs are never deleted.** Only superseded with references to the replacing decision. This creates an immutable decision history.
-6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk.
+6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk. Deferrals require developer acknowledgment and must be logged in the retro. Deferred gates must be completed before the next phase begins, or formally re-deferred with documented rationale.
 7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
 8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
 
@@ -35,7 +35,7 @@
 - Each subagent gets its own isolated context window
 - Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
   - **opus**: Complex generation and architectural reasoning (facilitator, architecture-consultant)
-  - **sonnet**: Analysis, review, and evaluation (security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst, ux-evaluator)
+  - **sonnet**: Analysis, review, and evaluation (security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst, ux-evaluator, steward)
   - **haiku**: Mechanical verification and lightweight tasks (educator)
 
 ### Collaboration Mode Spectrum (facilitator selects per change)
@@ -74,8 +74,9 @@ Content here.
 
 ```
 .claude/
-  agents/       — Specialist agent definitions (10 core, including project-analyst and ux-evaluator)
-  commands/     — Slash command workflows (15 commands)
+  agents/       — Specialist agent definitions (11 core, including project-analyst, ux-evaluator, and steward)
+  commands/     — Slash command workflows (16 commands)
+  custodian/    — Steward lineage tracking (lineage-events.jsonl, vouchers/)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
   rules/        — Auto-loaded standards (all agents inherit)
   skills/       — Reference knowledge (playbooks, checklists)
@@ -87,9 +88,9 @@ docs/
 discussions/    — Layer 1: Immutable discussion capture
 memory/         — Layer 3: Curated promoted knowledge
   archive/      — Superseded or deprecated knowledge
-  bugs/         — Regression ledger tracking fixed bugs and their guard tests
+  bugs/         — Regression ledger tracking fixed bugs and their regression tests
   decisions/    — Promoted decision summaries
-  lessons/      — Adoption log, deploy safety rules, and external project patterns
+  lessons/      — Adoption log and external project patterns
   patterns/     — Promoted code and process patterns
   reflections/  — Promoted agent reflections
   rules/        — Promoted rules (graduated to .claude/rules/)
@@ -97,8 +98,10 @@ metrics/        — Layer 2: SQLite relational index + JSONL trend logs
                   quality_gate_log.jsonl, knowledge_pipeline_log.jsonl,
                   deploy_log.jsonl, emulator_test_log.jsonl
 scripts/        — Capture pipeline utilities + quality gate
+  lineage/      — Lineage tracking utilities (manifest, drift, init)
 src/            — Application source code
 tests/          — Test suite
+framework-lineage.yaml — Lineage manifest (project-template relationship)
 BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
 
@@ -107,6 +110,16 @@ BUILD_STATUS.md — Session state persistence (read at start, update before comp
 The `/analyze-project` command points the specialist team outward — at any external project (local or GitHub) — to evaluate patterns worth adopting. The `/discover-projects` command finds candidates via GitHub search.
 
 Analysis results are scored on a 5-dimension rubric (prevalence, elegance, evidence, fit, maintenance) out of 25. Only patterns scoring >= 20/25 are recommended. The adoption log at `memory/lessons/adoption-log.md` tracks all evaluated patterns across analyses and enforces the Rule of Three: patterns seen in 3+ independent projects get priority consideration.
+
+## Lineage Tracking
+
+The Steward agent manages framework lineage — tracking how derived projects relate to the canonical template. The `framework-lineage.yaml` manifest at the project root encodes the project's fork point, drift status, divergence distance, and pinned traits (intentional divergences).
+
+Key commands:
+- `/lineage` — Show drift status, validate manifest, generate drift reports
+- `python scripts/lineage/init_lineage.py --project-name NAME --template-version VERSION` — Initialize lineage tracking
+
+Lineage events are recorded in `.claude/custodian/lineage-events.jsonl` (append-only). SQLite tables `lineage_nodes` and `lineage_file_drift` provide queryable lineage data. See `docs/STEWARD_ARCHITECTURE.md` for the full five-phase roadmap and `docs/adr/ADR-0002-adopt-steward-agent.md` for the adoption decision.
 
 ## Quality Gate
 
@@ -151,33 +164,46 @@ Every commit must pass two gates:
 1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting, linting, tests, or coverage fail, the commit is blocked.
 2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`.
 
-For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first.
+For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching more than 5 files require `/review` — large framework changes are medium-risk regardless of whether they touch product code.
 
 ## Build Review Protocol
 
 During `/build_module`, mid-build checkpoint reviews enforce Principle #4 (independence) within the build itself — not just at commit time. When a build task matches a trigger category (new module, architecture choice, database schema, security-relevant code, API routes, external API integration, UI flow changes), the facilitator dispatches exactly 2 specialists for a focused checkpoint review.
 
-Checkpoints are capped at 2 iterations per task (Round 1 → optional Round 2). Unresolved concerns after Round 2 are captured and surfaced in the build summary but do not block the build. See `.claude/rules/build_review_protocol.md` for trigger categories, exempt tasks, and the specialist prompt template.
+Checkpoints are capped at 2 iterations per task (Round 1 → optional Round 2). Unresolved concerns after Round 2 are captured and surfaced in the build summary but do not block the build. After checkpoints, specialists who gave REVISE verdicts are asked for 150-word reflections (what they missed, improvement rules, confidence calibration). See `.claude/rules/build_review_protocol.md` for trigger categories, exempt tasks, and the specialist prompt template.
 
 ## Capture Pipeline
 
-When a `/review`, `/deliberate`, or `/analyze-project` command runs:
-1. `scripts/create_discussion.py` creates the discussion directory and registers it in SQLite
+When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-review`, or `/lineage` command runs:
+1. `scripts/create_discussion.py` creates the discussion directory and registers it in SQLite (with `command_type` inferred from slug prefix)
 2. Each agent turn is captured via `scripts/write_event.py` to events.jsonl
 3. `scripts/close_discussion.py` seals the discussion:
    - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
-   - `scripts/ingest_events.py` inserts events into SQLite (Layer 2)
-   - Knowledge amplification: `scripts/extract_findings.py` → `scripts/mine_patterns.py` (optional, non-fatal)
-   - Updates discussion status to `closed` in SQLite
+   - `scripts/ingest_events.py` inserts events into SQLite (Layer 2), including searchable `content_excerpt` and `tags`
+   - Updates discussion status to `closed` in SQLite (with `duration_minutes`)
+   - `scripts/extract_findings.py` parses events for structured findings (severity, category, summary)
+   - `scripts/mine_patterns.py` clusters similar findings using Jaccard similarity
+   - `scripts/surface_candidates.py` identifies recurring patterns for promotion queue
+   - `scripts/compute_agent_effectiveness.py` computes per-agent uniqueness/survival metrics
    - Sets discussion directory to read-only
-4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table for trend analysis
-5. `scripts/quality_gate.py` appends a JSONL record to `metrics/quality_gate_log.jsonl` on every run, enabling the independent-perspective agent to assess protocol marginal value during retros and meta-reviews
-6. Knowledge pipeline scripts (run via `/knowledge-health` or independently):
-   - `scripts/surface_candidates.py` — identifies Rule-of-Three promotion candidates
-   - `scripts/compute_agent_effectiveness.py` — tracks per-agent uniqueness and calibration
-   - `scripts/enforce_forgetting_curve.py` — flags/archives stale memory items (90/180 days)
-   - `scripts/unify_sightings.py` — merges adoption-log patterns with discussion-derived patterns
-   - `scripts/knowledge_dashboard.py` — reports on all pipeline layers → `metrics/knowledge_pipeline_log.jsonl`
+4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table. Called at synthesis time in `/review`, `/build_module`, and `/retro`.
+5. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
+6. `/knowledge-health` runs `scripts/knowledge_dashboard.py` to report on all pipeline layers and append to `metrics/knowledge_pipeline_log.jsonl`.
+
+**Context-brief events** (turn_id=1, agent="facilitator", tags="context-brief") are emitted by: /review, /deliberate, /build_module, /plan, /retro. Excluded: /analyze-project (outward-facing scouting, no developer request context), /meta-review (aggregate analysis, no single request context).
+
+**New SQLite tables**: `findings`, `promotion_candidates`, `pattern_sightings`, `agent_effectiveness`, `lineage_nodes`, `lineage_file_drift`
+**New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`
+**New columns**: `turns.content_excerpt`, `turns.tags`, `discussions.command_type`, `discussions.duration_minutes`
+
+## Known Limitations
+
+Document known data quality issues, extraction rate baselines, and enforcement gaps here as they are discovered. This section prevents the same limitations from being rediscovered across sessions.
+
+<!-- Example entries (uncomment and customize as needed):
+- The `protocol_yield` table records blocking/advisory findings but not REVISE-resolved rounds
+- The review existence check verifies that a review report exists for today, not that it covers the specific files being committed
+-->
 
 ## Autonomous Execution Authorization
 

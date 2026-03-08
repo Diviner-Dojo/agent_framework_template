@@ -63,12 +63,29 @@ python scripts/create_discussion.py "build-<module-slug>" --risk medium --mode s
 
 Store the returned `discussion_id` — all subsequent capture calls reference it.
 
-Emit a context-brief event capturing the build scope:
+Capture the context-brief as the first event (turn_id=1), before the build plan.
+
+Summarise the developer's request from the current session. Populate all four fields;
+write "(none stated)" if a field was not addressed. Strip business context (deadlines,
+client names, regulatory pressures) — record structural intent only.
+
 ```bash
-python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Context brief: Building <module-slug> from spec. Tasks: <N>. Risk level: medium. Key components: <list of major components being built>. Dependencies: <any dependencies or prerequisites>." --tags "context-brief"
+# INVARIANT: This must be the first write_event.py call in this workflow.
+# turn_id=1 is required for extraction pipeline integrity. Any reordering
+# silently breaks context-brief capture.
+python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
+  "## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [which spec is being implemented; module name and location]
+- **Developer-stated motivation**: [why this module is being built, if stated; or 'none stated']
+- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
+  --tags "context-brief"
+# If invoked without prior conversational context (cold start), populate all four
+# fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
+# invocations are queryable: --tags "context-brief,context-brief-cold-start"
 ```
 
-Capture the build plan as the next event:
+Capture the build plan as the second event:
 ```bash
 python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Build plan: <N tasks from spec>" --tags "build-plan"
 ```
@@ -107,15 +124,15 @@ After generating code for the task, evaluate whether it triggers a checkpoint pe
 1. Select 2 specialists from the trigger table in the rule file.
 2. Dispatch both specialists in parallel:
    ```
-   Task(subagent_type="<specialist>", model="sonnet", prompt="Build Checkpoint Review: <discussion_id>\nTask: <N> - <title>\nTrigger: <category>\n\nReview this code from your specialist perspective. This is a mid-build checkpoint, not a full review.\n\nFocus on:\n- Whether the implementation approach is sound\n- Whether it aligns with existing ADRs and patterns\n- Any risks that would be expensive to fix later\n\n<code content or file paths>\n\nRespond with APPROVE or REVISE (under 200 words).")
+   Task(subagent_type="<specialist>", model="sonnet", prompt="Build Checkpoint Review: <discussion_id>\nTask: <N> - <title>\nTrigger: <category>\n\n## Developer Context\n[Paste the four-field content from the context-brief event written in Step 2]\n\nReview this code from your specialist perspective. This is a mid-build checkpoint, not a full review.\n\nFocus on:\n- Whether the implementation approach is sound\n- Whether it aligns with existing ADRs and patterns\n- Any risks that would be expensive to fix later\n\n<code content or file paths>\n\nRespond with APPROVE or REVISE (under 200 words).")
    ```
 3. Capture each specialist's response:
    ```bash
    python scripts/write_event.py "<discussion_id>" "<specialist>" "critique" "<response>" --tags "checkpoint,task-<N>" --confidence <score>
    ```
-4. If both APPROVE → continue to next task.
-5. If any REVISE → implement the requested changes, then re-dispatch **only** the specialist(s) who said REVISE for Round 2.
-6. After Round 2, if still REVISE → capture with `--risk-flags "unresolved-checkpoint"` and continue.
+4. If both APPROVE -> continue to next task.
+5. If any REVISE -> implement the requested changes, then re-dispatch **only** the specialist(s) who said REVISE for Round 2.
+6. After Round 2, if still REVISE -> capture with `--risk-flags "unresolved-checkpoint"` and continue.
 
 **If checkpoint does NOT trigger:**
 
@@ -173,10 +190,23 @@ python scripts/record_yield.py "<discussion_id>" checkpoint <outcome> --blocking
 
 Where `<outcome>` is: approve, revise-resolved, or revise-unresolved.
 
+### Step 7b: Request Agent Reflections
+
+After recording yield, request reflections from each checkpoint specialist who participated (non-blocking). For each specialist who gave a REVISE verdict:
+
+Dispatch a reflection request (sonnet tier, 150-word cap):
+```
+Task(subagent_type="<agent-name>", model="sonnet", prompt="Reflection Request: <discussion_id>\n\nYou reviewed a build checkpoint. Reflect briefly (under 150 words):\n1. What did you miss?\n2. What improvement rule would you propose?\n3. Was your confidence appropriate?\n\nFormat:\n## What I Missed\n<text>\n## Candidate Improvement Rule\n<text>\n## Confidence Calibration\nDelta: +/-Z.Z")
+```
+
+Capture via `write_event.py` with intent=reflection, tags=reflection. If a specialist fails to produce a reflection, log the gap and continue.
+
 Seal the discussion:
 ```bash
 python scripts/close_discussion.py "<discussion_id>"
 ```
+
+Note: `close_discussion.py` automatically extracts findings, surfaces promotion candidates, and computes agent effectiveness.
 
 ## Step 8: Present Build Summary
 

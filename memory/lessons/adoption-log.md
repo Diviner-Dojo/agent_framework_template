@@ -43,7 +43,7 @@ Each entry records:
 ---
 
 ### Analysis: agentic_journal Framework Enhancements (2026-02-28)
-**Source project**: `C:\Work\AI\agentic_journal` — Flutter/Dart journaling app, first real-world project built on this framework.
+**Source project**: agentic_journal — Flutter/Dart journaling app, first real-world project built on this framework.
 **Analysis report**: `docs/reviews/ANALYSIS-20260228-agentic-journal-framework-enhancements.md`
 **Primary theme**: Regression prevention infrastructure
 **All 16 patterns recommended for adoption** (confidence: 0.97; 13 from initial review + 3 from supplemental versioning review)

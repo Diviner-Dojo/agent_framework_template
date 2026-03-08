@@ -101,12 +101,30 @@ python scripts/create_discussion.py "<spec-slug>-spec-review" --risk <level> --m
 
 Store the returned discussion ID — it is needed for all subsequent capture steps.
 
-## Step 3b: Emit Context Brief
+## Step 3.5: Write Context-Brief (Before Specialist Dispatch)
 
-Immediately after creating the discussion, emit a context-brief event.
+Immediately after creating the discussion, capture a context-brief event. This must be
+written before any specialist is dispatched — it produces `turn_id=1` in the discussion
+and injects developer framing into specialist prompts.
+
+Summarise the developer's request from the current session. Populate all four fields;
+write "(none stated)" if a field was not addressed. Strip business context (deadlines,
+client names, regulatory pressures) — record structural intent only.
 
 ```bash
-python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Context brief: Planning <feature/goal>. Risk level: <level>. Stakeholders: <who is affected>. Success criteria: <what defines done>. Constraints: <known constraints>." --tags "context-brief"
+# INVARIANT: This must be the first write_event.py call in this workflow.
+# turn_id=1 is required for extraction pipeline integrity. Any reordering
+# silently breaks context-brief capture.
+python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
+  "## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [what spec or feature is being planned]
+- **Developer-stated motivation**: [why this feature is needed, if stated; or 'none stated']
+- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
+  --tags "context-brief"
+# If invoked without prior conversational context (cold start), populate all four
+# fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
+# invocations are queryable: --tags "context-brief,context-brief-cold-start"
 ```
 
 ## Step 4: Dispatch Specialists and Capture
@@ -118,7 +136,7 @@ Dispatch relevant specialists to review the spec (not code — the spec itself):
 
 For each specialist, use the Task tool:
 ```
-Task(subagent_type="<agent-name>", prompt="Spec Review: <discussion_id>\nRisk Level: <level>\n\nReview the following spec from your specialist perspective:\n\n<spec content>\n\nProvide structured analysis with findings (blocking vs advisory) and a verdict.")
+Task(subagent_type="<agent-name>", prompt="Spec Review: <discussion_id>\nRisk Level: <level>\n\n## Developer Context\n[Paste the four-field content from the context-brief event written in Step 3.5]\n\nReview the following spec from your specialist perspective:\n\n<spec content>\n\nProvide structured analysis with findings (blocking vs advisory) and a verdict.")
 ```
 
 Run independent specialists in parallel.
@@ -130,9 +148,18 @@ python scripts/write_event.py "<discussion_id>" "<agent-name>" "critique" "<find
 
 ## Step 5: Synthesize and Revise
 
-Write the facilitator synthesis event:
+Write the facilitator synthesis event. **The synthesis content must begin with a `## Request Context` section** before the findings summary. Populate all four fields from the developer's request and session context.
+
 ```
-python scripts/write_event.py "<discussion_id>" "facilitator" "synthesis" "<synthesis of all findings and spec changes made>" --confidence <score>
+python scripts/write_event.py "<discussion_id>" "facilitator" "synthesis" \
+  "## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [what spec or feature is being planned]
+- **Developer-stated motivation**: [why this feature is needed, if stated]
+- **Explicit constraints**: [any developer-stated constraints; or 'none stated']
+
+## Synthesis
+<summary of all findings and spec changes made>" --confidence <score>
 ```
 
 Incorporate specialist feedback into the spec. Update the spec's:

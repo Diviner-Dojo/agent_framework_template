@@ -6,8 +6,12 @@ Usage:
 This script:
 1. Generates transcript.md from events.jsonl
 2. Ingests events into SQLite
-3. Marks the discussion as closed in SQLite
-4. Sets events.jsonl and transcript.md to read-only (advisory)
+3. Marks the discussion as closed in SQLite (with duration_minutes)
+4. Extracts findings into the findings table
+5. Mines patterns and records sightings
+6. Surfaces promotion candidates
+7. Computes agent effectiveness
+8. Sets events.jsonl and transcript.md to read-only (advisory)
 """
 
 import argparse
@@ -40,7 +44,7 @@ def close_discussion(discussion_id: str) -> None:
     print(f"Ingesting events for {discussion_id}...")
     ingest_events(discussion_id)
 
-    # Step 3: Mark discussion as closed in SQLite
+    # Step 3: Mark discussion as closed in SQLite and compute duration
     if DB_PATH.exists():
         now = datetime.now(UTC).isoformat()
         conn = sqlite3.connect(str(DB_PATH))
@@ -49,22 +53,56 @@ def close_discussion(discussion_id: str) -> None:
             "UPDATE discussions SET status = 'closed', closed_at = ? WHERE discussion_id = ?",
             (now, discussion_id),
         )
+        # Compute duration_minutes from created_at to closed_at
+        conn.execute(
+            """UPDATE discussions
+               SET duration_minutes = ROUND(
+                   (julianday(closed_at) - julianday(created_at)) * 24 * 60, 1
+               )
+               WHERE discussion_id = ?""",
+            (discussion_id,),
+        )
         conn.commit()
         conn.close()
         print(f"Discussion {discussion_id} marked as closed in SQLite")
 
-    # Step 4: Knowledge pipeline amplification (optional — failures don't break closure)
+    # Step 4: Extract findings
     try:
-        from extract_findings import extract_findings as _extract
-        from mine_patterns import mine_patterns as _mine
+        from extract_findings import extract_findings
 
-        print(f"Running knowledge pipeline for {discussion_id}...")
-        _extract(discussion_id)
-        _mine(discussion_id)
-    except Exception as exc:
-        print(f"Knowledge pipeline skipped (non-fatal): {exc}")
+        print(f"Extracting findings for {discussion_id}...")
+        extract_findings(discussion_id)
+    except Exception as e:
+        print(f"Warning: findings extraction failed (non-fatal): {e}")
 
-    # Step 5: Set files to read-only (advisory immutability)
+    # Step 5: Mine patterns and record sightings
+    try:
+        from mine_patterns import mine_patterns
+
+        print(f"Mining patterns for {discussion_id}...")
+        mine_patterns(discussion_id=discussion_id)
+    except Exception as e:
+        print(f"Warning: pattern mining failed (non-fatal): {e}")
+
+    # Step 6: Surface promotion candidates
+    try:
+        from surface_candidates import surface_candidates
+
+        print(f"Surfacing promotion candidates for {discussion_id}...")
+        surface_candidates(discussion_id=discussion_id)
+    except Exception as e:
+        print(f"Warning: candidate surfacing failed (non-fatal): {e}")
+
+    # Step 7: Compute agent effectiveness
+    try:
+        from compute_agent_effectiveness import compute_effectiveness
+
+        print(f"Computing agent effectiveness for {discussion_id}...")
+        compute_effectiveness(discussion_id)
+    except Exception as e:
+        print(f"Warning: effectiveness computation failed (non-fatal): {e}")
+
+    # Step 8: Set files to read-only (advisory immutability)
     for filename in ["events.jsonl", "transcript.md"]:
         filepath = disc_dir / filename
         if filepath.exists():

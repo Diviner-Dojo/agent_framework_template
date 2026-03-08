@@ -100,23 +100,41 @@ print(f'State initialized: {state_path}')
 "
 ```
 
-## Step 1b: Emit Context Brief
+## Step 1.5: Write Context-Brief (Before Specialist Dispatch)
 
-Immediately after creating the discussion, emit a context-brief event that captures what is being discussed and why.
+Immediately after initializing `state.json`, capture a context-brief event. This must be
+written before any specialist is dispatched — it produces `turn_id=1` in the discussion
+and injects developer framing into specialist prompts.
+
+Summarise the developer's request from the current session. Populate all four fields;
+write "(none stated)" if a field was not addressed. Strip business context (deadlines,
+client names, regulatory pressures) — record structural intent only.
 
 ```bash
-python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Context brief: Deliberating on <topic>. Risk level: <level>. Key questions: <what needs to be resolved>. Constraints: <any known constraints>." --tags "context-brief"
+# INVARIANT: This must be the first write_event.py call in this workflow.
+# turn_id=1 is required for extraction pipeline integrity. Any reordering
+# silently breaks context-brief capture.
+python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
+  "## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [topic or materials handed to this deliberation]
+- **Developer-stated motivation**: [why this topic is being deliberated, if stated; or 'none stated']
+- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
+  --tags "context-brief"
+# If invoked without prior conversational context (cold start), populate all four
+# fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
+# invocations are queryable: --tags "context-brief,context-brief-cold-start"
 ```
 
 ## Step 2: Assess and Select Specialists
 
 Based on the topic, determine which specialist agents should participate:
-- Architecture questions → architecture-consultant
-- Security topics → security-specialist
-- Quality/testing topics → qa-specialist
-- Performance concerns → performance-analyst
-- Documentation/knowledge → docs-knowledge
-- Complex or high-risk topics → independent-perspective
+- Architecture questions -> architecture-consultant
+- Security topics -> security-specialist
+- Quality/testing topics -> qa-specialist
+- Performance concerns -> performance-analyst
+- Documentation/knowledge -> docs-knowledge
+- Complex or high-risk topics -> independent-perspective
 
 Always include at least 2 specialists.
 
@@ -124,7 +142,7 @@ Always include at least 2 specialists.
 
 For each selected specialist, use the Task tool:
 ```
-Task(subagent_type="<agent-name>", prompt="Discussion: <discussion_id>\nTopic: <topic>\n\nAnalyze this topic from your specialist perspective. Provide your structured analysis following your output format.")
+Task(subagent_type="<agent-name>", prompt="Discussion: <discussion_id>\nTopic: <topic>\n\n## Developer Context\n[Paste the four-field content from the context-brief event written in Step 1.5]\n\nAnalyze this topic from your specialist perspective. Provide your structured analysis following your output format.")
 ```
 
 Run independent specialists in parallel where possible.
@@ -142,6 +160,19 @@ python scripts/write_event.py "<discussion_id>" "<agent-name>" "critique" "<resp
 ```
 
 ## Step 5: Synthesize
+
+**The synthesis content must begin with a `## Request Context` section** before the
+analysis body. Populate all four fields from the developer's original request and session
+context. Write "(none stated)" for any field not explicitly addressed — do NOT leave
+fields blank or as placeholders.
+
+```
+## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [topic or materials handed to this deliberation]
+- **Developer-stated motivation**: [why this topic is being deliberated, if stated]
+- **Explicit constraints**: [any developer-stated constraints; or "none stated"]
+```
 
 Write your synthesis as the facilitator:
 ```

@@ -72,7 +72,7 @@ If an in-progress session is found, ask the developer: **Resume the previous ses
 ## Step 1: Resolve the Target
 
 Accept one of:
-- A local filesystem path (e.g., `C:\Work\Projects\SomeProject`)
+- A local filesystem path (e.g., `/path/to/SomeProject`)
 - A GitHub `owner/repo` slug (e.g., `tiangolo/fastapi`)
 - A full GitHub URL (e.g., `https://github.com/tiangolo/fastapi`)
 

@@ -89,11 +89,11 @@ Show the developer:
 ### Step 3: Promote
 
 Based on artifact type, save to the appropriate `memory/` subdirectory:
-- Decision summaries → `memory/decisions/`
-- Validated patterns/anti-patterns → `memory/patterns/`
-- Agent reflections → `memory/reflections/`
-- Synthesized lessons → `memory/lessons/`
-- Rule candidates → `memory/rules/` (may later be promoted to `.claude/rules/`)
+- Decision summaries -> `memory/decisions/`
+- Validated patterns/anti-patterns -> `memory/patterns/`
+- Agent reflections -> `memory/reflections/`
+- Synthesized lessons -> `memory/lessons/`
+- Rule candidates -> `memory/rules/` (may later be promoted to `.claude/rules/`)
 
 ### Step 4: Update SQLite
 

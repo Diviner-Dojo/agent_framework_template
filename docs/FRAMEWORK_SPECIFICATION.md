@@ -3,9 +3,9 @@ title: "AI-Native Agentic Development Framework — Full Specification"
 version: "2.1"
 status: living-document
 created: "2026-02-18"
-last_updated: "2026-02-19"
+last_updated: "2026-03-07"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
-total_files: ~90
+total_files: ~130
 total_lines: ~11,500
 external_analyses: 7
 patterns_evaluated: 59
@@ -343,7 +343,7 @@ Complex commands embed **CRITICAL BEHAVIORAL RULES** at the top of their definit
 
 ## 5. Agent Architecture
 
-The framework deploys **9 specialist agents**, each with a defined role, model tier, activation triggers, and anti-patterns.
+The framework deploys **11 specialist agents**, each with a defined role, model tier, activation triggers, and anti-patterns.
 
 ### Design Principles
 
@@ -366,6 +366,8 @@ The framework deploys **9 specialist agents**, each with a defined role, model t
 | **independent-perspective** | sonnet | [`.claude/agents/independent-perspective.md`](../.claude/agents/independent-perspective.md) | Anti-groupthink, hidden assumptions, pre-mortem, alternative exploration |
 | **project-analyst** | sonnet | [`.claude/agents/project-analyst.md`](../.claude/agents/project-analyst.md) | External project scout + orchestrator for `/analyze-project` (two-phase: Survey → Orchestrate) |
 | **educator** | haiku | [`.claude/agents/educator.md`](../.claude/agents/educator.md) | Walkthroughs, quizzes, Bloom's taxonomy assessment, mastery tier tracking |
+| **steward** | sonnet | [`.claude/agents/steward.md`](../.claude/agents/steward.md) | Framework lineage tracking, drift detection, manifest validation, upstream-downstream relationship management |
+| **ux-evaluator** | sonnet | [`.claude/agents/ux-evaluator.md`](../.claude/agents/ux-evaluator.md) | UX friction evaluation, interaction flow analysis, state feedback, platform conventions, accessibility |
 
 ### Model-Tier Assignment
 
@@ -374,7 +376,7 @@ Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
 | Tier | Purpose | Agents |
 |------|---------|--------|
 | **opus** | Complex generation and architectural reasoning | facilitator, architecture-consultant |
-| **sonnet** | Analysis, review, and evaluation | security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst |
+| **sonnet** | Analysis, review, and evaluation | security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst, steward, ux-evaluator |
 | **haiku** | Mechanical verification and lightweight tasks | educator |
 
 *Model-tier assignment achieved* ***Rule of Three*** *status with 4 independent sightings: CritInsight, claude-agentic-framework, wshobson/agents, self-improving-coding-agent. Originally adopted from* ***CritInsight*** *(Score: 22/25 + 2 Rule of Three bonus = 24/25,* [*ANALYSIS-20260219-033023*](reviews/ANALYSIS-20260219-033023-critinsight.md)*).*
@@ -387,7 +389,7 @@ Each agent's description includes explicit activation criteria (`"Activate for: 
 
 ### Embedded Anti-Patterns
 
-All 9 agent definitions include "Anti-patterns to avoid" sections with 5 domain-specific prohibitions each. Prohibitions are more actionable than permissions — each agent carries explicit guidance on what NOT to recommend, preventing over-flagging and off-target suggestions.
+All 11 agent definitions include "Anti-patterns to avoid" sections with 5 domain-specific prohibitions each. Prohibitions are more actionable than permissions — each agent carries explicit guidance on what NOT to recommend, preventing over-flagging and off-target suggestions.
 
 *Adopted from* ***self-improving-coding-agent*** *(Score: 20/25,* [*ANALYSIS-20260219-043657*](reviews/ANALYSIS-20260219-043657-self-improving-coding-agent.md)*).*
 
@@ -395,7 +397,7 @@ All 9 agent definitions include "Anti-patterns to avoid" sections with 5 domain-
 
 ## 6. Command Reference
 
-The framework provides **12 slash commands** in [`.claude/commands/`](../.claude/commands/). All commands include pre-flight checks that verify prerequisites before execution.
+The framework provides **16 slash commands** in [`.claude/commands/`](../.claude/commands/). All commands include pre-flight checks that verify prerequisites before execution.
 
 ### Core Workflow Commands
 
@@ -468,6 +470,28 @@ Promotes artifacts from Layers 1/2 to curated memory (Layer 3). Requires 2+ inde
 **File**: [`.claude/commands/onboard.md`](../.claude/commands/onboard.md) (127 lines)
 
 Steps: codebase mapping → reverse-engineered ADR creation → pattern extraction → baseline test generation → first structured discussion.
+
+### Lineage & Release Commands
+
+#### `/batch-evaluate` — Batch Adoption Evaluation
+**File**: [`.claude/commands/batch-evaluate.md`](../.claude/commands/batch-evaluate.md)
+
+Processes stale PENDING patterns from `memory/lessons/adoption-log.md`, reviews evidence, checks artifact existence, and presents batch verdicts for developer approval. Expected cadence: quarterly at meta-review, or when `/retro` flags stale-pending > 5.
+
+#### `/knowledge-health` — Knowledge Pipeline Health Check
+**File**: [`.claude/commands/knowledge-health.md`](../.claude/commands/knowledge-health.md)
+
+Runs `scripts/knowledge_dashboard.py` to report on all pipeline layers (discussions, relational index, findings, patterns, curated memory). Includes forgetting curve status and promotion candidate checks. Appends results to `metrics/knowledge_pipeline_log.jsonl`.
+
+#### `/lineage` — Framework Lineage Status
+**File**: [`.claude/commands/lineage.md`](../.claude/commands/lineage.md)
+
+Dispatches the Steward agent to report on framework lineage: drift analysis, manifest validation, and divergence tracking. Results are captured as a discussion via the standard capture pipeline.
+
+#### `/ship` — Release Workflow
+**File**: [`.claude/commands/ship.md`](../.claude/commands/ship.md)
+
+Full release workflow: quality gate verification, testing checklist, version bump, changelog generation, and rollback strategy documentation. Requires all quality gate checks to pass before proceeding.
 
 ### Education Commands
 
@@ -985,10 +1009,11 @@ The Todo API has been through structured multi-agent review:
 
 ### Rule Files (Auto-Loaded)
 
-All agents inherit 6 rule files from [`.claude/rules/`](../.claude/rules/):
+All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 
 | File | Scope |
 |------|-------|
+| [`build_review_protocol.md`](../.claude/rules/build_review_protocol.md) | Mid-build checkpoint reviews, Principle #4 enforcement |
 | [`coding_standards.md`](../.claude/rules/coding_standards.md) | Python conventions, naming, structure |
 | [`commit_protocol.md`](../.claude/rules/commit_protocol.md) | Quality gate → review → education gate → commit |
 | [`documentation_policy.md`](../.claude/rules/documentation_policy.md) | What, where, and how to document |
@@ -1022,8 +1047,8 @@ All agents inherit 6 rule files from [`.claude/rules/`](../.claude/rules/):
 |---------|-------|---------|
 | Layer 1 capture pipeline (create → write → generate → close) | `scripts/create_discussion.py`, `write_event.py`, `generate_transcript.py`, `close_discussion.py` | 10 discussions captured, 24+ tests |
 | Layer 2 SQLite indexing | `scripts/init_db.py`, `ingest_events.py`, `record_education.py` | 5 tables, 10 indexes, tested |
-| 9 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns |
-| 12 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
+| 11 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns |
+| 16 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
 | 7 hooks (10 files) | `.claude/hooks/*` | File locking, secret detection, auto-format, session continuity |
 | Quality gate (5 checks) | `scripts/quality_gate.py` + pre-commit hook | Runs on every commit |
 | Sample Todo API with full CRUD + tests | `src/*.py` + `tests/test_routes.py` | 15 async tests, reviewed |
@@ -1034,8 +1059,14 @@ All agents inherit 6 rule files from [`.claude/rules/`](../.claude/rules/):
 | LLM-gated test markers | `tests/conftest.py`, `pyproject.toml` | `--run-llm`, `--run-slow` |
 | Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 59 patterns tracked |
 | 5 skill reference documents | `.claude/skills/*/SKILL.md` | Security, performance, testing, patterns, ADR |
-| 6 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing |
+| 7 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing, build review |
 | 5 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review |
+| Steward agent + lineage tracking | `.claude/agents/steward.md`, `scripts/lineage/`, `framework-lineage.yaml`, `.claude/custodian/` | ADR-0002 accepted, Phase 1 operational |
+| UX evaluator agent | `.claude/agents/ux-evaluator.md` | Interaction flow, accessibility, platform conventions |
+| Build review protocol | `.claude/rules/build_review_protocol.md` | Mid-build checkpoint reviews, Principle #4 |
+| 4 new commands (batch-evaluate, knowledge-health, lineage, ship) | `.claude/commands/*.md` | Lineage, release, knowledge pipeline, adoption evaluation |
+| Lineage test suite | `tests/test_lineage.py` | Manifest parsing, drift detection |
+| Education documentation | `WALKTHROUGH.md`, `FRAMEWORK_QUIZ.md`, `EDUCATOR_NOTES.md`, `EDUCATION_GATE_*.md` | Full education gate materials |
 
 ### Implemented but Unused / Under-Tested
 
@@ -1104,7 +1135,7 @@ Complete record of all 59 patterns evaluated across 7 external project analyses,
 | Pattern | Score | Status | Implementing File(s) |
 |---------|-------|--------|---------------------|
 | PostToolUse Auto-Format Hook | 24/25 | **ADOPTED** (PENDING) | `.claude/hooks/auto-format.sh` |
-| Model-Tier Agent Assignment | 22/25 | **ADOPTED** (PENDING) | All 9 agent YAML files |
+| Model-Tier Agent Assignment | 22/25 | **ADOPTED** (PENDING) | All 11 agent YAML files |
 | Session Continuity Hooks | 21/25 | **ADOPTED** (PENDING) | `pre-compact.ps1`, `session-start.ps1`, `BUILD_STATUS.md` |
 | Spec-to-Code Mapping Table | 19/25 | DEFERRED | Project too small to benefit yet |
 | Protocol-Based DI with Factory | 19/25 | DEFERRED | Over-engineered at ~345 LOC |
@@ -1133,17 +1164,17 @@ Complete record of all 59 patterns evaluated across 7 external project analyses,
 
 | Pattern | Score | Status | Implementing File(s) |
 |---------|-------|--------|---------------------|
-| "Use When" Activation Triggers | 23/25 | **ADOPTED** (PENDING) | All 9 agent description fields |
+| "Use When" Activation Triggers | 23/25 | **ADOPTED** (PENDING) | All 11 agent description fields |
 | CRITICAL BEHAVIORAL RULES Framing | 21/25 | **ADOPTED** (PENDING) | `review.md`, `deliberate.md`, `analyze-project.md`, `build_module.md` |
 | State-Persistent Multi-Phase Workflows | 20/25 | **ADOPTED** (PENDING) | `review.md`, `deliberate.md`, `analyze-project.md` (state.json) |
-| Pre-Flight Checks for Commands | 20/25 | **ADOPTED** (PENDING) | All 12 commands |
+| Pre-Flight Checks for Commands | 20/25 | **ADOPTED** (PENDING) | All 16 commands |
 | Model-Tier Agent Assignment *(4th sighting)* | — | ADOPTED | (Already adopted) |
 | `inherit` Model Tier | 18/25 | DEFERRED | Needs per-agent minimum tier guardrails |
 | ACH Methodology for Independent Perspective | 18/25 | DEFERRED | Unproven in AI agent context |
 | File Ownership Invariant | 16/25 | DEFERRED | Subagents are read-only; inapplicable |
 | Three-Tier Progressive Disclosure for Skills | 14/25 | REJECTED | Requires Claude Code plugin infrastructure |
 | Conductor Track Management | 13/25 | REJECTED | Different problem domain |
-| Plugin Marketplace Architecture | 12/25 | REJECTED | Wrong scale for 9 agents |
+| Plugin Marketplace Architecture | 12/25 | REJECTED | Wrong scale for 11 agents |
 | Agent-Teams Parallel Implementation | 10/25 | REJECTED | Requires experimental/unstable infrastructure |
 
 ### 5. self-learning-agent (daegwang) — [ANALYSIS-20260219-042113](reviews/ANALYSIS-20260219-042113-self-learning-agent.md)
@@ -1239,11 +1270,17 @@ agent_framework_template/
 │
 ├── CLAUDE.md                          # Project constitution (loaded by all agents)
 ├── BUILD_STATUS.md                    # Ephemeral session state persistence
+├── WALKTHROUGH.md                     # Guided framework walkthrough (45-60 min)
+├── FRAMEWORK_QUIZ.md                  # Comprehension quiz for framework concepts
+├── EDUCATOR_NOTES.md                  # Notes for the educator agent
+├── EDUCATION_GATE_START.md            # Education gate entry point
+├── EDUCATION_GATE_MANIFEST.md         # Education gate manifest
+├── framework-lineage.yaml            # Lineage manifest (project-template relationship)
 ├── pyproject.toml                     # Python config: ruff, pytest, coverage
 ├── requirements.txt                   # 8 pinned dependencies
 │
 ├── .claude/
-│   ├── agents/                        # 9 specialist agent definitions
+│   ├── agents/                        # 11 specialist agent definitions
 │   │   ├── facilitator.md             #   opus — orchestrator
 │   │   ├── architecture-consultant.md #   opus — structural integrity
 │   │   ├── security-specialist.md     #   sonnet — OWASP, red-team
@@ -1252,20 +1289,26 @@ agent_framework_template/
 │   │   ├── docs-knowledge.md          #   sonnet — documentation completeness
 │   │   ├── independent-perspective.md #   sonnet — anti-groupthink
 │   │   ├── project-analyst.md         #   sonnet — external project analysis
-│   │   └── educator.md               #   haiku — walkthroughs, quizzes
+│   │   ├── educator.md               #   haiku — walkthroughs, quizzes
+│   │   ├── steward.md                #   sonnet — framework lineage, drift detection
+│   │   └── ux-evaluator.md           #   sonnet — UX friction, accessibility
 │   │
-│   ├── commands/                      # 12 slash commands
-│   │   ├── review.md                  #   Multi-agent code review
-│   │   ├── deliberate.md              #   Structured discussion
+│   ├── commands/                      # 16 slash commands
 │   │   ├── analyze-project.md         #   External project analysis
+│   │   ├── batch-evaluate.md          #   Batch adoption evaluation
 │   │   ├── build_module.md            #   Spec-driven module building
+│   │   ├── deliberate.md              #   Structured discussion
 │   │   ├── discover-projects.md       #   GitHub search
+│   │   ├── knowledge-health.md        #   Knowledge pipeline health check
+│   │   ├── lineage.md                #   Framework lineage status
 │   │   ├── meta-review.md             #   Quarterly framework evaluation
 │   │   ├── onboard.md                 #   Project takeover protocol
 │   │   ├── plan.md                    #   Feature planning
 │   │   ├── promote.md                 #   Layer 3 memory promotion
 │   │   ├── quiz.md                    #   Bloom's taxonomy quiz
 │   │   ├── retro.md                   #   Sprint retrospective
+│   │   ├── review.md                  #   Multi-agent code review
+│   │   ├── ship.md                    #   Full release workflow
 │   │   └── walkthrough.md             #   Guided code walkthrough
 │   │
 │   ├── hooks/                         # 10 files implementing 7 logical hooks
@@ -1281,7 +1324,11 @@ agent_framework_template/
 │   │   ├── .locks/                    #   Runtime lock state (gitignored)
 │   │   └── .backups/                  #   File backups (gitignored)
 │   │
-│   ├── rules/                         # 6 auto-loaded rule files
+│   ├── custodian/                     # Steward lineage tracking
+│   │   └── lineage-events.jsonl      #   Append-only lineage event log
+│   │
+│   ├── rules/                         # 7 auto-loaded rule files
+│   │   ├── build_review_protocol.md  #   Mid-build checkpoint reviews
 │   │   ├── coding_standards.md
 │   │   ├── commit_protocol.md
 │   │   ├── documentation_policy.md
@@ -1298,8 +1345,10 @@ agent_framework_template/
 │
 ├── docs/
 │   ├── FRAMEWORK_SPECIFICATION.md     # THIS DOCUMENT
+│   ├── STEWARD_ARCHITECTURE.md       # Steward agent architecture and lineage design
 │   ├── adr/                           # Architecture Decision Records
-│   │   └── ADR-0001-adopt-agentic-framework.md
+│   │   ├── ADR-0001-adopt-agentic-framework.md
+│   │   └── ADR-0002-adopt-steward-agent.md
 │   ├── reviews/                       # Review + analysis reports
 │   │   ├── REV-*.md                   #   Code review reports
 │   │   └── ANALYSIS-*.md             #   External project analyses
@@ -1326,18 +1375,29 @@ agent_framework_template/
 │       ├── DISC-20260219-042737-analyze-agenticakm/
 │       ├── DISC-20260219-042935-analyze-self-improving-coding-agent/
 │       └── DISC-20260219-051846-framework-readiness-review/
+│   ├── 2026-03-03/
+│   │   └── DISC-20260303-183248-review-framework-enhancements-22-items/
+│   └── 2026-03-07/
+│       └── DISC-20260307-151526-review-steward-phase1/
 │
 ├── memory/                            # Layer 3: Curated promoted knowledge
 │   ├── archive/                       #   Superseded/deprecated
+│   ├── bugs/
+│   │   └── regression-ledger.md      #   Tracks fixed bugs and regression tests
 │   ├── decisions/                     #   Promoted decision summaries
 │   ├── lessons/
-│   │   └── adoption-log.md           #   Learning ledger (59 patterns tracked)
+│   │   ├── adoption-log.md           #   Learning ledger (59 patterns tracked)
+│   │   └── deploy-safety.md          #   Deployment safety lessons
 │   ├── patterns/                      #   Promoted code/process patterns
 │   ├── reflections/                   #   Promoted agent reflections
 │   └── rules/                         #   Promoted rules (graduate to .claude/rules/)
 │
-├── metrics/                           # Layer 2: SQLite relational index
-│   └── evaluation.db                  #   5 tables, 10 indexes
+├── metrics/                           # Layer 2: SQLite relational index + trend logs
+│   ├── evaluation.db                  #   5 tables, 10 indexes
+│   ├── quality_gate_log.jsonl        #   Quality gate run history
+│   ├── knowledge_pipeline_log.jsonl  #   Knowledge pipeline health logs
+│   ├── deploy_log.jsonl              #   Deployment trend log
+│   └── emulator_test_log.jsonl       #   Test execution log
 │
 ├── scripts/                           # Capture pipeline + quality utilities
 │   ├── init_db.py                     #   SQLite schema creation
@@ -1348,9 +1408,27 @@ agent_framework_template/
 │   ├── close_discussion.py            #   Orchestrates discussion closure
 │   ├── ingest_reflection.py           #   Reflection → SQLite
 │   ├── record_education.py            #   Education results → SQLite
-│   ├── quality_gate.py                #   5-check quality enforcement
+│   ├── quality_gate.py                #   Quality enforcement checks
 │   ├── redact_secrets.py              #   Read-time secret redaction (15 patterns)
-│   └── backup_utils.py               #   Backup/restore/conflict detection
+│   ├── backup_utils.py               #   Backup/restore/conflict detection
+│   ├── extract_findings.py           #   Parse events for structured findings
+│   ├── mine_patterns.py              #   Cluster similar findings (Jaccard similarity)
+│   ├── surface_candidates.py         #   Identify recurring patterns for promotion
+│   ├── compute_agent_effectiveness.py #   Per-agent uniqueness/survival metrics
+│   ├── record_yield.py               #   Protocol yield metrics
+│   ├── knowledge_dashboard.py        #   Knowledge pipeline health check
+│   ├── enforce_forgetting_curve.py   #   90-day forgetting curve enforcement
+│   ├── pipeline_utils.py             #   Shared pipeline utilities
+│   ├── check_stale_adoptions.py      #   Check stale adoption patterns
+│   ├── unify_sightings.py            #   Unify pattern sightings across analyses
+│   ├── backfill_findings.py          #   Backfill historical findings
+│   ├── backfill_turn_content.py      #   Backfill turn content excerpts
+│   └── lineage/                       #   Lineage tracking utilities
+│       ├── __init__.py
+│       ├── _utils.py                 #   Shared lineage helpers
+│       ├── drift.py                  #   Drift detection between project and template
+│       ├── init_lineage.py           #   Lineage initialization
+│       └── manifest.py              #   Manifest parsing and validation
 │
 ├── src/                               # Reference implementation (Todo API)
 │   ├── __init__.py
@@ -1367,6 +1445,7 @@ agent_framework_template/
     ├── test_capture_pipeline.py       #   24 capture pipeline tests
     ├── test_backup_utils.py           #   12 backup utility tests
     ├── test_redact_secrets.py         #   ~20 secret redaction tests
+    ├── test_lineage.py               #   Lineage manifest, drift detection tests
     └── test_simulated_review.py       #   2 end-to-end review simulation tests
 ```
 
@@ -1382,3 +1461,8 @@ agent_framework_template/
 | 2026-02-19 | 7 external projects analyzed, 59 patterns evaluated, 20 adopted |
 | 2026-02-19 | Framework readiness review (REV-20260219-051846) — 12 required changes identified |
 | 2026-02-19 | This specification document created |
+| 2026-03-03 | Framework enhancements review — 22-item review (REV-20260303-183600) |
+| 2026-03-07 | Steward agent adopted (ADR-0002), lineage tracking Phase 1 implemented |
+| 2026-03-07 | UX evaluator agent added, build review protocol rule added |
+| 2026-03-07 | Four new commands: `/batch-evaluate`, `/knowledge-health`, `/lineage`, `/ship` |
+| 2026-03-07 | Specification refreshed to current project state (v2.1 counts updated) |
