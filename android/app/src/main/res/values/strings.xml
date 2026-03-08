@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Quick Capture widget description shown in the widget picker (Phase 4B). -->
-    <string name="widget_description">Start a new journal entry from your home screen</string>
-</resources>

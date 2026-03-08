@@ -1,8 +1,0 @@
-tags:
-  regression:
-    # Regression tests that prevent previously-fixed bugs from re-appearing.
-    # See: memory/bugs/regression-ledger.md
-  uses_llm:
-    # Tests that call real LLM APIs (opt-in, not run in CI).
-  slow:
-    # Slow-running tests (opt-in).
