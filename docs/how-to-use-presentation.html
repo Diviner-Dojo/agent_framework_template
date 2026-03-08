@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to Use — AI-Native Agentic Development Framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #111827;
+  --bg-card: rgba(255,255,255,0.04);
+  --bg-card-hover: rgba(255,255,255,0.08);
+  --border-subtle: rgba(255,255,255,0.08);
+  --border-hover: rgba(255,255,255,0.15);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #6d5acd;
+  --accent-light: #8b7ae0;
+  --accent-glow: rgba(109,90,205,0.25);
+  --accent-secondary: #3b82f6;
+  --gold: #f59e0b;
+  --gold-dim: rgba(245,158,11,0.15);
+  --green: #10b981;
+  --green-dim: rgba(16,185,129,0.15);
+  --blue: #3b82f6;
+  --blue-dim: rgba(59,130,246,0.15);
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.15);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.3);
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.65;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ===== SLIDE CONTAINER ===== */
+.presentation { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+
+.slide {
+  position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  padding: 60px 80px; opacity: 0; transform: translateX(60px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none; overflow-y: auto;
+}
+.slide.active { opacity: 1; transform: translateX(0); pointer-events: all; }
+.slide.exit-left { opacity: 0; transform: translateX(-60px); }
+
+.slide-inner { max-width: 1200px; width: 100%; display: flex; flex-direction: column; gap: 32px; }
+
+/* ===== NAVIGATION ===== */
+.nav-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 24px; background: rgba(10,14,26,0.92);
+  backdrop-filter: blur(12px); border-top: 1px solid var(--border-subtle);
+}
+.nav-logo { width: 28px; height: 28px; border-radius: 6px; }
+.nav-controls { display: flex; align-items: center; gap: 16px; }
+.nav-btn {
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  color: var(--text-secondary); width: 36px; height: 36px;
+  border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: var(--transition);
+}
+.nav-btn:hover { background: var(--bg-card-hover); border-color: var(--border-hover); color: var(--text-primary); }
+.slide-counter { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 60px; text-align: center; }
+.progress-bar { position: fixed; bottom: 60px; left: 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent-light)); transition: width 0.4s ease; z-index: 101; }
+.keyboard-hint { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
+.key-badge { background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 2px 8px; border-radius: 4px; font-size: 10px; font-family: var(--mono); color: var(--text-muted); cursor: pointer; transition: var(--transition); }
+.key-badge:hover { background: var(--bg-card-hover); border-color: var(--border-hover); color: var(--text-primary); }
+
+/* ===== TYPOGRAPHY ===== */
+h1 { font-size: clamp(2rem, 4vw, 3.5rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
+h2 { font-size: clamp(1.6rem, 3vw, 2.5rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+h3 { font-size: clamp(1.1rem, 1.5vw, 1.4rem); font-weight: 600; }
+.subtitle { font-size: clamp(1rem, 1.8vw, 1.35rem); color: var(--text-secondary); font-weight: 400; line-height: 1.5; }
+.tagline { font-size: clamp(0.95rem, 1.4vw, 1.15rem); color: var(--accent-light); font-style: italic; font-weight: 400; }
+.section-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent); margin-bottom: -16px; }
+
+/* ===== CARDS ===== */
+.card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius); padding: 24px; transition: var(--transition); }
+.card:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+.card-grid { display: grid; gap: 16px; }
+.card-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.card-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.card h3 { margin-bottom: 8px; }
+.card p { color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+
+/* ===== BADGE ===== */
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; letter-spacing: 0.03em; }
+.badge-accent { background: var(--accent-glow); color: var(--accent-light); border: 1px solid rgba(109,90,205,0.3); }
+.badge-gold { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(245,158,11,0.25); }
+.badge-blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.25); }
+.badge-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.25); }
+
+/* ===== TITLE SLIDE ===== */
+.title-slide { text-align: center; position: relative; }
+.title-slide::before { content: ''; position: absolute; top: -200px; left: 50%; transform: translateX(-50%); width: 600px; height: 600px; background: radial-gradient(circle, rgba(109,90,205,0.12) 0%, transparent 70%); pointer-events: none; animation: pulseGlow 6s ease-in-out infinite; }
+@keyframes pulseGlow { 0%, 100% { opacity: 0.5; transform: translateX(-50%) scale(1); } 50% { opacity: 1; transform: translateX(-50%) scale(1.1); } }
+.title-logo { width: 96px; height: 96px; border-radius: 20px; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(109,90,205,0.3); position: relative; z-index: 1; }
+.title-slide h1, .title-slide .subtitle, .title-slide .tagline, .title-slide .badge { position: relative; z-index: 1; }
+.title-slide .subtitle { margin-top: 8px; }
+.title-slide .tagline { margin-top: 16px; }
+
+/* ===== ANIMATED BG ===== */
+.bg-grid { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; opacity: 0.3; background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0); background-size: 40px 40px; }
+
+/* ===== CODE BLOCK ===== */
+.code-block {
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius); padding: 24px; font-family: var(--mono);
+  font-size: 14px; line-height: 2; color: var(--text-secondary); overflow-x: auto;
+}
+.code-block .cmd { color: var(--green); }
+.code-block .comment { color: var(--text-muted); }
+.code-block .output { color: var(--accent-light); }
+.code-block .flag { color: var(--gold); }
+.code-block .file { color: var(--blue); }
+
+/* ===== STEP LIST ===== */
+.step-list { display: flex; flex-direction: column; gap: 12px; }
+.step-item {
+  display: flex; align-items: flex-start; gap: 16px; padding: 18px 24px;
+  border-radius: var(--radius); background: var(--bg-card);
+  border: 1px solid var(--border-subtle); transition: var(--transition);
+}
+.step-item:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+.step-num {
+  width: 36px; height: 36px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-weight: 700;
+  font-size: 16px; flex-shrink: 0; background: var(--accent-glow); color: var(--accent-light);
+}
+.step-info h3 { font-size: 15px; margin-bottom: 4px; }
+.step-info p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+.step-info code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; color: var(--green); }
+
+/* ===== TWO COL ===== */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+
+/* ===== FLOW ===== */
+.flow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; padding: 20px 0; }
+.flow-step { padding: 8px 14px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 12px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
+.flow-arrow { color: var(--text-muted); font-size: 14px; }
+
+/* ===== SCENARIO CARD ===== */
+.scenario { border-left: 3px solid var(--accent); padding-left: 20px; margin: 8px 0; }
+.scenario h3 { font-size: 15px; color: var(--accent-light); margin-bottom: 6px; }
+.scenario p { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+
+/* ===== ENTRANCE ANIMATIONS ===== */
+.slide.active .anim-fade-up { animation: fadeUp 0.6s ease forwards; }
+.slide.active .anim-fade-up-d1 { animation: fadeUp 0.6s 0.1s ease forwards; opacity: 0; }
+.slide.active .anim-fade-up-d2 { animation: fadeUp 0.6s 0.2s ease forwards; opacity: 0; }
+.slide.active .anim-fade-up-d3 { animation: fadeUp 0.6s 0.3s ease forwards; opacity: 0; }
+.slide.active .anim-fade-up-d4 { animation: fadeUp 0.6s 0.4s ease forwards; opacity: 0; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+  .slide { padding: 40px 40px 80px; }
+  .card-grid.cols-3 { grid-template-columns: repeat(2, 1fr); }
+  .two-col { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .slide { padding: 24px 20px 80px; }
+  .card-grid.cols-2, .card-grid.cols-3 { grid-template-columns: 1fr; }
+  .flow { flex-direction: column; }
+  .flow-arrow { transform: rotate(90deg); }
+  .keyboard-hint { display: none; }
+}
+@media print {
+  body { overflow: visible; height: auto; }
+  .presentation { height: auto; overflow: visible; }
+  .slide { position: relative !important; opacity: 1 !important; transform: none !important; pointer-events: all !important; page-break-after: always; height: auto; min-height: 100vh; padding: 40px; }
+  .nav-bar, .progress-bar, .bg-grid { display: none !important; }
+  * { color-adjust: exact; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+
+<div class="presentation" id="presentation">
+
+  <!-- ==================== SLIDE 1: TITLE ==================== -->
+  <div class="slide active" data-slide="1">
+    <div class="slide-inner title-slide">
+      <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
+           alt="Diviner Dojo" class="title-logo anim-fade-up">
+      <span class="badge badge-accent anim-fade-up-d1">Practical Guide</span>
+      <h1 class="anim-fade-up-d2">How to Use the<br>Agentic Development Framework</h1>
+      <p class="subtitle anim-fade-up-d3">A step-by-step walkthrough of the commands,<br>workflows, and daily patterns that make it work.</p>
+      <div style="margin-top: 24px;" class="anim-fade-up-d4">
+        <span class="keyboard-hint">
+          Navigate: <span class="key-badge">&#8592;</span> <span class="key-badge">&#8594;</span> arrow keys
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 2: SETUP ==================== -->
+  <div class="slide" data-slide="2">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Getting Started</p>
+      <h2 class="anim-fade-up-d1">Setup in 3 Minutes</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <div class="code-block">
+            <div><span class="comment"># 1. Clone and install</span></div>
+            <div><span class="cmd">git clone</span> <span class="file">https://github.com/Diviner-Dojo/agent-framework-template</span></div>
+            <div><span class="cmd">cd</span> agent-framework-template</div>
+            <div><span class="cmd">pip install -r</span> requirements.txt</div>
+            <div style="margin-top:12px;"><span class="comment"># 2. Initialize the metrics database</span></div>
+            <div><span class="cmd">python</span> scripts/init_db.py</div>
+            <div style="margin-top:12px;"><span class="comment"># 3. Run the test project</span></div>
+            <div><span class="cmd">uvicorn</span> src.main:app <span class="flag">--reload</span></div>
+            <div style="margin-top:12px;"><span class="comment"># 4. Run tests to verify</span></div>
+            <div><span class="cmd">pytest</span> tests/ <span class="flag">-v</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="margin-bottom:12px;">
+            <h3>Prerequisites</h3>
+            <p style="margin-top:6px;">Python 3.11+, VS Code, and Claude Code (the CLI). The framework runs entirely inside Claude Code's agent system.</p>
+          </div>
+          <div class="card" style="margin-bottom:12px;">
+            <h3>What You Get</h3>
+            <p style="margin-top:6px;">A working Todo API (the reference implementation) wrapped in the full framework: 11 agents, 16 commands, 7 hooks, and the four-layer capture stack. Everything works out of the box.</p>
+          </div>
+          <div class="card">
+            <h3>For Existing Projects</h3>
+            <p style="margin-top:6px;">Use <code style="color:var(--green);">/onboard</code> to adopt the framework into an existing codebase. It maps your project, reverse-engineers ADRs, and proposes standards.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 3: DAILY WORKFLOW ==================== -->
+  <div class="slide" data-slide="3">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Daily Pattern</p>
+      <h2 class="anim-fade-up-d1">The Typical Development Flow</h2>
+      <div class="flow anim-fade-up-d2" style="margin-bottom:16px;">
+        <span class="flow-step">Write Code</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--blue); color:var(--blue);">/review</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step">Fix Findings</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--gold); color:var(--gold);">Quality Gate</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--green); color:var(--green);">Commit</span>
+      </div>
+      <div class="card-grid cols-3 anim-fade-up-d3">
+        <div class="card">
+          <h3>1. Write Your Code</h3>
+          <p>Build features, fix bugs, refactor. The framework doesn't change how you write code — it changes what happens after.</p>
+        </div>
+        <div class="card" style="border-color:rgba(59,130,246,0.3);">
+          <h3>2. Run <code style="color:var(--blue);">/review</code></h3>
+          <p>The facilitator assesses risk, assembles specialists, and produces a structured review with a verdict. Takes 30-90 seconds.</p>
+        </div>
+        <div class="card">
+          <h3>3. Address Findings</h3>
+          <p><strong>Blocking</strong> findings must be fixed. <strong>Advisory</strong> findings are recommendations. The review report tells you which is which.</p>
+        </div>
+        <div class="card" style="border-color:rgba(245,158,11,0.3);">
+          <h3>4. Quality Gate</h3>
+          <p>Run <code style="color:var(--gold);">python scripts/quality_gate.py</code> or just commit &mdash; the pre-commit hook runs it automatically.</p>
+        </div>
+        <div class="card" style="border-color:rgba(16,185,129,0.3);">
+          <h3>5. Commit</h3>
+          <p>If the quality gate passes and the review is clean, commit your code. The entire review is captured in the discussion archive.</p>
+        </div>
+        <div class="card">
+          <h3>6. Education Gate</h3>
+          <p>For complex changes, run <code style="color:var(--accent-light);">/walkthrough</code> and <code style="color:var(--accent-light);">/quiz</code> to verify you understand the AI-generated code.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 4: /review ==================== -->
+  <div class="slide" data-slide="4">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Core Command</p>
+      <h2 class="anim-fade-up-d1">/review &mdash; Multi-Agent Code Review</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <div class="code-block" style="margin-bottom:16px;">
+            <div><span class="comment"># Review specific files</span></div>
+            <div><span class="cmd">/review</span> <span class="file">src/routes.py src/models.py</span></div>
+            <div style="margin-top:12px;"><span class="comment"># Review an entire directory</span></div>
+            <div><span class="cmd">/review</span> <span class="file">src/</span></div>
+            <div style="margin-top:12px;"><span class="comment"># Review with context</span></div>
+            <div><span class="cmd">/review</span> <span class="file">src/auth.py</span> <span class="comment"># "focus on the new JWT validation"</span></div>
+          </div>
+          <div class="card">
+            <h3>What Happens Behind the Scenes</h3>
+            <p style="margin-top:6px;">The facilitator creates a discussion, assesses risk level, selects 2-5 specialists, dispatches them in parallel, collects findings, synthesizes a verdict, writes a report to <code>docs/reviews/</code>, and seals the discussion.</p>
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom:12px;">Risk-Based Specialist Assembly</h3>
+          <div class="step-list">
+            <div class="step-item">
+              <div class="step-num" style="background:var(--green-dim); color:var(--green); font-size:12px;">LOW</div>
+              <div class="step-info">
+                <h3>Config, docs, simple fixes</h3>
+                <p>2-3 agents. QA + 1 domain specialist. Ensemble mode.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--blue-dim); color:var(--blue); font-size:12px;">MED</div>
+              <div class="step-info">
+                <h3>New features, refactoring</h3>
+                <p>3-4 agents. QA + Architecture + domain. Structured Dialogue mode.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--gold-dim); color:var(--gold); font-size:11px;">HIGH</div>
+              <div class="step-info">
+                <h3>Security, architecture changes</h3>
+                <p>4-5 agents. Full panel including Security + Independent Perspective.</p>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px;">
+            <h3>Verdicts</h3>
+            <p style="margin-top:4px;"><span style="color:var(--green);">Approve</span> &middot; <span style="color:var(--gold);">Approve with changes</span> &middot; <span style="color:var(--red);">Request changes</span> &middot; <span style="color:var(--red);">Reject</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 5: /plan + /build_module ==================== -->
+  <div class="slide" data-slide="5">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Building Features</p>
+      <h2 class="anim-fade-up-d1">/plan + /build_module &mdash; Spec-Driven Development</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <h3 style="margin-bottom:12px;">Step 1: Plan the feature</h3>
+          <div class="code-block" style="margin-bottom:16px;">
+            <div><span class="cmd">/plan</span> "Add user authentication with JWT tokens"</div>
+            <div style="margin-top:8px;"><span class="comment"># Produces a structured spec with:</span></div>
+            <div><span class="comment"># - Task breakdown</span></div>
+            <div><span class="comment"># - File list (new + modified)</span></div>
+            <div><span class="comment"># - Architecture decisions</span></div>
+            <div><span class="comment"># - Risk assessment</span></div>
+            <div><span class="comment"># - Specialist review of the plan</span></div>
+            <div style="margin-top:8px;"><span class="output"># Waits for your approval before proceeding</span></div>
+          </div>
+          <h3 style="margin-bottom:12px;">Step 2: Build from the spec</h3>
+          <div class="code-block">
+            <div><span class="cmd">/build_module</span> <span class="file">docs/sprints/auth-spec.md</span></div>
+            <div style="margin-top:8px;"><span class="comment"># Executes the spec task-by-task</span></div>
+            <div><span class="comment"># Mid-build checkpoint reviews fire automatically</span></div>
+            <div><span class="comment"># Tests run after each task</span></div>
+            <div><span class="comment"># Education gate activates at the end</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--accent);">
+            <h3>Why Spec-First?</h3>
+            <p style="margin-top:6px;">The spec is reviewed by specialists <em>before</em> any code is written. Catching architecture mistakes at the spec stage is 10x cheaper than fixing them in code.</p>
+          </div>
+          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--gold);">
+            <h3>Mid-Build Checkpoints</h3>
+            <p style="margin-top:6px;">When a build task creates a new module, touches security code, or changes database schema, 2 specialists automatically review the code mid-build. Max 2 rounds per checkpoint.</p>
+          </div>
+          <div class="card" style="border-left: 3px solid var(--green);">
+            <h3>The Build Summary</h3>
+            <p style="margin-top:6px;">After building, you get a summary with: tasks completed, checkpoint results, unresolved concerns (if any), and a recommendation for the final <code>/review</code>.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 6: /deliberate ==================== -->
+  <div class="slide" data-slide="6">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Decision Making</p>
+      <h2 class="anim-fade-up-d1">/deliberate &mdash; Structured Multi-Agent Discussion</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <div class="code-block" style="margin-bottom:16px;">
+            <div><span class="cmd">/deliberate</span> "Should we use SQLAlchemy ORM or raw SQL</div>
+            <div>&nbsp;&nbsp;for the new reporting module?"</div>
+            <div style="margin-top:12px;"><span class="cmd">/deliberate</span> "What's the best approach for handling</div>
+            <div>&nbsp;&nbsp;file uploads larger than 100MB?"</div>
+            <div style="margin-top:12px;"><span class="cmd">/deliberate</span> "Should we split the monolith into</div>
+            <div>&nbsp;&nbsp;microservices or keep it modular?"</div>
+          </div>
+          <div class="card">
+            <h3>When to Deliberate</h3>
+            <p style="margin-top:6px;">Use <code>/deliberate</code> when you face a decision with multiple valid options and non-obvious trade-offs. The specialists bring different professional perspectives that surface considerations you might miss alone.</p>
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom:12px;">What You Get</h3>
+          <div class="step-list">
+            <div class="step-item">
+              <div class="step-num">1</div>
+              <div class="step-info">
+                <h3>Independent Analysis</h3>
+                <p>Each specialist analyzes the question from their domain (security, performance, architecture, etc.) without seeing others' answers.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">2</div>
+              <div class="step-info">
+                <h3>Cross-Pollination</h3>
+                <p>Specialists see each other's findings and can refine their positions. Disagreements are surfaced, not hidden.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">3</div>
+              <div class="step-info">
+                <h3>Synthesis &amp; Recommendation</h3>
+                <p>The facilitator synthesizes all perspectives into a recommendation with explicit trade-offs. You make the final call.</p>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px;">
+            <p style="font-size:13px;">Every deliberation is captured in <code>discussions/</code> with full event streams. Six months later, you can read exactly why a decision was made.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 7: LEARNING COMMANDS ==================== -->
+  <div class="slide" data-slide="7">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Learning &amp; Growth</p>
+      <h2 class="anim-fade-up-d1">Commands That Make You Better</h2>
+      <div class="card-grid cols-2 anim-fade-up-d2">
+        <div class="card" style="border-left: 3px solid var(--accent);">
+          <h3>/walkthrough <span class="badge badge-accent" style="font-size:10px;">education</span></h3>
+          <p style="margin-top:8px;">Generates a guided reading path through code you (or AI) wrote. Explains decisions, trade-offs, and how components interact. Progressive disclosure from mental model to implementation details.</p>
+          <div class="code-block" style="margin-top:12px; padding:12px 16px;">
+            <div><span class="cmd">/walkthrough</span> <span class="file">src/routes.py</span></div>
+          </div>
+        </div>
+        <div class="card" style="border-left: 3px solid var(--gold);">
+          <h3>/quiz <span class="badge badge-gold" style="font-size:10px;">assessment</span></h3>
+          <p style="margin-top:8px;">Bloom's taxonomy quiz on code you're about to ship. Tests understanding at 4 levels: recall, application, analysis, and evaluation. Includes debug scenarios and change-impact questions.</p>
+          <div class="code-block" style="margin-top:12px; padding:12px 16px;">
+            <div><span class="cmd">/quiz</span> <span class="file">src/routes.py</span></div>
+          </div>
+        </div>
+        <div class="card" style="border-left: 3px solid var(--green);">
+          <h3>/analyze-project <span class="badge badge-green" style="font-size:10px;">external</span></h3>
+          <p style="margin-top:8px;">Points the specialist team at an external project to evaluate patterns worth adopting. Produces a scored recommendation report. Patterns scoring 20+/25 are recommended.</p>
+          <div class="code-block" style="margin-top:12px; padding:12px 16px;">
+            <div><span class="cmd">/analyze-project</span> <span class="file">tiangolo/fastapi</span></div>
+          </div>
+        </div>
+        <div class="card" style="border-left: 3px solid var(--blue);">
+          <h3>/discover-projects <span class="badge badge-blue" style="font-size:10px;">search</span></h3>
+          <p style="margin-top:8px;">Searches GitHub for interesting projects to analyze. Filters by topic, language, or keywords. Checks for AI integration artifacts and ranks candidates for <code>/analyze-project</code>.</p>
+          <div class="code-block" style="margin-top:12px; padding:12px 16px;">
+            <div><span class="cmd">/discover-projects</span> "fastapi multi-agent"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 8: PROCESS IMPROVEMENT ==================== -->
+  <div class="slide" data-slide="8">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Continuous Improvement</p>
+      <h2 class="anim-fade-up-d1">The Framework Improves Itself</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--green);">
+            <h3>/retro <span class="badge badge-green" style="font-size:10px;">sprint</span></h3>
+            <p style="margin-top:6px;">Run at the end of each sprint. Queries all discussions from the period, identifies recurring patterns, evaluates adopted patterns (PENDING &rarr; CONFIRMED or REVERTED), and proposes process adjustments.</p>
+            <div class="code-block" style="margin-top:8px; padding:10px 14px; font-size:13px;">
+              <div><span class="cmd">/retro</span></div>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--gold);">
+            <h3>/meta-review <span class="badge badge-gold" style="font-size:10px;">quarterly</span></h3>
+            <p style="margin-top:6px;">The big one. Quarterly assessment of framework effectiveness: agent scoring, architectural drift, rule updates, decision churn. Drives framework-level evolution.</p>
+            <div class="code-block" style="margin-top:8px; padding:10px 14px; font-size:13px;">
+              <div><span class="cmd">/meta-review</span></div>
+            </div>
+          </div>
+          <div class="card" style="border-left: 3px solid var(--blue);">
+            <h3>/knowledge-health <span class="badge badge-blue" style="font-size:10px;">diagnostic</span></h3>
+            <p style="margin-top:6px;">Quick health check on all 5 pipeline layers. Reports on discussion volume, SQLite index completeness, findings extraction, pattern clustering, and curated memory currency.</p>
+            <div class="code-block" style="margin-top:8px; padding:10px 14px; font-size:13px;">
+              <div><span class="cmd">/knowledge-health</span></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom:12px;">The Improvement Cadence</h3>
+          <div class="step-list">
+            <div class="step-item" style="border-color:rgba(16,185,129,0.3);">
+              <div class="step-num" style="background:var(--green-dim); color:var(--green);">D</div>
+              <div class="step-info">
+                <h3>Daily</h3>
+                <p><code>/review</code> captures findings. Agent reflections after each discussion note what worked and what didn't.</p>
+              </div>
+            </div>
+            <div class="step-item" style="border-color:rgba(59,130,246,0.3);">
+              <div class="step-num" style="background:var(--blue-dim); color:var(--blue);">S</div>
+              <div class="step-info">
+                <h3>Sprint</h3>
+                <p><code>/retro</code> aggregates findings, evaluates adoptions, surfaces stale advisories, and proposes adjustments.</p>
+              </div>
+            </div>
+            <div class="step-item" style="border-color:rgba(245,158,11,0.3);">
+              <div class="step-num" style="background:var(--gold-dim); color:var(--gold);">Q</div>
+              <div class="step-info">
+                <h3>Quarterly</h3>
+                <p><code>/meta-review</code> assesses the framework itself. Which agents are valuable? Which rules need updating? Is there architectural drift?</p>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px;">
+            <h3>/promote <span style="color:var(--text-muted); font-weight:400;">&mdash; Layer 3</span></h3>
+            <p style="font-size:13px; margin-top:4px;">When a pattern proves valuable across multiple reviews, promote it to curated memory with <code style="color:var(--green);">/promote</code>. Requires your explicit approval (Principle #7).</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 9: QUALITY GATE ==================== -->
+  <div class="slide" data-slide="9">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Safety Net</p>
+      <h2 class="anim-fade-up-d1">The Quality Gate &mdash; Your Last Line of Defense</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <div class="code-block" style="margin-bottom:16px;">
+            <div><span class="comment"># Run manually</span></div>
+            <div><span class="cmd">python</span> scripts/quality_gate.py</div>
+            <div style="margin-top:12px;"><span class="comment"># Auto-fix formatting and lint</span></div>
+            <div><span class="cmd">python</span> scripts/quality_gate.py <span class="flag">--fix</span></div>
+            <div style="margin-top:12px;"><span class="comment"># Skip specific checks</span></div>
+            <div><span class="cmd">python</span> scripts/quality_gate.py <span class="flag">--skip-reviews</span></div>
+            <div style="margin-top:12px;"><span class="comment"># It also runs automatically on every git commit</span></div>
+            <div><span class="output">Quality Gate: 7/7 passed</span></div>
+          </div>
+          <div class="card">
+            <h3>What It Checks</h3>
+            <p style="margin-top:6px;">Formatting (ruff format) &rarr; Linting (ruff check) &rarr; Tests (pytest) &rarr; Coverage (&ge; 80%) &rarr; ADR completeness &rarr; Review existence &rarr; Regression ledger</p>
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom:12px;">Hooks That Protect You</h3>
+          <div class="step-list">
+            <div class="step-item">
+              <div class="step-num" style="background:var(--red-dim); color:var(--red); font-size:12px;">!</div>
+              <div class="step-info">
+                <h3>Secret Detection</h3>
+                <p>Scans for 12 patterns (API keys, JWT, AWS, PATs) before any file write. Blocks the write if secrets are detected.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--gold-dim); color:var(--gold); font-size:14px;">&#128274;</div>
+              <div class="step-info">
+                <h3>File Locking</h3>
+                <p>Prevents concurrent agent edits to the same file. Locks auto-expire after 120 seconds.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--green-dim); color:var(--green); font-size:14px;">&#10003;</div>
+              <div class="step-info">
+                <h3>Auto-Format</h3>
+                <p>Every Python file is auto-formatted with ruff after every edit. You never commit unformatted code.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--blue-dim); color:var(--blue); font-size:14px;">&#8635;</div>
+              <div class="step-info">
+                <h3>Session Continuity</h3>
+                <p>BUILD_STATUS.md is auto-saved before context compaction and auto-loaded on resume. Work-in-progress survives sessions.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 10: LINEAGE & SHIP ==================== -->
+  <div class="slide" data-slide="10">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Release &amp; Lineage</p>
+      <h2 class="anim-fade-up-d1">Shipping and Tracking Your Fork</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--green);">
+            <h3>/ship <span class="badge badge-green" style="font-size:10px;">release</span></h3>
+            <p style="margin-top:6px;">Full release workflow: quality gate verification, testing checklist, version bump, changelog generation, and rollback strategy. Everything you need to ship with confidence.</p>
+            <div class="code-block" style="margin-top:10px; padding:10px 14px; font-size:13px;">
+              <div><span class="cmd">/ship</span></div>
+            </div>
+          </div>
+          <div class="card" style="border-left: 3px solid var(--accent);">
+            <h3>/lineage <span class="badge badge-accent" style="font-size:10px;">drift</span></h3>
+            <p style="margin-top:6px;">Shows how your project relates to the upstream template. Detects drift, validates the manifest, and reports divergence distance. Intentional divergences can be pinned as traits.</p>
+            <div class="code-block" style="margin-top:10px; padding:10px 14px; font-size:13px;">
+              <div><span class="cmd">/lineage</span></div>
+              <div style="margin-top:4px;"><span class="output">Drift status: current (distance: 0)</span></div>
+              <div><span class="output">Pinned traits: 0</span></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom:12px;">Template &rarr; Project Relationship</h3>
+          <div class="card" style="margin-bottom:12px;">
+            <p style="font-size:13px;">When you fork this template for a real project, the <code>framework-lineage.yaml</code> manifest tracks:</p>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+              <div style="display:flex; gap:8px; align-items:center; font-size:13px;"><span style="color:var(--accent-light); font-weight:600;">Fork point</span> <span style="color:var(--text-muted);">&mdash; When you diverged from the template</span></div>
+              <div style="display:flex; gap:8px; align-items:center; font-size:13px;"><span style="color:var(--accent-light); font-weight:600;">Drift status</span> <span style="color:var(--text-muted);">&mdash; How far you've diverged</span></div>
+              <div style="display:flex; gap:8px; align-items:center; font-size:13px;"><span style="color:var(--accent-light); font-weight:600;">Pinned traits</span> <span style="color:var(--text-muted);">&mdash; Intentional divergences you want to keep</span></div>
+              <div style="display:flex; gap:8px; align-items:center; font-size:13px;"><span style="color:var(--accent-light); font-weight:600;">Custodian</span> <span style="color:var(--text-muted);">&mdash; Who approves framework changes</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>The Steward Agent</h3>
+            <p style="font-size:13px; margin-top:6px;">The Steward is the framework's institutional memory for genealogy. It knows where your project came from, how far it has diverged, and which divergences are intentional vs. accidental drift.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 11: CHEAT SHEET ==================== -->
+  <div class="slide" data-slide="11">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Reference</p>
+      <h2 class="anim-fade-up-d1">Command Cheat Sheet</h2>
+      <div class="two-col anim-fade-up-d3">
+        <div>
+          <h3 style="margin-bottom:10px; color:var(--accent-light);">Every Day</h3>
+          <div class="code-block" style="margin-bottom:16px; line-height:2.2;">
+            <div><span class="cmd">/review</span> <span class="file">src/</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Code review</span></div>
+            <div><span class="cmd">/walkthrough</span> <span class="file">src/file.py</span> <span class="comment">&nbsp;# Explain code</span></div>
+            <div><span class="cmd">/quiz</span> <span class="file">src/file.py</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Test understanding</span></div>
+          </div>
+          <h3 style="margin-bottom:10px; color:var(--accent-light);">Building Features</h3>
+          <div class="code-block" style="margin-bottom:16px; line-height:2.2;">
+            <div><span class="cmd">/plan</span> "description" <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Create spec</span></div>
+            <div><span class="cmd">/build_module</span> <span class="file">spec.md</span> <span class="comment">&nbsp;&nbsp;# Build from spec</span></div>
+            <div><span class="cmd">/deliberate</span> "question" <span class="comment">&nbsp;# Discuss trade-offs</span></div>
+          </div>
+          <h3 style="margin-bottom:10px; color:var(--accent-light);">Quality</h3>
+          <div class="code-block" style="line-height:2.2;">
+            <div><span class="cmd">python</span> scripts/quality_gate.py <span class="comment"># Run checks</span></div>
+            <div><span class="cmd">python</span> scripts/quality_gate.py <span class="flag">--fix</span> <span class="comment"># Auto-fix</span></div>
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom:10px; color:var(--accent-light);">Process Improvement</h3>
+          <div class="code-block" style="margin-bottom:16px; line-height:2.2;">
+            <div><span class="cmd">/retro</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Sprint retro</span></div>
+            <div><span class="cmd">/meta-review</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Quarterly review</span></div>
+            <div><span class="cmd">/knowledge-health</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;# Pipeline check</span></div>
+            <div><span class="cmd">/promote</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Promote to Layer 3</span></div>
+          </div>
+          <h3 style="margin-bottom:10px; color:var(--accent-light);">External Learning</h3>
+          <div class="code-block" style="margin-bottom:16px; line-height:2.2;">
+            <div><span class="cmd">/discover-projects</span> "topic" <span class="comment"># Find repos</span></div>
+            <div><span class="cmd">/analyze-project</span> <span class="file">owner/repo</span> <span class="comment">&nbsp;# Analyze</span></div>
+            <div><span class="cmd">/batch-evaluate</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Audit adoptions</span></div>
+          </div>
+          <h3 style="margin-bottom:10px; color:var(--accent-light);">Release &amp; Lineage</h3>
+          <div class="code-block" style="line-height:2.2;">
+            <div><span class="cmd">/ship</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Release workflow</span></div>
+            <div><span class="cmd">/lineage</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Drift status</span></div>
+            <div><span class="cmd">/onboard</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Adopt framework</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 12: GET STARTED ==================== -->
+  <div class="slide" data-slide="12">
+    <div class="slide-inner title-slide">
+      <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
+           alt="Diviner Dojo" class="title-logo anim-fade-up" style="width:80px; height:80px;">
+      <h2 class="anim-fade-up-d1">Start Building</h2>
+      <p class="subtitle anim-fade-up-d2">The framework adds structure to AI-assisted development<br>without slowing you down.</p>
+      <div class="code-block anim-fade-up-d3" style="text-align:left; max-width:550px;">
+        <div><span class="comment"># Clone, install, go</span></div>
+        <div><span class="cmd">git clone</span> <span class="file">https://github.com/Diviner-Dojo/agent-framework-template</span></div>
+        <div><span class="cmd">cd</span> agent-framework-template</div>
+        <div><span class="cmd">pip install -r</span> requirements.txt</div>
+        <div><span class="cmd">python</span> scripts/init_db.py</div>
+        <div style="margin-top:8px;"><span class="comment"># Your first command</span></div>
+        <div><span class="cmd">/review</span> <span class="file">src/</span></div>
+      </div>
+      <div class="anim-fade-up-d4" style="margin-top:28px;">
+        <a href="https://github.com/Diviner-Dojo/agent-framework-template" target="_blank" style="display:inline-flex; align-items:center; gap:8px; padding:14px 32px; background:var(--accent); color:white; border:none; border-radius:var(--radius-sm); font-size:16px; font-weight:600; font-family:var(--font); cursor:pointer; transition:var(--transition); text-decoration:none;">
+          View on GitHub &rarr;
+        </a>
+      </div>
+      <p style="margin-top:24px; color:var(--text-muted); font-size:13px;">
+        AI-Native Agentic Development Framework v2.1 &middot; Diviner Dojo
+      </p>
+    </div>
+  </div>
+
+</div><!-- end .presentation -->
+
+<!-- ===== NAVIGATION BAR ===== -->
+<div class="nav-bar">
+  <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4" alt="Diviner Dojo" class="nav-logo">
+  <div class="keyboard-hint">
+    <button class="key-badge" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
+    <button class="key-badge" onclick="nextSlide()" aria-label="Next slide">&#8594;</button> Navigate
+  </div>
+  <div class="nav-controls">
+    <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
+    <span class="slide-counter" id="slideCounter">1 / 12</span>
+    <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">&#8594;</button>
+  </div>
+</div>
+
+<div class="progress-bar" id="progressBar" style="width: 8.33%;"></div>
+
+<script>
+// ===== SLIDE NAVIGATION =====
+let currentSlide = 1;
+const totalSlides = 12;
+
+function showSlide(n) {
+  if (n < 1 || n > totalSlides) return;
+  const slides = document.querySelectorAll('.slide');
+  const prev = document.querySelector('.slide.active');
+
+  if (prev) {
+    prev.classList.remove('active');
+    if (n > currentSlide) prev.classList.add('exit-left');
+    setTimeout(() => prev.classList.remove('exit-left'), 500);
+  }
+
+  currentSlide = n;
+  const next = slides[n - 1];
+  requestAnimationFrame(() => { next.classList.add('active'); });
+
+  document.getElementById('slideCounter').textContent = `${n} / ${totalSlides}`;
+  document.getElementById('progressBar').style.width = `${(n / totalSlides) * 100}%`;
+}
+
+function nextSlide() { showSlide(currentSlide + 1); }
+function prevSlide() { showSlide(currentSlide - 1); }
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prevSlide(); }
+  else if (e.key === 'Home') { e.preventDefault(); showSlide(1); }
+  else if (e.key === 'End') { e.preventDefault(); showSlide(totalSlides); }
+});
+
+let touchStartX = 0;
+document.addEventListener('touchstart', function(e) { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
+document.addEventListener('touchend', function(e) {
+  const diff = touchStartX - e.changedTouches[0].screenX;
+  if (Math.abs(diff) > 50) { if (diff > 0) nextSlide(); else prevSlide(); }
+}, { passive: true });
+</script>
+
+</body>
+</html>

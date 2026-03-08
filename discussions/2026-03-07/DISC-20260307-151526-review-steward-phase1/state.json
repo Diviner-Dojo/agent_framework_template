@@ -1,0 +1,13 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260307-151526-review-steward-phase1",
+  "status": "in_progress",
+  "started_at": "2026-03-07T15:15:32.407133+00:00",
+  "current_phase": "specialist_dispatch",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created"
+  ],
+  "risk_level": "medium",
+  "collaboration_mode": "structured-dialogue"
+}

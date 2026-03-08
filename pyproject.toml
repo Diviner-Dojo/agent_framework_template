@@ -1,0 +1,31 @@
+[project]
+name = "agentic-framework-template"
+version = "0.1.0"
+description = "AI-Native Agentic Development Framework template with Todo API test project"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests that import scripts via sys.path manipulation need E402 exemption
+"tests/test_capture_pipeline.py" = ["E402"]
+"tests/test_simulated_review.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "uses_llm: test calls a real LLM API (skipped unless --run-llm is passed)",
+    "slow: test is slow to execute (skipped unless --run-slow is passed)",
+]
+
+[tool.coverage.run]
+source = ["src"]
+
+[tool.coverage.report]
+fail_under = 80

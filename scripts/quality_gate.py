@@ -1,0 +1,509 @@
+"""Run all quality checks defined in the framework's rules files.
+
+Converts the documented standards from .claude/rules/ (coding_standards.md,
+testing_requirements.md, review_gates.md) into executable validation.
+
+Usage:
+    python scripts/quality_gate.py            # run all checks
+    python scripts/quality_gate.py --fix      # auto-fix then check
+    python scripts/quality_gate.py --skip-tests --skip-coverage
+    python scripts/quality_gate.py --skip-reviews  # bypass review check
+
+Exit code 0 if all checks pass, 1 if any fail.
+"""
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+PROJECT_ROOT = Path(__file__).parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+TESTS_DIR = PROJECT_ROOT / "tests"
+ADR_DIR = PROJECT_ROOT / "docs" / "adr"
+REVIEWS_DIR = PROJECT_ROOT / "docs" / "reviews"
+QUALITY_GATE_LOG = PROJECT_ROOT / "metrics" / "quality_gate_log.jsonl"
+REGRESSION_LEDGER = PROJECT_ROOT / "memory" / "bugs" / "regression-ledger.md"
+
+# ANSI color codes (no-op on terminals that don't support them)
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+
+def validate_directories() -> list[str]:
+    """Validate that SRC_DIR and TESTS_DIR exist and contain Python files.
+
+    Returns a list of error messages (empty if all valid).
+    """
+    errors: list[str] = []
+    for label, directory in [("Source", SRC_DIR), ("Tests", TESTS_DIR)]:
+        if not directory.is_dir():
+            errors.append(f"{label} directory does not exist: {directory}")
+        elif not list(directory.glob("*.py")):
+            errors.append(f"{label} directory contains no .py files: {directory}")
+    return errors
+
+
+def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
+    """Run a command and return the result without raising on failure."""
+    return subprocess.run(
+        cmd,
+        cwd=cwd or PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _pass(name: str) -> None:
+    print(f"  {GREEN}PASS{RESET}  {name}")
+
+
+def _fail(name: str, hint: str = "") -> None:
+    msg = f"  {RED}FAIL{RESET}  {name}"
+    if hint:
+        msg += f"  ({hint})"
+    print(msg)
+
+
+def _skip(name: str) -> None:
+    print(f"  {YELLOW}SKIP{RESET}  {name}")
+
+
+def check_formatting(fix: bool = False) -> bool:
+    """Check 1: ruff format compliance."""
+    if fix:
+        _run(["python", "-m", "ruff", "format", str(SRC_DIR), str(TESTS_DIR)])
+    result = _run(["python", "-m", "ruff", "format", "--check", str(SRC_DIR), str(TESTS_DIR)])
+    if result.returncode == 0:
+        _pass("Formatting (ruff format)")
+        return True
+    _fail("Formatting (ruff format)", "run: python -m ruff format src/ tests/")
+    return False
+
+
+def check_linting(fix: bool = False) -> bool:
+    """Check 2: ruff lint compliance."""
+    if fix:
+        _run(["python", "-m", "ruff", "check", "--fix", str(SRC_DIR), str(TESTS_DIR)])
+    result = _run(["python", "-m", "ruff", "check", str(SRC_DIR), str(TESTS_DIR)])
+    if result.returncode == 0:
+        _pass("Linting (ruff check)")
+        return True
+    _fail("Linting (ruff check)", "run: python -m ruff check src/ tests/")
+    if result.stdout:
+        # Show first few lines of lint output for context
+        lines = result.stdout.strip().split("\n")
+        for line in lines[:5]:
+            print(f"         {line}")
+        if len(lines) > 5:
+            print(f"         ... and {len(lines) - 5} more")
+    return False
+
+
+def check_tests() -> bool:
+    """Check 3: pytest passes."""
+    result = _run(["python", "-m", "pytest", str(TESTS_DIR), "-x", "-q"])
+    if result.returncode == 0:
+        _pass("Tests (pytest)")
+        return True
+    _fail("Tests (pytest)")
+    if result.stdout:
+        lines = result.stdout.strip().split("\n")
+        for line in lines[-10:]:
+            print(f"         {line}")
+    return False
+
+
+def check_adrs() -> bool:
+    """Check 5: ADR completeness — required frontmatter fields and markdown sections."""
+    required_fields = {"adr_id", "title", "status", "date", "decision_makers", "discussion_id"}
+    required_sections = {
+        "## Context",
+        "## Decision",
+        "## Alternatives Considered",
+        "## Consequences",
+    }
+
+    adr_files = sorted(ADR_DIR.glob("ADR-*.md"))
+    if not adr_files:
+        _pass("ADR completeness (no ADRs to check)")
+        return True
+
+    errors: list[str] = []
+    for adr_path in adr_files:
+        text = adr_path.read_text(encoding="utf-8")
+
+        # Parse YAML frontmatter (between --- delimiters)
+        if not text.startswith("---"):
+            errors.append(f"{adr_path.name}: missing YAML frontmatter")
+            continue
+
+        parts = text.split("---", 2)
+        if len(parts) < 3:
+            errors.append(f"{adr_path.name}: malformed YAML frontmatter")
+            continue
+
+        try:
+            frontmatter = yaml.safe_load(parts[1])
+        except yaml.YAMLError as e:
+            errors.append(f"{adr_path.name}: invalid YAML — {e}")
+            continue
+
+        if not isinstance(frontmatter, dict):
+            errors.append(f"{adr_path.name}: frontmatter is not a mapping")
+            continue
+
+        missing_fields = required_fields - set(frontmatter.keys())
+        if missing_fields:
+            errors.append(f"{adr_path.name}: missing fields: {', '.join(sorted(missing_fields))}")
+
+        body = parts[2]
+        missing_sections = {s for s in required_sections if s not in body}
+        if missing_sections:
+            errors.append(
+                f"{adr_path.name}: missing sections: {', '.join(sorted(missing_sections))}"
+            )
+
+    if errors:
+        _fail(f"ADR completeness ({len(errors)} issue(s) in {len(adr_files)} ADR(s))")
+        for err in errors[:5]:
+            print(f"         {err}")
+        if len(errors) > 5:
+            print(f"         ... and {len(errors) - 5} more")
+        return False
+
+    _pass(f"ADR completeness ({len(adr_files)} ADR(s))")
+    return True
+
+
+def check_coverage() -> bool:
+    """Check 4: coverage meets threshold (configured in pyproject.toml)."""
+    result = _run(
+        [
+            "python",
+            "-m",
+            "pytest",
+            str(TESTS_DIR),
+            f"--cov={SRC_DIR}",
+            "--cov-report=term-missing:skip-covered",
+            "--cov-fail-under=80",
+            "-q",
+        ]
+    )
+    if result.returncode == 0:
+        _pass("Coverage (>= 80%)")
+        return True
+    _fail("Coverage (>= 80%)", "run: pytest --cov=src --cov-fail-under=80")
+    if result.stdout:
+        lines = result.stdout.strip().split("\n")
+        # Show coverage summary lines
+        for line in lines:
+            if "TOTAL" in line or "FAIL" in line or "%" in line:
+                print(f"         {line}")
+    return False
+
+
+# --- Regression ledger helpers ---
+
+
+def _parse_regression_ledger() -> list[dict[str, str]]:
+    """Parse the regression ledger for file-to-test mappings.
+
+    Returns a list of dicts with 'file', 'test_file', and 'test_function' keys.
+    """
+    if not REGRESSION_LEDGER.exists():
+        return []
+
+    entries: list[dict[str, str]] = []
+    text = REGRESSION_LEDGER.read_text(encoding="utf-8")
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line.startswith("|") or line.startswith("| File") or line.startswith("|--"):
+            continue
+        if "<!--" in line:
+            continue
+        cells = [c.strip() for c in line.split("|")[1:-1]]
+        if len(cells) >= 5 and cells[0] and not cells[0].startswith("-"):
+            entries.append(
+                {
+                    "file": cells[0],
+                    "test_file": cells[3],
+                    "test_function": cells[4],
+                }
+            )
+    return entries
+
+
+def check_regression_ledger() -> bool:
+    """Check 7: verify regression test files exist for ledger entries.
+
+    For each entry in the regression ledger, verifies:
+    - The test file exists
+    - Modified source files listed in the ledger have corresponding tests
+    """
+    entries = _parse_regression_ledger()
+    if not entries:
+        _pass("Regression ledger (no entries)")
+        return True
+
+    errors: list[str] = []
+    for entry in entries:
+        test_file = PROJECT_ROOT / entry["test_file"]
+        if not test_file.exists():
+            errors.append(f"Missing test file: {entry['test_file']} (guards {entry['file']})")
+
+    if errors:
+        _fail(f"Regression ledger ({len(errors)} missing test(s))")
+        for err in errors[:5]:
+            print(f"         {err}")
+        if len(errors) > 5:
+            print(f"         ... and {len(errors) - 5} more")
+        return False
+
+    _pass(f"Regression ledger ({len(entries)} guard(s))")
+    return True
+
+
+# --- Review existence helpers ---
+
+# Directories whose files count as "code changes" requiring review
+_CODE_PREFIXES = ("src/", "tests/", "scripts/")
+_CODE_EXTENSIONS = (".py",)
+
+# Framework infrastructure directories — .md files here are reviewable
+_FRAMEWORK_PREFIXES = (".claude/agents/", ".claude/commands/", ".claude/rules/")
+_FRAMEWORK_EXTENSIONS = (".md", ".py")
+
+
+def _get_staged_code_files() -> list[str]:
+    """Return staged files that count as reviewable code changes.
+
+    Runs ``git diff --cached --name-only`` and filters for code files
+    under known source directories.
+    Returns an empty list if git is unavailable (fails safe).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+
+    files: list[str] = []
+    for line in result.stdout.strip().split("\n"):
+        f = line.strip()
+        if not f:
+            continue
+        # Check code directories (src/, tests/, scripts/)
+        is_code = any(f.startswith(p) for p in _CODE_PREFIXES) and any(
+            f.endswith(ext) for ext in _CODE_EXTENSIONS
+        )
+        # Check framework directories (.claude/agents/, commands/, rules/)
+        is_framework = any(f.startswith(p) for p in _FRAMEWORK_PREFIXES) and any(
+            f.endswith(ext) for ext in _FRAMEWORK_EXTENSIONS
+        )
+        if is_code or is_framework:
+            files.append(f)
+    return files
+
+
+def _find_todays_reviews() -> list[Path]:
+    """Find review reports created today (matching REV-YYYYMMDD pattern)."""
+    import datetime
+
+    today = datetime.date.today().strftime("%Y%m%d")
+    if not REVIEWS_DIR.is_dir():
+        return []
+    return sorted(REVIEWS_DIR.glob(f"REV-{today}*.md"))
+
+
+def check_review_existence() -> bool:
+    """Check 6: verify a review report exists when code changes are staged.
+
+    Logic:
+    - No staged code files → PASS (nothing to review)
+    - Staged code files + review report from today → PASS
+    - Staged code files + no review today → FAIL
+    """
+    staged = _get_staged_code_files()
+    if not staged:
+        _pass("Review existence (no code changes staged)")
+        return True
+
+    reviews = _find_todays_reviews()
+    if reviews:
+        names = ", ".join(r.stem for r in reviews)
+        _pass(f"Review existence ({names})")
+        return True
+
+    _fail(
+        "Review existence",
+        "code changes staged but no review report found today. "
+        "Run /review before committing, or use --skip-reviews to bypass.",
+    )
+    print(f"         Staged code files: {', '.join(staged[:5])}")
+    if len(staged) > 5:
+        print(f"         ... and {len(staged) - 5} more")
+    return False
+
+
+_CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
+
+
+def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, total: int) -> None:
+    """Append a JSONL record of the quality gate outcome for trend analysis."""
+    import json
+    from datetime import UTC, datetime
+
+    check_results = {}
+    idx = 0
+    for name, skip_attr in zip(
+        _CHECK_NAMES,
+        [
+            "skip_format",
+            "skip_lint",
+            "skip_tests",
+            "skip_coverage",
+            "skip_adrs",
+            "skip_reviews",
+            "skip_regression",
+        ],
+    ):
+        if getattr(args, skip_attr, False):
+            check_results[name] = "skipped"
+        else:
+            check_results[name] = "pass" if idx < len(results) and results[idx] else "fail"
+            idx += 1
+
+    record = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "overall": "pass" if passed == total else "fail",
+        "passed_count": passed,
+        "total": total,
+        "checks": check_results,
+    }
+
+    QUALITY_GATE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(QUALITY_GATE_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def main() -> int:
+    """Run all quality checks and return exit code."""
+    parser = argparse.ArgumentParser(description="Quality gate — validate all framework standards")
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Auto-fix formatting and lint issues before checking",
+    )
+    parser.add_argument("--skip-format", action="store_true")
+    parser.add_argument("--skip-lint", action="store_true")
+    parser.add_argument("--skip-tests", action="store_true")
+    parser.add_argument("--skip-coverage", action="store_true")
+    parser.add_argument("--skip-adrs", action="store_true")
+    parser.add_argument(
+        "--skip-reviews",
+        action="store_true",
+        help="Skip review existence check",
+    )
+    parser.add_argument(
+        "--skip-regression",
+        action="store_true",
+        help="Skip regression ledger check",
+    )
+    args = parser.parse_args()
+
+    print(f"\n{BOLD}Quality Gate{RESET}")
+    print("=" * 40)
+
+    # Validate directories before running any checks
+    dir_errors = validate_directories()
+    if dir_errors:
+        for err in dir_errors:
+            _fail(f"Directory validation ({err})")
+        print("=" * 40)
+        print(
+            f"{RED}{BOLD}Quality Gate: FAILED — source or test directories missing or empty{RESET}\n"
+        )
+        return 1
+
+    results: list[bool] = []
+    total = 0
+
+    # Check 1: Formatting
+    if args.skip_format:
+        _skip("Formatting (ruff format)")
+    else:
+        total += 1
+        results.append(check_formatting(fix=args.fix))
+
+    # Check 2: Linting
+    if args.skip_lint:
+        _skip("Linting (ruff check)")
+    else:
+        total += 1
+        results.append(check_linting(fix=args.fix))
+
+    # Check 3: Tests
+    if args.skip_tests:
+        _skip("Tests (pytest)")
+    else:
+        total += 1
+        results.append(check_tests())
+
+    # Check 4: Coverage
+    if args.skip_coverage:
+        _skip("Coverage (>= 80%)")
+    else:
+        total += 1
+        results.append(check_coverage())
+
+    # Check 5: ADR completeness
+    if args.skip_adrs:
+        _skip("ADR completeness")
+    else:
+        total += 1
+        results.append(check_adrs())
+
+    # Check 6: Review existence
+    if args.skip_reviews:
+        _skip("Review existence")
+    else:
+        total += 1
+        results.append(check_review_existence())
+
+    # Check 7: Regression ledger
+    if args.skip_regression:
+        _skip("Regression ledger")
+    else:
+        total += 1
+        results.append(check_regression_ledger())
+
+    # Summary
+    passed = sum(results)
+    print("=" * 40)
+
+    # Log outcome to JSONL for trend analysis
+    _log_outcome(args, results, passed, total)
+
+    if passed == total:
+        print(f"{GREEN}{BOLD}Quality Gate: {passed}/{total} passed{RESET}\n")
+        return 0
+    else:
+        print(f"{RED}{BOLD}Quality Gate: FAILED ({passed}/{total} passed){RESET}\n")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
