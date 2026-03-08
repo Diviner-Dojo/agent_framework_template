@@ -4,6 +4,18 @@
 
 A structured, multi-agent development framework for Claude Code that transforms AI-assisted development from unstructured "vibe coding" into a disciplined, self-improving engineering methodology.
 
+## Prerequisites
+
+Install these tools before using the framework:
+
+| Tool | Required | What It Does | Get It |
+|------|----------|-------------|--------|
+| **Python 3.11+** | Yes | Runtime for the framework and your application | [python.org](https://www.python.org/downloads/) |
+| **Git** | Yes | Version control — the framework uses branches, hooks, and commit gates | [git-scm.com](https://git-scm.com/downloads) |
+| **Claude Code** | Yes | The CLI that runs all 11 agents and 16 commands | [claude.com/claude-code](https://claude.com/claude-code) |
+| **VS Code** | Recommended | Editor with Claude Code integration | [code.visualstudio.com](https://code.visualstudio.com/) |
+| **GitHub CLI (`gh`)** | Optional | Used by `/discover-projects`, `/ship`, and PR workflows | [cli.github.com](https://cli.github.com/) |
+
 ## Quick Start
 
 This is a **framework template**, not a standalone application. It provides the agentic development infrastructure — agents, commands, rules, hooks, and capture pipelines — that you build your project on top of.

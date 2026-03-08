@@ -299,7 +299,15 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         <div>
           <div class="card" style="margin-bottom:12px;">
             <h3>Prerequisites</h3>
-            <p style="margin-top:6px;">Python 3.11+, VS Code, and Claude Code (the CLI). The framework runs entirely inside Claude Code's agent system.</p>
+            <div style="margin-top:8px; font-size:13px; color:var(--text-secondary); display:flex; flex-direction:column; gap:6px;">
+              <div><span style="color:var(--green); font-weight:600;">Required:</span></div>
+              <div>&bull; <a href="https://www.python.org/downloads/" target="_blank" style="color:var(--blue); text-decoration:none;">Python 3.11+</a> &mdash; runtime</div>
+              <div>&bull; <a href="https://git-scm.com/downloads" target="_blank" style="color:var(--blue); text-decoration:none;">Git</a> &mdash; version control, hooks, commit gates</div>
+              <div>&bull; <a href="https://claude.com/claude-code" target="_blank" style="color:var(--blue); text-decoration:none;">Claude Code</a> &mdash; the CLI that runs all agents and commands</div>
+              <div style="margin-top:4px;"><span style="color:var(--gold); font-weight:600;">Recommended:</span></div>
+              <div>&bull; <a href="https://code.visualstudio.com/" target="_blank" style="color:var(--blue); text-decoration:none;">VS Code</a> &mdash; editor with Claude Code integration</div>
+              <div>&bull; <a href="https://cli.github.com/" target="_blank" style="color:var(--blue); text-decoration:none;">GitHub CLI (gh)</a> &mdash; for /discover-projects, /ship, PR workflows</div>
+            </div>
           </div>
           <div class="card" style="margin-bottom:12px;">
             <h3>What You Get</h3>
