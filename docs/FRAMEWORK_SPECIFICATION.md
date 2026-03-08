@@ -7,9 +7,9 @@ last_updated: "2026-03-07"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
-external_analyses: 7
-patterns_evaluated: 59
-patterns_adopted: 20
+external_analyses: 8
+patterns_evaluated: 77
+patterns_adopted: 42
 ---
 
 # AI-Native Agentic Development Framework v2.1
@@ -62,12 +62,12 @@ The framework originated from a research synthesis (`AI_Native_Agentic_Developme
 
 ### Evolution via External Project Analysis
 
-After the initial implementation, **7 external projects** were systematically analyzed using the `/analyze-project` command, evaluating **59 distinct patterns** across a 5-dimension scoring rubric (prevalence, elegance, evidence, fit, maintenance — max 25 points). Of these:
+After the initial implementation, **8 external projects** were systematically analyzed using the `/analyze-project` command, evaluating **77 distinct patterns** across a 5-dimension scoring rubric (prevalence, elegance, evidence, fit, maintenance — max 25 points). Of these:
 
-- **20 patterns adopted** — integrated into the framework with full implementation
-- **16 patterns deferred** — tracked for future consideration
-- **18 patterns rejected** — documented with reasoning (preserving decision lineage per Principle #1)
-- **5 patterns** achieved Rule of Three status (seen in 3+ independent projects)
+- **42 patterns adopted** — integrated into the framework with full implementation
+- **20 patterns deferred** — tracked for future consideration
+- **20 patterns rejected** — documented with reasoning (preserving decision lineage per Principle #1)
+- **4 patterns** achieved Rule of Three status (seen in 3+ independent projects)
 
 The adoption history is tracked in [`memory/lessons/adoption-log.md`](../memory/lessons/adoption-log.md).
 
@@ -922,7 +922,7 @@ Five steps:
 
 ### Analysis Track Record
 
-As of 2026-02-19, 7 projects analyzed → 59 patterns evaluated → 20 adopted. Two patterns achieved Rule of Three:
+As of 2026-03-08, 8 projects analyzed → 77 patterns evaluated → 42 adopted. Four patterns achieved Rule of Three:
 
 | Pattern | Sightings | Projects | Final Score |
 |---------|-----------|----------|-------------|
@@ -1023,7 +1023,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 | Session continuity | `pre-compact.ps1`, `session-start.ps1`, `BUILD_STATUS.md` | Hooks configured |
 | Structured exception hierarchy (pattern documented) | See coding standards + error handling in CLAUDE.md | Add to `src/` when building your app |
 | LLM-gated test markers | `pyproject.toml` marker registration | `--run-llm`, `--run-slow` |
-| Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 59 patterns tracked |
+| Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 77 patterns tracked |
 | 5 skill reference documents | `.claude/skills/*/SKILL.md` | Security, performance, testing, patterns, ADR |
 | 7 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing, build review |
 | 5 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review |
@@ -1081,7 +1081,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 
 ## Appendix A — External Project Provenance Table
 
-Complete record of all 59 patterns evaluated across 7 external project analyses, grouped by source project. Status: **ADOPTED** / **DEFERRED** / **REJECTED**.
+Complete record of all 77 patterns evaluated across 8 external project analyses, grouped by source project. Status: **ADOPTED** / **DEFERRED** / **REJECTED**.
 
 ### 1. ContractorVerification (SDD-Centric) — [ANALYSIS-20260219-010900](reviews/ANALYSIS-20260219-010900-contractor-verification.md)
 
@@ -1352,7 +1352,7 @@ agent_framework_template/
 │   │   └── regression-ledger.md      #   Tracks fixed bugs and regression tests
 │   ├── decisions/                     #   Promoted decision summaries
 │   ├── lessons/
-│   │   ├── adoption-log.md           #   Learning ledger (59 patterns tracked)
+│   │   ├── adoption-log.md           #   Learning ledger (77 patterns tracked)
 │   │   └── deploy-safety.md          #   Deployment safety lessons
 │   ├── patterns/                      #   Promoted code/process patterns
 │   ├── reflections/                   #   Promoted agent reflections
@@ -1412,7 +1412,7 @@ agent_framework_template/
 | 2026-02-18 | Initial research synthesis (`AI_Native_Agentic_Development_Framework_FULL.txt`) |
 | 2026-02-18 | Framework implementation begins — ADR-0001 accepted |
 | 2026-02-18 | First discussions captured (test-pipeline, review-routes) |
-| 2026-02-19 | 7 external projects analyzed, 59 patterns evaluated, 20 adopted |
+| 2026-02-19 | 8 external projects analyzed, 77 patterns evaluated, 42 adopted |
 | 2026-02-19 | Framework readiness review (REV-20260219-051846) — 12 required changes identified |
 | 2026-02-19 | This specification document created |
 | 2026-03-03 | Framework enhancements review — 22-item review (REV-20260303-183600) |
