@@ -1,9 +1,9 @@
 ---
-last_updated: "2026-02-28"
-total_analyses: 8
-patterns_evaluated: 75
-patterns_adopted: 36
-patterns_deferred: 16
+last_updated: "2026-03-09"
+total_analyses: 9
+patterns_evaluated: 86
+patterns_adopted: 42
+patterns_deferred: 19
 patterns_rejected: 18
 ---
 
@@ -39,6 +39,104 @@ Each entry records:
 
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
+
+---
+
+### Analysis: agentic_journal Framework Extensions (2026-03-09)
+**Source project**: agentic_journal — Flutter/Dart journaling app, direct derivative of template v2.1. 115k LOC, 36 ADRs, 100+ discussions.
+**Analysis report**: `docs/reviews/ANALYSIS-20260309-061459-agentic-journal.md`
+**Primary theme**: Autonomous workflow safety, capability protection, education gate artifacts
+**5 patterns adopted, 4 deferred** (confidence: 0.87; architecture-consultant, independent-perspective, docs-knowledge)
+
+---
+
+### Pattern: Autonomous Workflow Rule
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 23/25 (prevalence:5, elegance:4, evidence:4, fit:5, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `.claude/rules/autonomous_workflow.md` — Separates "autonomous execution authorization" from "protocol bypass authorization." Defines mandatory workflow sequences for multi-file features and small changes.
+- **Date**: 2026-03-09
+
+### Pattern: Education Gate Manifest Template
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 21/25 (prevalence:4, elegance:4, evidence:3, fit:5, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `docs/templates/education-gate-manifest-template.md` — Standardized artifact recording education gate completion with Bloom's distribution, mastery progression, and handoff criteria.
+- **Date**: 2026-03-09
+
+### Pattern: Domain Safety Constraints Section
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 21/25 (prevalence:5, elegance:4, evidence:3, fit:4, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `CLAUDE.md` — Commented-out section showing how derived projects declare domain-specific safety constraints at blocking-finding severity.
+- **Date**: 2026-03-09
+
+### Pattern: BUILD_STATUS.md Advisory Accumulation
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:3, fit:5, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `CLAUDE.md` — One-sentence addition to BUILD_STATUS.md section documenting advisory accumulation practice.
+- **Date**: 2026-03-09
+
+### Pattern: /ship Pre-Flight Validation
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 22/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:5) (+2 Rule of Three bonus)
+- **Sightings**: 3 (Rule of Three triggered — also seen in pre-flight checks pattern and build_module pre-flight)
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `.claude/commands/ship.md` — Added pre-flight validation step checking scripts, gh CLI, branch state, working tree, and pyproject.toml. Enhanced behavioral rules to 5 items.
+- **Date**: 2026-03-09
+
+### Pattern: CAPABILITY_STATUS.md Registry (Two-PR Pattern)
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 19/25 (prevalence:4, elegance:4, evidence:3, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Needs autonomous_workflow rule in place first (dependency pair). Python adaptation for FastAPI dependency injection not yet designed.
+- **Revisit if**: Autonomous workflow rule is adopted (done) and a similar "experimental integration becomes default" incident occurs.
+
+### Pattern: CPP Quality Gate Automation (C2+C3)
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 16/25 (prevalence:4, elegance:3, evidence:3, fit:3, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Flutter-specific Riverpod provider detection not transferable. Needs CAPABILITY_STATUS.md registry adopted first.
+- **Revisit if**: Registry is adopted and manual enforcement proves insufficient.
+
+### Pattern: Automated /ship Command (Solo Mode)
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 21/25 (prevalence:4, elegance:4, evidence:3, fit:5, maintenance:5) — rescored after recognizing solo-dev use case
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `.claude/commands/ship.md` — Added `--solo` flag for direct-commit mode (no PR, no `gh` CLI). Includes auto-semver suggestion from git diff analysis, `bump_version.py` integration, and streamlined commit+tag flow. Team mode (PR-based) preserved as default.
+- **Date**: 2026-03-09
+- **Note**: Originally deferred at 17/25. Rescored after developer pointed out that the deferral rationale ("teaching template") was inconsistent with adopting the autonomous workflow rule. Solo developers don't need GitHub PR ceremony.
+
+### Pattern: CONFIGURATION.md / Environment Variable Documentation
+- **First seen**: agentic_journal (2026-03-09)
+- **Analysis**: ANALYSIS-20260309-061459-agentic-journal
+- **Score**: 17/25 (prevalence:3, elegance:4, evidence:3, fit:3, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Template has minimal env var requirements. Pattern is context-specific to apps with compile-time config.
+- **Revisit if**: Template adds features requiring environment variables.
 
 ---
 
