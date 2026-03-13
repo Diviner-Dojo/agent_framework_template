@@ -4,6 +4,8 @@
 
 A structured, multi-agent development framework for Claude Code that transforms AI-assisted development from unstructured "vibe coding" into a disciplined, self-improving engineering methodology.
 
+> **New here?** Start with the [Framework Presentation](https://diviner-dojo.github.io/agent_framework_template/docs/diviner-dojo-framework-presentation.html) for an overview, or the [How-To Guide](https://diviner-dojo.github.io/agent_framework_template/docs/how-to-use-presentation.html) to get started.
+
 ## Prerequisites
 
 Install these tools before using the framework:
