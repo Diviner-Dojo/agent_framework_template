@@ -14,10 +14,13 @@ upstream:
 drift:
   status: current
   divergence_distance: 0
-pinned_traits: []
+pinned_traits:
+- path: PHILOSOPHY.md
+  reason: Private fork mission statement — not applicable to public template
 custodian:
-  primary_human: null
+  primary_human: DanEvans-collab
   approval_required_for:
   - template_modification
   - principle_change
   - agent_restructuring
+  - promotion_to_upstream
