@@ -1,0 +1,5 @@
+# Prevent merge conflicts on lineage manifest during upstream sync.
+# In derived projects, the private repo's manifest (type: derived) must
+# always win over the template's manifest (type: template).
+# See ADR-0003 for rationale.
+framework-lineage.yaml merge=ours

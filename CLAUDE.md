@@ -155,7 +155,7 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 ### User Notification Hook (Optional)
 - **Notification**: Fires a system notification when Claude Code completes a task. Platform-specific setup required — see `docs/setup/notification-hook.md` for Windows (BurntToast), macOS (osascript), and Linux (notify-send) instructions.
 
-`BUILD_STATUS.md` is session-scoped working state at the project root. It is ephemeral and distinct from the four-layer capture stack — it preserves in-flight context across sessions rather than capturing completed decisions.
+`BUILD_STATUS.md` is session-scoped working state at the project root. It is ephemeral and distinct from the four-layer capture stack — it preserves in-flight context across sessions rather than capturing completed decisions. Open advisories from reviews should be accumulated in BUILD_STATUS.md so they persist across sessions until addressed — this prevents advisory findings from being lost when review reports are closed.
 
 ## Commit Protocol
 
@@ -224,6 +224,29 @@ Actions NOT authorized (always require confirmation):
 - Modifying `.claude/settings.json`
 - Deleting files outside of `memory/archive/`
 - Any operation affecting production environments
+
+IMPORTANT: Enabling autonomous execution authorizes executing the full workflow
+without pausing for permission at each step. It does NOT authorize skipping steps.
+See `.claude/rules/autonomous_workflow.md` for the mandatory workflow sequence.
+-->
+
+## Domain Safety Constraints
+
+<!-- Uncomment and customize for your project. If your domain has safety constraints
+     that must be treated as blocking review findings (medical, financial, accessibility,
+     privacy, etc.), declare them here. Review specialists read CLAUDE.md as context,
+     so constraints declared here are enforced at blocking-finding severity.
+
+     Example for a medical journaling app:
+     - Clinical language must never be used in user-facing text (blocking)
+     - Emotional state labels must use validated psychological scales only (blocking)
+     - No diagnostic or prescriptive language in AI-generated responses (blocking)
+
+     Example for a financial app:
+     - All monetary calculations must use decimal types, never floating point (blocking)
+     - Transaction amounts must be validated against account balance before processing (blocking)
+
+     Declare your domain constraints below:
 -->
 
 ## Agent Invocation Pattern

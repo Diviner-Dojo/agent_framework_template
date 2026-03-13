@@ -6,7 +6,9 @@
       "Write",
       "Bash(*)",
       "WebFetch(*)",
-      "Task(*)"
+      "Task(*)",
+      "Skill(build_module)",
+      "Skill(build_module:*)"
     ]
   },
   "hooks": {
