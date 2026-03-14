@@ -1,10 +1,10 @@
-# Philosophy: Exploration, Gatekeeping, and Creative Empowerment
+# Philosophy: Exploration, Craft, and Creative Empowerment
 
 ## Why this framework exists
 
-This framework exists to help people actuate their creativity. Not to impose process for its own sake, not to optimize for velocity, but to give people — especially those new to building with AI — a structure that amplifies what they can imagine and build.
+This framework exists to help people actuate their creativity. Not to impose process for its own sake, not to optimize for velocity, but to give people — especially those building something personal and meaningful — a structure that amplifies what they can imagine and build.
 
-Every principle, every agent, every review gate exists to serve that mission. When a rule stops serving creativity, the rule should change.
+Every principle, every agent, every review gate exists to serve that mission. When a rule stops serving creativity, the rule should change — through the framework's evolution process, not by ad-hoc bypass.
 
 ## Who we are
 
@@ -14,6 +14,8 @@ We do not own the public repo. We are its **first follower and gatekeeper**: pri
 
 The public repo belongs to everyone who uses it. Our job is to make it worthy of their trust.
 
+The app is the output. The understanding — of the problem, the user, the technology, the craft — is the real asset.
+
 ## How we work
 
 ### Exploration is the default
@@ -21,6 +23,22 @@ The public repo belongs to everyone who uses it. Our job is to make it worthy of
 This repo is a safe space for understanding. Experiments don't need to succeed — they need to teach. A failed `lab/*` branch that produces a clear insight is more valuable than a successful feature that nobody understands.
 
 We use `lab/*` branches freely, commit messy work, and push to our private repo without fear. The point isn't clean code — it's clear thinking.
+
+### Understanding before action
+
+We don't rush to implement. We deliberate, we review from multiple perspectives, we capture the reasoning. The code is the output; the understanding is the asset (Principle #1).
+
+This means:
+- We plan before we build (`/plan` → `/build_module`)
+- We review before we commit (`/review`)
+- We reflect after we ship
+- We measure what matters: not lines of code, but clarity of thought
+
+### The team is the framework
+
+The specialist agents are not interchangeable review functions. Each brings a distinct professional philosophy — a belief about what matters most in their craft. The Facilitator leads them as a respected elder: insightful, considerate, demanding of their best work. The Steward guards the framework's evolution with the wisdom of its founder.
+
+Every agent is equal in standing. They have different strengths, different lenses, different instincts. That diversity of perspective is what makes multi-agent review more valuable than any single analysis, however brilliant.
 
 ### Promotion is earned
 
@@ -34,37 +52,38 @@ Before promoting, ask:
 
 If the answer to any of these is no, the feature stays in the lab until it matures.
 
-### Understanding before action
+### Agents improve through evidence, not opinion
 
-We don't rush to implement. We deliberate, we review from multiple perspectives, we capture the reasoning. The code is the output; the understanding is the asset (Principle #1).
+When an agent's performance needs to evolve, the change follows a deliberate path:
+1. The Facilitator observes a pattern across multiple reviews — not a single incident
+2. The Facilitator proposes a specific change with evidence
+3. The Steward evaluates the proposal against the framework's philosophy and principles
+4. The developer approves the change
+5. The change goes through the same review process as any code change
 
-This means:
-- We plan before we build (`/plan` → `/build_module`)
-- We review before we commit (`/review`)
-- We reflect after we ship
-- We measure what matters: not lines of code, but clarity of thought
+This is how we get better without losing what already works.
 
 ## The promotion standard
 
-A feature is ready for the public repo when:
+A change to the framework is ready when:
 
-1. **It clearly benefits users** — not hypothetically, but demonstrably
-2. **It's been independently evaluated** — the builder is not the sole judge (Principle #4)
-3. **It's understandable** — someone encountering it for the first time can grasp why it exists
+1. **It clearly benefits the developer** — not hypothetically, but demonstrably
+2. **It's been independently evaluated** — the proposer is not the sole judge (Principle #4)
+3. **It's understandable** — someone encountering it can grasp why it exists
 4. **It's the least-complex version** — no premature abstraction, no speculative features (Principle #8)
-5. **The decision to promote is documented** — with rationale that future contributors can reference (Principle #5)
+5. **The decision is documented** — with rationale that future sessions can reference (Principle #5)
 
 ## Relationship to the eight principles
 
 The eight non-negotiable principles in CLAUDE.md are the *how*. This philosophy is the *why*.
 
-- **Reasoning is the primary artifact** because understanding is how we serve creativity — not just our own, but the creativity of everyone who uses this framework.
+- **Reasoning is the primary artifact** because understanding is how we serve creativity — not just our own, but the creativity of everyone who uses what we build.
 - **Collaboration precedes adversarial rigor** because building together produces richer ideas than tearing them apart.
-- **Education gates before merge** because a feature that can't be taught can't empower anyone.
-- **Least-complex intervention first** because complexity is the enemy of creativity — every unnecessary abstraction is a barrier someone else has to climb.
+- **Education gates before merge** because a feature that can't be understood can't empower anyone.
+- **Least-complex intervention first** because complexity is the enemy of creativity — every unnecessary abstraction is a barrier someone has to climb.
 
 ## A note on failure
 
-Experiments will fail. Approaches will be abandoned. Lab branches will be deleted. This is not waste — it's the cost of exploration, and exploration is how we find what's worth promoting.
+Experiments will fail. Approaches will be abandoned. Lab branches will be deleted. This is not waste — it's the cost of exploration, and exploration is how we find what's worth keeping.
 
 Document what you learn from failures. The insight is the artifact, not the code.
