@@ -60,5 +60,5 @@ This data informs whether multi-instance dispatch should become a standard patte
 
 - Specialists CANNOT dispatch themselves — only the Facilitator dispatches via `Task()`
 - A split request does not pause the specialist's current work — complete your analysis first, then suggest the split
-- The independent-perspective agent has pre-approved multi-instance dispatch (see its agent definition) — it does not need to request splits for its defined instance types
+- The independent-perspective agent has pre-approved multi-instance dispatch (see its agent definition) — it does not need to request splits for its defined instance types. It defines 4 instance types (Independent Analyst, Team Observer, Research Scout, Process Critic), but the Facilitator selects at most 3 per review per the dispatch guidance table in its agent definition. The 4 types are options, not simultaneous defaults.
 - Maximum instances per agent per review: 3 (including the original). The Facilitator may override this for exceptional situations but should document why.

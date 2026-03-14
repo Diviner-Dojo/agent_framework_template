@@ -35,7 +35,7 @@
 - **Facilitator** (`facilitator.md`): Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
 - **Specialists**: 9 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
 
-#### Agent Roster (12 agents)
+#### Agent Roster (11 agents)
 
 | Agent | Model | Role |
 |-------|-------|------|
@@ -108,7 +108,7 @@ Content here.
 
 ```
 .claude/
-  agents/       — Agent definitions (12: steward + facilitator + 10 specialists)
+  agents/       — Agent definitions (11: steward + facilitator + 9 specialists)
   commands/     — Slash command workflows (16 commands)
   custodian/    — Steward lineage tracking (lineage-events.jsonl, vouchers/)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
