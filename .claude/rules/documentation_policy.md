@@ -22,8 +22,14 @@
 - Review reports follow `docs/templates/review-report-template.md`
 - Reflections follow `docs/templates/reflection-template.md`
 
+## Agent Documentation
+- When adding a new agent definition (`.claude/agents/*.md`), update CLAUDE.md's Agent Architecture section (agent count, model tier table) and write an ADR if the new role type is novel (i.e., not a refinement of an existing specialist domain).
+
 ## CLAUDE.md Maintenance
 - Update CLAUDE.md when project conventions change
 - Update when new promoted rules are added to `.claude/rules/`
 - Update when architectural boundaries shift (requires ADR)
 - Every review comment about missing context is a signal that CLAUDE.md needs updating
+
+## Framework Documentation Sync
+- When framework-defining files change, downstream documentation artifacts must also be updated. See `.claude/rules/framework_doc_sync.md` for the full sync points table and enforcement details.

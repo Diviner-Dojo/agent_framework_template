@@ -1,9 +1,9 @@
 ---
 title: "AI-Native Agentic Development Framework — Full Specification"
-version: "2.1"
+version: "3.0"
 status: living-document
 created: "2026-02-18"
-last_updated: "2026-03-07"
+last_updated: "2026-03-16"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
@@ -12,7 +12,7 @@ patterns_evaluated: 77
 patterns_adopted: 42
 ---
 
-# AI-Native Agentic Development Framework v2.1
+# AI-Native Agentic Development Framework v3.0
 
 ## Full Specification
 
@@ -47,7 +47,7 @@ patterns_adopted: 42
 
 ## 1. Executive Summary
 
-This document is the authoritative specification for the AI-Native Agentic Development Framework v2.1 — a practical, implementable, AI-native development system designed for use inside VS Code with Claude Code.
+This document is the authoritative specification for the AI-Native Agentic Development Framework v3.0 — a practical, implementable, AI-native development system designed for use inside VS Code with Claude Code.
 
 ### Origin
 
@@ -343,7 +343,15 @@ Complex commands embed **CRITICAL BEHAVIORAL RULES** at the top of their definit
 
 ## 5. Agent Architecture
 
-The framework deploys **11 specialist agents**, each with a defined role, model tier, activation triggers, and anti-patterns.
+The framework deploys **14 agents** organized into a leadership hierarchy with 2 leaders and 12 specialists. Each agent has a defined role, model tier, specialist philosophy, activation triggers, and anti-patterns.
+
+### Leadership Hierarchy
+
+v3.0 introduced an explicit leadership hierarchy separating governance from orchestration:
+
+- **Steward** (`steward.md`): Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Maintains framework lineage tracking. Activated only for framework evolution and lineage decisions — not day-to-day reviews. Cannot dispatch other agents.
+- **Facilitator** (`facilitator.md`): Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
+- **Specialists**: 12 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
 
 ### Design Principles
 
@@ -352,22 +360,26 @@ The framework deploys **11 specialist agents**, each with a defined role, model 
 - Multiple subagents can run concurrently with true parallelism
 - Each subagent gets its own isolated context window
 - Agents are invoked via the Task tool: `Task(subagent_type="agent-name", prompt="...")`
+- The facilitator may override an agent's default model tier upward (sonnet → opus) when the task demands deeper reasoning. All overrides are recorded with `model:<tier>` tags.
 
 ### Agent Roster
 
 | Agent | Model Tier | File | Role |
 |-------|-----------|------|------|
-| **facilitator** | opus | [`.claude/agents/facilitator.md`](../.claude/agents/facilitator.md) | Orchestrates all multi-agent workflows; risk assessment, specialist assembly, synthesis, capture enforcement |
+| **steward** | opus | [`.claude/agents/steward.md`](../.claude/agents/steward.md) | Framework philosopher-guardian + lineage tracking, drift detection, manifest validation |
+| **facilitator** | opus | [`.claude/agents/facilitator.md`](../.claude/agents/facilitator.md) | Team leader; orchestrates all multi-agent workflows; risk assessment, specialist assembly, synthesis, capture enforcement |
 | **architecture-consultant** | opus | [`.claude/agents/architecture-consultant.md`](../.claude/agents/architecture-consultant.md) | Structural integrity, ADR validation, boundary enforcement, pattern consistency |
+| **independent-perspective** | opus | [`.claude/agents/independent-perspective.md`](../.claude/agents/independent-perspective.md) | Anti-groupthink, hidden assumptions, pre-mortem, alternative exploration; supports multi-instance dispatch (4 instance types) |
 | **security-specialist** | sonnet | [`.claude/agents/security-specialist.md`](../.claude/agents/security-specialist.md) | OWASP Top-10, trust boundaries, auth/authz, red-team thinking |
 | **qa-specialist** | sonnet | [`.claude/agents/qa-specialist.md`](../.claude/agents/qa-specialist.md) | Test adequacy, coverage analysis, edge cases, error handling |
 | **performance-analyst** | sonnet | [`.claude/agents/performance-analyst.md`](../.claude/agents/performance-analyst.md) | Algorithmic complexity, hot paths, DB queries, scalability |
-| **docs-knowledge** | sonnet | [`.claude/agents/docs-knowledge.md`](../.claude/agents/docs-knowledge.md) | Documentation completeness, ADR quality, CLAUDE.md currency, self-healing docs |
-| **independent-perspective** | sonnet | [`.claude/agents/independent-perspective.md`](../.claude/agents/independent-perspective.md) | Anti-groupthink, hidden assumptions, pre-mortem, alternative exploration |
+| **docs-knowledge** | sonnet | [`.claude/agents/docs-knowledge.md`](../.claude/agents/docs-knowledge.md) | Team Historian — documentation completeness, ADR quality, CLAUDE.md currency, knowledge flow |
 | **project-analyst** | sonnet | [`.claude/agents/project-analyst.md`](../.claude/agents/project-analyst.md) | External project scout + orchestrator for `/analyze-project` (two-phase: Survey → Orchestrate) |
-| **educator** | haiku | [`.claude/agents/educator.md`](../.claude/agents/educator.md) | Walkthroughs, quizzes, Bloom's taxonomy assessment, mastery tier tracking |
-| **steward** | sonnet | [`.claude/agents/steward.md`](../.claude/agents/steward.md) | Framework lineage tracking, drift detection, manifest validation, upstream-downstream relationship management |
-| **ux-evaluator** | sonnet | [`.claude/agents/ux-evaluator.md`](../.claude/agents/ux-evaluator.md) | UX friction evaluation, interaction flow analysis, state feedback, platform conventions, accessibility |
+| **educator** | sonnet | [`.claude/agents/educator.md`](../.claude/agents/educator.md) | The Coach — walkthroughs, quizzes, Bloom's taxonomy assessment, mastery tier tracking |
+| **ux-evaluator** | sonnet | [`.claude/agents/ux-evaluator.md`](../.claude/agents/ux-evaluator.md) | The User in the Room — UX friction evaluation, interaction flow analysis, state feedback, platform conventions, accessibility |
+| **finding-validator** | sonnet | [`.claude/agents/finding-validator.md`](../.claude/agents/finding-validator.md) | Independent finding verification, false positive filtering during /review validation pass |
+| **compliance-auditor** | sonnet | [`.claude/agents/compliance-auditor.md`](../.claude/agents/compliance-auditor.md) | CLAUDE.md/REVIEW.md rule compliance with exact quotation; activated during /review |
+| **history-analyst** | sonnet | [`.claude/agents/history-analyst.md`](../.claude/agents/history-analyst.md) | Git history context — churn, refactors, reverts, blame concentration; activated by /review --deep |
 
 ### Model-Tier Assignment
 
@@ -375,11 +387,33 @@ Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
 
 | Tier | Purpose | Agents |
 |------|---------|--------|
-| **opus** | Complex generation and architectural reasoning | facilitator, architecture-consultant |
-| **sonnet** | Analysis, review, and evaluation | security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst, steward, ux-evaluator |
-| **haiku** | Mechanical verification and lightweight tasks | educator |
+| **opus** | Complex generation, architectural reasoning, and governance | steward, facilitator, architecture-consultant, independent-perspective |
+| **sonnet** | Analysis, review, and evaluation | security-specialist, qa-specialist, performance-analyst, docs-knowledge, project-analyst, educator, ux-evaluator, finding-validator, compliance-auditor, history-analyst |
 
 *Model-tier assignment achieved* ***Rule of Three*** *status with 4 independent sightings: CritInsight, claude-agentic-framework, wshobson/agents, self-improving-coding-agent. Originally adopted from* ***CritInsight*** *(Score: 22/25 + 2 Rule of Three bonus = 24/25,* [*ANALYSIS-20260219-033023*](reviews/ANALYSIS-20260219-033023-critinsight.md)*).*
+
+### Cross-Agent Collaboration Protocols
+
+v3.0 formalized two collaboration protocols that enable organic inter-agent cooperation:
+
+- **Cross-Agent Dispatch** ([`.claude/rules/cross_agent_dispatch_protocol.md`](../.claude/rules/cross_agent_dispatch_protocol.md)): Any specialist can request dispatch of another agent through the facilitator. Requests are tagged `blocking` or `enhancing`. All requests and decisions are captured with `dispatch-request` / `dispatch-decision` tags.
+- **Multi-Instance Dispatch** ([`.claude/rules/multi_instance_protocol.md`](../.claude/rules/multi_instance_protocol.md)): Specialists can request parallel instance splits when splitting would produce meaningfully better results. The independent-perspective agent has pre-approved multi-instance dispatch with 4 instance types (Independent Analyst, Team Observer, Research Scout, Process Critic). Max 3 instances per agent per review.
+- **Discovery Pipeline**: independent-perspective (Research Scout) → project-analyst → docs-knowledge chain for cross-domain innovation capture.
+
+### Specialist Philosophy
+
+Each agent definition (v3.0) includes a specialist philosophy section that articulates the agent's unique perspective and values. This guides the agent's judgment in ambiguous situations and ensures distinct viewpoints across the panel.
+
+### Framework Evolution Path
+
+Changes to agent definitions, rules, or framework philosophy follow a gated path:
+
+1. **Observation**: Facilitator identifies a pattern across multiple reviews
+2. **Proposal**: Development note with evidence, diagnosis, and proposed change
+3. **Steward Gate**: Steward evaluates alignment with `PHILOSOPHY.md` and principles — verdicts: APPROVE / REVISE / DEFER / DECLINE
+4. **Developer Approval**: Human gate preserved (Principle #7)
+5. **Review**: Change goes through `/review` like any code change
+6. **Documentation Sync**: Verify downstream documentation artifacts are updated per `.claude/rules/framework_doc_sync.md`
 
 ### "Use When" Activation Triggers
 
@@ -389,7 +423,7 @@ Each agent's description includes explicit activation criteria (`"Activate for: 
 
 ### Embedded Anti-Patterns
 
-All 11 agent definitions include "Anti-patterns to avoid" sections with 5 domain-specific prohibitions each. Prohibitions are more actionable than permissions — each agent carries explicit guidance on what NOT to recommend, preventing over-flagging and off-target suggestions.
+All agent definitions include "Anti-patterns to avoid" sections with 5 domain-specific prohibitions each. Prohibitions are more actionable than permissions — each agent carries explicit guidance on what NOT to recommend, preventing over-flagging and off-target suggestions.
 
 *Adopted from* ***self-improving-coding-agent*** *(Score: 20/25,* [*ANALYSIS-20260219-043657*](reviews/ANALYSIS-20260219-043657-self-improving-coding-agent.md)*).*
 
@@ -397,7 +431,7 @@ All 11 agent definitions include "Anti-patterns to avoid" sections with 5 domain
 
 ## 6. Command Reference
 
-The framework provides **16 slash commands** in [`.claude/commands/`](../.claude/commands/). All commands include pre-flight checks that verify prerequisites before execution.
+The framework provides **17 slash commands** in [`.claude/commands/`](../.claude/commands/). All commands include pre-flight checks that verify prerequisites before execution.
 
 ### Core Workflow Commands
 
@@ -858,7 +892,7 @@ From [`.claude/rules/review_gates.md`](../.claude/rules/review_gates.md):
 |-----------|------------------|--------|
 | Quiz command | [`.claude/commands/quiz.md`](../.claude/commands/quiz.md) | **Implemented** |
 | Walkthrough command | [`.claude/commands/walkthrough.md`](../.claude/commands/walkthrough.md) | **Implemented** |
-| Educator agent | [`.claude/agents/educator.md`](../.claude/agents/educator.md) (haiku tier) | **Implemented** |
+| Educator agent | [`.claude/agents/educator.md`](../.claude/agents/educator.md) (sonnet tier) | **Implemented** |
 | Result recording | [`scripts/record_education.py`](../scripts/record_education.py) → SQLite `education_results` table | **Implemented** |
 | Competence trend analysis | SQLite queries across `education_results` | **Implemented** (schema ready) |
 
@@ -1009,8 +1043,8 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 |---------|-------|---------|
 | Layer 1 capture pipeline (create → write → generate → close) | `scripts/create_discussion.py`, `write_event.py`, `generate_transcript.py`, `close_discussion.py` | 10 discussions captured, 24+ tests |
 | Layer 2 SQLite indexing | `scripts/init_db.py`, `ingest_events.py`, `record_education.py` | 5 tables, 10 indexes, tested |
-| 11 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns |
-| 16 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
+| 14 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns + specialist philosophy |
+| 17 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
 | 7 hooks (10 files) | `.claude/hooks/*` | File locking, secret detection, auto-format, session continuity |
 | Quality gate (5 checks) | `scripts/quality_gate.py` + pre-commit hook | Runs on every commit |
 | Application source directory (`src/`) | `src/__init__.py` | Empty in template — add your code here |
@@ -1021,7 +1055,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 | LLM-gated test markers | `pyproject.toml` marker registration | `--run-llm`, `--run-slow` |
 | Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 77 patterns tracked |
 | 5 skill reference documents | `.claude/skills/*/SKILL.md` | Security, performance, testing, patterns, ADR |
-| 7 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing, build review |
+| 10 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing, build review, autonomous workflow, cross-agent dispatch, multi-instance, framework doc sync |
 | 5 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review |
 | Steward agent + lineage tracking | `.claude/agents/steward.md`, `scripts/lineage/`, `framework-lineage.yaml`, `.claude/custodian/` | ADR-0002 accepted, Phase 1 operational |
 | UX evaluator agent | `.claude/agents/ux-evaluator.md` | Interaction flow, accessibility, platform conventions |
@@ -1029,6 +1063,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 | 4 new commands (batch-evaluate, knowledge-health, lineage, ship) | `.claude/commands/*.md` | Lineage, release, knowledge pipeline, adoption evaluation |
 | Lineage test suite | `tests/test_lineage.py` | Manifest parsing, drift detection |
 | Education gate workflow | `.claude/commands/walkthrough.md`, `.claude/commands/quiz.md` | Generated per-session by educator agent |
+| Review Blueprint v2.1 adoption | `.claude/agents/finding-validator.md`, `.claude/agents/compliance-auditor.md`, `.claude/agents/history-analyst.md`, `REVIEW.md`, `.claude/commands/review.md` | Scope detection, confidence filtering, validation pass, compliance auditing, self-healing docs, --cost/--deep flags (ADR-0006) |
 
 ### Implemented but Unused / Under-Tested
 
@@ -1097,7 +1132,7 @@ Complete record of all 77 patterns evaluated across 8 external project analyses,
 | Pattern | Score | Status | Implementing File(s) |
 |---------|-------|--------|---------------------|
 | PostToolUse Auto-Format Hook | 24/25 | **ADOPTED** (PENDING) | `.claude/hooks/auto-format.sh` |
-| Model-Tier Agent Assignment | 22/25 | **ADOPTED** (PENDING) | All 11 agent YAML files |
+| Model-Tier Agent Assignment | 22/25 | **ADOPTED** (PENDING) | All agent YAML files |
 | Session Continuity Hooks | 21/25 | **ADOPTED** (PENDING) | `pre-compact.ps1`, `session-start.ps1`, `BUILD_STATUS.md` |
 | Spec-to-Code Mapping Table | 19/25 | DEFERRED | Project too small to benefit yet |
 | Protocol-Based DI with Factory | 19/25 | DEFERRED | Over-engineered at ~345 LOC |
@@ -1126,17 +1161,17 @@ Complete record of all 77 patterns evaluated across 8 external project analyses,
 
 | Pattern | Score | Status | Implementing File(s) |
 |---------|-------|--------|---------------------|
-| "Use When" Activation Triggers | 23/25 | **ADOPTED** (PENDING) | All 11 agent description fields |
+| "Use When" Activation Triggers | 23/25 | **ADOPTED** (PENDING) | All agent description fields |
 | CRITICAL BEHAVIORAL RULES Framing | 21/25 | **ADOPTED** (PENDING) | `review.md`, `deliberate.md`, `analyze-project.md`, `build_module.md` |
 | State-Persistent Multi-Phase Workflows | 20/25 | **ADOPTED** (PENDING) | `review.md`, `deliberate.md`, `analyze-project.md` (state.json) |
-| Pre-Flight Checks for Commands | 20/25 | **ADOPTED** (PENDING) | All 16 commands |
+| Pre-Flight Checks for Commands | 20/25 | **ADOPTED** (PENDING) | All 17 commands |
 | Model-Tier Agent Assignment *(4th sighting)* | — | ADOPTED | (Already adopted) |
 | `inherit` Model Tier | 18/25 | DEFERRED | Needs per-agent minimum tier guardrails |
 | ACH Methodology for Independent Perspective | 18/25 | DEFERRED | Unproven in AI agent context |
 | File Ownership Invariant | 16/25 | DEFERRED | Subagents are read-only; inapplicable |
 | Three-Tier Progressive Disclosure for Skills | 14/25 | REJECTED | Requires Claude Code plugin infrastructure |
 | Conductor Track Management | 13/25 | REJECTED | Different problem domain |
-| Plugin Marketplace Architecture | 12/25 | REJECTED | Wrong scale for 11 agents |
+| Plugin Marketplace Architecture | 12/25 | REJECTED | Wrong scale for 12 agents |
 | Agent-Teams Parallel Implementation | 10/25 | REJECTED | Requires experimental/unstable infrastructure |
 
 ### 5. self-learning-agent (daegwang) — [ANALYSIS-20260219-042113](reviews/ANALYSIS-20260219-042113-self-learning-agent.md)
@@ -1238,24 +1273,28 @@ agent_framework_template/
 ├── EDUCATION_GATE_START.md            # Education gate entry point
 ├── EDUCATION_GATE_MANIFEST.md         # Education gate manifest
 ├── framework-lineage.yaml            # Lineage manifest (project-template relationship)
+├── REVIEW.md                          # Review-specific rules (loaded only during /review, see ADR-0006)
 ├── pyproject.toml                     # Python config: ruff, pytest, coverage
 ├── requirements.txt                   # 8 pinned dependencies
 │
 ├── .claude/
-│   ├── agents/                        # 11 specialist agent definitions
-│   │   ├── facilitator.md             #   opus — orchestrator
+│   ├── agents/                        # 14 agent definitions (2 leaders + 12 specialists)
+│   │   ├── steward.md                #   opus — philosopher-guardian + lineage tracking
+│   │   ├── facilitator.md             #   opus — team leader, workflow orchestrator
 │   │   ├── architecture-consultant.md #   opus — structural integrity
+│   │   ├── independent-perspective.md #   opus — anti-groupthink, multi-instance
 │   │   ├── security-specialist.md     #   sonnet — OWASP, red-team
 │   │   ├── qa-specialist.md           #   sonnet — test adequacy
 │   │   ├── performance-analyst.md     #   sonnet — complexity, scalability
-│   │   ├── docs-knowledge.md          #   sonnet — documentation completeness
-│   │   ├── independent-perspective.md #   sonnet — anti-groupthink
+│   │   ├── docs-knowledge.md          #   sonnet — team historian
 │   │   ├── project-analyst.md         #   sonnet — external project analysis
-│   │   ├── educator.md               #   haiku — walkthroughs, quizzes
-│   │   ├── steward.md                #   sonnet — framework lineage, drift detection
-│   │   └── ux-evaluator.md           #   sonnet — UX friction, accessibility
+│   │   ├── educator.md               #   sonnet — the coach, walkthroughs, quizzes
+│   │   ├── ux-evaluator.md           #   sonnet — the user in the room, accessibility
+│   │   ├── finding-validator.md      #   sonnet — finding verification, false positive filtering
+│   │   ├── compliance-auditor.md     #   sonnet — CLAUDE.md/REVIEW.md rule compliance
+│   │   └── history-analyst.md        #   sonnet — git history context (--deep only)
 │   │
-│   ├── commands/                      # 16 slash commands
+│   ├── commands/                      # 17 slash commands
 │   │   ├── analyze-project.md         #   External project analysis
 │   │   ├── batch-evaluate.md          #   Batch adoption evaluation
 │   │   ├── build_module.md            #   Spec-driven module building
@@ -1416,3 +1455,4 @@ agent_framework_template/
 | 2026-03-07 | UX evaluator agent added, build review protocol rule added |
 | 2026-03-07 | Four new commands: `/batch-evaluate`, `/knowledge-health`, `/lineage`, `/ship` |
 | 2026-03-07 | Specification refreshed to current project state (v2.1 counts updated) |
+| 2026-03-13 | v3.0: Leadership hierarchy, specialist philosophy, collaboration protocols (cross-agent dispatch, multi-instance), model tier updates (steward/independent-perspective → opus, educator → sonnet), framework evolution path formalized, documentation sync rule added |

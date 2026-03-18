@@ -33,9 +33,9 @@
 #### Leadership Hierarchy
 - **Steward** (`steward.md`): Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Also maintains framework lineage tracking. Does not participate in day-to-day reviews — only activated for framework evolution and lineage decisions. Cannot dispatch other agents (no Task tool). See `PHILOSOPHY.md` for the values the steward protects.
 - **Facilitator** (`facilitator.md`): Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
-- **Specialists**: 9 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
+- **Specialists**: 12 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
 
-#### Agent Roster (11 agents)
+#### Agent Roster (14 agents)
 
 | Agent | Model | Role |
 |-------|-------|------|
@@ -50,6 +50,9 @@
 | ux-evaluator | sonnet | The User in the Room — interaction flow, emotional design, accessibility |
 | project-analyst | sonnet | External project analysis, cross-domain discovery pipeline |
 | educator | sonnet | The Coach — walkthroughs, quizzes, mastery tracking |
+| finding-validator | sonnet | Independent finding verification, false positive filtering |
+| compliance-auditor | sonnet | CLAUDE.md/REVIEW.md rule compliance with exact quotation |
+| history-analyst | sonnet | Git history context — churn, refactors, reverts, blame (--deep only) |
 
 #### Orchestration Rules
 - Subagents CANNOT spawn other subagents, except the **project-analyst** which serves as a delegated orchestrator for `/analyze-project`
@@ -108,8 +111,8 @@ Content here.
 
 ```
 .claude/
-  agents/       — Agent definitions (11: steward + facilitator + 9 specialists)
-  commands/     — Slash command workflows (16 commands)
+  agents/       — Agent definitions (14: steward + facilitator + 12 specialists)
+  commands/     — Slash command workflows (17 commands)
   custodian/    — Steward lineage tracking (lineage-events.jsonl, vouchers/)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
   rules/        — Auto-loaded standards (includes cross-agent and multi-instance protocols)
@@ -137,6 +140,7 @@ src/            — Application source code
 tests/          — Test suite
 framework-lineage.yaml — Lineage manifest (project-template relationship)
 PHILOSOPHY.md   — Framework philosophy: why we work the way we do
+REVIEW.md       — Review-specific rules (loaded only during /review, see ADR-0006)
 BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
 
@@ -197,7 +201,7 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 Every commit must pass two gates:
 
 1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting, linting, tests, or coverage fail, the commit is blocked.
-2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`.
+2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`. Supports auto-scope detection (PR diff, staged, unstaged, HEAD~1), `--cost low|medium|high` for model tier routing, `--deep` for git history analysis, and `--comment` for PR comment posting. Includes finding validation, confidence filtering, compliance auditing against CLAUDE.md + REVIEW.md, and self-healing documentation suggestions.
 
 For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching more than 5 files require `/review` — large framework changes are medium-risk regardless of whether they touch product code.
 
@@ -309,6 +313,7 @@ Changes to agent definitions, rules, or framework philosophy follow a gated path
 3. **Steward Gate**: Steward evaluates alignment with `PHILOSOPHY.md` and principles — verdicts: APPROVE / REVISE / DEFER / DECLINE
 4. **Developer Approval**: Human gate preserved (Principle #7)
 5. **Review**: Change goes through `/review` like any code change
+6. **Documentation Sync**: Verify downstream documentation artifacts are updated per `.claude/rules/framework_doc_sync.md`
 
 The Steward is activated only for framework evolution — not for day-to-day reviews.
 

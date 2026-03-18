@@ -1,6 +1,6 @@
 [project]
 name = "agentic-framework-template"
-version = "0.1.0"
+version = "3.0.0"
 description = "AI-Native Agentic Development Framework template for Claude Code"
 requires-python = ">=3.11"
 
@@ -15,6 +15,10 @@ select = ["E", "F", "I", "N", "W", "UP"]
 # Tests that import scripts via sys.path manipulation need E402 exemption
 "tests/test_capture_pipeline.py" = ["E402"]
 "tests/test_simulated_review.py" = ["E402"]
+"tests/test_bump_version.py" = ["E402"]
+"tests/test_enforce_forgetting_curve.py" = ["E402"]
+"tests/test_unify_sightings.py" = ["E402"]
+"tests/test_spawn_project.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -22,6 +26,7 @@ asyncio_mode = "auto"
 markers = [
     "uses_llm: test calls a real LLM API (skipped unless --run-llm is passed)",
     "slow: test is slow to execute (skipped unless --run-slow is passed)",
+    "regression: guards against a specific fixed bug (see memory/bugs/regression-ledger.md)",
 ]
 
 [tool.coverage.run]
