@@ -66,3 +66,58 @@ See `docs/templates/adr-template.md` for the full template with YAML frontmatter
 4. **Deprecated**: No longer relevant but not replaced (context changed)
 
 Nygard's insight: "The consequences of one ADR are very likely to become the context for subsequent ADRs."
+
+## Deferred ADR Placeholder Pattern
+
+When a decision is identified during planning or review but cannot be fully resolved yet, create a **deferred ADR placeholder** to reserve the ADR number and capture the decision context before it's lost.
+
+### When to Use
+
+- A spec review identifies an architectural decision that needs its own ADR
+- Multiple specs reference the same ADR number and you need to resolve the conflict early
+- A decision is blocked on information that will arrive later (e.g., performance benchmarks, external API availability)
+
+### Template
+
+```yaml
+---
+adr_id: ADR-NNNN
+title: "[Decision title — be specific even if deferred]"
+status: proposed
+date: YYYY-MM-DD
+decision_makers: []
+discussion_id: null
+supersedes: null
+risk_level: medium
+confidence: 0.50
+tags: [deferred]
+---
+
+## Context
+
+[Capture the context NOW while it's fresh. This is the most important section
+for a deferred ADR — if you lose the context, the ADR becomes much harder to
+write later.]
+
+## Decision
+
+**Status: DEFERRED** — [reason for deferral and what will unblock it]
+
+Expected resolution: [date or trigger condition]
+
+## Alternatives Considered
+
+[List known alternatives even if analysis is incomplete]
+
+## Consequences
+
+[To be completed when the decision is made]
+```
+
+### Rules
+
+1. **Reserve the ADR number immediately** — prevents conflicts when multiple specs need ADRs
+2. **Capture context while fresh** — the context section should be complete even if the decision isn't
+3. **Set confidence to 0.50** — signals this is not yet a real decision
+4. **Include the `deferred` tag** — makes deferred ADRs queryable
+5. **Set a resolution trigger** — prevents deferred ADRs from being forgotten

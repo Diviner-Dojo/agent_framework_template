@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Diviner Dojo — AI-Native Agentic Development Framework v2.1</title>
+<title>Diviner Dojo — AI-Native Agentic Development Framework v3.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -1109,7 +1109,7 @@ h3 {
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up">
-      <span class="badge badge-accent anim-fade-up-d1">v2.1</span>
+      <span class="badge badge-accent anim-fade-up-d1">v3.2</span>
       <h1 class="anim-fade-up-d2">AI-Native Agentic<br>Development Framework</h1>
       <p class="subtitle anim-fade-up-d3">Structured Multi-Agent Collaboration for<br>AI-Assisted Software Engineering</p>
       <p class="tagline anim-fade-up-d4">"Reasoning is the primary artifact. Code is output."</p>
@@ -1290,11 +1290,10 @@ h3 {
   <div class="slide" data-slide="5">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">The Team</p>
-      <h2 class="anim-fade-up-d1">11 Specialist Agents, One Orchestrator</h2>
+      <h2 class="anim-fade-up-d1">12 Agents: 2 Leaders + 10 Specialists</h2>
       <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px;" class="anim-fade-up-d2">
-        <span class="badge badge-gold">● Opus — Complex reasoning</span>
+        <span class="badge badge-gold">● Opus — Leadership &amp; complex reasoning</span>
         <span class="badge badge-blue">● Sonnet — Analysis &amp; review</span>
-        <span class="badge badge-green">● Haiku — Lightweight tasks</span>
       </div>
       <div class="agent-grid anim-fade-up-d3">
 
@@ -1384,15 +1383,15 @@ h3 {
 
         <div class="agent-card" onclick="toggleAgent(this)">
           <div class="agent-header">
-            <div class="agent-icon tier-sonnet">🔍</div>
+            <div class="agent-icon tier-opus">🔍</div>
             <div>
               <div class="agent-name">Independent Perspective</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
+              <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">opus</span>
             </div>
           </div>
           <div class="agent-role">Anti-groupthink &amp; hidden assumptions</div>
           <div class="agent-detail">
-            Pre-mortem analysis, alternative exploration, challenge of consensus positions. Activated for medium/high risk changes. Provides the dissenting voice that prevents echo-chamber failures.
+            Pre-mortem analysis, alternative exploration, challenge of consensus positions. Supports multi-instance dispatch with 4 instance types. Activated for medium/high risk changes. Provides the dissenting voice that prevents echo-chamber failures.
           </div>
         </div>
 
@@ -1426,29 +1425,43 @@ h3 {
 
         <div class="agent-card" onclick="toggleAgent(this)">
           <div class="agent-header">
-            <div class="agent-icon tier-sonnet">🏛️</div>
+            <div class="agent-icon tier-opus">🏛️</div>
             <div>
               <div class="agent-name">Steward</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
+              <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">opus</span>
             </div>
           </div>
-          <div class="agent-role">Framework lineage &amp; drift tracking</div>
+          <div class="agent-role">Framework philosopher-guardian &amp; lineage</div>
           <div class="agent-detail">
-            Tracks how derived projects relate to the canonical template. Detects drift, validates manifest integrity, and manages the project's upstream relationship. The framework's institutional memory for genealogy.
+            Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Maintains lineage tracking and drift detection. Activated only for framework evolution — not day-to-day reviews.
           </div>
         </div>
 
         <div class="agent-card" onclick="toggleAgent(this)">
           <div class="agent-header">
-            <div class="agent-icon tier-haiku">🎓</div>
+            <div class="agent-icon tier-sonnet">🎓</div>
             <div>
               <div class="agent-name">Educator</div>
-              <span class="badge badge-green" style="font-size:10px; padding:1px 8px;">haiku</span>
+              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
             </div>
           </div>
-          <div class="agent-role">Walkthroughs, quizzes &amp; Bloom's assessment</div>
+          <div class="agent-role">The Coach — walkthroughs, quizzes &amp; Bloom's assessment</div>
           <div class="agent-detail">
             Generates Bloom's taxonomy assessments, guided walkthroughs, and comprehension quizzes. Tracks mastery tiers and adapts difficulty. Scaffolding intensity fades as demonstrated competence grows.
+          </div>
+        </div>
+
+        <div class="agent-card" onclick="toggleAgent(this)">
+          <div class="agent-header">
+            <div class="agent-icon tier-sonnet">&#x1f4ca;</div>
+            <div>
+              <div class="agent-name">History Analyst</div>
+              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
+            </div>
+          </div>
+          <div class="agent-role">Git archaeologist — churn, refactors, reverts &amp; blame</div>
+          <div class="agent-detail">
+            Surfaces git history patterns for files under review: churn frequency, authorship concentration, reverted changes, and bug fix patterns. Activated only with --deep flag for high-risk reviews.
           </div>
         </div>
 
@@ -1861,28 +1874,29 @@ h3 {
             <div class="tree-label"><span class="tree-toggle">▸</span> .claude/ <span class="tree-comment">— Framework configuration</span></div>
             <div class="tree-children">
               <div class="tree-folder" onclick="toggleTree(event, this)">
-                <div class="tree-label"><span class="tree-toggle">▸</span> agents/ <span class="tree-comment">— 11 specialist definitions</span></div>
+                <div class="tree-label"><span class="tree-toggle">▸</span> agents/ <span class="tree-comment">— 12 agent definitions</span></div>
                 <div class="tree-children">
                   <div class="tree-file">  facilitator.md</div>
                   <div class="tree-file">  architecture-consultant.md</div>
                   <div class="tree-file">  security-specialist.md</div>
                   <div class="tree-file">  qa-specialist.md</div>
+                  <div class="tree-file">  history-analyst.md</div>
                   <div class="tree-file">  ... (7 more)</div>
                 </div>
               </div>
               <div class="tree-folder" onclick="toggleTree(event, this)">
-                <div class="tree-label"><span class="tree-toggle">▸</span> commands/ <span class="tree-comment">— 16 slash commands</span></div>
+                <div class="tree-label"><span class="tree-toggle">▸</span> commands/ <span class="tree-comment">— 17 slash commands</span></div>
                 <div class="tree-children">
                   <div class="tree-file">  review.md</div>
                   <div class="tree-file">  deliberate.md</div>
                   <div class="tree-file">  build_module.md</div>
                   <div class="tree-file">  analyze-project.md</div>
-                  <div class="tree-file">  ... (12 more)</div>
+                  <div class="tree-file">  ... (13 more)</div>
                 </div>
               </div>
               <div class="tree-file">  custodian/ <span class="tree-comment">— Lineage tracking</span></div>
               <div class="tree-file">  hooks/ <span class="tree-comment">— 7 lifecycle hooks</span></div>
-              <div class="tree-file">  rules/ <span class="tree-comment">— 7 auto-loaded standards</span></div>
+              <div class="tree-file">  rules/ <span class="tree-comment">— 10 auto-loaded standards</span></div>
             </div>
           </div>
 
@@ -2056,7 +2070,7 @@ h3 {
         </a>
       </div>
       <p class="anim-fade-up-d4" style="margin-top:24px; color:var(--text-muted); font-size:13px;">
-        AI-Native Agentic Development Framework v2.1 · Diviner Dojo
+        AI-Native Agentic Development Framework v3.2 · Diviner Dojo
         <br><a href="mailto:diviner-dojo@gmail.com" style="color:var(--text-muted); text-decoration:none;">diviner-dojo@gmail.com</a>
       </p>
     </div>

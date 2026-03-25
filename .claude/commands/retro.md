@@ -44,6 +44,16 @@ else:
 
 If pre-flight fails, tell the developer what's missing. The metrics database is essential — suggest running `python scripts/init_db.py` if it's missing.
 
+## Step 0: Knowledge Pipeline Dashboard
+
+Run the knowledge pipeline dashboard to gather baseline metrics:
+
+```bash
+python scripts/knowledge_dashboard.py --no-log
+```
+
+Include the pipeline health score and any gaps in the retro data gathering. This provides context on whether knowledge is being captured and amplified effectively.
+
 ## Step 1: Gather Data
 
 Query SQLite for the sprint period:
@@ -95,6 +105,61 @@ conn.close()
 ```
 
 Also read recent discussion transcripts from `discussions/`.
+
+### Step 1b: Spec Pipeline Health Check
+
+Check for stale specs that may have been implemented but not marked complete:
+
+```bash
+python -c "
+import pathlib, re
+from datetime import datetime, timezone
+specs = list(pathlib.Path('docs/sprints').glob('SPEC-*.md'))
+stale = []
+for s in specs:
+    text = s.read_text(encoding='utf-8')
+    status_m = re.search(r'^status:\s*(.+)$', text, re.MULTILINE)
+    type_m = re.search(r'^type:\s*(.+)$', text, re.MULTILINE)
+    if not status_m: continue
+    status = status_m.group(1).strip().strip('\"')
+    spec_type = type_m.group(1).strip().strip('\"') if type_m else 'spec'
+    if spec_type == 'vision': continue
+    if status in ('approved', 'reviewed'):
+        stale.append((s.name, status))
+if stale:
+    print(f'WARNING: {len(stale)} specs may be stale (approved/reviewed but not complete):')
+    for name, st in stale:
+        print(f'  [{st}] {name}')
+    print('Action: Verify if these specs have been implemented. If so, update status to complete.')
+else:
+    print('Spec pipeline healthy: no stale approved/reviewed specs.')
+"
+```
+
+Include stale spec count in the retro report. Cross-reference against recent commits if specs have been stale >7 days.
+
+### Step 1c: Retro Action Resolution Check
+
+Check the retro action registry for open items from previous retros:
+
+```bash
+python -c "
+import pathlib
+registry = pathlib.Path('memory/decisions/retro-action-registry.md')
+if registry.exists():
+    text = registry.read_text(encoding='utf-8')
+    open_count = text.lower().count('status: open') + text.lower().count('status: in-progress')
+    completed = text.lower().count('status: completed') + text.lower().count('status: done')
+    deferred = text.lower().count('status: deferred')
+    print(f'Retro actions: {open_count} open, {completed} completed, {deferred} deferred')
+    if open_count > 0:
+        print('Review open items below — check if any have been resolved through other mechanisms (ADRs, rules, commits).')
+else:
+    print('No retro action registry found at memory/decisions/retro-action-registry.md')
+"
+```
+
+Before writing the draft retro, review open retro actions from previous retros. If an action item has been resolved through a different mechanism (ADR, rule change, commit), update its status in the registry and note the resolution reference.
 
 ## Step 2: Analyze Patterns
 
@@ -156,15 +221,75 @@ Protocols with consistently zero blocking findings are relaxation candidates.
 Present data; do NOT recommend automatic relaxation (Principle #7 — human decides).
 ```
 
-## Step 4: Review Adoption Log
+## Step 4: Review Adoption Log + Knowledge Pipeline
+
+### 4a. Adoption Log Review
 
 Check `memory/lessons/adoption-log.md` for:
 1. Patterns with 3+ sightings that haven't been adopted yet (Rule of Three trigger)
 2. Recently deferred patterns that may warrant re-evaluation
 3. Whether adopted patterns from external analyses are actually being used in the codebase
-4. **PENDING adoption age**: For each PENDING pattern, compute days since its `Adopted` date. Report stale-pending count (patterns PENDING for >14 days). If stale count > 5, recommend the developer run `/batch-evaluate` to clear the backlog.
+4. **PENDING adoption age**: Run the stale adoption checker:
 
-Add findings to the draft under a "## External Learning" section. Include a PENDING age summary:
+```bash
+python scripts/check_stale_adoptions.py
+```
+
+If stale count > 5 (exit code 2), recommend the developer run `/batch-evaluate` to clear the backlog.
+
+### 4b. Rule of Three (Discussion-Derived Patterns)
+
+Query the unified Rule of Three view for patterns crossing the 3-discussion threshold:
+
+```bash
+python -c "
+import sqlite3
+conn = sqlite3.connect('metrics/evaluation.db')
+try:
+    rows = conn.execute('SELECT * FROM v_rule_of_three ORDER BY discussion_count DESC').fetchall()
+    if rows:
+        print('=== Rule of Three Hits ===')
+        for pattern_key, disc_count, agent_count, first_seen, last_seen, discussions in rows:
+            print(f'  {pattern_key}: {disc_count} discussions, {agent_count} agents')
+    else:
+        print('No patterns have crossed the Rule of Three threshold yet.')
+except sqlite3.OperationalError as e:
+    print(f'Rule of Three view not available: {e}')
+conn.close()
+"
+```
+
+### 4c. Agent Effectiveness Summary
+
+Query the agent dashboard for effectiveness trends:
+
+```bash
+python -c "
+import sqlite3
+conn = sqlite3.connect('metrics/evaluation.db')
+try:
+    rows = conn.execute('SELECT * FROM v_agent_dashboard ORDER BY total_findings DESC').fetchall()
+    if rows:
+        print('=== Agent Effectiveness ===')
+        for agent, disc, total, unique, uniq_pct, surv_pct, avg_conf, avg_cal in rows:
+            print(f'  {agent}: {disc} discussions, {total} findings, {uniq_pct or 0}% unique, {surv_pct or 0}% survived')
+    else:
+        print('No agent effectiveness data yet.')
+except sqlite3.OperationalError as e:
+    print(f'Agent dashboard not available: {e}')
+conn.close()
+"
+```
+
+### 4d. Forgetting Curve Check
+
+Run a dry-run staleness check on promoted knowledge:
+
+```bash
+python scripts/enforce_forgetting_curve.py --dry-run
+```
+
+Add all findings to the draft under "## Knowledge Pipeline Health" and "## External Learning" sections. Include a PENDING age summary:
 
 ```markdown
 ### PENDING Adoption Age
@@ -184,13 +309,33 @@ python scripts/create_discussion.py "retro-YYYYMMDD" --risk low --mode ensemble
 
 Use the actual date. Save the returned `discussion_id` — you will need it for all subsequent capture calls.
 
-### 5b. Emit Context Brief
+### 5.1. Write Context-Brief (Before Specialist Dispatch)
+
+Immediately after creating the discussion, capture a context-brief event. This must be
+written before any specialist is dispatched — it produces `turn_id=1` in the discussion
+and injects developer framing into specialist prompts.
+
+Summarise the developer's request from the current session. Populate all four fields;
+write "(none stated)" if a field was not addressed. Strip business context (deadlines,
+client names, regulatory pressures) — record structural intent only.
 
 ```bash
-python scripts/write_event.py <discussion_id> "facilitator" "proposal" "Context brief: Sprint retrospective for <period>. Discussions analyzed: <N>. Focus areas: process friction, agent calibration, education trends, protocol value." --tags "context-brief"
+# INVARIANT: This must be the first write_event.py call in this workflow.
+# turn_id=1 is required for extraction pipeline integrity. Any reordering
+# silently breaks context-brief capture.
+python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
+  "## Request Context
+- **What was requested**: [verbatim or close paraphrase of the developer's instruction]
+- **Files/scope**: [sprint period and discussions being analyzed]
+- **Developer-stated motivation**: [why this retro is being run, if stated; or 'none stated']
+- **Explicit constraints**: [developer-stated constraints agents should respect; or 'none stated']" \
+  --tags "context-brief"
+# If invoked without prior conversational context (cold start), populate all four
+# fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
+# invocations are queryable: --tags "context-brief,context-brief-cold-start"
 ```
 
-### 5c. Capture Draft as Proposal Event
+### 5b. Capture Draft as Proposal Event
 
 ```bash
 python scripts/write_event.py <discussion_id> \

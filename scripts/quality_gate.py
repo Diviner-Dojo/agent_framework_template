@@ -74,6 +74,10 @@ def _skip(name: str) -> None:
     print(f"  {YELLOW}SKIP{RESET}  {name}")
 
 
+def _warn(name: str) -> None:
+    print(f"  {YELLOW}WARN{RESET}  {name}")
+
+
 def check_formatting(fix: bool = False) -> bool:
     """Check 1: ruff format compliance."""
     if fix:
@@ -358,6 +362,31 @@ def check_review_existence() -> bool:
     return False
 
 
+def check_build_status_freshness() -> bool:
+    """Check 8 (advisory): warn if BUILD_STATUS.md is older than 60 minutes.
+
+    This is an advisory check — it warns but does not fail the gate.
+    Always returns True (never blocks).
+    """
+    build_status = PROJECT_ROOT / "BUILD_STATUS.md"
+    if not build_status.exists():
+        _warn("BUILD_STATUS.md freshness (file not found — consider creating it)")
+        return True
+
+    import time
+
+    mtime = build_status.stat().st_mtime
+    age_minutes = (time.time() - mtime) / 60
+    if age_minutes > 60:
+        _warn(
+            f"BUILD_STATUS.md freshness (last updated {age_minutes:.0f} minutes ago — consider updating)"
+        )
+        return True
+
+    _pass(f"BUILD_STATUS.md freshness ({age_minutes:.0f} min ago)")
+    return True
+
+
 _CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
 
 
@@ -489,6 +518,10 @@ def main() -> int:
     else:
         total += 1
         results.append(check_regression_ledger())
+
+    # Check 8 (advisory): BUILD_STATUS.md freshness
+    # This check always passes — it only warns. Not counted in pass/fail totals.
+    check_build_status_freshness()
 
     # Summary
     passed = sum(results)

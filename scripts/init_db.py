@@ -252,6 +252,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
         ("discussions", "duration_minutes", "REAL"),
         ("turns", "content_excerpt", "TEXT"),
         ("turns", "tags", "TEXT DEFAULT '[]'"),
+        ("discussions", "related_discussion_id", "TEXT"),
     ]
     for table, column, col_type in _migrations:
         try:

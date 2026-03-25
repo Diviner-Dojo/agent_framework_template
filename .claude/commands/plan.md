@@ -42,6 +42,39 @@ else:
 
 If pre-flight fails, tell the developer what's missing and suggest running `/onboard` to set up the framework structure.
 
+## Step 0.5: Spec Budget Check
+
+Before creating a new spec, check the active spec count:
+
+```bash
+python -c "
+import pathlib, re
+specs = list(pathlib.Path('docs/sprints').glob('SPEC-*.md'))
+active = 0
+for s in specs:
+    text = s.read_text(encoding='utf-8')
+    status = re.search(r'^status:\s*(.+)$', text, re.MULTILINE)
+    spec_type = re.search(r'^type:\s*(.+)$', text, re.MULTILINE)
+    if status:
+        st = status.group(1).strip().strip('\"')
+        tp = spec_type.group(1).strip().strip('\"') if spec_type else 'spec'
+        if tp == 'spec' and st in ('draft', 'reviewed', 'approved'):
+            active += 1
+print(f'Active specs: {active}/5')
+if active >= 5:
+    print('WARNING: Spec budget reached (5 active). Consider completing or retiring an existing spec before creating a new one.')
+"
+```
+
+If the budget is reached, inform the developer. They may override, or they may want to create a `type: vision` document instead (visions don't count toward the budget).
+
+## Step 0.7: Determine Type
+
+Ask the developer: is this an **actionable spec** (something to build in the near term) or a **vision document** (an idea to capture for future consideration)?
+
+- `type: spec` — has concrete requirements, acceptance criteria, and affected components. Counts toward the active budget.
+- `type: vision` — captures an idea, direction, or aspiration. No acceptance criteria required. Does not count toward the budget, does not appear in "ready to build" pipeline.
+
 ## Step 1: Understand Intent
 
 Read the developer's feature description. Ask clarifying questions if needed:
@@ -58,8 +91,10 @@ Write a spec document to `docs/sprints/SPEC-YYYYMMDD-HHMMSS-slug.md` with status
 ---
 spec_id: SPEC-YYYYMMDD-HHMMSS
 title: "[Feature title]"
+type: spec  # or "vision" for idea capture
 status: draft
 risk_level: [low/medium/high/critical]
+intake_ids: []  # optional: link to intake items driving this spec
 ---
 
 ## Goal
