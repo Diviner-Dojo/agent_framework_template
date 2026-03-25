@@ -121,46 +121,41 @@ class TestAgentFrontmatterSchema:
             )
 
     def test_agent_count_matches_expected(self, agent_files: list[Path]) -> None:
-        """Agent count must match CLAUDE.md documented count (14)."""
-        assert len(agent_files) == 14, (
-            f"Expected 14 agent files, found {len(agent_files)}: {[f.stem for f in agent_files]}"
+        """Agent count must match CLAUDE.md documented count (12)."""
+        assert len(agent_files) == 12, (
+            f"Expected 12 agent files, found {len(agent_files)}: {[f.stem for f in agent_files]}"
         )
 
 
-class TestNewAgentDefinitions:
-    """Specific tests for the three new agents added in Sprint 2."""
+class TestHistoryAnalystAgent:
+    """Tests for the history-analyst agent (retained per ADR-0009)."""
 
     @pytest.fixture(scope="class")
-    def new_agents(self) -> dict[str, dict]:
-        """Parse frontmatter for the three new agents."""
-        new_agent_names = ["finding-validator", "compliance-auditor", "history-analyst"]
-        result = {}
-        for name in new_agent_names:
-            path = AGENTS_DIR / f"{name}.md"
-            assert path.exists(), f"New agent file missing: {name}.md"
-            result[name] = _parse_agent_frontmatter(path)
-        return result
+    def history_analyst(self) -> dict:
+        """Parse frontmatter for the history-analyst agent."""
+        path = AGENTS_DIR / "history-analyst.md"
+        assert path.exists(), "history-analyst.md missing"
+        return _parse_agent_frontmatter(path)
 
-    def test_new_agents_are_sonnet_tier(self, new_agents: dict[str, dict]) -> None:
-        """All three new agents should be Sonnet tier per spec."""
-        for name, fm in new_agents.items():
-            assert fm["model"] == "sonnet", f"{name}: expected sonnet tier, got {fm['model']}"
+    def test_history_analyst_is_sonnet_tier(self, history_analyst: dict) -> None:
+        """History-analyst should be Sonnet tier per spec."""
+        assert history_analyst["model"] == "sonnet", (
+            f"history-analyst: expected sonnet tier, got {history_analyst['model']}"
+        )
 
-    def test_finding_validator_has_read_tool(self, new_agents: dict[str, dict]) -> None:
-        """Finding-validator must have Read tool to verify findings against code."""
-        tools = new_agents["finding-validator"]["tools"]
-        assert "Read" in tools, "finding-validator needs Read tool for code verification"
-
-    def test_compliance_auditor_has_no_write(self, new_agents: dict[str, dict]) -> None:
-        """Compliance-auditor should not have Write/Edit — it audits, not modifies."""
-        tools = new_agents["compliance-auditor"]["tools"]
-        assert "Write" not in tools, "compliance-auditor should not have Write tool"
-        assert "Edit" not in tools, "compliance-auditor should not have Edit tool"
-
-    def test_history_analyst_has_bash(self, new_agents: dict[str, dict]) -> None:
+    def test_history_analyst_has_bash(self, history_analyst: dict) -> None:
         """History-analyst needs Bash for git commands."""
-        tools = new_agents["history-analyst"]["tools"]
+        tools = history_analyst["tools"]
         assert "Bash" in tools, "history-analyst needs Bash tool for git log/blame"
+
+    def test_removed_agents_do_not_exist(self) -> None:
+        """finding-validator and compliance-auditor were demoted per ADR-0009."""
+        assert not (AGENTS_DIR / "finding-validator.md").exists(), (
+            "finding-validator.md should not exist (demoted to facilitator step per ADR-0009)"
+        )
+        assert not (AGENTS_DIR / "compliance-auditor.md").exists(), (
+            "compliance-auditor.md should not exist (demoted to rule injection per ADR-0009)"
+        )
 
 
 class TestReviewMd:
@@ -193,6 +188,13 @@ class TestReviewMd:
         """REVIEW.md should reference ADR-0006."""
         content = review_md_path.read_text(encoding="utf-8")
         assert "ADR-0006" in content, "REVIEW.md should reference ADR-0006"
+
+    def test_review_md_has_subordination_clause(self, review_md_path: Path) -> None:
+        """REVIEW.md must declare subordination to CLAUDE.md and PHILOSOPHY.md (ADR-0009)."""
+        content = review_md_path.read_text(encoding="utf-8")
+        assert "CLAUDE.md and PHILOSOPHY.md govern" in content, (
+            "REVIEW.md must have subordination clause per ADR-0009"
+        )
 
 
 class TestAdr0006:

@@ -1,11 +1,12 @@
 ---
 adr_id: ADR-0007
 title: "Introduce review-pipeline agents: finding-validator, compliance-auditor, history-analyst"
-status: accepted
+status: superseded
 date: 2026-03-16
 decision_makers: [facilitator, architecture-consultant, docs-knowledge, security-specialist, qa-specialist, compliance-auditor]
 discussion_id: DISC-20260316-205136-review-sprint1-sprint2-release-prep
 supersedes: null
+superseded_by: "ADR-0009 — Steward revision: finding-validator demoted to facilitator step (Principle #8), compliance-auditor demoted to rule injection (Principle #8, role overlap with docs-knowledge). history-analyst retained."
 risk_level: medium
 confidence: 0.87
 tags: [agents, review, validation, compliance, pipeline]

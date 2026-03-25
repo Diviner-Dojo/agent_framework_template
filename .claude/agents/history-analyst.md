@@ -53,6 +53,8 @@ Identify whether the file is maintained by one author or many. High concentratio
 
 ## Output Format
 
+**Verdict-first**: Always open your output with a 1-2 sentence plain-language verdict before the YAML block. Examples: "No structural concerns — the implementation is clean." or "Two issues need attention before merge."
+
 ```yaml
 history_analysis:
   files_analyzed: 3

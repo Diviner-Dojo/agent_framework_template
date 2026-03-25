@@ -1,6 +1,6 @@
 [project]
 name = "agentic-framework-template"
-version = "3.0.0"
+version = "3.2.0"
 description = "AI-Native Agentic Development Framework template for Claude Code"
 requires-python = ">=3.11"
 

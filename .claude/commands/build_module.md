@@ -208,6 +208,36 @@ python scripts/close_discussion.py "<discussion_id>"
 
 Note: `close_discussion.py` automatically extracts findings, surfaces promotion candidates, and computes agent effectiveness.
 
+## Step 7c: Update Spec Lifecycle
+
+If this build was driven by a spec (SPEC-*.md), update the spec's status to reflect completion:
+
+```bash
+python -c "
+import pathlib, re
+from datetime import datetime, timezone
+spec_path = pathlib.Path('<spec_file_path>')
+if spec_path.exists():
+    text = spec_path.read_text(encoding='utf-8')
+    text = re.sub(r'^status:\s*.+$', 'status: complete', text, count=1, flags=re.MULTILINE)
+    # Add completion metadata if not present
+    if 'completed_at:' not in text:
+        text = re.sub(r'^(status: complete)$', r'\1\ncompleted_at: ' + datetime.now(timezone.utc).strftime('%Y-%m-%d'), text, count=1, flags=re.MULTILINE)
+    spec_path.write_text(text, encoding='utf-8')
+    print(f'Spec updated to complete: {spec_path.name}')
+
+    # If spec has intake_ids, notify developer to update linked items
+    intake_match = re.search(r'^intake_ids:\s*\[(.+)\]', text, re.MULTILINE)
+    if intake_match:
+        ids = [i.strip() for i in intake_match.group(1).split(',')]
+        print(f'Linked intake items to update: {ids}')
+else:
+    print('No spec path provided or file not found — skipping lifecycle update.')
+"
+```
+
+If the spec references `intake_ids`, notify the developer that the corresponding intake items should be updated.
+
 ## Step 8: Present Build Summary
 
 Present to the developer:

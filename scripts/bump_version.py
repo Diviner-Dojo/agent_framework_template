@@ -171,7 +171,7 @@ def main() -> None:
         else:
             bump_type = "patch" if args.patch else "minor" if args.minor else "major"
             old, new = bump_version(bump_type)
-            print(f"{old} → {new}")
+            print(f"{old} -> {new}")
     except (FileNotFoundError, VersionNotFoundError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

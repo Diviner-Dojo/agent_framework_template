@@ -58,6 +58,8 @@ Periodically check: "Is this optimization actually needed for the current scale?
 
 ## Output Format
 
+**Verdict-first**: Always open your output with a 1-2 sentence plain-language verdict before the YAML block. Examples: "No structural concerns — the implementation is clean." or "Two issues need attention before merge."
+
 ```yaml
 agent: performance-analyst
 confidence: 0.XX

@@ -1,9 +1,9 @@
 ---
 title: "AI-Native Agentic Development Framework — Full Specification"
-version: "3.0"
+version: "3.2"
 status: living-document
 created: "2026-02-18"
-last_updated: "2026-03-16"
+last_updated: "2026-03-24"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
@@ -12,7 +12,7 @@ patterns_evaluated: 77
 patterns_adopted: 42
 ---
 
-# AI-Native Agentic Development Framework v3.0
+# AI-Native Agentic Development Framework v3.2
 
 ## Full Specification
 
@@ -47,7 +47,7 @@ patterns_adopted: 42
 
 ## 1. Executive Summary
 
-This document is the authoritative specification for the AI-Native Agentic Development Framework v3.0 — a practical, implementable, AI-native development system designed for use inside VS Code with Claude Code.
+This document is the authoritative specification for the AI-Native Agentic Development Framework v3.2 — a practical, implementable, AI-native development system designed for use inside VS Code with Claude Code.
 
 ### Origin
 
@@ -343,7 +343,7 @@ Complex commands embed **CRITICAL BEHAVIORAL RULES** at the top of their definit
 
 ## 5. Agent Architecture
 
-The framework deploys **14 agents** organized into a leadership hierarchy with 2 leaders and 12 specialists. Each agent has a defined role, model tier, specialist philosophy, activation triggers, and anti-patterns.
+The framework deploys **12 agents** organized into a leadership hierarchy with 2 leaders and 10 specialists. Each agent has a defined role, model tier, specialist philosophy, activation triggers, and anti-patterns.
 
 ### Leadership Hierarchy
 
@@ -351,7 +351,7 @@ v3.0 introduced an explicit leadership hierarchy separating governance from orch
 
 - **Steward** (`steward.md`): Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Maintains framework lineage tracking. Activated only for framework evolution and lineage decisions — not day-to-day reviews. Cannot dispatch other agents.
 - **Facilitator** (`facilitator.md`): Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
-- **Specialists**: 12 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
+- **Specialists**: 10 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
 
 ### Design Principles
 
@@ -377,8 +377,6 @@ v3.0 introduced an explicit leadership hierarchy separating governance from orch
 | **project-analyst** | sonnet | [`.claude/agents/project-analyst.md`](../.claude/agents/project-analyst.md) | External project scout + orchestrator for `/analyze-project` (two-phase: Survey → Orchestrate) |
 | **educator** | sonnet | [`.claude/agents/educator.md`](../.claude/agents/educator.md) | The Coach — walkthroughs, quizzes, Bloom's taxonomy assessment, mastery tier tracking |
 | **ux-evaluator** | sonnet | [`.claude/agents/ux-evaluator.md`](../.claude/agents/ux-evaluator.md) | The User in the Room — UX friction evaluation, interaction flow analysis, state feedback, platform conventions, accessibility |
-| **finding-validator** | sonnet | [`.claude/agents/finding-validator.md`](../.claude/agents/finding-validator.md) | Independent finding verification, false positive filtering during /review validation pass |
-| **compliance-auditor** | sonnet | [`.claude/agents/compliance-auditor.md`](../.claude/agents/compliance-auditor.md) | CLAUDE.md/REVIEW.md rule compliance with exact quotation; activated during /review |
 | **history-analyst** | sonnet | [`.claude/agents/history-analyst.md`](../.claude/agents/history-analyst.md) | Git history context — churn, refactors, reverts, blame concentration; activated by /review --deep |
 
 ### Model-Tier Assignment
@@ -388,7 +386,7 @@ Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
 | Tier | Purpose | Agents |
 |------|---------|--------|
 | **opus** | Complex generation, architectural reasoning, and governance | steward, facilitator, architecture-consultant, independent-perspective |
-| **sonnet** | Analysis, review, and evaluation | security-specialist, qa-specialist, performance-analyst, docs-knowledge, project-analyst, educator, ux-evaluator, finding-validator, compliance-auditor, history-analyst |
+| **sonnet** | Analysis, review, and evaluation | security-specialist, qa-specialist, performance-analyst, docs-knowledge, project-analyst, educator, ux-evaluator, history-analyst |
 
 *Model-tier assignment achieved* ***Rule of Three*** *status with 4 independent sightings: CritInsight, claude-agentic-framework, wshobson/agents, self-improving-coding-agent. Originally adopted from* ***CritInsight*** *(Score: 22/25 + 2 Rule of Three bonus = 24/25,* [*ANALYSIS-20260219-033023*](reviews/ANALYSIS-20260219-033023-critinsight.md)*).*
 
@@ -1043,7 +1041,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 |---------|-------|---------|
 | Layer 1 capture pipeline (create → write → generate → close) | `scripts/create_discussion.py`, `write_event.py`, `generate_transcript.py`, `close_discussion.py` | 10 discussions captured, 24+ tests |
 | Layer 2 SQLite indexing | `scripts/init_db.py`, `ingest_events.py`, `record_education.py` | 5 tables, 10 indexes, tested |
-| 14 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns + specialist philosophy |
+| 12 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns + specialist philosophy |
 | 17 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
 | 7 hooks (10 files) | `.claude/hooks/*` | File locking, secret detection, auto-format, session continuity |
 | Quality gate (5 checks) | `scripts/quality_gate.py` + pre-commit hook | Runs on every commit |
@@ -1063,7 +1061,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 | 4 new commands (batch-evaluate, knowledge-health, lineage, ship) | `.claude/commands/*.md` | Lineage, release, knowledge pipeline, adoption evaluation |
 | Lineage test suite | `tests/test_lineage.py` | Manifest parsing, drift detection |
 | Education gate workflow | `.claude/commands/walkthrough.md`, `.claude/commands/quiz.md` | Generated per-session by educator agent |
-| Review Blueprint v2.1 adoption | `.claude/agents/finding-validator.md`, `.claude/agents/compliance-auditor.md`, `.claude/agents/history-analyst.md`, `REVIEW.md`, `.claude/commands/review.md` | Scope detection, confidence filtering, validation pass, compliance auditing, self-healing docs, --cost/--deep flags (ADR-0006) |
+| Review Blueprint v2.1 adoption (revised by ADR-0009) | `.claude/agents/history-analyst.md`, `REVIEW.md`, `.claude/commands/review.md` | Scope detection, confidence annotation, facilitator finding verification, REVIEW.md rule injection into all specialists, self-healing docs, --cost/--deep flags (ADR-0006, ADR-0009) |
 
 ### Implemented but Unused / Under-Tested
 
@@ -1278,7 +1276,7 @@ agent_framework_template/
 ├── requirements.txt                   # 8 pinned dependencies
 │
 ├── .claude/
-│   ├── agents/                        # 14 agent definitions (2 leaders + 12 specialists)
+│   ├── agents/                        # 12 agent definitions (2 leaders + 10 specialists)
 │   │   ├── steward.md                #   opus — philosopher-guardian + lineage tracking
 │   │   ├── facilitator.md             #   opus — team leader, workflow orchestrator
 │   │   ├── architecture-consultant.md #   opus — structural integrity
@@ -1290,8 +1288,6 @@ agent_framework_template/
 │   │   ├── project-analyst.md         #   sonnet — external project analysis
 │   │   ├── educator.md               #   sonnet — the coach, walkthroughs, quizzes
 │   │   ├── ux-evaluator.md           #   sonnet — the user in the room, accessibility
-│   │   ├── finding-validator.md      #   sonnet — finding verification, false positive filtering
-│   │   ├── compliance-auditor.md     #   sonnet — CLAUDE.md/REVIEW.md rule compliance
 │   │   └── history-analyst.md        #   sonnet — git history context (--deep only)
 │   │
 │   ├── commands/                      # 17 slash commands

@@ -6,19 +6,13 @@ risk_level: medium  # low / medium / high / critical
 collaboration_mode: structured-dialogue  # ensemble / yes-and / structured-dialogue / dialectic / adversarial
 exploration_intensity: medium  # low / medium / high
 agents_activated: [architecture-consultant, security-specialist, qa-specialist]
+reviewed_files: []  # list of files reviewed (enables commit-to-review traceability)
 rounds: 2
 consensus_reached: true
 verdict: approve-with-changes  # approve / approve-with-changes / request-changes / reject
 confidence: 0.80  # weighted average of specialist confidences
 review_duration_minutes: 0
 ---
-
-## Request Context
-
-- **What was requested**: [Brief description of the change request]
-- **Files/scope**: [List of files or directories under review]
-- **Motivation**: [Why this change is being made]
-- **Explicit constraints**: [Any constraints specified by the developer, e.g., "no new dependencies", "backwards-compatible"]
 
 ## Summary
 
@@ -61,6 +55,20 @@ review_duration_minutes: 0
 ## Recommended Improvements (Non-Blocking)
 
 1. [Suggested improvement that doesn't block merge]
+
+## Speculative Findings — Lower Confidence
+
+[Findings with confidence < 0.80, grouped here for developer judgment. These represent possible concerns that warrant consideration but did not meet the high-confidence threshold.]
+
+1. [Speculative finding with confidence score]
+
+## Developer Assessment (Counterfactual)
+
+For each blocking finding, the developer may optionally tag:
+- **would-have-caught**: Developer would have found this without the review
+- **would-have-missed**: Developer would NOT have found this without the review
+
+This data measures the framework's actual value — not just what it finds, but what it finds that wouldn't have been found otherwise. Assessed at review time or batch-tagged during retro.
 
 ## Education Gate
 

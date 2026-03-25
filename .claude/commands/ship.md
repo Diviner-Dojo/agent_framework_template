@@ -326,6 +326,30 @@ git tag -a v<version> -m "Release v<version>"
 git push --tags
 ```
 
+## Step 10.5: Update Spec Lifecycle
+
+If the shipped changes were built against a spec (SPEC-*.md), update the spec's status:
+
+```bash
+python -c "
+import pathlib, re
+from datetime import datetime, timezone
+# Identify the spec — check commit message or recent build discussions for spec reference
+spec_path = pathlib.Path('<spec_file_path>')
+if spec_path.exists():
+    text = spec_path.read_text(encoding='utf-8')
+    text = re.sub(r'^status:\s*.+$', 'status: complete', text, count=1, flags=re.MULTILINE)
+    if 'completed_at:' not in text:
+        text = re.sub(r'^(status: complete)$', r'\1\ncompleted_at: ' + datetime.now(timezone.utc).strftime('%Y-%m-%d'), text, count=1, flags=re.MULTILINE)
+    spec_path.write_text(text, encoding='utf-8')
+    print(f'Spec updated to complete: {spec_path.name}')
+else:
+    print('No spec path identified — skipping lifecycle update.')
+"
+```
+
+If the spec cannot be identified automatically, ask the developer: "Was this work tracked against a spec? If so, which one?"
+
 ## Step 11: Post-Release Cleanup
 
 After the release is confirmed:

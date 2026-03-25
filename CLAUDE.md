@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-- **Framework**: AI-Native Agentic Development Framework v3.0
+- **Framework**: AI-Native Agentic Development Framework v3.2
 - **Tech Stack**: Python 3.11+, FastAPI, SQLite, pytest
 - **Formatting**: ruff
 - **Typing**: strict (all public functions have type annotations)
@@ -33,9 +33,9 @@
 #### Leadership Hierarchy
 - **Steward** (`steward.md`): Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Also maintains framework lineage tracking. Does not participate in day-to-day reviews — only activated for framework evolution and lineage decisions. Cannot dispatch other agents (no Task tool). See `PHILOSOPHY.md` for the values the steward protects.
 - **Facilitator** (`facilitator.md`): Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
-- **Specialists**: 12 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
+- **Specialists**: 10 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
 
-#### Agent Roster (14 agents)
+#### Agent Roster (12 agents)
 
 | Agent | Model | Role |
 |-------|-------|------|
@@ -50,8 +50,6 @@
 | ux-evaluator | sonnet | The User in the Room — interaction flow, emotional design, accessibility |
 | project-analyst | sonnet | External project analysis, cross-domain discovery pipeline |
 | educator | sonnet | The Coach — walkthroughs, quizzes, mastery tracking |
-| finding-validator | sonnet | Independent finding verification, false positive filtering |
-| compliance-auditor | sonnet | CLAUDE.md/REVIEW.md rule compliance with exact quotation |
 | history-analyst | sonnet | Git history context — churn, refactors, reverts, blame (--deep only) |
 
 #### Orchestration Rules
@@ -111,7 +109,7 @@ Content here.
 
 ```
 .claude/
-  agents/       — Agent definitions (14: steward + facilitator + 12 specialists)
+  agents/       — Agent definitions (12: steward + facilitator + 10 specialists)
   commands/     — Slash command workflows (17 commands)
   custodian/    — Steward lineage tracking (lineage-events.jsonl, vouchers/)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
@@ -140,7 +138,7 @@ src/            — Application source code
 tests/          — Test suite
 framework-lineage.yaml — Lineage manifest (project-template relationship)
 PHILOSOPHY.md   — Framework philosophy: why we work the way we do
-REVIEW.md       — Review-specific rules (loaded only during /review, see ADR-0006)
+REVIEW.md       — Review-specific rules (injected into specialist prompts during /review, see ADR-0006)
 BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
 
@@ -166,7 +164,7 @@ Before declaring work complete, run the quality gate to verify all documented st
 ```
 python scripts/quality_gate.py
 ```
-This checks: formatting (ruff format), linting (ruff check), tests (pytest), coverage (>= 80%), ADR completeness, review existence (for code changes), and regression ledger (verifies guard tests exist for known bugs). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass the review existence check, `--skip-regression` to bypass the regression ledger check).
+This checks: formatting (ruff format), linting (ruff check), tests (pytest), coverage (>= 80%), ADR completeness, review existence (for code changes), regression ledger (verifies guard tests exist for known bugs), and BUILD_STATUS.md freshness (advisory only — warns but does not block). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass the review existence check, `--skip-regression` to bypass the regression ledger check).
 
 Each run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis. The independent-perspective agent uses this data during retro and meta-review to assess protocol marginal value.
 
@@ -189,7 +187,7 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 
 ### Session Hooks
 - **PreCompact** (`.claude/hooks/pre-compact.ps1`): Before context compaction, prompts the agent to update `BUILD_STATUS.md` with current task state.
-- **SessionStart** (`.claude/hooks/session-start.ps1`): On session resume or post-compaction, prompts the agent to read `BUILD_STATUS.md` to restore working context.
+- **SessionStart** (`.claude/hooks/session-start.ps1`): On session resume or post-compaction, prompts the agent to read `BUILD_STATUS.md` and runs a 6-point process health dashboard: retro age, open retro actions, pending adoptions, promotion candidates, stale specs, and Layer 3 health.
 
 ### User Notification Hook (Optional)
 - **Notification**: Fires a system notification when Claude Code completes a task. Platform-specific setup required — see `docs/setup/notification-hook.md` for Windows (BurntToast), macOS (osascript), and Linux (notify-send) instructions.
@@ -201,7 +199,7 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 Every commit must pass two gates:
 
 1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting, linting, tests, or coverage fail, the commit is blocked.
-2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`. Supports auto-scope detection (PR diff, staged, unstaged, HEAD~1), `--cost low|medium|high` for model tier routing, `--deep` for git history analysis, and `--comment` for PR comment posting. Includes finding validation, confidence filtering, compliance auditing against CLAUDE.md + REVIEW.md, and self-healing documentation suggestions.
+2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`. Supports auto-scope detection (PR diff, staged, unstaged, HEAD~1), `--cost low|medium|high` for model tier routing, `--deep` for git history analysis, and `--comment` for PR comment posting. Includes facilitator finding verification, confidence annotation (no findings suppressed), REVIEW.md rule injection into all specialist prompts, and self-healing documentation suggestions.
 
 For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching more than 5 files require `/review` — large framework changes are medium-risk regardless of whether they touch product code.
 
@@ -216,6 +214,7 @@ Checkpoints are capped at 2 iterations per task (Round 1 → optional Round 2). 
 When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-review`, or `/lineage` command runs:
 1. `scripts/create_discussion.py` creates the discussion directory and registers it in SQLite (with `command_type` inferred from slug prefix)
 2. Each agent turn is captured via `scripts/write_event.py` to events.jsonl
+2a. After `/review` checkpoints, specialists who gave REVISE verdicts are dispatched for reflections; results are ingested into SQLite via `scripts/ingest_reflection.py`. Education gate results are recorded via `scripts/record_education.py`.
 3. `scripts/close_discussion.py` seals the discussion:
    - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
    - `scripts/ingest_events.py` inserts events into SQLite (Layer 2), including searchable `content_excerpt` and `tags`
@@ -233,7 +232,7 @@ When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-revi
 
 **New SQLite tables**: `findings`, `promotion_candidates`, `pattern_sightings`, `agent_effectiveness`, `lineage_nodes`, `lineage_file_drift`
 **New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`
-**New columns**: `turns.content_excerpt`, `turns.tags`, `discussions.command_type`, `discussions.duration_minutes`
+**New columns**: `turns.content_excerpt`, `turns.tags`, `discussions.command_type`, `discussions.duration_minutes`, `discussions.related_discussion_id`
 
 ## Known Limitations
 

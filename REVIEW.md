@@ -1,8 +1,9 @@
 # Review Rules
 
 > Review-specific rules for Python/FastAPI projects.
-> These rules are enforced only during `/review` execution by the compliance-auditor.
+> These rules are enforced only during `/review` execution, injected into specialist prompts.
 > They supplement CLAUDE.md and `.claude/rules/` — they do not override them.
+> **In any conflict, CLAUDE.md and PHILOSOPHY.md govern.**
 > See ADR-0006 for the design rationale.
 
 ## Code Quality
