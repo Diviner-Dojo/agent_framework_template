@@ -1,9 +1,9 @@
 ---
 title: "AI-Native Agentic Development Framework — Full Specification"
-version: "3.2"
+version: "3.3"
 status: living-document
 created: "2026-02-18"
-last_updated: "2026-03-24"
+last_updated: "2026-04-04"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
@@ -12,7 +12,7 @@ patterns_evaluated: 77
 patterns_adopted: 42
 ---
 
-# AI-Native Agentic Development Framework v3.2
+# AI-Native Agentic Development Framework v3.3
 
 ## Full Specification
 
@@ -47,7 +47,7 @@ patterns_adopted: 42
 
 ## 1. Executive Summary
 
-This document is the authoritative specification for the AI-Native Agentic Development Framework v3.2 — a practical, implementable, AI-native development system designed for use inside VS Code with Claude Code.
+This document is the authoritative specification for the AI-Native Agentic Development Framework v3.3 — a practical, implementable, AI-native development system designed for use inside VS Code with Claude Code.
 
 ### Origin
 
@@ -343,7 +343,7 @@ Complex commands embed **CRITICAL BEHAVIORAL RULES** at the top of their definit
 
 ## 5. Agent Architecture
 
-The framework deploys **12 agents** organized into a leadership hierarchy with 2 leaders and 10 specialists. Each agent has a defined role, model tier, specialist philosophy, activation triggers, and anti-patterns.
+The framework deploys **12 agents** organized into a leadership hierarchy with 2 leaders and 10 specialists. Each agent has a defined role, model tier, Values section (load-bearing beliefs), Domain Lens (procedural reasoning sequence), activation triggers, and anti-patterns.
 
 ### Leadership Hierarchy
 
@@ -351,7 +351,7 @@ v3.0 introduced an explicit leadership hierarchy separating governance from orch
 
 - **Steward** (`steward.md`): Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Maintains framework lineage tracking. Activated only for framework evolution and lineage decisions — not day-to-day reviews. Cannot dispatch other agents.
 - **Facilitator** (`facilitator.md`): Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
-- **Specialists**: 10 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
+- **Specialists**: 10 domain agents, each with a distilled Values section (load-bearing beliefs) and a procedural Domain Lens (reasoning sequence applied before analysis). Equal in standing, different in strengths.
 
 ### Design Principles
 
@@ -398,9 +398,16 @@ v3.0 formalized two collaboration protocols that enable organic inter-agent coop
 - **Multi-Instance Dispatch** ([`.claude/rules/multi_instance_protocol.md`](../.claude/rules/multi_instance_protocol.md)): Specialists can request parallel instance splits when splitting would produce meaningfully better results. The independent-perspective agent has pre-approved multi-instance dispatch with 4 instance types (Independent Analyst, Team Observer, Research Scout, Process Critic). Max 3 instances per agent per review.
 - **Discovery Pipeline**: independent-perspective (Research Scout) → project-analyst → docs-knowledge chain for cross-domain innovation capture.
 
-### Specialist Philosophy
+### Values + Domain Lens (v3.3)
 
-Each agent definition (v3.0) includes a specialist philosophy section that articulates the agent's unique perspective and values. This guides the agent's judgment in ambiguous situations and ensures distinct viewpoints across the panel.
+Each agent definition includes two structured reasoning sections (replacing the v3.0 "Specialist Philosophy" prose):
+
+- **Values** (2-3 sentences): Load-bearing beliefs that shape judgment in edge cases. Only sentences introducing a value or tension between values survive; illustration and narrative are cut. Operates at Bloom's Evaluate/Create level.
+- **Domain Lens** (5 steps): Structured reasoning sequence applied before analysis begins. The procedural scaffold that ensures minimum domain coverage. Operates at Bloom's Apply level.
+
+This split preserves agent judgment quality (Values) while adding procedural rigor (Domain Lens). In production validation, finding extraction rate improved from 9.5% to ~16.2%. See [ADR-0010](adr/ADR-0010-agent-values-domain-lens.md) for the decision record.
+
+Additionally, specialist finding output formats include `Rule` (which principle the finding is based on) and `Exceptions` (when the finding would not apply) fields, enabling cross-agent deduplication and pattern mining.
 
 ### Framework Evolution Path
 
@@ -1041,7 +1048,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 |---------|-------|---------|
 | Layer 1 capture pipeline (create → write → generate → close) | `scripts/create_discussion.py`, `write_event.py`, `generate_transcript.py`, `close_discussion.py` | 10 discussions captured, 24+ tests |
 | Layer 2 SQLite indexing | `scripts/init_db.py`, `ingest_events.py`, `record_education.py` | 5 tables, 10 indexes, tested |
-| 12 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns + specialist philosophy |
+| 12 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns + Values + Domain Lens |
 | 17 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
 | 7 hooks (10 files) | `.claude/hooks/*` | File locking, secret detection, auto-format, session continuity |
 | Quality gate (5 checks) | `scripts/quality_gate.py` + pre-commit hook | Runs on every commit |
@@ -1452,3 +1459,5 @@ agent_framework_template/
 | 2026-03-07 | Four new commands: `/batch-evaluate`, `/knowledge-health`, `/lineage`, `/ship` |
 | 2026-03-07 | Specification refreshed to current project state (v2.1 counts updated) |
 | 2026-03-13 | v3.0: Leadership hierarchy, specialist philosophy, collaboration protocols (cross-agent dispatch, multi-instance), model tier updates (steward/independent-perspective → opus, educator → sonnet), framework evolution path formalized, documentation sync rule added |
+| 2026-03-25 | v3.2: Steward-reviewed pipeline revision — demote finding-validator and compliance-auditor |
+| 2026-04-04 | v3.3: Agent reasoning upgrade — replace Specialist Philosophy with Values + Domain Lens across all 12 agents. Add Rule/Exceptions to finding formats. Facilitator domain reframe + delta synthesis. ADR-0010. Finding extraction rate 9.5% → ~16.2%. |
