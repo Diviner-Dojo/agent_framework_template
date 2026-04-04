@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-- **Framework**: AI-Native Agentic Development Framework v3.2
+- **Framework**: AI-Native Agentic Development Framework v3.3
 - **Tech Stack**: Python 3.11+, FastAPI, SQLite, pytest
 - **Formatting**: ruff
 - **Typing**: strict (all public functions have type annotations)
@@ -33,7 +33,7 @@
 #### Leadership Hierarchy
 - **Steward** (`steward.md`): Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Also maintains framework lineage tracking. Does not participate in day-to-day reviews — only activated for framework evolution and lineage decisions. Cannot dispatch other agents (no Task tool). See `PHILOSOPHY.md` for the values the steward protects.
 - **Facilitator** (`facilitator.md`): Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
-- **Specialists**: 10 domain agents, each with a distinct specialist philosophy. Equal in standing, different in strengths.
+- **Specialists**: 10 domain agents, each with a distilled Values section (load-bearing beliefs) and a procedural Domain Lens (reasoning sequence applied before analysis). Equal in standing, different in strengths.
 
 #### Agent Roster (12 agents)
 
