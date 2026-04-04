@@ -23,6 +23,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "metrics" / "evaluation.db"
 
+YELLOW = "\033[93m"
+RESET = "\033[0m"
+
 # Import sibling scripts
 from generate_transcript import find_discussion_dir, generate_transcript
 from ingest_events import ingest_events
@@ -102,7 +105,24 @@ def close_discussion(discussion_id: str) -> None:
     except Exception as e:
         print(f"Warning: effectiveness computation failed (non-fatal): {e}")
 
-    # Step 8: Set files to read-only (advisory immutability)
+    # Step 8: Check for pending promotion candidates and notify
+    if DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            row = conn.execute(
+                "SELECT COUNT(*) FROM promotion_candidates WHERE promoted = 0"
+            ).fetchone()
+            pending_count = row[0] if row else 0
+            conn.close()
+            if pending_count > 0:
+                print(
+                    f"\n{YELLOW}NOTE:{RESET} {pending_count} promotion candidate(s) "
+                    f"awaiting review. Run /promote to review them."
+                )
+        except (sqlite3.OperationalError, Exception):
+            pass  # Table may not exist yet
+
+    # Step 9: Set files to read-only (advisory immutability)
     for filename in ["events.jsonl", "transcript.md"]:
         filepath = disc_dir / filename
         if filepath.exists():

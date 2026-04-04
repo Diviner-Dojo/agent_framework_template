@@ -42,6 +42,7 @@ def create_discussion(
     collaboration_mode: str = "structured-dialogue",
     exploration_intensity: str = "medium",
     command_type: str | None = None,
+    related_discussion_id: str | None = None,
 ) -> str:
     """Create a new discussion directory and register it in SQLite.
 
@@ -51,6 +52,7 @@ def create_discussion(
         collaboration_mode: ensemble, yes-and, structured-dialogue, dialectic, or adversarial.
         exploration_intensity: low, medium, or high.
         command_type: Explicit command type. If None, inferred from slug prefix.
+        related_discussion_id: Optional ID of a related discussion (e.g., build -> review link).
 
     Returns:
         The discussion ID string.
@@ -78,8 +80,9 @@ def create_discussion(
         conn.execute(
             """INSERT INTO discussions
                (discussion_id, created_at, risk_level, collaboration_mode,
-                exploration_intensity, status, agent_count, command_type)
-               VALUES (?, ?, ?, ?, ?, 'open', 0, ?)""",
+                exploration_intensity, status, agent_count, command_type,
+                related_discussion_id)
+               VALUES (?, ?, ?, ?, ?, 'open', 0, ?, ?)""",
             (
                 discussion_id,
                 now.isoformat(),
@@ -87,6 +90,7 @@ def create_discussion(
                 collaboration_mode,
                 exploration_intensity,
                 resolved_command_type,
+                related_discussion_id,
             ),
         )
         conn.commit()
@@ -111,9 +115,16 @@ def main() -> None:
         default=None,
         help="Explicit command type (auto-inferred from slug if omitted)",
     )
+    parser.add_argument(
+        "--related",
+        default=None,
+        help="Related discussion ID (e.g., link a review to its build discussion)",
+    )
     args = parser.parse_args()
 
-    create_discussion(args.slug, args.risk, args.mode, args.intensity, args.command_type)
+    create_discussion(
+        args.slug, args.risk, args.mode, args.intensity, args.command_type, args.related
+    )
 
 
 if __name__ == "__main__":

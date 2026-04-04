@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-- **Framework**: AI-Native Agentic Development Framework v2.1
+- **Framework**: AI-Native Agentic Development Framework v3.3
 - **Tech Stack**: Python 3.11+, FastAPI, SQLite, pytest
 - **Formatting**: ruff
 - **Typing**: strict (all public functions have type annotations)
@@ -29,14 +29,49 @@
 - **Layer 4 — Optional Vector**: Only when corpus grows large enough
 
 ### Agent Architecture
-- Subagents CANNOT spawn other subagents, except the **project-analyst** which serves as a delegated orchestrator for `/analyze-project` (it scouts the target project, then dispatches domain specialists to evaluate applicability)
+
+#### Leadership Hierarchy
+- **Steward** (`steward.md`): Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Also maintains framework lineage tracking. Does not participate in day-to-day reviews — only activated for framework evolution and lineage decisions. Cannot dispatch other agents (no Task tool). See `PHILOSOPHY.md` for the values the steward protects.
+- **Facilitator** (`facilitator.md`): Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
+- **Specialists**: 10 domain agents, each with a distilled Values section (load-bearing beliefs) and a procedural Domain Lens (reasoning sequence applied before analysis). Equal in standing, different in strengths.
+
+#### Agent Roster (12 agents)
+
+| Agent | Model | Role |
+|-------|-------|------|
+| steward | opus | Framework philosopher-guardian + lineage tracking |
+| facilitator | opus | Team leader, workflow orchestrator |
+| architecture-consultant | opus | Structural integrity, ADR validation, boundary enforcement |
+| independent-perspective | opus | Anti-groupthink, cross-domain innovation, multi-instance (4 types) |
+| security-specialist | sonnet | Vulnerability identification, threat modeling, auth review |
+| qa-specialist | sonnet | Test coverage, edge cases, reliability, regression prevention |
+| performance-analyst | sonnet | Latency, resource efficiency, scalability, cost |
+| docs-knowledge | sonnet | Team Historian — decision traceability, knowledge flow, documentation |
+| ux-evaluator | sonnet | The User in the Room — interaction flow, emotional design, accessibility |
+| project-analyst | sonnet | External project analysis, cross-domain discovery pipeline |
+| educator | sonnet | The Coach — walkthroughs, quizzes, mastery tracking |
+| history-analyst | sonnet | Git history context — churn, refactors, reverts, blame (--deep only) |
+
+#### Orchestration Rules
+- Subagents CANNOT spawn other subagents, except the **project-analyst** which serves as a delegated orchestrator for `/analyze-project`
 - The facilitator (main agent) orchestrates all other multi-agent workflows
 - Multiple subagents can run concurrently with true parallelism
 - Each subagent gets its own isolated context window
-- Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
-  - **opus**: Complex generation and architectural reasoning (facilitator, architecture-consultant)
-  - **sonnet**: Analysis, review, and evaluation (security-specialist, qa-specialist, performance-analyst, independent-perspective, docs-knowledge, project-analyst, ux-evaluator, steward)
-  - **haiku**: Mechanical verification and lightweight tasks (educator)
+
+#### Model Override
+The facilitator may override an agent's default model tier upward (sonnet → opus) when the task demands deeper reasoning. All overrides are recorded with `model:<tier>` tags in event capture for retrospective analysis.
+
+#### Cross-Agent Collaboration Protocols
+- **Cross-Agent Dispatch** (`.claude/rules/cross_agent_dispatch_protocol.md`): Any specialist can request dispatch of another agent through the facilitator. All requests captured with `dispatch-request` / `dispatch-decision` tags.
+- **Multi-Instance Dispatch** (`.claude/rules/multi_instance_protocol.md`): Specialists can request parallel instance splits. Independent-perspective has pre-approved multi-instance dispatch with 4 instance types (Independent Analyst, Team Observer, Research Scout, Process Critic). All others need facilitator approval. Max 3 instances per agent per review.
+- **Discovery Pipeline**: independent-perspective (Research Scout) → project-analyst → docs-knowledge chain for cross-domain innovation capture.
+
+#### Agent Improvement Path
+1. Facilitator observes a pattern across multiple reviews
+2. Facilitator proposes a specific change with evidence
+3. Steward evaluates against framework philosophy and principles
+4. Developer approves the change
+5. Change goes through `/review` like any code change
 
 ### Collaboration Mode Spectrum (facilitator selects per change)
 1. **Ensemble** — independent contribution, no inter-agent exchange (lightest)
@@ -74,11 +109,11 @@ Content here.
 
 ```
 .claude/
-  agents/       — Specialist agent definitions (11 core, including project-analyst, ux-evaluator, and steward)
-  commands/     — Slash command workflows (16 commands)
+  agents/       — Agent definitions (12: steward + facilitator + 10 specialists)
+  commands/     — Slash command workflows (17 commands)
   custodian/    — Steward lineage tracking (lineage-events.jsonl, vouchers/)
   hooks/        — Automated lifecycle hooks (7 hooks: format, locking, secrets, commit-gates, session-lifecycle)
-  rules/        — Auto-loaded standards (all agents inherit)
+  rules/        — Auto-loaded standards (includes cross-agent and multi-instance protocols)
   skills/       — Reference knowledge (playbooks, checklists)
 docs/
   adr/          — Architecture Decision Records
@@ -102,6 +137,8 @@ scripts/        — Capture pipeline utilities + quality gate
 src/            — Application source code
 tests/          — Test suite
 framework-lineage.yaml — Lineage manifest (project-template relationship)
+PHILOSOPHY.md   — Framework philosophy: why we work the way we do
+REVIEW.md       — Review-specific rules (injected into specialist prompts during /review, see ADR-0006)
 BUILD_STATUS.md — Session state persistence (read at start, update before compaction)
 ```
 
@@ -127,7 +164,7 @@ Before declaring work complete, run the quality gate to verify all documented st
 ```
 python scripts/quality_gate.py
 ```
-This checks: formatting (ruff format), linting (ruff check), tests (pytest), coverage (>= 80%), ADR completeness, review existence (for code changes), and regression ledger (verifies guard tests exist for known bugs). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass the review existence check, `--skip-regression` to bypass the regression ledger check).
+This checks: formatting (ruff format), linting (ruff check), tests (pytest), coverage (>= 80%), ADR completeness, review existence (for code changes), regression ledger (verifies guard tests exist for known bugs), and BUILD_STATUS.md freshness (advisory only — warns but does not block). Use `--fix` to auto-fix formatting and lint issues. Use `--skip-*` flags to skip individual checks (e.g., `--skip-reviews` to bypass the review existence check, `--skip-regression` to bypass the regression ledger check).
 
 Each run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis. The independent-perspective agent uses this data during retro and meta-review to assess protocol marginal value.
 
@@ -150,7 +187,7 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 
 ### Session Hooks
 - **PreCompact** (`.claude/hooks/pre-compact.ps1`): Before context compaction, prompts the agent to update `BUILD_STATUS.md` with current task state.
-- **SessionStart** (`.claude/hooks/session-start.ps1`): On session resume or post-compaction, prompts the agent to read `BUILD_STATUS.md` to restore working context.
+- **SessionStart** (`.claude/hooks/session-start.ps1`): On session resume or post-compaction, prompts the agent to read `BUILD_STATUS.md` and runs a 6-point process health dashboard: retro age, open retro actions, pending adoptions, promotion candidates, stale specs, and Layer 3 health.
 
 ### User Notification Hook (Optional)
 - **Notification**: Fires a system notification when Claude Code completes a task. Platform-specific setup required — see `docs/setup/notification-hook.md` for Windows (BurntToast), macOS (osascript), and Linux (notify-send) instructions.
@@ -162,7 +199,7 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 Every commit must pass two gates:
 
 1. **Quality Gate** (automated via git pre-commit hook): `python scripts/quality_gate.py` runs automatically before every `git commit`. If formatting, linting, tests, or coverage fail, the commit is blocked.
-2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`.
+2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`. Supports auto-scope detection (PR diff, staged, unstaged, HEAD~1), `--cost low|medium|high` for model tier routing, `--deep` for git history analysis, and `--comment` for PR comment posting. Includes facilitator finding verification, confidence annotation (no findings suppressed), REVIEW.md rule injection into all specialist prompts, and self-healing documentation suggestions.
 
 For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching more than 5 files require `/review` — large framework changes are medium-risk regardless of whether they touch product code.
 
@@ -177,6 +214,7 @@ Checkpoints are capped at 2 iterations per task (Round 1 → optional Round 2). 
 When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-review`, or `/lineage` command runs:
 1. `scripts/create_discussion.py` creates the discussion directory and registers it in SQLite (with `command_type` inferred from slug prefix)
 2. Each agent turn is captured via `scripts/write_event.py` to events.jsonl
+2a. After `/review` checkpoints, specialists who gave REVISE verdicts are dispatched for reflections; results are ingested into SQLite via `scripts/ingest_reflection.py`. Education gate results are recorded via `scripts/record_education.py`.
 3. `scripts/close_discussion.py` seals the discussion:
    - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
    - `scripts/ingest_events.py` inserts events into SQLite (Layer 2), including searchable `content_excerpt` and `tags`
@@ -194,40 +232,56 @@ When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-revi
 
 **New SQLite tables**: `findings`, `promotion_candidates`, `pattern_sightings`, `agent_effectiveness`, `lineage_nodes`, `lineage_file_drift`
 **New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`
-**New columns**: `turns.content_excerpt`, `turns.tags`, `discussions.command_type`, `discussions.duration_minutes`
+**New columns**: `turns.content_excerpt`, `turns.tags`, `discussions.command_type`, `discussions.duration_minutes`, `discussions.related_discussion_id`
 
 ## Known Limitations
 
 Document known data quality issues, extraction rate baselines, and enforcement gaps here as they are discovered. This section prevents the same limitations from being rediscovered across sessions.
 
-<!-- Example entries (uncomment and customize as needed):
-- The `protocol_yield` table records blocking/advisory findings but not REVISE-resolved rounds
-- The review existence check verifies that a review report exists for today, not that it covers the specific files being committed
--->
+- The pre-commit hook does not support `--skip-reviews` passthrough — the quality gate's review existence check cannot be bypassed from `git commit` arguments
+- The pre-commit hook's regression ledger check and review reminder are suppressed during the 5-minute verification cache window after a quality gate run. Stale cache entries may cause these checks to be silently skipped.
 
 ## Autonomous Execution Authorization
 
-<!-- Uncomment and customize for your project. This section authorizes
-     Claude Code to perform specific actions without per-action confirmation. -->
-<!--
-The following actions are pre-authorized for autonomous execution:
+This section uses a structured format for scoping autonomous execution. Derived projects should customize by uncommenting and filling in the sections below.
 
-- **Tests**: Run `pytest` and `python scripts/quality_gate.py` without confirmation
-- **Formatting**: Run `ruff format` and `ruff check --fix` without confirmation
-- **Database init**: Run `python scripts/init_db.py` without confirmation
-- **Knowledge pipeline**: Run knowledge pipeline scripts without confirmation
-- **Git operations**: Create branches, stage files, and commit (but NOT push or force-push)
+### Authorization Format
 
-Actions NOT authorized (always require confirmation):
+```markdown
+**Branch scope**: [branch pattern, e.g., "feature/*", "lab/*", or "all"]
+**Effective**: [date or "until revoked"]
+
+#### Authorized Actions (no confirmation needed)
+- [action 1, e.g., "Run pytest and quality_gate.py"]
+- [action 2, e.g., "Run ruff format and ruff check --fix"]
+- [action 3, e.g., "Create branches, stage files, and commit"]
+
+#### Prohibited Actions (always require confirmation)
+- [action 1, e.g., "git push to any remote"]
+- [action 2, e.g., "Destructive git operations (reset --hard, clean -f, branch -D)"]
+- [action 3, e.g., "Modifying .claude/settings.json"]
+```
+
+IMPORTANT: Enabling autonomous execution authorizes executing the **full workflow** without pausing for permission at each step. It does NOT authorize skipping steps. See `.claude/rules/autonomous_workflow.md` for the mandatory workflow sequence.
+
+<!-- Uncomment and customize for your project:
+
+**Branch scope**: all
+**Effective**: until revoked
+
+#### Authorized Actions
+- Run `pytest` and `python scripts/quality_gate.py` without confirmation
+- Run `ruff format` and `ruff check --fix` without confirmation
+- Run `python scripts/init_db.py` without confirmation
+- Run knowledge pipeline scripts without confirmation
+- Create branches, stage files, and commit (but NOT push or force-push)
+
+#### Prohibited Actions
 - `git push` to any remote
 - Destructive git operations (reset --hard, clean -f, branch -D)
 - Modifying `.claude/settings.json`
 - Deleting files outside of `memory/archive/`
 - Any operation affecting production environments
-
-IMPORTANT: Enabling autonomous execution authorizes executing the full workflow
-without pausing for permission at each step. It does NOT authorize skipping steps.
-See `.claude/rules/autonomous_workflow.md` for the mandatory workflow sequence.
 -->
 
 ## Domain Safety Constraints
@@ -249,10 +303,30 @@ See `.claude/rules/autonomous_workflow.md` for the mandatory workflow sequence.
      Declare your domain constraints below:
 -->
 
+## Framework Evolution
+
+Changes to agent definitions, rules, or framework philosophy follow a gated path:
+
+1. **Observation**: Facilitator identifies a pattern across multiple reviews
+2. **Proposal**: Development note with evidence, diagnosis, and proposed change
+3. **Steward Gate**: Steward evaluates alignment with `PHILOSOPHY.md` and principles — verdicts: APPROVE / REVISE / DEFER / DECLINE
+4. **Developer Approval**: Human gate preserved (Principle #7)
+5. **Review**: Change goes through `/review` like any code change
+6. **Documentation Sync**: Verify downstream documentation artifacts are updated per `.claude/rules/framework_doc_sync.md`
+
+The Steward is activated only for framework evolution — not for day-to-day reviews.
+
 ## Agent Invocation Pattern
 
 Commands invoke specialist agents via the Task tool:
 ```
 Task(subagent_type="agent-name", prompt="...")
 ```
+
+Model override (facilitator only, for harder tasks):
+```
+Task(subagent_type="agent-name", model="opus", prompt="...")
+```
+
+All agent turns are captured with `model:<tier>` tags for retrospective analysis.
 The facilitator collects all results and synthesizes a unified report.

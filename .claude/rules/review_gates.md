@@ -6,11 +6,13 @@
 - All public functions must have docstrings
 - All new modules must have module-level docstrings
 - No failing tests in the test suite
+- Data displayed in the UI that is provably incorrect at implementation time (not hypothetically incorrect under edge conditions) must be classified as blocking regardless of whether it affects core functionality
 
 ## Architectural Gates
 - Any architectural change requires an ADR in `docs/adr/`
 - New module boundaries require architecture-consultant review
 - Dependency additions require security-specialist review
+- New external dependency integrations (OS APIs, hardware, network services) must define an abstract interface enabling test substitution
 
 ## Education Gates
 - Required for all complex or high-risk changes before merge
@@ -60,6 +62,7 @@ Advisory findings (non-blocking recommendations) follow a structured lifecycle t
 ### Tracking Rules
 
 - Advisories persist in the review report where they were raised
+- Advisory findings must be carried forward in the next review report as "open advisories" until either resolved or formally accepted as known limitations. Each review report must include a tally of open advisories from prior phases.
 - Advisories with 3+ recurrences across reviews trigger promotion to **blocking** in subsequent reviews (Rule of Three)
 - The `/retro` command aggregates open advisories and flags stale ones (> 2 sprints old)
 - Declined advisories require a one-sentence rationale to prevent knowledge loss

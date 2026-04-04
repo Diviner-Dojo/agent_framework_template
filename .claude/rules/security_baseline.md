@@ -4,6 +4,7 @@
 - Validate all user input at API boundaries using Pydantic models
 - Never trust client-provided data without validation
 - Sanitize inputs that will be used in database queries, file paths, or shell commands
+- Sanitize data at every trust boundary — not just user input. Data interpolated into LLM prompts, action triggers, or cross-process channels must be validated at the boundary, not assumed safe because it originated internally
 
 ## Database Security
 - Use parameterized queries exclusively — no string interpolation in SQL
