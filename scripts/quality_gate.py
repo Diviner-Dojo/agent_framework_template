@@ -227,7 +227,12 @@ def _parse_regression_ledger() -> list[dict[str, str]]:
     text = REGRESSION_LEDGER.read_text(encoding="utf-8")
     for line in text.split("\n"):
         line = line.strip()
-        if not line.startswith("|") or line.startswith("| File") or line.startswith("|--"):
+        if (
+            not line.startswith("|")
+            or line.startswith("| File")
+            or line.startswith("| Approach")
+            or line.startswith("|--")
+        ):
             continue
         if "<!--" in line:
             continue

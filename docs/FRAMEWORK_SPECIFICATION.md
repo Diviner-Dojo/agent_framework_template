@@ -1,9 +1,9 @@
 ---
 title: "AI-Native Agentic Development Framework — Full Specification"
-version: "3.3"
+version: "3.4"
 status: living-document
 created: "2026-02-18"
-last_updated: "2026-04-04"
+last_updated: "2026-04-05"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
@@ -12,7 +12,7 @@ patterns_evaluated: 77
 patterns_adopted: 42
 ---
 
-# AI-Native Agentic Development Framework v3.3
+# AI-Native Agentic Development Framework v3.4
 
 ## Full Specification
 
@@ -47,7 +47,7 @@ patterns_adopted: 42
 
 ## 1. Executive Summary
 
-This document is the authoritative specification for the AI-Native Agentic Development Framework v3.3 — a practical, implementable, AI-native development system designed for use inside VS Code with Claude Code.
+This document is the authoritative specification for the AI-Native Agentic Development Framework v3.4 — a practical, implementable, AI-native development system designed for use inside VS Code with Claude Code.
 
 ### Origin
 
@@ -1010,14 +1010,20 @@ When you build your first module with `/build_module`, the framework will guide 
 
 ### Rule Files (Auto-Loaded)
 
-All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
+All agents inherit 13 rule files from [`.claude/rules/`](../.claude/rules/):
 
 | File | Scope |
 |------|-------|
+| [`autonomous_workflow.md`](../.claude/rules/autonomous_workflow.md) | Mandatory workflow sequencing for code changes |
 | [`build_review_protocol.md`](../.claude/rules/build_review_protocol.md) | Mid-build checkpoint reviews, Principle #4 enforcement |
 | [`coding_standards.md`](../.claude/rules/coding_standards.md) | Python conventions, naming, structure |
 | [`commit_protocol.md`](../.claude/rules/commit_protocol.md) | Quality gate → review → education gate → commit |
+| [`cross_agent_dispatch_protocol.md`](../.claude/rules/cross_agent_dispatch_protocol.md) | Cross-agent collaboration, dispatch-request/decision capture |
 | [`documentation_policy.md`](../.claude/rules/documentation_policy.md) | What, where, and how to document |
+| [`framework_doc_sync.md`](../.claude/rules/framework_doc_sync.md) | Documentation artifact sync points for framework changes |
+| [`micro_fix_protocol.md`](../.claude/rules/micro_fix_protocol.md) | Cosmetic change sizing heuristic and two-strike escalation |
+| [`multi_instance_protocol.md`](../.claude/rules/multi_instance_protocol.md) | Parallel agent instance splits, facilitator approval |
+| [`pre_build_search.md`](../.claude/rules/pre_build_search.md) | Prior art lookup before implementation (v3.4) |
 | [`review_gates.md`](../.claude/rules/review_gates.md) | Quality thresholds, architectural gates, education gates |
 | [`security_baseline.md`](../.claude/rules/security_baseline.md) | Input validation, DB security, secrets management, API security |
 | [`testing_requirements.md`](../.claude/rules/testing_requirements.md) | Coverage, quality, isolation, organization, markers |
@@ -1060,8 +1066,8 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 | LLM-gated test markers | `pyproject.toml` marker registration | `--run-llm`, `--run-slow` |
 | Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 77 patterns tracked |
 | 5 skill reference documents | `.claude/skills/*/SKILL.md` | Security, performance, testing, patterns, ADR |
-| 10 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing, build review, autonomous workflow, cross-agent dispatch, multi-instance, framework doc sync |
-| 5 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review |
+| 13 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing, build review, autonomous workflow, cross-agent dispatch, multi-instance, framework doc sync, micro-fix protocol, pre-build search |
+| 6 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review, project profile |
 | Steward agent + lineage tracking | `.claude/agents/steward.md`, `scripts/lineage/`, `framework-lineage.yaml`, `.claude/custodian/` | ADR-0002 accepted, Phase 1 operational |
 | UX evaluator agent | `.claude/agents/ux-evaluator.md` | Interaction flow, accessibility, platform conventions |
 | Build review protocol | `.claude/rules/build_review_protocol.md` | Mid-build checkpoint reviews, Principle #4 |
@@ -1078,7 +1084,7 @@ All agents inherit 7 rule files from [`.claude/rules/`](../.claude/rules/):
 | Reflection ingestion | `scripts/ingest_reflection.py` (102 lines) | Script exists, **0% test coverage**, no documented invocation path |
 | Quality gate script | `scripts/quality_gate.py` (223 lines) | Works via hook but has **0% direct test coverage** |
 | Close discussion | `scripts/close_discussion.py` (66 lines) | ~33% test coverage |
-| Layer 3 memory directories | `memory/decisions/`, `patterns/`, `reflections/`, `rules/` | Directories exist but contain only `.gitkeep` — **no promotions yet** |
+| Layer 3 memory directories | `memory/decisions/`, `patterns/`, `reflections/`, `rules/`, `projects/` | `projects/` contains TAXONOMY.md and _self.md (v3.4); others contain only `.gitkeep` — **no promotions yet** |
 | `/retro` and `/meta-review` commands | `.claude/commands/retro.md`, `meta-review.md` | Commands defined but **never executed** |
 
 ### Planned — Roadmap
@@ -1331,11 +1337,17 @@ agent_framework_template/
 │   ├── custodian/                     # Steward lineage tracking
 │   │   └── lineage-events.jsonl      #   Append-only lineage event log
 │   │
-│   ├── rules/                         # 7 auto-loaded rule files
+│   ├── rules/                         # 13 auto-loaded rule files
+│   │   ├── autonomous_workflow.md    #   Mandatory workflow sequencing
 │   │   ├── build_review_protocol.md  #   Mid-build checkpoint reviews
 │   │   ├── coding_standards.md
 │   │   ├── commit_protocol.md
+│   │   ├── cross_agent_dispatch_protocol.md
 │   │   ├── documentation_policy.md
+│   │   ├── framework_doc_sync.md
+│   │   ├── micro_fix_protocol.md
+│   │   ├── multi_instance_protocol.md
+│   │   ├── pre_build_search.md       #   Prior art lookup (v3.4)
 │   │   ├── review_gates.md
 │   │   ├── security_baseline.md
 │   │   └── testing_requirements.md
@@ -1461,3 +1473,4 @@ agent_framework_template/
 | 2026-03-13 | v3.0: Leadership hierarchy, specialist philosophy, collaboration protocols (cross-agent dispatch, multi-instance), model tier updates (steward/independent-perspective → opus, educator → sonnet), framework evolution path formalized, documentation sync rule added |
 | 2026-03-25 | v3.2: Steward-reviewed pipeline revision — demote finding-validator and compliance-auditor |
 | 2026-04-04 | v3.3: Agent reasoning upgrade — replace Specialist Philosophy with Values + Domain Lens across all 12 agents. Add Rule/Exceptions to finding formats. Facilitator domain reframe + delta synthesis. ADR-0010. Finding extraction rate 9.5% → ~16.2%. |
+| 2026-04-05 | v3.4: Push notifications (ntfy.sh), solution-path knowledge base (ADR-0011), educator reframe for decision-maker audience (ADR-0012), known-broken approaches ledger, pre-build search rule. 13 rules (+1). |

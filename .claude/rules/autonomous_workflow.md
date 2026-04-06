@@ -29,6 +29,7 @@ When implementing features, bug fixes, or any change touching `src/` or `tests/`
 
 - **BUILD_STATUS.md**: Update at session start, before compaction, and after each commit
 - **`/review`**: Required before any commit touching `src/` — no exceptions
+- **Pre-build search**: Check `memory/projects/` and `memory/bugs/regression-ledger.md` for prior art before building (per `pre_build_search.md`)
 - **Layer 1 capture**: Every `/review`, `/build_module`, `/plan` creates a discussion automatically via capture pipeline
 
 ## What "Autonomous Execution" Means

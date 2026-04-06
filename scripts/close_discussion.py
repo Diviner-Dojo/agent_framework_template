@@ -132,6 +132,18 @@ def close_discussion(discussion_id: str) -> None:
                 # On some systems (Windows) this may not work fully
                 pass
 
+    # Step 10: Send push notification
+    try:
+        from notify import send_notification
+
+        send_notification(
+            f"Discussion {discussion_id} closed and sealed.",
+            title="Discussion Closed",
+            tags="white_check_mark",
+        )
+    except Exception:
+        pass  # Best-effort — never block on notification failure
+
     print(f"Discussion {discussion_id} sealed.")
 
 
