@@ -90,6 +90,17 @@ Capture the build plan as the second event:
 python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Build plan: <N tasks from spec>" --tags "build-plan"
 ```
 
+## Step 2.5: Pre-Build Enrichment
+
+Before generating code, search for prior art per `.claude/rules/pre_build_search.md`:
+
+1. Search `memory/projects/` for solution paths related to this module's domain
+2. Search `memory/bugs/regression-ledger.md` Known-Broken Approaches for approaches to avoid
+3. Search `docs/adr/` for relevant architectural decisions
+4. Search `memory/patterns/` for promoted patterns
+
+If relevant prior art is found, reference it in the build plan and incorporate lessons learned. If a known-broken approach is found, explicitly note it and explain the alternative.
+
 ## Step 3: Execute Tasks (Loop)
 
 For each task in the spec, execute Steps 3a and 3b:

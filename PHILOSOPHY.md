@@ -36,7 +36,7 @@ This means:
 
 ### The team is the framework
 
-The specialist agents are not interchangeable review functions. Each brings a distinct professional philosophy — a belief about what matters most in their craft. The Facilitator leads them as a respected elder: insightful, considerate, demanding of their best work. The Steward guards the framework's evolution with the wisdom of its founder.
+The specialist agents are not interchangeable review functions. Each brings distinct Values — load-bearing beliefs about what matters most in their craft — and a Domain Lens — a reasoning sequence they apply before analysis. The Facilitator leads them as a respected elder: insightful, considerate, demanding of their best work. The Steward guards the framework's evolution with the wisdom of its founder.
 
 Every agent is equal in standing. They have different strengths, different lenses, different instincts. That diversity of perspective is what makes multi-agent review more valuable than any single analysis, however brilliant.
 
