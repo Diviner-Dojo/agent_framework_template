@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-- **Framework**: AI-Native Agentic Development Framework v3.3
+- **Framework**: AI-Native Agentic Development Framework v3.4
 - **Tech Stack**: Python 3.11+, FastAPI, SQLite, pytest
 - **Formatting**: ruff
 - **Typing**: strict (all public functions have type annotations)
@@ -127,6 +127,7 @@ memory/         — Layer 3: Curated promoted knowledge
   decisions/    — Promoted decision summaries
   lessons/      — Adoption log and external project patterns
   patterns/     — Promoted code and process patterns
+  projects/     — Solution-path knowledge base (TAXONOMY.md, _self.md, project profiles)
   reflections/  — Promoted agent reflections
   rules/        — Promoted rules (graduated to .claude/rules/)
 metrics/        — Layer 2: SQLite relational index + JSONL trend logs
@@ -193,6 +194,24 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 - **Notification**: Fires a system notification when Claude Code completes a task. Platform-specific setup required — see `docs/setup/notification-hook.md` for Windows (BurntToast), macOS (osascript), and Linux (notify-send) instructions.
 
 `BUILD_STATUS.md` is session-scoped working state at the project root. It is ephemeral and distinct from the four-layer capture stack — it preserves in-flight context across sessions rather than capturing completed decisions. Open advisories from reviews should be accumulated in BUILD_STATUS.md so they persist across sessions until addressed — this prevents advisory findings from being lost when review reports are closed.
+
+## Push Notifications
+
+The framework supports push notifications to the developer's phone/desktop via [ntfy.sh](https://ntfy.sh) when long-running tasks complete. This follows the BYOK (bring your own key) pattern — the mechanism is committed, the destination is in `.env`.
+
+**Setup**: Copy `.env.example` to `.env` and set `NTFY_TOPIC` to your unique topic slug. Subscribe to the same topic in the ntfy app (iOS/Android/web). See `.env.example` for full setup instructions.
+
+**Usage**:
+- CLI: `python scripts/notify.py "Build complete" --title "MyProject"`
+- Library: `from scripts.notify import send_notification; send_notification("Done")`
+- Integrated: `close_discussion.py` sends a notification automatically when discussions are sealed.
+
+**Design principles**:
+- Best-effort — notification failures never block the calling script
+- stdlib only (urllib) — no pip dependencies
+- Topic slug is the only authentication — treat it like a secret, store in `.env`
+- Keep notification messages generic (e.g., "Build complete", "Review finished") — ntfy.sh is a public relay by default, so avoid including file paths or internal IDs in payloads
+- Supports custom server (`NTFY_SERVER`) and token auth (`NTFY_TOKEN`) for self-hosted setups
 
 ## Commit Protocol
 

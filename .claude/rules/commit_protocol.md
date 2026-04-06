@@ -17,7 +17,13 @@ If any check fails, fix the issues before proceeding. Use `--fix` to auto-remedi
 
 Note: The git pre-commit hook enforces this automatically. If the quality gate fails, git will block the commit. The review existence check will fail if code files are staged but no review report from today exists in `docs/reviews/`. Use `--skip-reviews` to bypass if needed.
 
-### Step 1.5: Regression Test Verification (Required for bug fixes)
+### Step 1.5: Solution-Path Check (Advisory)
+Before committing, briefly check whether this change solves a problem that should be captured as a solution path:
+- Does this commit implement a non-trivial approach that future builds should know about?
+- Were alternative approaches tried and rejected?
+- If yes, note this for capture in Step 3.5.
+
+### Step 1.7: Regression Test Verification (Required for bug fixes)
 When committing a bug fix:
 - Verify a regression test exists that fails without the fix and passes with it
 - Verify the test is tagged with `@pytest.mark.regression`
@@ -40,6 +46,14 @@ Required when the review verdict is medium-risk or above, or when the review exp
 - Run `/walkthrough <files>` for the developer
 - Run `/quiz <files>` for comprehension assessment
 - Complete the education gate before committing
+
+### Step 3.5: Solution-Path Capture (Advisory)
+If Step 1.5 flagged this commit as containing a noteworthy solution path:
+- Add an entry to `memory/projects/_self.md` under `## Solution Paths` documenting the problem, what was tried, what was chosen, and why.
+- Use compound tags from `memory/projects/TAXONOMY.md` (e.g., `[auth/session-management]`).
+- If an approach was tried and found broken, add it to `memory/bugs/regression-ledger.md` under `## Known-Broken Approaches`.
+
+This step is advisory — it captures knowledge for future builds but does not block the commit.
 
 ### Step 4: Update BUILD_STATUS.md
 After committing, update BUILD_STATUS.md with:

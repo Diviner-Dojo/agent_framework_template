@@ -83,6 +83,16 @@ Read the developer's feature description. Ask clarifying questions if needed:
 - What constraints apply?
 - What does success look like?
 
+## Step 1.5: Prior Art Lookup
+
+Before writing the spec, search for prior art per `.claude/rules/pre_build_search.md`:
+
+1. Search `memory/projects/` for solution paths related to this feature's domain
+2. Search `memory/bugs/regression-ledger.md` Known-Broken Approaches for approaches to avoid
+3. Search `docs/adr/` for relevant architectural decisions
+
+If relevant prior art is found, incorporate it into the spec's Context section and reference it in Requirements. If a known-broken approach exists, add it to the Constraints section.
+
 ## Step 2: Produce Structured Spec
 
 Write a spec document to `docs/sprints/SPEC-YYYYMMDD-HHMMSS-slug.md` with status `draft`:

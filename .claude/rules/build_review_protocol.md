@@ -65,6 +65,7 @@ Review this code from your specialist perspective. This is a mid-build checkpoin
 Focus on:
 - Whether the implementation approach is sound
 - Whether it aligns with existing ADRs and patterns
+- Whether prior art or solution paths were considered (check memory/projects/ for relevant entries)
 - Any risks that would be expensive to fix later
 
 <code content or file paths>
