@@ -9,7 +9,9 @@
 # Uses a time-based state file (5-minute validity) to avoid re-checking
 # within the same session after verification passes.
 
-set -e
+# NOTE: Do not use set -e in hooks. It causes silent failures — if any command
+# exits non-zero the script terminates immediately without useful output.
+# Use per-command error handling instead (|| echo "", 2>/dev/null, etc.)
 
 INPUT=$(cat)
 

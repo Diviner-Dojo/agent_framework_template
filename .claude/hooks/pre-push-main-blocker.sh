@@ -7,7 +7,9 @@
 #   - Push to non-main branches: ALLOWED
 #   - Push to main/master: BLOCKED with remediation instructions
 
-set -e
+# NOTE: Do not use set -e in hooks. It causes silent failures — if any command
+# exits non-zero the script terminates immediately without useful output.
+# Use per-command error handling instead (|| echo "", 2>/dev/null, etc.)
 
 INPUT=$(cat)
 

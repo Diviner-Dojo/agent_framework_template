@@ -195,6 +195,8 @@ The project uses Claude Code hooks (configured in `.claude/settings.json`) for a
 
 `BUILD_STATUS.md` is session-scoped working state at the project root. It is ephemeral and distinct from the four-layer capture stack — it preserves in-flight context across sessions rather than capturing completed decisions. Open advisories from reviews should be accumulated in BUILD_STATUS.md so they persist across sessions until addressed — this prevents advisory findings from being lost when review reports are closed.
 
+**Incremental Summary Merging**: When updating BUILD_STATUS.md before compaction, preserve the previous session's content under a `## Previous Session (YYYY-MM-DD HH:MM)` heading rather than overwriting it. This creates a layered artifact showing session progression, preventing context loss across multiple compaction rounds. Cap at 3 retained previous sessions — remove the oldest when adding a fourth. This is especially valuable for multi-session tasks like `/build_module` spanning hours.
+
 ## Push Notifications
 
 The framework supports push notifications to the developer's phone/desktop via [ntfy.sh](https://ntfy.sh) when long-running tasks complete. This follows the BYOK (bring your own key) pattern — the mechanism is committed, the destination is in `.env`.
@@ -252,6 +254,23 @@ When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-revi
 **New SQLite tables**: `findings`, `promotion_candidates`, `pattern_sightings`, `agent_effectiveness`, `lineage_nodes`, `lineage_file_drift`
 **New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`
 **New columns**: `turns.content_excerpt`, `turns.tags`, `discussions.command_type`, `discussions.duration_minutes`, `discussions.related_discussion_id`
+
+## Failure Taxonomy
+
+Named failure classes with recovery steps and escalation paths are documented in `.claude/rules/failure_taxonomy.md`. This replaces tribal knowledge with a single reference. Eight failure classes are defined:
+
+| Failure Class | What Breaks | Max Retries |
+|---|---|---|
+| `HOOK_BLOCK` | PreToolUse hook rejects a Write/Edit | 1 |
+| `QUALITY_GATE_FAIL` | quality_gate.py exits non-zero | 2 |
+| `CAPTURE_PIPELINE_ERROR` | Capture scripts fail (create/write/close/ingest) | 1 |
+| `REVIEW_PENDING` | Code changes exist but no /review run | N/A — process gate |
+| `EDUCATION_DEFERRED` | Education gate deferred by developer | N/A — deliberate |
+| `SESSION_STATE_LOST` | BUILD_STATUS.md stale/missing after compaction | N/A — reconstruct |
+| `COMMIT_HOOK_FAIL` | Git pre-commit hook blocks commit | 2 |
+| `PUSH_BLOCKED` | Pre-push hook blocks push to main | N/A — workflow correction |
+
+When a failure occurs, consult the taxonomy for the named recovery path before improvising.
 
 ## Known Limitations
 

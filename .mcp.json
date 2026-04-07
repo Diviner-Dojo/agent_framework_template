@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@anthropic-ai/mcp-server-sqlite",
+        "${CLAUDE_PROJECT_DIR}/metrics/evaluation.db"
+      ]
+    }
+  }
+}
