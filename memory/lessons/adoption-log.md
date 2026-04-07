@@ -1,10 +1,11 @@
 ---
-last_updated: "2026-03-09"
-total_analyses: 9
-patterns_evaluated: 86
-patterns_adopted: 42
-patterns_deferred: 19
-patterns_rejected: 18
+last_updated: "2026-04-06"
+total_analyses: 17
+patterns_evaluated: 155
+patterns_adopted: 55
+patterns_already_confirmed: 7
+patterns_deferred: 40
+patterns_rejected: 32
 ---
 
 # Adoption Log (Learning Ledger)
@@ -39,6 +40,197 @@ Each entry records:
 
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
+
+---
+
+### Analysis: Claw Code Agent Harness (2026-04-07)
+**Source project**: Claw Code (ultraworkers/claw-code) — Rust/Python clean-room rewrite of Claude Code agent harness. 60K Rust LOC, 9 crates, 173K+ stars. NO LICENSE FILE (website claims MIT).
+**Analysis report**: `docs/reviews/ANALYSIS-20260407-002600-claw-code.md`
+**Primary theme**: Agent harness architecture, failure recovery, testing determinism, session management
+**4 patterns adopted (ideas-only), 6 deferred, 3 rejected** (confidence: 0.85; 6 specialists: architecture-consultant, security-specialist, performance-analyst, qa-specialist, docs-knowledge, independent-perspective)
+**License constraint**: All adoptions are ideas-only — no direct code adaptation due to missing license file.
+
+---
+
+### Pattern: Named Failure Taxonomy
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 22/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:5)
+- **Sightings**: 1 (related: ACH failure-mode taxonomy from prior analysis)
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `.claude/rules/failure_taxonomy.md`, CLAUDE.md Failure Taxonomy section
+- **Date**: 2026-04-07
+- **Notes**: 8 named failure classes with recovery steps and escalation paths. Cross-references Claw Code's 22 operational failures. Documentation only, no code.
+
+### Pattern: Incremental Summary Merging
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 21/25 (prevalence:3, elegance:5, evidence:3, fit:5, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: CLAUDE.md BUILD_STATUS.md section, `.claude/hooks/pre-compact.ps1`
+- **Date**: 2026-04-07
+- **Notes**: Preserve previous session content under "Previous Session" heading during compaction. Cap at 3 retained sessions. Convention change, no code.
+
+### Pattern: Deterministic Mock Anthropic Service
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 21/25 (prevalence:5, elegance:4, evidence:3, fit:5, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Strongest specialist consensus (3/6 agents), but our framework doesn't call the Anthropic API directly — Claude Code does. No immediate testing gap to fill.
+- **Revisit if**: We build LLM-integrated application code in src/ that needs deterministic testing.
+
+### Pattern: Parse-Don't-Validate with Error Accumulation
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:3, maintenance:5)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Clean pattern but our capture pipeline scripts are simple and working. No recurring invalid-data problem to solve.
+- **Revisit if**: Capture pipeline validation errors become a recurring issue, or we add complex data ingestion.
+
+### Pattern: Typed/Named Quality Levels (GreenContract)
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 19/25 (prevalence:4, elegance:4, evidence:3, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Would replace binary pass/fail quality gate with ordered levels. Novel concept, not widely adopted. Requires refactoring quality_gate.py.
+- **Revisit if**: The --skip-reviews workaround causes recurring friction, or we formalize change-type-specific quality requirements.
+
+### Pattern: Recovery As Data (Recipes)
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 18/25 (prevalence:4, elegance:4, evidence:2, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Source implementation is stubs not wired to real operations. Concept captured in our failure taxonomy as documentation.
+- **Revisit if**: Failure taxonomy documentation proves insufficient and recovery steps need to become executable code.
+
+### Pattern: ROADMAP as Operational Failure Archive
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 19/25 (prevalence:5, elegance:3, evidence:2, fit:4, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `.claude/rules/failure_taxonomy.md` (Cross-Reference section)
+- **Date**: 2026-04-07
+- **Notes**: 22 operational failures cross-referenced against our framework. 5 relevant items documented, 5+ marked not applicable.
+
+### Pattern: Composable Policy Engine (And/Or/Chain)
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 15/25 (prevalence:3, elegance:4, evidence:3, fit:2, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Our framework has ~3 policy domains — doesn't justify engine overhead. Independent-perspective noted premature optimization.
+- **Revisit if**: Policy domain count exceeds 5 or facilitator dispatch logic outgrows prompt-based expression.
+
+### Pattern: Permission Rule DSL
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 15/25 (prevalence:3, elegance:4, evidence:3, fit:2, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Our permission model is hook-based (settings.json). Migration cost is high.
+- **Revisit if**: Hook-based permission model hits scaling limits.
+
+### Pattern: JSON Output Contract for All Commands
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 16/25 (prevalence:4, elegance:3, evidence:4, fit:2, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Our slash commands run inside Claude Code's context, not as standalone CLI tools. Different testability solution needed.
+- **Revisit if**: We build automated testing of slash command workflows.
+
+### Pattern: Worker Lifecycle State Machine
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 13/25 (prevalence:2, elegance:4, evidence:3, fit:1, maintenance:3)
+- **Sightings**: 1
+- **Status**: REJECTED
+- **Decision**: Specific to persistent CLI session management. Our agents receive prompts via Task(), not terminal injection.
+
+### Pattern: MCP Lifecycle State Machine
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 13/25 (prevalence:2, elegance:4, evidence:3, fit:1, maintenance:3)
+- **Sightings**: 1
+- **Status**: REJECTED
+- **Decision**: We don't manage MCP servers directly. Not applicable to our architecture.
+
+### Pattern: Session Rotation (256KB cap)
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 14/25 (prevalence:3, elegance:3, evidence:3, fit:1, maintenance:4)
+- **Sightings**: 1
+- **Status**: REJECTED
+- **Decision**: Our discussion files close when sealed. Unbounded growth is not our problem.
+
+---
+
+### Re-Analysis: All 8 Projects — Enhanced Project-Analyst Sweep (2026-04-06)
+**Projects re-analyzed**: agentic_journal (3rd), CritInsight (2nd), ContractorVerification (2nd), sa4s-serc/AgenticAKM (2nd), MaximeRobeyns/self_improving_coding_agent (2nd), daegwang/self-learning-agent (2nd), wshobson/agents (2nd), dralgorhythm/claude-agentic-framework (2nd)
+**Project profiles created**: `memory/projects/` (8 files — previously missing gap filled)
+**Primary themes**: Standing documents, token optimization, Stop hooks, inline rationale, domain validation hooks, regression diagnosis, agent self-evaluation
+**56 new patterns evaluated: 9 genuinely new adoptions, 7 confirmed already-upstreamed, 15 deferred, 11 rejected** (plus 14 strong adapts at 18-19/25)
+**Correction**: 7 patterns from ContractorVerification/agentic_journal were "discovered" by analysts but already exist in the template (previously upstreamed). Marked CONFIRMED below.
+**Highest-scoring genuinely new pattern**: Standing Documents for Specialist Domains (23/25, agentic_journal)
+**Urgent audit finding**: `set -e` present in 2 of our hooks (pre-push-main-blocker.sh, pre-commit-gate.sh) — confirmed bug from claude-agentic-framework production fix
+
+#### Already Present in Template (CONFIRMED — analysts rediscovered existing patterns)
+
+| Pattern | Source | Already exists as |
+|---------|--------|-------------------|
+| /ship Command with Auto Classification | ContractorVerification | `.claude/commands/ship.md` |
+| /evaluate-repo-security Command | ContractorVerification | `.claude/commands/evaluate-repo-security.md` |
+| /onboard Command (Takeover Protocol) | ContractorVerification | `.claude/commands/onboard.md` |
+| Feature Status Registry (FEATURE_STATUS.md) | ContractorVerification | `.claude/skills/feature-status-registry/` |
+| Education Gate Manifest Template | ContractorVerification | `docs/templates/education-gate-manifest-template.md` |
+| Domain-Specific PostToolUse Validation Hook | ContractorVerification | Pattern in `validate_tool_use.py` |
+| Failure Taxonomy (from Claw Code) | Claw Code | `.claude/rules/failure_taxonomy.md` |
+
+#### Genuinely New Adopted Patterns (not yet in template)
+
+| Pattern | Source | Score | What's missing |
+|---------|--------|-------|----------------|
+| Standing Documents for Specialist Domains | agentic_journal | 23 | 4 memory/ subdirs with seed files |
+| Token Budget Optimization Methodology | claude-agentic-framework | 22 | Methodology (CLAUDE.md audit) |
+| Stop Event Hooks (mypy + pytest) | ContractorVerification | 22 | Stop hooks in settings.json |
+| Per-Resource Circuit Breaker | ContractorVerification | 22 | memory/patterns/circuit-breaker.md |
+| Inline "Why" Decision Rationale | CritInsight | 22 | Writing convention (Key Design Decisions table) |
+| Regression Diagnosis SOP (Root-Cause Taxonomy) | agentic_journal | 21 | Taxonomy in regression-ledger.md |
+| Anchored Rubric Design for LLM Evaluation | wshobson/agents | 20 | Agent definition updates |
+| Project-Scoped MCP Configuration (.mcp.json) | ContractorVerification | 20 | .mcp.json file |
+| Acceptance Criteria Document (ACCEPTANCE.md) | ContractorVerification | 20 | docs/ACCEPTANCE.md |
+| Agent Notes as Failure Log (AGENT_NOTES.md) | ContractorVerification | 20 | docs/AGENT_NOTES.md |
+| .claude/docs/ Agent-Targeted Onboarding | ContractorVerification | 20 | .claude/docs/ directory |
+| Agent Self-Evaluation Protocol | agentic_journal | 20 | Retro health checklist |
+| Deterministic Seeded Metrics Factory | self_improving_coding_agent | 20 | tests/fixtures.py |
+
+#### Strong Adapts (18-19/25, also adopted)
+
+| Pattern | Source | Score | What's missing |
+|---------|--------|-------|----------------|
+| Swarm Research — Verification Tiers | claude-agentic-framework | 19 | Agent prompt updates |
+| Plan-Reviewer Agent | ContractorVerification | 19 | .claude/agents/plan-reviewer.md |
+| Strategic Education Gates | agentic_journal | 19 | Educator agent rewrite |
+| Named Anti-Pattern Detection | wshobson/agents | 18 | quality_gate.py check |
+| Dangerous Command Guard (Warn Tier) | claude-agentic-framework | 18 | New hook file |
+| Orientation Documents (current-arc.md) | agentic_journal | 18 | memory/decisions/current-arc.md |
+| Deploy-Safety Hook Pattern | agentic_journal | 18 | Hook stub |
+| Spec Closure Check (session-start 5b) | agentic_journal | 18 | session-start.ps1 update |
+| Named-Role Review Committee | self_improving_coding_agent | — | review_gates.md update |
+| Two-Hat Refactoring Rule | claude-agentic-framework | 17 | coding_standards.md update |
+| Remove set -e from Hooks | claude-agentic-framework | 15 | Bug fix in 2 hooks |
+| Pipe-to-Shell Deny Patterns | claude-agentic-framework | 16 | settings.json deny list |
+
+See individual pattern entries in `memory/projects/*.md` project profiles for full details, solution paths, and applicability assessments.
 
 ---
 
