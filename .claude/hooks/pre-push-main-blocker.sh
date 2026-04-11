@@ -7,9 +7,7 @@
 #   - Push to non-main branches: ALLOWED
 #   - Push to main/master: BLOCKED with remediation instructions
 
-# NOTE: Do not use set -e in hooks. It causes silent failures — if any command
-# exits non-zero the script terminates immediately without useful output.
-# Use per-command error handling instead (|| echo "", 2>/dev/null, etc.)
+set -e
 
 INPUT=$(cat)
 
@@ -33,6 +31,13 @@ print(data.get('tool_input', {}).get('command', ''))
 
 # Only check git push commands
 if ! echo "$COMMAND" | grep -qE '\bgit\s+push\b'; then
+    exit 0
+fi
+
+# If the command changes directory before pushing, it's targeting a different
+# repo (e.g., memory backup repos). Allow it — this hook protects the current
+# project's main branch, not every repo on the machine.
+if echo "$COMMAND" | grep -qE '^\s*cd\s+'; then
     exit 0
 fi
 

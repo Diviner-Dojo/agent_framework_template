@@ -22,14 +22,19 @@
 - Review reports follow `docs/templates/review-report-template.md`
 - Reflections follow `docs/templates/reflection-template.md`
 
-## Agent Documentation
-- When adding a new agent definition (`.claude/agents/*.md`), update CLAUDE.md's Agent Architecture section (agent count, model tier table) and write an ADR if the new role type is novel (i.e., not a refinement of an existing specialist domain).
+## ADR Scope Classification
+- New ADRs must include a `scope:` field in frontmatter: `framework` (universal to all projects), `project` (this project only), or `hybrid` (universal principle, project-specific implementation)
+- Framework-scoped ADRs are candidates for propagation to the template and shared-memory changelog
+- When a framework ADR is accepted, add an entry to `~/.claude/shared-memory/FRAMEWORK_CHANGELOG.md`
+- See DISC-20260411-171115 for the propagation architecture decision
+
+## Cross-Project Propagation
+- When a rule, command, or agent is created that is framework-universal, note it as a propagation candidate in the commit message
+- Universal lessons from project-specific incidents belong in `~/.claude/shared-memory/universal-warnings.md`, not as propagated rule files
+- The `/retro` command includes a cross-project knowledge check (Step 7) that prompts for shared-memory contributions
 
 ## CLAUDE.md Maintenance
 - Update CLAUDE.md when project conventions change
 - Update when new promoted rules are added to `.claude/rules/`
 - Update when architectural boundaries shift (requires ADR)
 - Every review comment about missing context is a signal that CLAUDE.md needs updating
-
-## Framework Documentation Sync
-- When framework-defining files change, downstream documentation artifacts must also be updated. See `.claude/rules/framework_doc_sync.md` for the full sync points table and enforcement details.
