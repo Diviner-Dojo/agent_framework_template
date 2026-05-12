@@ -328,13 +328,24 @@ def _get_staged_code_files() -> list[str]:
 
 
 def _find_todays_reviews() -> list[Path]:
-    """Find review reports created today (matching REV-YYYYMMDD pattern)."""
+    """Find review reports created today (matching REV-YYYYMMDD pattern).
+
+    Checks both local-today and UTC-today since framework IDs are minted in
+    UTC (see DISC-, REV- conventions) while ``date.today()`` returns local.
+    Without this, commits in the local-evening / UTC-next-day window would
+    falsely report 'no review today' even when a review file exists.
+    """
     import datetime
 
-    today = datetime.date.today().strftime("%Y%m%d")
     if not REVIEWS_DIR.is_dir():
         return []
-    return sorted(REVIEWS_DIR.glob(f"REV-{today}*.md"))
+    candidates: set[Path] = set()
+    for date_str in {
+        datetime.date.today().strftime("%Y%m%d"),
+        datetime.datetime.now(datetime.UTC).strftime("%Y%m%d"),
+    }:
+        candidates.update(REVIEWS_DIR.glob(f"REV-{date_str}*.md"))
+    return sorted(candidates)
 
 
 def check_review_existence() -> bool:

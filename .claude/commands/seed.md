@@ -77,7 +77,7 @@ Create `.claude/settings.json` with the standard hook configuration:
 - PreCompact: BUILD_STATUS.md reminder + shared memory sync
 - SessionStart: BUILD_STATUS.md restore + process health nudge
 
-Adapt the auto-format hook to the project's tech stack (not all projects use `dart format`).
+Adapt the auto-format hook to the project's tech stack — the formatter command depends on the project's language and toolchain.
 
 ## Step 4: Initialize Database
 

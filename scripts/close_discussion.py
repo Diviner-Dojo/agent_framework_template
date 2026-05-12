@@ -7,11 +7,12 @@ This script:
 1. Generates transcript.md from events.jsonl
 2. Ingests events into SQLite
 3. Marks the discussion as closed in SQLite (with duration_minutes)
-4. Extracts findings into the findings table
-5. Mines patterns and records sightings
-6. Surfaces promotion candidates
-7. Computes agent effectiveness
-8. Sets events.jsonl and transcript.md to read-only (advisory)
+4. Rolls up per-turn token counts into discussion totals
+5. Extracts findings into the findings table
+6. Mines patterns and records sightings
+7. Surfaces promotion candidates
+8. Computes agent effectiveness
+9. Sets events.jsonl and transcript.md to read-only (advisory)
 """
 
 import argparse
@@ -68,6 +69,54 @@ def close_discussion(discussion_id: str) -> None:
         conn.commit()
         conn.close()
         print(f"Discussion {discussion_id} marked as closed in SQLite")
+
+    # Step 3b: Roll up per-turn token counts into discussion totals.
+    # Skipped when no turn carries token data — the JSONL ingester
+    # (scripts/ingest_token_usage.py) is the authoritative path and writes
+    # discussions.total_* directly. See ADR-0013.
+    try:
+        if DB_PATH.exists():
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.execute("PRAGMA foreign_keys=ON")
+            has_turn_tokens = conn.execute(
+                """SELECT 1 FROM turns
+                   WHERE discussion_id = ?
+                       AND (tokens_in IS NOT NULL OR tokens_out IS NOT NULL
+                            OR cache_read_tokens IS NOT NULL OR cache_create_tokens IS NOT NULL)
+                   LIMIT 1""",
+                (discussion_id,),
+            ).fetchone()
+            if has_turn_tokens:
+                conn.execute(
+                    """UPDATE discussions
+                       SET total_tokens_in = (
+                               SELECT SUM(tokens_in) FROM turns
+                               WHERE discussion_id = ? AND tokens_in IS NOT NULL
+                           ),
+                           total_tokens_out = (
+                               SELECT SUM(tokens_out) FROM turns
+                               WHERE discussion_id = ? AND tokens_out IS NOT NULL
+                           ),
+                           total_cache_tokens = (
+                               SELECT SUM(
+                                   COALESCE(cache_read_tokens, 0) + COALESCE(cache_create_tokens, 0)
+                               )
+                               FROM turns
+                               WHERE discussion_id = ?
+                                   AND (cache_read_tokens IS NOT NULL OR cache_create_tokens IS NOT NULL)
+                           )
+                       WHERE discussion_id = ?""",
+                    (discussion_id, discussion_id, discussion_id, discussion_id),
+                )
+                conn.commit()
+                print(f"Token rollup completed for {discussion_id}")
+            else:
+                print(
+                    f"Token rollup skipped for {discussion_id} (no per-turn token data; run ingest_token_usage.py)"
+                )
+            conn.close()
+    except Exception as e:
+        print(f"Warning: token rollup failed (non-fatal): {e}")
 
     # Step 4: Extract findings
     try:

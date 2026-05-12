@@ -135,6 +135,8 @@ metrics/        — Layer 2: SQLite relational index + JSONL trend logs
                   deploy_log.jsonl, emulator_test_log.jsonl
 scripts/        — Capture pipeline utilities + quality gate
   lineage/      — Lineage tracking utilities (manifest, drift, init)
+config/         — Runtime configuration consumed by analysis-time tooling
+                  (model_pricing.yaml — token cost lookup; see ADR-0013)
 src/            — Application source code
 tests/          — Test suite
 framework-lineage.yaml — Lineage manifest (project-template relationship)
@@ -240,20 +242,24 @@ When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-revi
    - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
    - `scripts/ingest_events.py` inserts events into SQLite (Layer 2), including searchable `content_excerpt` and `tags`
    - Updates discussion status to `closed` in SQLite (with `duration_minutes`)
+   - Rolls up per-turn token counts into `discussions.total_tokens_in / total_tokens_out / total_cache_tokens` when turn-level token data is present (skipped otherwise — the JSONL ingester is authoritative, see ADR-0013)
    - `scripts/extract_findings.py` parses events for structured findings (severity, category, summary)
    - `scripts/mine_patterns.py` clusters similar findings using Jaccard similarity
    - `scripts/surface_candidates.py` identifies recurring patterns for promotion queue
    - `scripts/compute_agent_effectiveness.py` computes per-agent uniqueness/survival metrics
    - Sets discussion directory to read-only
 4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table. Called at synthesis time in `/review`, `/build_module`, and `/retro`.
-5. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
-6. `/knowledge-health` runs `scripts/knowledge_dashboard.py` to report on all pipeline layers and append to `metrics/knowledge_pipeline_log.jsonl`.
+5. `scripts/ingest_token_usage.py` (post-hoc, on demand) parses Claude Code's transcript JSONL at `~/.claude/projects/`, dedupes by `message.id`, and attributes token usage to discussions by timestamp. This is the authoritative cost-side telemetry per ADR-0013. Run periodically or after a /deliberate to populate cost data.
+6. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
+7. `/knowledge-health` runs `scripts/knowledge_dashboard.py` to report on all pipeline layers and append to `metrics/knowledge_pipeline_log.jsonl`.
 
 **Context-brief events** (turn_id=1, agent="facilitator", tags="context-brief") are emitted by: /review, /deliberate, /build_module, /plan, /retro. Excluded: /analyze-project (outward-facing scouting, no developer request context), /meta-review (aggregate analysis, no single request context).
 
 **New SQLite tables**: `findings`, `promotion_candidates`, `pattern_sightings`, `agent_effectiveness`, `lineage_nodes`, `lineage_file_drift`
-**New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`
-**New columns**: `turns.content_excerpt`, `turns.tags`, `discussions.command_type`, `discussions.duration_minutes`, `discussions.related_discussion_id`
+**New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`, `v_token_efficiency`
+**New columns**: `turns.content_excerpt`, `turns.tags`, `turns.tokens_in`, `turns.tokens_out`, `turns.cache_read_tokens`, `turns.cache_create_tokens`, `discussions.command_type`, `discussions.duration_minutes`, `discussions.related_discussion_id`, `discussions.total_tokens_in`, `discussions.total_tokens_out`, `discussions.total_cache_tokens`
+
+**Cost computation**: cost is never stored — derive at analysis time from raw token counts using `config/model_pricing.yaml`. Pricing changes are a YAML edit, not a schema migration.
 
 ## Failure Taxonomy
 
