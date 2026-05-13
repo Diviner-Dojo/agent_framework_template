@@ -30,7 +30,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["src", "assertion_store", "mcp_server"]
 
 [tool.coverage.report]
 fail_under = 80

@@ -139,6 +139,16 @@ config/         — Runtime configuration consumed by analysis-time tooling
                   (model_pricing.yaml — token cost lookup; see ADR-0013)
 src/            — Application source code
 tests/          — Test suite
+assertion_store/— Sourced-assertion memory substrate package (Substrate class +
+                  embeddings helper). Transport-agnostic; see ADR-0014.
+mcp_server/     — FastMCP transport over the assertion_store Substrate. Three
+                  tools: assert_fact, search_semantic, get_source. Registered
+                  in .mcp.json as "agent-memory". See ADR-0014.
+sources/        — Canonical source documents staged for citation (transcripts,
+                  primary texts). Sources are canonical; everything else is a
+                  vehicle for engaging with them.
+data/           — Runtime data (memory.db = sourced-assertion substrate;
+                  not committed to git).
 framework-lineage.yaml — Lineage manifest (project-template relationship)
 PHILOSOPHY.md   — Framework philosophy: why we work the way we do
 REVIEW.md       — Review-specific rules (injected into specialist prompts during /review, see ADR-0006)
@@ -160,6 +170,21 @@ Key commands:
 - `python scripts/lineage/init_lineage.py --project-name NAME --template-version VERSION` — Initialize lineage tracking
 
 Lineage events are recorded in `.claude/custodian/lineage-events.jsonl` (append-only). SQLite tables `lineage_nodes` and `lineage_file_drift` provide queryable lineage data. See `docs/STEWARD_ARCHITECTURE.md` for the full five-phase roadmap and `docs/adr/ADR-0002-adopt-steward-agent.md` for the adoption decision.
+
+## Memory Substrate
+
+The framework includes a sourced-assertion memory substrate at `assertion_store/` (Phase 4, see ADR-0014). Sources are canonical; the substrate records what sources *assert* and always preserves the path back to the original passage (Suchness preservation).
+
+**Architecture**: The `Substrate` class (`assertion_store/substrate.py`) owns the data model and three primitives. The MCP transport (`mcp_server/server.py`) is a thin layer over it — derived projects (Howie, Insight Journal) and future CLI/HTTP transports use `Substrate` directly.
+
+**Three tools** exposed via the `agent-memory` MCP server (registered in `.mcp.json`):
+- `assert_fact(subject, predicate, object, source_ref, framing="asserts")` — record a sourced assertion. Framing is one of `asserts | questions | denies | considers`. Source refs use the portable URI form `project://<project_id>/<path>#L<a>-L<b>`.
+- `search_semantic(query, k=5, scope="local")` — vector-similarity search over recorded assertions. Only `scope="local"` is implemented; cross-project scope reserved for the shared-knowledge layer.
+- `get_source(source_ref)` — the Suchness preservation primitive. Returns the original passage at a `project://` URI. Containment-checked against `source_roots` (`sources/`, `discussions/`, `docs/`, `memory/`, `src/`); vehicles (`data/`, `.git/`, `.env`, `.claude/`) are not citable.
+
+**Configuration**: `AGENT_MEMORY_DB` and `AGENT_MEMORY_PROJECT_ID` environment variables override the script-anchored defaults. Insight Journal's privacy-by-architecture commitment uses these to point at a separate DB with its own policy.
+
+**Connection model**: One SQLite connection per worker thread (FastMCP dispatches tool calls on worker threads; `sqlite3` forbids cross-thread connection reuse). The thread-local cache lives on the `Substrate` instance, so multiple substrates in one process do not share connections. See `mcp_server/server.py:_thread_local` discussion in ADR-0014 and the regression test in `tests/test_mcp_server.py::TestThreadLocalIsolation`.
 
 ## Quality Gate
 
@@ -284,6 +309,8 @@ Document known data quality issues, extraction rate baselines, and enforcement g
 
 - The pre-commit hook does not support `--skip-reviews` passthrough — the quality gate's review existence check cannot be bypassed from `git commit` arguments
 - The pre-commit hook's regression ledger check and review reminder are suppressed during the 5-minute verification cache window after a quality gate run. Stale cache entries may cause these checks to be silently skipped.
+- The MCP server (`mcp_server/server.py`) requires thread-local SQLite connections via `threading.local()`. FastMCP dispatches tool calls on worker threads distinct from the import thread; `sqlite3` forbids cross-thread connection reuse by default. The pattern in `Substrate._get_conn()` is the authoritative model. Drop-in code in the Phase 3 decision brief (`docs/research/phase3-tooling-decision-brief.md`) predates this fix and must not be copied without adapting the connection model. Regression test: `tests/test_mcp_server.py::TestThreadLocalIsolation`.
+- The embedding dimension (`EMBEDDING_DIM = 384`, all-MiniLM-L6-v2) is baked into the `assertion_vecs` schema at creation time. Switching embedding models requires a schema migration and full re-embedding of existing assertions — not a configuration change. See ADR-0014 Consequences.
 
 ## Autonomous Execution Authorization
 

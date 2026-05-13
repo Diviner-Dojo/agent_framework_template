@@ -7,6 +7,10 @@
         "@anthropic-ai/mcp-server-sqlite",
         "${CLAUDE_PROJECT_DIR}/metrics/evaluation.db"
       ]
+    },
+    "agent-memory": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server"]
     }
   }
 }

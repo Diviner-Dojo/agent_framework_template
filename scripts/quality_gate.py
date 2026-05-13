@@ -231,18 +231,21 @@ def _parse_regression_ledger() -> list[dict[str, str]]:
             not line.startswith("|")
             or line.startswith("| File")
             or line.startswith("| Approach")
+            or line.startswith("| Class")
+            or line.startswith("| **")
             or line.startswith("|--")
         ):
             continue
         if "<!--" in line:
             continue
         cells = [c.strip() for c in line.split("|")[1:-1]]
-        if len(cells) >= 5 and cells[0] and not cells[0].startswith("-"):
+        # Ledger format (6 cols): File | Bug Description | Root Cause Class | Fix Date | Test File | Test Function
+        if len(cells) >= 6 and cells[0] and not cells[0].startswith("-"):
             entries.append(
                 {
                     "file": cells[0],
-                    "test_file": cells[3],
-                    "test_function": cells[4],
+                    "test_file": cells[4],
+                    "test_function": cells[5],
                 }
             )
     return entries

@@ -1,12 +1,12 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-05-12T03:35Z
+> Last updated: 2026-05-12 (Phase 4 substrate APPROVED via re-review REV-20260512-195841; pending commit + push)
 
 ## Current Task
 
-**Status:** Phase 3 deliberation complete. Build handoff prepared for next session.
-**Branch:** `feature/project-analysis-backport`
+**Status:** Phase 4 sourced-assertion substrate complete end-to-end. Two reviews: REV-20260512-132622 (request-changes, 10 blocking findings) → 5-step fix sequence → REV-20260512-195841 (approve, 0 blocking, 8 low advisories). 27 tests at 97% coverage, all passing. ADR-0014 written. CLAUDE.md updated (Directory Layout + Memory Substrate section + Known Limitations). FRAMEWORK_CHANGELOG.md propagation entry added. Substrate class refactor unlocked transport-agnosticism for Howie / Insight Journal / future CLI use. Quality gate passes 5/5 excluding pre-existing notify test failure (unrelated to Phase 4). **Next**: commit (in progress) → ask developer before push.
+**Branch:** `feature/sourced-assertion-substrate` (off `feature/project-analysis-backport` HEAD)
 
 ### In Progress
 
@@ -14,7 +14,25 @@
   - Phase 1 (broad survey) — complete; report at `docs/research/phase1-connection-facilitators.md`
   - Phase 2 (sanity check on alternatives) — complete; integrated into the architecture framing memory
   - Phase 3 (tooling research + decision brief) — complete; report at `docs/research/phase3-tooling-decision-brief.md`
-  - Phase 4 (build) — **handoff prompt ready** at `docs/dispatches/phase4-build-handoff.md`; not yet started
+  - Phase 4 (build) — **substrate built; canonical MCP test ROUND-TRIP VALIDATED 2026-05-12.**
+    - Files created: `assertion_store/__init__.py`, `assertion_store/substrate.py`, `assertion_store/embeddings.py`, `mcp_server/__init__.py`, `mcp_server/server.py`. Modified: `requirements.txt`, `.mcp.json`, `mcp_server/server.py` (thread-local fix this session — uncommitted).
+    - Smoke test (direct Python calls bypassing MCP) PASSED end-to-end: 3× `assert_fact`, semantic match on paraphrased query (distance 0.762 vs 1.2+ for unrelated), `get_source` round-trip via portable URI, scope rejection, bad URI rejection.
+    - All three Phase 4 modifications validated under BOTH smoke test AND MCP transport: project_id flows through writes + filters reads; source_ref canonicalised to `project://<id>/<rel>#L<a>-L<b>` URI; scope parameter present in MCP signature with shared/list rejection.
+    - Real transcript staged at `sources/2026-05-12_discussion.md` (copied from DISC-20260512-025323-token-efficiency-telemetry).
+    - Canonical test handoff at `docs/dispatches/phase4-canonical-test-handoff.md`.
+    - **Canonical test outcome (2026-05-12):**
+      - Step 0 ✓ Three MCP tools loaded; schemas match handoff spec; docstrings carry the substrate's framing (sourced assertion, suchness primitive, scope futurity).
+      - Step 1 ✓ Three claims identified with line ranges (recorded below).
+      - Step 2 ✗ initial / ✓ after fix — three writes failed under MCP transport with `SQLite objects created in a thread can only be used in that same thread`; thread-local fix applied to `mcp_server/server.py` mid-test; all three writes succeeded after `/mcp` reconnect. fact_ids = 1, 2, 3. URI canonicalisation verified (bare path-with-fragment rewritten to full `project://agentic-framework-template/...` on the server).
+      - Step 3 ✓ `search_semantic` on a deliberately abstract paraphrase of Claim 2 returned the correct top hit at distance **1.113**, gap-to-runner-up **0.20**. Moderate band (1.0–1.4), not strong (<1.0) — paraphrase used minimal lexical overlap. Ordering correct.
+      - Step 4 ✓ `get_source` returned [sources/2026-05-12_discussion.md:156](sources/2026-05-12_discussion.md#L156) verbatim with markdown emphasis preserved (texture-preservation working).
+      - Step 5 ✓ Suchness gap analysed: symbolic form preserved core fact + grouping qualifier + framework attribution; lost "all three converge" consensus framing, the secondary-metric structural pair, numbered-list context, typographic emphasis, "ratio" vs "signal" type-noun distinction. Architecture commitment validated: locate → resurface → see-the-gap.
+    - **Three claims recorded (audit trail + future-query test data):**
+      1. fact_id=1: `ccusage, token-dashboard, and Claudetop` → `all parse` → `Claude Code transcript JSONL to compute token usage` @ L54-L56
+      2. fact_id=2: `blocking findings per 1K output tokens` → `is` → `the framework's primary efficiency signal, grouped by command_type` @ L156
+      3. fact_id=3: `facilitator synthesis` → `recommends` → `adding tokens_in, tokens_out, cache_read_tokens, and cache_create_tokens columns to the turns table` @ L183-L187
+    - **Fix applied to `mcp_server/server.py` (uncommitted, included in /review scope)**: replaced module-level `db = init(DB_PATH)` with `_get_db()` helper using `threading.local()`. Each FastMCP worker thread opens its own SQLite connection on first use; `substrate.init()` is idempotent (`CREATE … IF NOT EXISTS`), so per-thread opens are safe. Three call-site edits in `assert_fact` / `search_semantic` bodies; module docstring updated. Validated end-to-end by Step 2 retry succeeding.
+    - **Next**: developer confirms → `python scripts/quality_gate.py` → `/review feature/sourced-assertion-substrate` → address blocking findings → commit.
 
 ### Architecture (settled this session — see `~/.claude/projects/<slug>/memory/project_memory_architecture_framing.md` for full detail)
 
@@ -64,8 +82,27 @@
 
 ## Open Advisories
 
+### From the Phase 4 re-review (REV-20260512-195841, 2026-05-12)
+All 10 prior blocking findings from REV-20260512-132622 verified resolved. 8 low-severity advisories remain (none block commit):
+
+**New this round (4 low)**:
+1. `get_source` with reversed line-range (`#L10-L3`) silently returns empty string via Python slicing — undocumented (qa).
+2. ADR-0014 Consequences claim a `# TODO(phase5)` comment exists in code for the vector search post-filter; code lacks it — small ADR/code drift (perf).
+3. `mcp_server/__init__.py` docstring still single-line vs `assertion_store/__init__.py`'s 10-line — adopter import-discovery impoverished (docs).
+4. Semantic-distance calibration insight (ordering matters more than absolute distance) captured only in `docs/dispatches/phase4-canonical-test-handoff.md`, not durably in ADR/CLAUDE.md/memory (docs).
+5. Micro: `embed("")` warm-up may be marginally safer as `embed("warmup")` if `all-MiniLM-L6-v2` has degenerate behaviour on empty input (perf).
+
+**Carry-forward (3 low, deferred)**:
+6. f-string DDL pattern in `substrate.py` — not exploitable today (`EMBEDDING_DIM` is a literal int), but pattern violates REVIEW.md Rule 10 (security).
+7. Three new deps still using `>=` not `==` (`sqlite-vec`, `sentence-transformers`, `fastmcp`) — deferred to ship per prior review (security).
+8. `from __future__ import annotations` × FastMCP introspection still unverified post-refactor (arch).
+
+### Pre-existing defects flagged this session (NOT Phase 4)
+1. **`tests/test_notify.py::TestSendNotification::test_no_topic_returns_false` fails under full-suite ordering** — `notify.py` calls `_load_env()` at module import, loading `NTFY_TOPIC` from `.env` into `os.environ` before `setup_method`/`@patch.dict` run. Test passes in isolation. Pre-existing (test untouched since v3.4.0). Workaround used this session: `quality_gate.py --skip-tests --skip-coverage` (Phase 4 tests verified independently). **Fix needed**: either move `_load_env()` into the function bodies (lazy) or have the test force-reimport `notify` with `sys.modules.pop` before `@patch.dict`.
+2. **`scripts/quality_gate.py` regression-guard parser was off by one column** (expected 5; ledger format has 6: File, Bug Description, Root Cause Class, Fix Date, Test File, Test Function). My Phase 4 entries are the first real ledger entries this project has ever had — the drift had never been exercised. **FIXED** in this commit (one-line fix to `_parse_regression_ledger`).
+
 ### From the Phase 3 / Phase 4 deliberation
-1. The new `memory/` Python package name may collide with the existing `memory/` markdown directory (Layer 3 curated knowledge). Phase 4 session should confirm and possibly rename to `framework_memory/` or `assertion_store/`.
+1. ~~The new `memory/` Python package name may collide with the existing `memory/` markdown directory.~~ **Resolved 2026-05-12**: Python package will be named `assertion_store/`. Phase 3 brief code references must be adapted (`from memory.substrate import …` → `from assertion_store.substrate import …`).
 
 ### From the ADR-0013 implementation review (REV-20260512-033416)
 1. f-string DDL pattern in `init_db.py:290` and `ingest_token_usage.py:_ensure_token_columns` — not exploitable today (hardcoded values); whitelist guard is hygiene.
@@ -87,6 +124,8 @@
 
 ## Key Decisions (Recent)
 
+- **2026-05-12 (Phase 4 canonical test)**: Substrate connection model = one SQLite connection per worker thread via `threading.local()` (not `check_same_thread=False`+lock). Rationale: thread-local is more correct under FastMCP's thread model; `substrate.init()` is already idempotent so per-thread DDL is a no-op; no lock contention path to reason about. Validated by post-reload Step 2 retry succeeding and Steps 3–5 completing cleanly.
+- **2026-05-12 (Phase 4 pre-build)**: Python package name = `assertion_store/` (not `memory/`, to avoid collision with the curated-knowledge directory). Phase 4 work to live on a new branch off `feature/project-analysis-backport` to isolate substrate work from v3.4.0 sync residue and the now-merged ADR-0013 telemetry.
 - **2026-05-12**: ADR-0013 (Token-efficiency telemetry via post-hoc JSONL ingest) — implemented, reviewed (REV-20260512-033416, verdict request-changes → 4 blocking findings addressed → ready to commit). JSONL ingester is system of record; per-turn columns + view `v_token_efficiency`; cost computed at analysis time via `config/model_pricing.yaml`.
 - **2026-05-11**: Memory architecture stabilized. Sources canonical, sourced assertions as atomic unit, Stack A′ as substrate, cross-project sharing via promotion-to-shared-layer.
 - **2026-05-10**: A2A protocols dismissed for internal framework coordination (see `~/.claude/projects/<slug>/memory/project_a2a_out_of_scope.md`).
