@@ -42,6 +42,7 @@
 | Network, auth, API security | security-specialist |
 | New module or significant feature | architecture-consultant, docs-knowledge |
 | UI/UX with accessibility concerns | ux-evaluator, qa-specialist |
+| UI files (3+ files touching `*.html`, `*.css`, `*.js`, `*.tsx`, `*.vue`, or other frontend assets) | ux-evaluator |
 | External API integration | security-specialist, performance-analyst |
 | Framework infrastructure (.claude/, scripts/) | docs-knowledge |
 

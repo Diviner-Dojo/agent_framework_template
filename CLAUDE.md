@@ -49,7 +49,7 @@
 | docs-knowledge | sonnet | Team Historian — decision traceability, knowledge flow, documentation |
 | ux-evaluator | sonnet | The User in the Room — interaction flow, emotional design, accessibility |
 | project-analyst | sonnet | External project analysis, cross-domain discovery pipeline |
-| educator | sonnet | The Coach — walkthroughs, quizzes, mastery tracking |
+| educator | sonnet | The Coach — decision-maker walkthroughs, Bloom-grounded quizzes, S/I-Tier mastery tracking (ADR-0012) |
 | history-analyst | sonnet | Git history context — churn, refactors, reverts, blame (--deep only) |
 
 #### Orchestration Rules
@@ -250,6 +250,8 @@ Every commit must pass two gates:
 2. **Code Review** (agent-assisted): Run `/review <files>` before committing to get multi-agent specialist review. The review produces a verdict (approve / approve-with-changes / request-changes / reject) and a structured report in `docs/reviews/`. Supports auto-scope detection (PR diff, staged, unstaged, HEAD~1), `--cost low|medium|high` for model tier routing, `--deep` for git history analysis, and `--comment` for PR comment posting. Includes facilitator finding verification, confidence annotation (no findings suppressed), REVIEW.md rule injection into all specialist prompts, and self-healing documentation suggestions.
 
 For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching more than 5 files require `/review` — large framework changes are medium-risk regardless of whether they touch product code.
+
+**Spec lifecycle fields** (introduced by `/plan` and `/build_module`): `completed_at` is set when the build reaches its final status update; `completed_commit` is populated post-merge when the commit SHA is available. A spec with `completed_at` set but `completed_commit` blank is an in-flight state, not a data gap.
 
 ## Build Review Protocol
 

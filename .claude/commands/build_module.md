@@ -92,14 +92,16 @@ python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Build 
 
 ## Step 2.5: Pre-Build Enrichment
 
-Before generating code, search for prior art per `.claude/rules/pre_build_search.md`:
+Before executing the first task, search for existing solutions relevant to the build's domain per `.claude/rules/pre_build_search.md`:
 
-1. Search `memory/projects/` for solution paths related to this module's domain
-2. Search `memory/bugs/regression-ledger.md` Known-Broken Approaches for approaches to avoid
-3. Search `docs/adr/` for relevant architectural decisions
-4. Search `memory/patterns/` for promoted patterns
+1. **Grep the regression ledger** for the build's domain: `grep -i "<domain>" memory/bugs/regression-ledger.md` — check both the bug table and the `## Known-Broken Approaches` section.
+2. **Read solution paths** in `memory/projects/_self.md` for the relevant taxonomy domain(s). If any solution paths match the build's scope, inject them into checkpoint specialist context as `## Known Solution Paths` so specialists are aware of prior art.
+3. **Search `docs/adr/`** for relevant architectural decisions that constrain this build.
+4. **Search `memory/patterns/`** for promoted patterns in this domain.
 
-If relevant prior art is found, reference it in the build plan and incorporate lessons learned. If a known-broken approach is found, explicitly note it and explain the alternative.
+This is a context-assembly step, not a checkpoint. It runs once at build start, not per-task. If no relevant prior art exists, proceed without injecting — zero matches is the normal case for novel domains.
+
+If a known-broken approach is found, explicitly note it and explain the alternative.
 
 ## Step 3: Execute Tasks (Loop)
 
@@ -234,6 +236,8 @@ if spec_path.exists():
     # Add completion metadata if not present
     if 'completed_at:' not in text:
         text = re.sub(r'^(status: complete)$', r'\1\ncompleted_at: ' + datetime.now(timezone.utc).strftime('%Y-%m-%d'), text, count=1, flags=re.MULTILINE)
+    # Note: completed_commit should be added AFTER committing (when SHA is available).
+    # Run this step post-merge to solve the timing problem.
     spec_path.write_text(text, encoding='utf-8')
     print(f'Spec updated to complete: {spec_path.name}')
 

@@ -376,6 +376,13 @@ class Substrate:
 
         query_vec = embed(query)
         conn = self._get_conn()
+        # TODO(phase5): project_id is a post-JOIN filter on top of the
+        # sqlite-vec ANN scan. At single-project scale this is correct and
+        # fast. In a mixed-project corpus (shared-knowledge layer), the ANN
+        # scan returns the top-k globally; the project_id filter may then
+        # leave fewer than k results from the current project. Revisit when
+        # the shared layer lands — options are sqlite-vec metadata filtering
+        # at scan time (if the version supports it) or per-project partition.
         rows = conn.execute(
             """
             SELECT a.id, a.subject, a.predicate, a.object, a.source_ref,

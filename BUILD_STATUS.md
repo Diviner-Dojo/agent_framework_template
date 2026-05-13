@@ -1,11 +1,11 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-05-12 (Phase 4 substrate APPROVED via re-review REV-20260512-195841; pending commit + push)
+> Last updated: 2026-05-13 (Phase 4 committed + pushed; v3.4.0 sync residue reviewed + cleanup ready for commit)
 
 ## Current Task
 
-**Status:** Phase 4 sourced-assertion substrate complete end-to-end. Two reviews: REV-20260512-132622 (request-changes, 10 blocking findings) → 5-step fix sequence → REV-20260512-195841 (approve, 0 blocking, 8 low advisories). 27 tests at 97% coverage, all passing. ADR-0014 written. CLAUDE.md updated (Directory Layout + Memory Substrate section + Known Limitations). FRAMEWORK_CHANGELOG.md propagation entry added. Substrate class refactor unlocked transport-agnosticism for Howie / Insight Journal / future CLI use. Quality gate passes 5/5 excluding pre-existing notify test failure (unrelated to Phase 4). **Next**: commit (in progress) → ask developer before push.
+**Status:** Two commits worth of work being shipped on `feature/sourced-assertion-substrate`. **Commit 1 (00ca129, pushed 2026-05-12)**: Phase 4 sourced-assertion substrate end-to-end — Substrate class + MCP transport + 27 tests at 97% coverage + ADR-0014 + CLAUDE.md substrate section. Two reviews (REV-20260512-132622 request-changes → 5-step fix sequence → REV-20260512-195841 approve). **Commit 2 (in progress)**: Framework cleanup — v3.4.0 backports from agentic-journal (6 files: 3 agent definitions + 3 command definitions) + 3 CLAUDE.md sync fixes from REV-20260513-051947 (approve-with-changes) + 2 post-Phase-4 docstring/TODO additions. Both commits queued for push. **Next**: push commit 2 → triage untracked files (separate features: `/conversation`, `/status` commands, `discussions/2026-04-07/`, copilot guide, efficiency report, git visualize) → start Howie.
 **Branch:** `feature/sourced-assertion-substrate` (off `feature/project-analysis-backport` HEAD)
 
 ### In Progress

@@ -85,13 +85,14 @@ Read the developer's feature description. Ask clarifying questions if needed:
 
 ## Step 1.5: Prior Art Lookup
 
-Before writing the spec, search for prior art per `.claude/rules/pre_build_search.md`:
+Before drafting the spec, search for existing solution paths relevant to the feature's domain. This surfaces approaches that other projects have tried — both successful and failed — so the spec can build on prior knowledge instead of rediscovering dead ends.
 
-1. Search `memory/projects/` for solution paths related to this feature's domain
-2. Search `memory/bugs/regression-ledger.md` Known-Broken Approaches for approaches to avoid
-3. Search `docs/adr/` for relevant architectural decisions
+1. **Search `memory/projects/`** for solution paths related to the feature's domain — look for `## Solution Paths` sections in project profiles
+2. **Search `memory/bugs/regression-ledger.md`** Known-Broken Approaches for approaches to avoid
+3. **Search `docs/adr/`** for relevant architectural decisions that constrain this feature
+4. **If no matches in the first searches**, fall through to broader pattern search in `memory/patterns/`
 
-If relevant prior art is found, incorporate it into the spec's Context section and reference it in Requirements. If a known-broken approach exists, add it to the Constraints section.
+This step is non-blocking — if no relevant solution paths exist, proceed to Step 2. The goal is to inform the spec, not to gate it. Include relevant prior art in the spec's Context section — what approaches have been tried, what worked, what failed. If a known-broken approach exists, add it to the Constraints section.
 
 ## Step 2: Produce Structured Spec
 
@@ -105,6 +106,8 @@ type: spec  # or "vision" for idea capture
 status: draft
 risk_level: [low/medium/high/critical]
 intake_ids: []  # optional: link to intake items driving this spec
+completed_at:   # YYYY-MM-DD — set when status changes to "complete"
+completed_commit:  # short SHA — merge commit where feature entered mainline
 ---
 
 ## Goal
