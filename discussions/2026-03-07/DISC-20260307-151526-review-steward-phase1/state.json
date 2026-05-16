@@ -1,7 +1,7 @@
 {
   "command": "review",
   "discussion_id": "DISC-20260307-151526-review-steward-phase1",
-  "status": "in_progress",
+  "status": "orphaned",
   "started_at": "2026-03-07T15:15:32.407133+00:00",
   "current_phase": "specialist_dispatch",
   "completed_phases": [
@@ -9,5 +9,6 @@
     "discussion_created"
   ],
   "risk_level": "medium",
-  "collaboration_mode": "structured-dialogue"
+  "collaboration_mode": "structured-dialogue",
+  "cleanup_note": "Marked orphaned 2026-05-15: state.json never closed (2+ months stale); subsequent reviews REV-20260512-* and REV-20260513-* completed normally. Not resumption-eligible."
 }

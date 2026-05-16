@@ -45,7 +45,9 @@ Before promoting, verify ALL of the following:
 
 ### Step 1: Check Promotion Queue
 
-Before accepting a manual path, query the promotion_candidates table for pending items:
+Before accepting a manual path, query the promotion_candidates table for pending items.
+Schema columns reflect what `scripts/surface_candidates.py` writes — see
+`scripts/init_db.py:124` for the canonical definition.
 
 ```bash
 python -c "
@@ -53,15 +55,15 @@ import sqlite3
 conn = sqlite3.connect('metrics/evaluation.db')
 try:
     rows = conn.execute('''
-        SELECT candidate_id, candidate_type, title, evidence_count, target_path, created_at
-        FROM promotion_candidates WHERE status = 'pending'
-        ORDER BY evidence_count DESC, created_at
+        SELECT id, finding_pattern, category, sighting_count, first_seen, last_seen
+        FROM promotion_candidates WHERE promoted = 0
+        ORDER BY sighting_count DESC, first_seen
     ''').fetchall()
     if rows:
         print(f'=== {len(rows)} Pending Promotion Candidates ===')
-        for i, (cid, ctype, title, evidence, target, created) in enumerate(rows, 1):
-            print(f'  {i}. [{ctype.upper()}] {title[:70]}')
-            print(f'     Evidence: {evidence} | Target: {target} | Since: {created[:10]}')
+        for i, (cid, fp, cat, sightings, first, last) in enumerate(rows, 1):
+            print(f'  {i}. [{cat}] pattern_hash={fp[:12]}…')
+            print(f'     Sightings: {sightings} | First: {first[:10]} | Last: {last[:10]}')
     else:
         print('No pending promotion candidates in the queue.')
 except sqlite3.OperationalError:
@@ -108,7 +110,10 @@ conn.close()
 "
 ```
 
-If promoting from the promotion_candidates queue, update the candidate status:
+If promoting from the promotion_candidates queue, mark the candidate as promoted.
+Pass the row's integer `id` (shown as the leading number in the list above) and the
+path under `memory/` that the artifact was written to.
+
 ```bash
 python -c "
 import sqlite3
@@ -116,9 +121,8 @@ from datetime import datetime, timezone
 now = datetime.now(timezone.utc).isoformat()
 conn = sqlite3.connect('metrics/evaluation.db')
 conn.execute('''UPDATE promotion_candidates
-    SET status = 'approved', promoted_at = ?, reviewed_at = ?, last_referenced_at = ?,
-        human_verdict = 'approved'
-    WHERE candidate_id = ?''', (now, now, now, '<candidate_id>'))
+    SET promoted = 1, promoted_at = ?, promoted_to = ?
+    WHERE id = ?''', (now, '<memory/patterns/file.md>', <candidate_id>))
 conn.commit()
 conn.close()
 "

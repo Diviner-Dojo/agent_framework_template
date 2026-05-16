@@ -147,10 +147,10 @@ def close_discussion(discussion_id: str) -> None:
 
     # Step 7: Compute agent effectiveness
     try:
-        from compute_agent_effectiveness import compute_effectiveness
+        from compute_agent_effectiveness import compute_agent_effectiveness
 
         print(f"Computing agent effectiveness for {discussion_id}...")
-        compute_effectiveness(discussion_id)
+        compute_agent_effectiveness(discussion_id)
     except Exception as e:
         print(f"Warning: effectiveness computation failed (non-fatal): {e}")
 

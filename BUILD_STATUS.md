@@ -1,12 +1,38 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-05-13 (Phase 4 committed + pushed; v3.4.0 sync residue reviewed + cleanup ready for commit)
+> Last updated: 2026-05-15 (Phase 0 build complete + review APPROVE-WITH-CHANGES at REV-20260515-221223; review-driven fixes applied; quality gate 7/7; files staged; awaiting developer commit)
 
 ## Current Task
 
-**Status:** Two commits worth of work being shipped on `feature/sourced-assertion-substrate`. **Commit 1 (00ca129, pushed 2026-05-12)**: Phase 4 sourced-assertion substrate end-to-end — Substrate class + MCP transport + 27 tests at 97% coverage + ADR-0014 + CLAUDE.md substrate section. Two reviews (REV-20260512-132622 request-changes → 5-step fix sequence → REV-20260512-195841 approve). **Commit 2 (in progress)**: Framework cleanup — v3.4.0 backports from agentic-journal (6 files: 3 agent definitions + 3 command definitions) + 3 CLAUDE.md sync fixes from REV-20260513-051947 (approve-with-changes) + 2 post-Phase-4 docstring/TODO additions. Both commits queued for push. **Next**: push commit 2 → triage untracked files (separate features: `/conversation`, `/status` commands, `discussions/2026-04-07/`, copilot guide, efficiency report, git visualize) → start Howie.
-**Branch:** `feature/sourced-assertion-substrate` (off `feature/project-analysis-backport` HEAD)
+**Status:** Phase 0 of framework memory evolution complete in working tree, including review-driven fixes from REV-20260515-221223. SPEC-20260515-053533-phase0-promotion-pipeline-fix executed end-to-end through `/build_module`. Quality gate 7/7. Build discussion sealed at `DISC-20260515-054845-build-phase0-promotion-pipeline-fix`. Review discussion sealed at `DISC-20260515-220608-review-phase0-promotion-pipeline-fix`. Review verdict: APPROVE-WITH-CHANGES (qa 0.91, arch 0.88; weighted 0.90). All review-driven fixes applied inline (qa-F1 regex strengthened, arch-F4 unused DB_PATH removed, arch-F1 invariant phrasing aligned). Re-verified canary protocol after fixes: strengthened Defect 2 canary now correctly fails with `saw ['compute_effectiveness']` when import is reverted. Files staged, commit message drafted. **Awaiting developer commit + push** (developer-gated per autonomous_workflow.md).
+
+After commit + merge to main, Phase 1 (substrate wiring into a workflow) is unblocked. Phase 1 kickoff prompt drafted at `docs/plans/phase-1-kickoff-prompt.md` for developer review.
+
+**Phase 0 deliverables (working tree, uncommitted):**
+- `scripts/surface_candidates.py` — extended with optional `discussion_id` kwarg (additive; Rule-of-Three counting stays global, emission/update filtered to closing-discussion patterns); CLI gained `--discussion-id`
+- `scripts/close_discussion.py` — fixed import name `compute_effectiveness` → `compute_agent_effectiveness` (call site at line 153)
+- `.claude/commands/promote.md` — SELECT/UPDATE reconciled to canonical schema (id, finding_pattern, category, sighting_count, first_seen, last_seen, promoted, promoted_at, promoted_to, evidence_ids)
+- `scripts/enforce_forgetting_curve.py` — deleted phantom SQLite path (always failed silently; mtime is real impl); `tests/test_enforce_forgetting_curve.py` updated (dropped 4 phantom-schema tests, removed `db_path=` arg from kept tests)
+- `tests/test_close_discussion_promotion_pipeline.py` (new) — 6 regression tests at @pytest.mark.regression: 2 canaries (one per defect) + R4.a INSERT branch (3 tests) + R4.b UPDATE branch (1 test). Both canaries verified to fail without the fix.
+- `memory/bugs/regression-ledger.md` — entry with canary contract sentence ("This test is the structural canary for the swallow-and-warn pattern at close_discussion.py:140-155")
+- `memory/projects/_self.md` — Solution Path `[framework/promotion-pipeline]` documenting what was tried (C4-b rejected), chosen (C4-a), and the canary-contract rationale
+- `docs/sprints/SPEC-20260515-053533-phase0-promotion-pipeline-fix.md` — spec status reviewed → approved; build_review_protocol checkpoint at T1 approved by architecture-consultant + qa-specialist
+- Build discussion `DISC-20260515-054845-build-phase0-promotion-pipeline-fix` — sealed
+
+**Verification protocol completed:** temporarily reverted both fixes mid-build → both canaries failed with the exact original error messages (TypeError for Defect 1, source-inspection assertion for Defect 2 detecting `compute_effectiveness` not defined in compute_agent_effectiveness.py) → re-applied → all 6 tests pass.
+
+**Manual `/promote` smoke result:** Live DB has exactly one pattern at Rule-of-Three threshold (`f44534024422d725` in category `testing`, 3 sightings). `python scripts/surface_candidates.py --threshold 3` succeeded post-fix and created 1 promotion_candidates row; the reconciled `/promote` Step-1 SELECT successfully read it. The candidate itself is a coincidence-pattern ("QA Review (confidence...)" header formatting across 3 review discussions, not a semantically promotable pattern), so the human gate appropriately declines without writing to `memory/patterns/`. The *mechanism* is verified operational end-to-end; the *outcome* of promotion is correctly filtered.
+
+**Quality gate trend signal:** prior to this fix, every closure auto-invoked surface_candidates with a TypeError and compute_effectiveness with an ImportError, swallowed as non-fatal warnings — pipeline silently failed for ~5 weeks. The structural canary in `tests/test_close_discussion_promotion_pipeline.py` is now the safeguard.
+
+**Branch:** `feature/sourced-assertion-substrate` (Phase 0 follow-on; will need its own branch or merge sequencing — TBD)
+
+**Open advisory from T1 checkpoint** (carrying forward): architecture-consultant flagged that `surface_candidates` return value differs subtly between scoped/unscoped modes — only counts INSERTs. close_discussion.py:144 discards the return value so user-invisible, but a future caller surfacing it would see asymmetric semantics. Deferred to Phase 0.5 if needed.
+
+**Next:** `/review` Phase 0 changes (see "Phase 0 deliverables" above) → address any blocking findings → commit + push (developer-gated per autonomous_workflow.md) → generate Phase 1 prompt.
+
+## Previous Session (2026-05-13)
 
 ### In Progress
 
