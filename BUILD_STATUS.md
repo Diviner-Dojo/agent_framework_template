@@ -1,13 +1,47 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-05-15 (Phase 0 build complete + review APPROVE-WITH-CHANGES at REV-20260515-221223; review-driven fixes applied; quality gate 7/7; files staged; awaiting developer commit)
+> Last updated: 2026-05-16 (Phase 0 + spawn fix + Path 4 + docs sync committed locally on feature branch; shared-memory propagated; Phase 0 walkthrough generated; baseline-measurement findings reframe Phase 1; push + PR + quiz pending)
 
 ## Current Task
 
-**Status:** Phase 0 of framework memory evolution complete in working tree, including review-driven fixes from REV-20260515-221223. SPEC-20260515-053533-phase0-promotion-pipeline-fix executed end-to-end through `/build_module`. Quality gate 7/7. Build discussion sealed at `DISC-20260515-054845-build-phase0-promotion-pipeline-fix`. Review discussion sealed at `DISC-20260515-220608-review-phase0-promotion-pipeline-fix`. Review verdict: APPROVE-WITH-CHANGES (qa 0.91, arch 0.88; weighted 0.90). All review-driven fixes applied inline (qa-F1 regex strengthened, arch-F4 unused DB_PATH removed, arch-F1 invariant phrasing aligned). Re-verified canary protocol after fixes: strengthened Defect 2 canary now correctly fails with `saw ['compute_effectiveness']` when import is reverted. Files staged, commit message drafted. **Awaiting developer commit + push** (developer-gated per autonomous_workflow.md).
+**Status:** Four commits stacked on `feature/sourced-assertion-substrate`, not pushed. One commit on `~/.claude/shared-memory/` main, not pushed. Phase 0 walkthrough generated and committed. Phase 1 reframed by baseline-measurement findings (substrate's cost-reduction rationale is structurally weak; quality-grounds reframe needed if proceeding).
 
-After commit + merge to main, Phase 1 (substrate wiring into a workflow) is unblocked. Phase 1 kickoff prompt drafted at `docs/plans/phase-1-kickoff-prompt.md` for developer review.
+**Commit stack** (4 local, awaiting push):
+- `f0996e1` docs: sync FRAMEWORK_SPECIFICATION + Phase 0 walkthrough (ADR-0013/14/15) — version bumped 3.4 → 3.5; Section 2 introduces Prime Objective; changelog backfilled for ADR-0013/14/15; walkthrough at docs/walkthroughs/PHASE-0-promotion-pipeline-walkthrough.md
+- `32b76b0` feat: prime objective + ADR-0015 (refuse extraction patterns) — Path 4 from DISC-20260516-062518; CLAUDE.md restructured with Prime Objective above the eight; PHILOSOPHY.md extended with "What the framework refuses"; REVIEW.md cue added; ADR-0015 written; FRAMEWORK_CHANGELOG entry propagates to derived projects via shared-memory
+- `9358a45` fix: exclude worktrees from spawn_project template copy — discovered during Path 4 application; one-line EXCLUDE_PATTERNS addition; resolves Windows MAX_PATH issue on spawn_project tests
+- `a57f3c1` fix: phase 0 promotion-pipeline API drift (SPEC-20260515-053533) — see prior session notes below
+
+**Shared-memory commit** (`~/.claude/shared-memory/`, not pushed):
+- `c9ae948` Add: Prime Objective above the eight Non-Negotiable Principles (2026-05-16) — propagation entry for ADR-0015 visible to all derived projects pulling from shared-memory
+
+**Parallel tracks completed this session** (subagents with own context windows):
+- **Track A** (educator): Phase 0 walkthrough at docs/walkthroughs/PHASE-0-promotion-pipeline-walkthrough.md (~1000 words, concept-oriented). Quiz outline ready: swallow-and-warn trade-off, canary contract enforcement layers, schema authority under drift, canary verification protocol. Quiz to be taken interactively before merge.
+- **Track B** (performance-analyst): baseline measurement on 28 instrumented discussions. Cache utilization 99.973% (unchanged from May 13). Discovery cost realistic estimate 0.2–0.5% of output tokens; upper bound 11.62%. **Verdict: Phase 1's cost-reduction rationale is structurally weak.** Substrate may still be worth building on quality grounds (semantic retrieval with provenance) but the May 13 cost threshold logic doesn't justify it. Confidence 0.72.
+- **Track C** (docs-knowledge): doc-sync check found FRAMEWORK_SPECIFICATION.md was three ADRs behind. Addressed in commit f0996e1. One STRUCTURAL change deferred: presentation slide 3 in docs/diviner-dojo-framework-presentation.html needs a new HTML element above the principle list for the Prime Objective. Editorial judgment call on visual weight; left for focused presentation update.
+- **Track D** (general-purpose): triage of all untracked items into 6 categories. See "Triage list awaiting developer decision" section below.
+
+**Phase 1 reconciliation** (REFRAMED by Track B finding): three options now:
+- Proceed on quality grounds — revise Phase 1 spec to drop cost-reduction framing; lean into "semantic retrieval with provenance, surfacing prior reasoning across reviews"
+- Defer Phase 1 entirely — substrate validated, propagation works, Prime Objective named; let real consumer-side data drive next phase decision; focus on Howie or other priorities
+- Scope to different consumer — /promote synthesis enrichment instead of /review synthesis (smaller surface, more direct value per promotion)
+
+**Triage list awaiting developer decision** (from Track D):
+- Category A (commit-now, no decisions): 7 sealed discussions (2026-04-07, 2026-05-13 ×2, 2026-05-16 ×3) + SPEC-20260516-045622-phase1-substrate-review-consumer.md
+- Category B (separate-work-stream commits): /conversation command, /status command + git_visualize.py, efficiency_report.py, copilot-adaptation-guide.md, handoff-status-command.md
+- Category C (session artifacts, optional): SESSION-2026-05-16-narrative.md, derived-project-telemetry-prompt.md, phase1-handoff.md (now obsolete), phase-1-kickoff-prompt.md (superseded by approved spec)
+- Category D (WIP exploration): docs/analysis/ (12 files, 4 versions of adoption brief), docs/research/comparison-01..06-*.md (6 active comparison files)
+- Category F (discard): .claude/worktrees/ — should be .gitignore'd
+
+**Next operational steps**:
+1. Developer: push `feature/sourced-assertion-substrate` (4 commits) + push `~/.claude/shared-memory/` (1 commit) to their respective remotes
+2. Developer: take the Phase 0 quiz with me (~10 min, 4 concepts)
+3. Developer: PR + merge to main (squash vs merge-commit; merge-commit preserves the 4-commit narrative)
+4. Developer: decisions on triage list (commit/defer/discard per category)
+5. Developer: Phase 1 reconciliation choice (proceed-quality / defer / scope-to-different-consumer)
+
+**Branch:** `feature/sourced-assertion-substrate` (ahead of main by 7 commits including Phase 4 substrate; ahead of origin by 4 commits with the work landed this session)
 
 **Phase 0 deliverables (working tree, uncommitted):**
 - `scripts/surface_candidates.py` — extended with optional `discussion_id` kwarg (additive; Rule-of-Three counting stays global, emission/update filtered to closing-discussion patterns); CLI gained `--discussion-id`
@@ -29,6 +63,14 @@ After commit + merge to main, Phase 1 (substrate wiring into a workflow) is unbl
 **Branch:** `feature/sourced-assertion-substrate` (Phase 0 follow-on; will need its own branch or merge sequencing — TBD)
 
 **Open advisory from T1 checkpoint** (carrying forward): architecture-consultant flagged that `surface_candidates` return value differs subtly between scoped/unscoped modes — only counts INSERTs. close_discussion.py:144 discards the return value so user-invisible, but a future caller surfacing it would see asymmetric semantics. Deferred to Phase 0.5 if needed.
+
+**Deferred education gate (Phase 0)**: REV-20260515-221223 recommended `/walkthrough` + `/quiz` despite Low risk tier (canary-contract + swallow-and-warn pattern are non-obvious concepts). Developer deferred 2026-05-15. **Trigger to complete**: before merging the Phase 0 + Phase 1 stack to main. Re-defer with documented rationale if it slips past merge.
+
+**Open architectural debt from REV-20260515-221223** (carrying forward for Phase 1+):
+- arch-F2: `/promote --list-promoted` affordance (no display path for already-promoted candidates)
+- arch-F3: canary contract enforceability — deletion structurally blocked by quality_gate's regression check, weakening is not. Future improvement: content-hash assertion or CODEOWNERS-style required-reviewer.
+- arch-F5: swallow-and-warn pattern at close_discussion.py:118,127,136,145,154,171,193 retained intentionally for Phase 0. Future ADR could distinguish "non-fatal but must surface in metrics" from "truly non-fatal."
+- Discovered during build: `quality_gate.py::_parse_regression_ledger` does not distinguish between "Fixed Bug" and "Known-Broken Approaches" tables — any 6-column row is parsed as a fixed-bug entry. Worked around inline; refactor pending.
 
 **Next:** `/review` Phase 0 changes (see "Phase 0 deliverables" above) → address any blocking findings → commit + push (developer-gated per autonomous_workflow.md) → generate Phase 1 prompt.
 
