@@ -1,12 +1,17 @@
 """Tests for scripts/enforce_forgetting_curve.py.
 
 Covers both thresholds (review at 90 days, archive at 180 days),
---dry-run mode, .gitkeep skip, NULL last_referenced_at fallback,
-and injectable memory_dir/db_path parameters.
+--dry-run mode, .gitkeep skip, and injectable memory_dir parameter.
+
+Note: earlier versions of this script and these tests exercised a SQLite
+last_referenced_at path against a `promotion_candidates(source_file, last_referenced_at)`
+schema that was never the canonical one (see scripts/init_db.py:124). The
+SQLite path and its tests were removed in Phase 0 (SPEC-20260515-053533) rather
+than kept as a fictional schema. The kept tests below exercise the
+filesystem-mtime path that is the real implementation.
 """
 
 import os
-import sqlite3
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -41,7 +46,7 @@ class TestForgettingCurve:
 
         (memory_dir / "decisions" / "recent.md").write_text("fresh content")
 
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=tmp_path / "nodb.db")
+        result = enforce_forgetting_curve(memory_dir=memory_dir)
         assert result["flagged"] == []
         assert result["archived"] == []
 
@@ -54,7 +59,7 @@ class TestForgettingCurve:
         stale_file.write_text("stale content")
         _set_mtime_days_ago(stale_file, 100)
 
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=tmp_path / "nodb.db")
+        result = enforce_forgetting_curve(memory_dir=memory_dir)
         assert len(result["flagged"]) == 1
         assert "old-pattern.md" in result["flagged"][0]
         assert result["archived"] == []
@@ -68,7 +73,7 @@ class TestForgettingCurve:
         ancient_file.write_text("ancient content")
         _set_mtime_days_ago(ancient_file, 200)
 
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=tmp_path / "nodb.db")
+        result = enforce_forgetting_curve(memory_dir=memory_dir)
         assert len(result["archived"]) == 1
         assert "ancient.md" in result["archived"][0]
         # File should have been moved
@@ -84,9 +89,7 @@ class TestForgettingCurve:
         ancient_file.write_text("old content")
         _set_mtime_days_ago(ancient_file, 200)
 
-        result = enforce_forgetting_curve(
-            dry_run=True, memory_dir=memory_dir, db_path=tmp_path / "nodb.db"
-        )
+        result = enforce_forgetting_curve(dry_run=True, memory_dir=memory_dir)
         assert len(result["archived"]) == 1
         # File should NOT have been moved
         assert ancient_file.exists()
@@ -100,7 +103,7 @@ class TestForgettingCurve:
         protected.write_text("important content")
         _set_mtime_days_ago(protected, 365)
 
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=tmp_path / "nodb.db")
+        result = enforce_forgetting_curve(memory_dir=memory_dir)
         assert result["flagged"] == []
         assert result["archived"] == []
         assert protected.exists()
@@ -114,15 +117,13 @@ class TestForgettingCurve:
         gitkeep.write_text("")
         _set_mtime_days_ago(gitkeep, 365)
 
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=tmp_path / "nodb.db")
+        result = enforce_forgetting_curve(memory_dir=memory_dir)
         assert result["flagged"] == []
         assert result["archived"] == []
 
     def test_missing_memory_dir(self, tmp_path: Path) -> None:
         """Should return empty result when memory directory doesn't exist."""
-        result = enforce_forgetting_curve(
-            memory_dir=tmp_path / "nonexistent", db_path=tmp_path / "nodb.db"
-        )
+        result = enforce_forgetting_curve(memory_dir=tmp_path / "nonexistent")
         assert result == {"flagged": [], "archived": []}
 
     def test_custom_thresholds(self, tmp_path: Path) -> None:
@@ -138,105 +139,5 @@ class TestForgettingCurve:
             review_days=10,
             archive_days=30,
             memory_dir=memory_dir,
-            db_path=tmp_path / "nodb.db",
         )
         assert len(result["flagged"]) == 1
-
-    def test_sqlite_last_referenced_at(self, tmp_path: Path) -> None:
-        """Should use last_referenced_at from SQLite when available."""
-        memory_dir = tmp_path / "memory"
-        _create_memory_structure(memory_dir)
-
-        # Create a file with recent mtime but old SQLite reference
-        f = memory_dir / "patterns" / "db-tracked.md"
-        f.write_text("content")
-        # File mtime is recent (would not be flagged)
-
-        # But SQLite says it was last referenced 100 days ago
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "CREATE TABLE promotion_candidates (source_file TEXT, last_referenced_at TEXT)"
-        )
-        old_date = (datetime.now(UTC) - timedelta(days=100)).isoformat()
-        conn.execute(
-            "INSERT INTO promotion_candidates VALUES (?, ?)",
-            ("patterns/db-tracked.md", old_date),
-        )
-        conn.commit()
-        conn.close()
-
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=db_path)
-        assert len(result["flagged"]) == 1
-
-    def test_db_operational_error_falls_back_to_mtime(self, tmp_path: Path) -> None:
-        """When DB exists but lacks promotion_candidates table, should fall back to mtime."""
-        memory_dir = tmp_path / "memory"
-        _create_memory_structure(memory_dir)
-
-        f = memory_dir / "patterns" / "no-table.md"
-        f.write_text("content")
-        _set_mtime_days_ago(f, 100)
-
-        # Create a DB without the expected table (triggers OperationalError)
-        db_path = tmp_path / "broken.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.execute("CREATE TABLE other_table (id INTEGER)")
-        conn.commit()
-        conn.close()
-
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=db_path)
-        # Should fall back to mtime (100 days) and flag for review
-        assert len(result["flagged"]) == 1
-        assert "no-table.md" in result["flagged"][0]
-
-    def test_malformed_iso_date_skipped(self, tmp_path: Path) -> None:
-        """When last_referenced_at has a non-ISO value, that row should be skipped."""
-        memory_dir = tmp_path / "memory"
-        _create_memory_structure(memory_dir)
-
-        f = memory_dir / "patterns" / "bad-date.md"
-        f.write_text("content")
-        # Recent mtime — should not be flagged if malformed row is properly skipped
-
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "CREATE TABLE promotion_candidates (source_file TEXT, last_referenced_at TEXT)"
-        )
-        conn.execute(
-            "INSERT INTO promotion_candidates VALUES (?, ?)",
-            ("patterns/bad-date.md", "not-a-date"),
-        )
-        conn.commit()
-        conn.close()
-
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=db_path)
-        # Malformed date skipped, falls back to recent mtime — should not be flagged
-        assert result["flagged"] == []
-        assert result["archived"] == []
-
-    def test_null_last_referenced_at_falls_back_to_mtime(self, tmp_path: Path) -> None:
-        """When last_referenced_at is NULL, should fall back to file mtime."""
-        memory_dir = tmp_path / "memory"
-        _create_memory_structure(memory_dir)
-
-        f = memory_dir / "patterns" / "null-ref.md"
-        f.write_text("content")
-        # Recent mtime — should not be flagged even though DB has NULL
-
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "CREATE TABLE promotion_candidates (source_file TEXT, last_referenced_at TEXT)"
-        )
-        conn.execute(
-            "INSERT INTO promotion_candidates VALUES (?, NULL)", ("patterns/null-ref.md",)
-        )
-        conn.commit()
-        conn.close()
-
-        result = enforce_forgetting_curve(memory_dir=memory_dir, db_path=db_path)
-        # Recent mtime means it should not be flagged
-        assert result["flagged"] == []
-        assert result["archived"] == []

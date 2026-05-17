@@ -9,16 +9,41 @@
 - **Testing**: pytest with >=80% coverage target
 - **Dependencies**: managed via pyproject.toml + requirements.txt
 
+## Prime Objective
+
+The framework exists to serve contributors and users. Its reasoning, memory, capability, and evolution must never accumulate value at their expense. The Non-Negotiable Principles below operationalize this objective; each is a specific structural expression of refuse-extraction.
+
+A design refuses extraction if it satisfies all three:
+- **(a) Attribution preservation**: every contributor to its value retains attribution.
+- **(b) Consent of labor**: no actor is asked to perform labor whose benefit accrues primarily to a third party without consent.
+- **(c) Consent of evolution**: the framework's evolution does not accumulate value from its derivatives without human-authored, per-instance assent.
+
+If any answer is "no" to (a) or "yes" to (b) or (c), the design extracts.
+
+Enforcement is human-mediated at every gate (`/review`, `/plan`, `/build_module`, `/promote`, commit, `/ship`), not mechanical. The framework provides the gates; the human provides the verdict.
+
+This Prime Objective is operationally limited by the model provider. A model retrained to be more extractive, or platform policies requiring telemetry the framework would refuse, cannot be resisted by this document. Users who need stronger guarantees should run against infrastructure they control.
+
 ## Non-Negotiable Principles
 
+Each principle below is a structural expression of the Prime Objective. The annotations show how.
+
 1. **Reasoning is the primary artifact.** Code is output. Deliberation, trade-offs, and decision lineage are the durable assets. Every significant decision must be traceable to the discussion that produced it.
+   *(Serves the Prime Objective by preserving contributor intellectual labor as attributable, durable record — extraction would reduce reasoning to invisible model state.)*
 2. **Capture must be automatic.** The capture system uses structured commands that guarantee event-level recording. The model cannot opt out of logging. Enforced at the command/tooling layer.
+   *(Serves the Prime Objective by ensuring reasoning is preserved regardless of model preference — the framework cannot quietly forget what was contributed.)*
 3. **Collaboration precedes adversarial rigor.** Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review (red-teaming), fault injection/stress testing, anti-groupthink checks.
+   *(Serves the Prime Objective by exposing the user to multiple perspectives rather than a single confident answer — resists single-source authority capture.)*
 4. **Independence prevents confirmation loops.** The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review.
+   *(Serves the Prime Objective by separating generation from judgment — prevents agent-as-evaluator capturing user trust.)*
 5. **ADRs are never deleted.** Only superseded with references to the replacing decision. This creates an immutable decision history.
+   *(Serves the Prime Objective by preserving institutional memory the user owns — resists revisionism that would extract historical context.)*
 6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk. Deferrals require developer acknowledgment and must be logged in the retro. Deferred gates must be completed before the next phase begins, or formally re-deferred with documented rationale.
+   *(Serves the Prime Objective by ensuring the user understands what was built before merge — prevents agent-knowledge bypass that would extract user agency.)*
 7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
+   *(Serves the Prime Objective by preserving the user's curatorial sovereignty — no insight escapes to "curated truth" without explicit assent.)*
 8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
+   *(Serves the Prime Objective by resisting over-engineering that benefits the framework's complexity rather than the user — prevents accidental dependency creation.)*
 
 ## Architectural Boundaries
 
@@ -49,7 +74,7 @@
 | docs-knowledge | sonnet | Team Historian — decision traceability, knowledge flow, documentation |
 | ux-evaluator | sonnet | The User in the Room — interaction flow, emotional design, accessibility |
 | project-analyst | sonnet | External project analysis, cross-domain discovery pipeline |
-| educator | sonnet | The Coach — walkthroughs, quizzes, mastery tracking |
+| educator | sonnet | The Coach — decision-maker walkthroughs, Bloom-grounded quizzes, S/I-Tier mastery tracking (ADR-0012) |
 | history-analyst | sonnet | Git history context — churn, refactors, reverts, blame (--deep only) |
 
 #### Orchestration Rules
@@ -135,8 +160,20 @@ metrics/        — Layer 2: SQLite relational index + JSONL trend logs
                   deploy_log.jsonl, emulator_test_log.jsonl
 scripts/        — Capture pipeline utilities + quality gate
   lineage/      — Lineage tracking utilities (manifest, drift, init)
+config/         — Runtime configuration consumed by analysis-time tooling
+                  (model_pricing.yaml — token cost lookup; see ADR-0013)
 src/            — Application source code
 tests/          — Test suite
+assertion_store/— Sourced-assertion memory substrate package (Substrate class +
+                  embeddings helper). Transport-agnostic; see ADR-0014.
+mcp_server/     — FastMCP transport over the assertion_store Substrate. Three
+                  tools: assert_fact, search_semantic, get_source. Registered
+                  in .mcp.json as "agent-memory". See ADR-0014.
+sources/        — Canonical source documents staged for citation (transcripts,
+                  primary texts). Sources are canonical; everything else is a
+                  vehicle for engaging with them.
+data/           — Runtime data (memory.db = sourced-assertion substrate;
+                  not committed to git).
 framework-lineage.yaml — Lineage manifest (project-template relationship)
 PHILOSOPHY.md   — Framework philosophy: why we work the way we do
 REVIEW.md       — Review-specific rules (injected into specialist prompts during /review, see ADR-0006)
@@ -158,6 +195,21 @@ Key commands:
 - `python scripts/lineage/init_lineage.py --project-name NAME --template-version VERSION` — Initialize lineage tracking
 
 Lineage events are recorded in `.claude/custodian/lineage-events.jsonl` (append-only). SQLite tables `lineage_nodes` and `lineage_file_drift` provide queryable lineage data. See `docs/STEWARD_ARCHITECTURE.md` for the full five-phase roadmap and `docs/adr/ADR-0002-adopt-steward-agent.md` for the adoption decision.
+
+## Memory Substrate
+
+The framework includes a sourced-assertion memory substrate at `assertion_store/` (Phase 4, see ADR-0014). Sources are canonical; the substrate records what sources *assert* and always preserves the path back to the original passage (Suchness preservation).
+
+**Architecture**: The `Substrate` class (`assertion_store/substrate.py`) owns the data model and three primitives. The MCP transport (`mcp_server/server.py`) is a thin layer over it — derived projects (Howie, Insight Journal) and future CLI/HTTP transports use `Substrate` directly.
+
+**Three tools** exposed via the `agent-memory` MCP server (registered in `.mcp.json`):
+- `assert_fact(subject, predicate, object, source_ref, framing="asserts")` — record a sourced assertion. Framing is one of `asserts | questions | denies | considers`. Source refs use the portable URI form `project://<project_id>/<path>#L<a>-L<b>`.
+- `search_semantic(query, k=5, scope="local")` — vector-similarity search over recorded assertions. Only `scope="local"` is implemented; cross-project scope reserved for the shared-knowledge layer.
+- `get_source(source_ref)` — the Suchness preservation primitive. Returns the original passage at a `project://` URI. Containment-checked against `source_roots` (`sources/`, `discussions/`, `docs/`, `memory/`, `src/`); vehicles (`data/`, `.git/`, `.env`, `.claude/`) are not citable.
+
+**Configuration**: `AGENT_MEMORY_DB` and `AGENT_MEMORY_PROJECT_ID` environment variables override the script-anchored defaults. Insight Journal's privacy-by-architecture commitment uses these to point at a separate DB with its own policy.
+
+**Connection model**: One SQLite connection per worker thread (FastMCP dispatches tool calls on worker threads; `sqlite3` forbids cross-thread connection reuse). The thread-local cache lives on the `Substrate` instance, so multiple substrates in one process do not share connections. See `mcp_server/server.py:_thread_local` discussion in ADR-0014 and the regression test in `tests/test_mcp_server.py::TestThreadLocalIsolation`.
 
 ## Quality Gate
 
@@ -224,6 +276,8 @@ Every commit must pass two gates:
 
 For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching more than 5 files require `/review` — large framework changes are medium-risk regardless of whether they touch product code.
 
+**Spec lifecycle fields** (introduced by `/plan` and `/build_module`): `completed_at` is set when the build reaches its final status update; `completed_commit` is populated post-merge when the commit SHA is available. A spec with `completed_at` set but `completed_commit` blank is an in-flight state, not a data gap.
+
 ## Build Review Protocol
 
 During `/build_module`, mid-build checkpoint reviews enforce Principle #4 (independence) within the build itself — not just at commit time. When a build task matches a trigger category (new module, architecture choice, database schema, security-relevant code, API routes, external API integration, UI flow changes), the facilitator dispatches exactly 2 specialists for a focused checkpoint review.
@@ -240,20 +294,24 @@ When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-revi
    - `scripts/generate_transcript.py` converts events.jsonl → transcript.md
    - `scripts/ingest_events.py` inserts events into SQLite (Layer 2), including searchable `content_excerpt` and `tags`
    - Updates discussion status to `closed` in SQLite (with `duration_minutes`)
+   - Rolls up per-turn token counts into `discussions.total_tokens_in / total_tokens_out / total_cache_tokens` when turn-level token data is present (skipped otherwise — the JSONL ingester is authoritative, see ADR-0013)
    - `scripts/extract_findings.py` parses events for structured findings (severity, category, summary)
    - `scripts/mine_patterns.py` clusters similar findings using Jaccard similarity
    - `scripts/surface_candidates.py` identifies recurring patterns for promotion queue
    - `scripts/compute_agent_effectiveness.py` computes per-agent uniqueness/survival metrics
    - Sets discussion directory to read-only
 4. `scripts/record_yield.py` records protocol yield metrics (blocking/advisory finding counts, agent turns, outcome) into the `protocol_yield` table. Called at synthesis time in `/review`, `/build_module`, and `/retro`.
-5. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
-6. `/knowledge-health` runs `scripts/knowledge_dashboard.py` to report on all pipeline layers and append to `metrics/knowledge_pipeline_log.jsonl`.
+5. `scripts/ingest_token_usage.py` (post-hoc, on demand) parses Claude Code's transcript JSONL at `~/.claude/projects/`, dedupes by `message.id`, and attributes token usage to discussions by timestamp. This is the authoritative cost-side telemetry per ADR-0013. Run periodically or after a /deliberate to populate cost data.
+6. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl` for trend analysis.
+7. `/knowledge-health` runs `scripts/knowledge_dashboard.py` to report on all pipeline layers and append to `metrics/knowledge_pipeline_log.jsonl`.
 
 **Context-brief events** (turn_id=1, agent="facilitator", tags="context-brief") are emitted by: /review, /deliberate, /build_module, /plan, /retro. Excluded: /analyze-project (outward-facing scouting, no developer request context), /meta-review (aggregate analysis, no single request context).
 
 **New SQLite tables**: `findings`, `promotion_candidates`, `pattern_sightings`, `agent_effectiveness`, `lineage_nodes`, `lineage_file_drift`
-**New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`
-**New columns**: `turns.content_excerpt`, `turns.tags`, `discussions.command_type`, `discussions.duration_minutes`, `discussions.related_discussion_id`
+**New SQLite views**: `v_rule_of_three`, `v_agent_dashboard`, `v_token_efficiency`
+**New columns**: `turns.content_excerpt`, `turns.tags`, `turns.tokens_in`, `turns.tokens_out`, `turns.cache_read_tokens`, `turns.cache_create_tokens`, `discussions.command_type`, `discussions.duration_minutes`, `discussions.related_discussion_id`, `discussions.total_tokens_in`, `discussions.total_tokens_out`, `discussions.total_cache_tokens`
+
+**Cost computation**: cost is never stored — derive at analysis time from raw token counts using `config/model_pricing.yaml`. Pricing changes are a YAML edit, not a schema migration.
 
 ## Failure Taxonomy
 
@@ -278,6 +336,8 @@ Document known data quality issues, extraction rate baselines, and enforcement g
 
 - The pre-commit hook does not support `--skip-reviews` passthrough — the quality gate's review existence check cannot be bypassed from `git commit` arguments
 - The pre-commit hook's regression ledger check and review reminder are suppressed during the 5-minute verification cache window after a quality gate run. Stale cache entries may cause these checks to be silently skipped.
+- The MCP server (`mcp_server/server.py`) requires thread-local SQLite connections via `threading.local()`. FastMCP dispatches tool calls on worker threads distinct from the import thread; `sqlite3` forbids cross-thread connection reuse by default. The pattern in `Substrate._get_conn()` is the authoritative model. Drop-in code in the Phase 3 decision brief (`docs/research/phase3-tooling-decision-brief.md`) predates this fix and must not be copied without adapting the connection model. Regression test: `tests/test_mcp_server.py::TestThreadLocalIsolation`.
+- The embedding dimension (`EMBEDDING_DIM = 384`, all-MiniLM-L6-v2) is baked into the `assertion_vecs` schema at creation time. Switching embedding models requires a schema migration and full re-embedding of existing assertions — not a configuration change. See ADR-0014 Consequences.
 
 ## Autonomous Execution Authorization
 

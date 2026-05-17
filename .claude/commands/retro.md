@@ -322,7 +322,7 @@ client names, regulatory pressures) — record structural intent only.
 ```bash
 # INVARIANT: This must be the first write_event.py call in this workflow.
 # turn_id=1 is required for extraction pipeline integrity. Any reordering
-# silently breaks context-brief capture.
+# silently breaks context-brief capture. See DISC-20260302-231156.
 python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
   "## Request Context
 - **What was requested**: [verbatim or close paraphrase of the developer's instruction]
@@ -345,7 +345,7 @@ python scripts/write_event.py <discussion_id> \
   --tags "retro,draft"
 ```
 
-### 5d. Dispatch Specialists
+### 5c. Dispatch Specialists
 
 Dispatch exactly 2 specialists in parallel to review the DRAFT retro:
 
@@ -369,7 +369,7 @@ Focus on:
 Respond with your assessment (under 300 words).
 ```
 
-### 5e. Capture Specialist Responses
+### 5d. Capture Specialist Responses
 
 After BOTH specialists return, capture each response:
 
@@ -387,17 +387,55 @@ python scripts/write_event.py <discussion_id> \
   --tags "retro,specialist-review"
 ```
 
-### 5f. Incorporate Feedback
+### 5e. Incorporate Feedback
 
 Review both specialist responses and incorporate their feedback into the final retrospective. Note which findings were challenged, which documentation updates are needed, and which proposed adjustments were validated or rejected.
 
+## Step 5.5: Developer Input Capture Gate (SPEC-20260302-192548)
+
+Evaluate developer-input capture effectiveness before writing the final retrospective. This gate runs every sprint until Step 3 is formally initiated or abandoned.
+
+**Assess the following three signals** (all are observable from sprint discussions and retro analysis):
+
+- **Signal A — Specialist echo**: Are specialists repeating findings already stated as explicit developer constraints in context-brief sections this sprint? (Inspect context-brief events in sprint discussions and compare to specialist critique events.)
+- **Signal B — Framing drift**: Has framing drift been observed this sprint? (Facilitator synthesis diverges from what the developer actually asked for — noted in retro or review feedback.)
+- **Signal C — Disposition activity** (pending implementation): `SELECT COUNT(*) FROM findings WHERE disposition != 'open'` — expected to return 0 until ADR-0030 ships. If non-zero: dispositions are being captured and the mechanism is live.
+
+**Decision rule**:
+- If Signal A or Signal B is Yes → recommend initiating Step 3 (ADR-0030 + `agent="developer"` schema extension) and include in the retro document.
+- If both Signal A and Signal B are No (and Signal C = 0) → formally defer Step 3 with a one-line rationale in the retro document.
+- Once Signal C > 0, retire Signal C from the gate and re-evaluate the others.
+
+Remove this step once Step 3 is either shipped or formally abandoned.
+
 ## Step 6: Finalize and Close
 
-### 6a. Write Final Retrospective
+### 6a. Write Journey Chapter and Update Orientation (REQUIRED)
+
+Before writing the final retro, update the project's narrative memory. These are NOT optional — they are the mechanism that prevents the developer from losing the thread.
+
+**Journey chapter** — append a new chapter to `memory/journey.md`:
+```markdown
+## Chapter N: [Title] (YYYY-MM-DD)
+
+[What was built this sprint. What was tried and rejected. What was learned.
+What changed about the project's direction. Written as narrative, not bullet points.
+3-5 paragraphs. Address the developer in second person ("you built...")]
+```
+
+**Innovations check** — if any new template-worthy patterns emerged this sprint, add entries to `memory/innovations.md` with the origin story.
+
+**Orientation update** — rewrite `memory/decisions/current-arc.md` to reflect:
+- What was just finished
+- What is being worked on now
+- Three things to hold in mind
+- Key open questions
+
+### 6b. Write Final Retrospective
 
 Save the final version to `docs/sprints/RETRO-YYYYMMDD.md`, incorporating specialist feedback. Add a "## Specialist Review Notes" section summarizing what the specialists found.
 
-### 6b. Capture Synthesis Event
+### 6c. Capture Synthesis Event
 
 ```bash
 python scripts/write_event.py <discussion_id> \
@@ -407,7 +445,7 @@ python scripts/write_event.py <discussion_id> \
   --tags "retro,synthesis"
 ```
 
-### 6c. Record Protocol Yield
+### 6d. Record Protocol Yield
 
 Record yield metrics for this retrospective:
 
@@ -417,12 +455,30 @@ python scripts/record_yield.py <discussion_id> retro pass --blocking <N> --advis
 
 Where `<N>` is the count of actionable findings (proposed adjustments) and `<M>` is the count of informational observations.
 
-### 6d. Close Discussion
+### 6e. Close Discussion
 
 ```bash
 python scripts/close_discussion.py <discussion_id>
 ```
 
-## Step 7: Present
+## Step 7: Cross-Project Knowledge Check
+
+Before presenting, ask: **"Did this sprint produce any lessons that belong in shared-memory?"**
+
+Check for:
+- New universal warnings (mistakes that would apply to any project)
+- Framework innovations (new rules, commands, or agent patterns that are tech-stack agnostic)
+- Heritage-worthy discussions (formative moments: crises survived, identity-defining decisions, process evolution)
+
+If yes:
+1. Add entries to `~/.claude/shared-memory/universal-warnings.md` (for lessons)
+2. Add entries to `~/.claude/shared-memory/FRAMEWORK_CHANGELOG.md` (for framework changes)
+3. Propose heritage candidates to the developer (heritage promotion requires human approval)
+4. Run `bash ~/.claude/sync-all-memories.sh` to push changes to the backup hub
+
+This step ensures that innovations flow outward to sibling projects through the shared-memory propagation channel. See DISC-20260411-171115 for the propagation architecture decision.
+
+## Step 8: Present
 
 Present the retrospective to the developer with specific recommended actions, noting which recommendations were validated by specialist review.
+

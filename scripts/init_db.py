@@ -241,6 +241,42 @@ def init_db(db_path: Path = DB_PATH) -> None:
         FROM agent_effectiveness ae
         GROUP BY ae.agent
         ORDER BY total_unique_findings DESC;
+
+        -- Token efficiency: blocking findings per 1K output tokens by command_type.
+        -- Cost is intentionally NOT stored — see ADR-0013. Pricing lives in
+        -- config/model_pricing.yaml and is applied at analysis time, not capture time.
+        --
+        -- protocol_yield is pre-aggregated in a CTE so the LEFT JOIN is 1:1.
+        -- Without this, a discussion with multiple protocol_yield rows (e.g. a
+        -- /build_module run with checkpoint records) would fan out and bias
+        -- AVG(total_tokens_*) by sampling each value once per yield row.
+        CREATE VIEW IF NOT EXISTS v_token_efficiency AS
+        WITH py_agg AS (
+            SELECT
+                discussion_id,
+                SUM(findings_blocking) AS findings_blocking,
+                SUM(findings_advisory) AS findings_advisory
+            FROM protocol_yield
+            GROUP BY discussion_id
+        )
+        SELECT
+            d.command_type,
+            COUNT(DISTINCT d.discussion_id) AS run_count,
+            ROUND(AVG(d.total_tokens_in), 0) AS avg_tokens_in,
+            ROUND(AVG(d.total_tokens_out), 0) AS avg_tokens_out,
+            ROUND(AVG(d.total_cache_tokens), 0) AS avg_cache_tokens,
+            SUM(py.findings_blocking) AS total_blocking,
+            SUM(py.findings_advisory) AS total_advisory,
+            ROUND(
+                CAST(SUM(py.findings_blocking) AS REAL) * 1000.0 /
+                NULLIF(SUM(d.total_tokens_out), 0),
+                3
+            ) AS blocking_per_1k_output_tokens
+        FROM discussions d
+        LEFT JOIN py_agg py ON py.discussion_id = d.discussion_id
+        WHERE d.total_tokens_out IS NOT NULL
+        GROUP BY d.command_type
+        ORDER BY blocking_per_1k_output_tokens DESC;
     """)
 
     conn.commit()
@@ -253,6 +289,15 @@ def init_db(db_path: Path = DB_PATH) -> None:
         ("turns", "content_excerpt", "TEXT"),
         ("turns", "tags", "TEXT DEFAULT '[]'"),
         ("discussions", "related_discussion_id", "TEXT"),
+        # ADR-0013: token-efficiency telemetry.
+        # NULL is honest for historical rows — see ADR.
+        ("turns", "tokens_in", "INTEGER"),
+        ("turns", "tokens_out", "INTEGER"),
+        ("turns", "cache_read_tokens", "INTEGER"),
+        ("turns", "cache_create_tokens", "INTEGER"),
+        ("discussions", "total_tokens_in", "INTEGER"),
+        ("discussions", "total_tokens_out", "INTEGER"),
+        ("discussions", "total_cache_tokens", "INTEGER"),
     ]
     for table, column, col_type in _migrations:
         try:

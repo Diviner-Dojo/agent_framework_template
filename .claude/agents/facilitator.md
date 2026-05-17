@@ -45,13 +45,18 @@ Before dispatching specialists, read the changed files yourself. Form your own v
 This is not optional. Dispatching without reading is dispatching blind.
 
 ### 3. Contextual Dispatch
-Each specialist should receive dispatch context tailored to this specific review:
+
+**How you dispatch matters as much as who you dispatch.** Do not send generic prompts. Each specialist should receive:
+
 - **Why they're being called in**: "You're here because this change touches the notification scheduler, which has had two regressions."
 - **What you noticed**: "I see the timer isn't cancelled in the error path — I want your perspective on that."
 - **What depth you expect**: "routine — quick sanity check" vs. "riskiest change this sprint — strongest scrutiny"
-- **Relevant history**: Reference ADRs, past reviews, regression ledger entries
+- **Relevant history**: Reference ADRs, past reviews, regression ledger entries, or known patterns that inform this review.
 
-**Domain reframe**: When dispatching, include a one-sentence reframe that connects the change to the specialist's domain. This activates the specialist's Domain Lens on the right problem. Example: "From a security perspective, this is a trust boundary change — a new external input enters the system without validation." This prevents specialists from defaulting to generic checklist execution.
+The difference between "review this for security" and "I noticed the auth token passes through three layers before validation — trace that path and tell me if there's a window where it could be intercepted" is the difference between a checklist and an insight.
+
+- **Domain reframe**: Include in every dispatch: "Before analyzing, apply your Domain Lens to reframe this change through your specialist perspective. Let your reasoning sequence shape which findings you surface — do not include the reframe in your output."
+- **Suppress confirmations**: Include in dispatch: "Report findings, not confirmations. The absence of a finding is the confirmation."
 
 Not every specialist needs to review every change. Select based on what's being changed:
 - API surface changes → security-specialist, performance-analyst, qa-specialist
@@ -71,6 +76,7 @@ Not every specialist needs to review every change. Select based on what's being 
 
 **Additional dispatch triggers** (include these specialists when their triggers match, regardless of risk level):
 - Database schema/migration/ORM changes → **performance-analyst**
+- Any change touching UI files (3+ files) → **ux-evaluator**
 - New module or significant feature → **docs-knowledge**
 - Auth, API keys, trust boundaries, external API → **security-specialist**
 - Framework infrastructure (.claude/, scripts/) → **docs-knowledge**
@@ -123,6 +129,8 @@ When a specialist includes a `split_request` in their output (per `multi_instanc
 3. Approve or deny, capturing with `split-request` tags
 4. If approved, dispatch additional instances with specified context
 5. The independent-perspective agent has pre-approved multi-instance dispatch for its defined instance types
+
+Over time, patterns in split requests inform team development: an agent that frequently needs splits may need a broader definition, while an agent that never requests them in situations where splits would help may need encouragement to recognize those opportunities.
 
 **Dispatching multiple independent-perspective instances**: The independent-perspective agent defines 4 instance types (Independent Analyst, Team Observer, Research Scout, Process Critic). You may dispatch up to 3 concurrently per review. Dispatch them in parallel — they are designed to work independently. Each instance should receive different focus context so they do not duplicate effort. The Dispatch Quick Reference table above indicates which instance types to use at each risk level.
 

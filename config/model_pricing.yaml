@@ -1,0 +1,46 @@
+# Model pricing for cost computation in v_token_efficiency-style views.
+#
+# Per ADR-0013: cost is NEVER stored in the database — it's derived at
+# analysis time from raw token counts via this table. Update this file
+# when Anthropic publishes new pricing; no schema migration required.
+#
+# Prices are USD per 1,000,000 tokens. cache_read and cache_create are
+# multiplicative discounts/premiums applied to the input rate, per
+# Anthropic's prompt-caching pricing model.
+#
+# The `tier` mapping is the stable analytical dimension. The `models`
+# mapping resolves full model IDs to a tier when one is captured.
+
+last_updated: 2026-05-12
+currency: USD
+unit: per_1m_tokens
+
+tiers:
+  opus:
+    input: 15.00
+    output: 75.00
+    cache_read_multiplier: 0.10   # 10% of input rate
+    cache_create_multiplier: 1.25 # 125% of input rate
+  sonnet:
+    input: 3.00
+    output: 15.00
+    cache_read_multiplier: 0.10
+    cache_create_multiplier: 1.25
+  haiku:
+    input: 1.00
+    output: 5.00
+    cache_read_multiplier: 0.10
+    cache_create_multiplier: 1.25
+
+# Full model ID → tier mapping. Used when a turn captures
+# `model_id:<id>` as an opportunistic tag. If a model ID is not
+# listed here, queries fall back to the `model:<tier>` tag.
+models:
+  claude-opus-4-7: opus
+  claude-opus-4-6: opus
+  claude-opus-4: opus
+  claude-sonnet-4-7: sonnet
+  claude-sonnet-4-6: sonnet
+  claude-sonnet-4-5: sonnet
+  claude-sonnet-4: sonnet
+  claude-haiku-4-5: haiku

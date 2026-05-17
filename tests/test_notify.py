@@ -25,9 +25,17 @@ class TestSendNotification:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_no_topic_returns_false(self) -> None:
-        """send_notification returns False when no topic is configured."""
+        """send_notification returns False when no topic is configured.
+
+        Defensive: explicitly pop NTFY_TOPIC here. The @patch.dict decorator
+        should be enough, but in practice notify._load_env() (run at module
+        import time) can populate os.environ with NTFY_TOPIC from .env
+        depending on test ordering and cached-module state — pop is robust
+        against every pollution mode.
+        """
         from notify import send_notification
 
+        os.environ.pop("NTFY_TOPIC", None)
         result = send_notification("test message")
         assert result is False
 

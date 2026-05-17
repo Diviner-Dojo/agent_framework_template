@@ -1,9 +1,9 @@
 ---
 title: "AI-Native Agentic Development Framework — Full Specification"
-version: "3.4"
+version: "3.5"
 status: living-document
 created: "2026-02-18"
-last_updated: "2026-04-05"
+last_updated: "2026-05-16"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
@@ -12,7 +12,7 @@ patterns_evaluated: 77
 patterns_adopted: 42
 ---
 
-# AI-Native Agentic Development Framework v3.4
+# AI-Native Agentic Development Framework v3.5
 
 ## Full Specification
 
@@ -88,6 +88,8 @@ Full provenance details are in [Appendix A](#appendix-a--external-project-proven
 ---
 
 ## 2. Foundational Principles
+
+Above the eight principles sits a **Prime Objective** (added in ADR-0015, 2026-05-16): the framework must serve contributors and users and never accumulate value at their expense. Each of the eight principles below is an operational expression of this objective — capture, independence, education, immutability, simplicity are not arbitrary engineering preferences but specific structural refusals of extraction patterns. The Prime Objective's three-part test (attribution preservation, consent of labor, consent of evolution) is the named instrument specialists apply to designs that touch value-flow questions. Enforcement is human-mediated at every gate; the framework provides the gates, the human provides the verdict.
 
 The framework is governed by 8 non-negotiable principles, codified in [`CLAUDE.md`](../CLAUDE.md). The original research defined principles 1–7; Principle 8 was adopted from external analysis.
 
@@ -1474,3 +1476,6 @@ agent_framework_template/
 | 2026-03-25 | v3.2: Steward-reviewed pipeline revision — demote finding-validator and compliance-auditor |
 | 2026-04-04 | v3.3: Agent reasoning upgrade — replace Specialist Philosophy with Values + Domain Lens across all 12 agents. Add Rule/Exceptions to finding formats. Facilitator domain reframe + delta synthesis. ADR-0010. Finding extraction rate 9.5% → ~16.2%. |
 | 2026-04-05 | v3.4: Push notifications (ntfy.sh), solution-path knowledge base (ADR-0011), educator reframe for decision-maker audience (ADR-0012), known-broken approaches ledger, pre-build search rule. 13 rules (+1). |
+| 2026-05-12 | Token-efficiency telemetry (ADR-0013) — JSONL ingest + SQLite schema. `scripts/ingest_token_usage.py` parses Claude Code transcripts and attributes token usage to discussions. Per-turn tokens_in/out/cache_read/cache_create columns added to `turns` table; `discussions.total_tokens_*` rollup columns added. `v_token_efficiency` view enables blocking-findings-per-1K-output-tokens analysis grouped by command_type. |
+| 2026-05-12 | Sourced-assertion memory substrate (ADR-0014, Phase 4) — `assertion_store/Substrate` class + `mcp_server/` FastMCP transport. Three primitives: `assert_fact`, `search_semantic`, `get_source`. SQLite + sqlite-vec + sentence-transformers. Suchness preservation as first-class architectural action (get_source returns the original passage at a project:// URI line range). Substrate is transport-agnostic; MCP is one transport. Phase 4 mods: per-assertion project_id, portable `project://<id>/<path>#L<a>-L<b>` URI, scope parameter reserved for future cross-project layer (local-only this round). |
+| 2026-05-16 | v3.5: Prime Objective above the eight principles (ADR-0015) — the framework's first principle is named as serving contributors and users and refusing extraction patterns. The eight Non-Negotiable Principles are recast as operational expressions of the Prime Objective. Three-part test (attribution preservation, consent of labor, consent of evolution) named as a specialist instrument. PHILOSOPHY.md extended with positive moral frame and the model-provider limit acknowledged. REVIEW.md cues specialists to apply the test on designs touching attribution, consent of labor, value flow, or framework evolution. Cross-instance propagation via `~/.claude/shared-memory/FRAMEWORK_CHANGELOG.md`. |

@@ -1,10 +1,10 @@
 ---
-last_updated: "2026-04-06"
+last_updated: "2026-05-12"
 total_analyses: 17
-patterns_evaluated: 155
-patterns_adopted: 55
+patterns_evaluated: 158
+patterns_adopted: 57
 patterns_already_confirmed: 7
-patterns_deferred: 40
+patterns_deferred: 41
 patterns_rejected: 32
 ---
 
@@ -40,6 +40,55 @@ Each entry records:
 
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
+
+---
+
+### Deliberation: Token-Efficiency Telemetry (2026-05-12)
+**Source deliberation**: DISC-20260512-025323-token-efficiency-telemetry (not a `/analyze-project` run — patterns surfaced during a deliberation on framework telemetry).
+**Discussion path**: `discussions/2026-05-12/DISC-20260512-025323-token-efficiency-telemetry/`
+**ADR**: ADR-0013 (Token-efficiency telemetry via post-hoc JSONL ingest)
+**Primary theme**: Token-efficiency measurement; capture-pipeline extension
+**3 patterns scored, 2 adopted, 1 deferred** (confidence: 0.78)
+
+---
+
+### Pattern: AG2 dict-of-agents usage-summary schema
+- **First seen**: AG2 (AutoGen 2.0) — https://docs.ag2.ai/latest/docs/use-cases/notebooks/notebooks/agentchat_cost_token_tracking/
+- **Deliberation**: DISC-20260512-025323-token-efficiency-telemetry
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:5)
+- **Sightings**: 1 (AG2; conceptually corroborated by AutoGen, the parent project)
+- **Status**: ADOPTED — PENDING
+- **Adopted as**: The agent-keyed, model-keyed, token-leaf shape `{agent: {model: {input, output, cache_read, cache_create}}}` translated into 4 NULL-safe columns on the `turns` table (`tokens_in`, `tokens_out`, `cache_read_tokens`, `cache_create_tokens`). Per-discussion totals rolled up to `discussions.total_*`.
+- **Location**: `scripts/init_db.py` `_migrations` block; `scripts/close_discussion.py` Step 3b
+- **NOT adopted**: AG2's `gather_usage_summary()` function or `total_cost` field. Cost is computed at analysis time via `config/model_pricing.yaml`, never stored.
+- **Why this works for us**: Maps directly onto our existing table shape; turns table already keyed by agent. Zero new dependencies. Cache fields are first-class — collapsing them was a real economics mistake the deliberation surfaced.
+
+---
+
+### Pattern: LangSmith rollup-at-close
+- **First seen**: LangSmith — https://docs.langchain.com/langsmith/cost-tracking
+- **Deliberation**: DISC-20260512-025323-token-efficiency-telemetry
+- **Score**: 22/25 (prevalence:3, elegance:5, evidence:4, fit:5, maintenance:5)
+- **Sightings**: 1 (LangSmith; pattern is general enough to count as the conceptual lineage of close-time rollups across observability tooling)
+- **Status**: ADOPTED — PENDING
+- **Adopted as**: A close-time rollup step in `scripts/close_discussion.py` that aggregates per-turn token columns into per-discussion totals — but only when per-turn data is present (avoids clobbering the JSONL ingester, which is the authoritative source per ADR-0013).
+- **Location**: `scripts/close_discussion.py` Step 3b
+- **NOT adopted**: LangSmith's run-hierarchy model, parent/child run threading, or any of its SDK primitives. Only the close-time trigger point.
+- **Why this works for us**: `close_discussion.py` already runs 8 sequential operations at seal time. Adding a 9th is structurally identical to the existing `duration_minutes` rollup.
+
+---
+
+### Pattern: Claude Code transcript JSONL parsing (`~/.claude/projects/`)
+- **First seen**: ccusage (https://github.com/ryoppippi/ccusage), token-dashboard (https://github.com/nateherkai/token-dashboard), Claudetop
+- **Deliberation**: DISC-20260512-025323-token-efficiency-telemetry
+- **Score**: 17/25 (prevalence:5, elegance:4, evidence:3, fit:3, maintenance:2)
+- **Sightings**: 3 (ccusage, token-dashboard, Claudetop — Rule of Three met for the *technique*, not the *data source*)
+- **Status**: DEFERRED-AS-PATTERN-BUT-ADOPTED-AS-INFRASTRUCTURE
+- **Why deferred as pattern**: The `~/.claude/projects/` path is undocumented by Anthropic — unsuitable as a long-term library-recommended approach. Score did not meet the >=20/25 threshold for pattern promotion.
+- **Why adopted as infrastructure anyway**: Architecture-consultant resolved that JSONL ingest is the *less-fragile of two fragile paths* — structured field data beats parsing a presentation suffix. We adopt the technique but contain the fragility behind a single parser interface so a future path change is a one-file patch.
+- **Schema attribution**: The 4-field schema (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`) directly informed our column choice and corrected an earlier proposal that omitted cache fields.
+- **Location**: `scripts/ingest_token_usage.py` (parser interface isolated; path change = one-file patch)
+- **Audit trigger**: If Anthropic restructures or documents `~/.claude/projects/`, revisit pattern status.
 
 ---
 

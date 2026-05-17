@@ -54,6 +54,7 @@ EXCLUDE_PATTERNS: set[str] = {
     ".pytest_cache",
     "lineage-events.jsonl",
     "settings.local.json",
+    "worktrees",
 }
 
 # Empty directories to create in the new project (with .gitkeep)

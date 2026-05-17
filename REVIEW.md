@@ -5,6 +5,7 @@
 > They supplement CLAUDE.md and `.claude/rules/` — they do not override them.
 > **In any conflict, CLAUDE.md and PHILOSOPHY.md govern.**
 > See ADR-0006 for the design rationale.
+> **Prime Objective check**: For designs that touch attribution, consent of labor, value flow, or framework evolution (see CLAUDE.md "Prime Objective" section), apply the three-part test (a/b/c) as part of your review. Findings of the form "violates Prime Objective: extraction by test (b)" are first-class.
 
 ## Code Quality
 
