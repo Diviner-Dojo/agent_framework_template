@@ -2,7 +2,7 @@
 spec_id: SPEC-20260516-045622
 title: "Phase 1 — Wire substrate into /review synthesis (first in-framework consumer)"
 type: spec
-status: approved
+status: deferred
 risk_level: medium
 intake_ids: []
 discussion_id: DISC-20260516-045815-phase1-substrate-review-consumer-spec-review
@@ -10,6 +10,27 @@ reviewed_by:
   - qa-specialist
   - architecture-consultant
   - security-specialist
+deferred_at: 2026-05-16
+deferred_reason: |
+  Baseline measurement (Track B, 2026-05-16) showed cache utilization at
+  99.973% and discovery cost <5% of output tokens. The cost-reduction
+  rationale that originally justified Phase 1 does not survive the data.
+  The quality-grounds reframe (semantic retrieval with provenance) is
+  plausible but speculative — no evidence yet that it would measurably
+  improve review quality. Building Phase 1 against synthetic /review
+  consumption would land the substrate's first integration in a low-stakes
+  context that doesn't exercise the design under real load.
+
+  Deferred until a real consumer with genuine workload drives the
+  requirements. Most likely driver: Howie (family-wiki research project,
+  primary derived-project roadmap per project_active_landscape memory).
+  When Howie spawns and starts accumulating sourced assertions about
+  Scots Worthies, that is the real Phase 1.
+
+  The substrate itself remains validated; ADR-0014 stands. The Prime
+  Objective (ADR-0015) sets the constraint that whatever consumer drives
+  Phase 1 must satisfy. The propagation seam through shared-memory works.
+  Deferring is "park the gun loaded," not "throw it away."
 completed_at:
 completed_commit:
 ---
