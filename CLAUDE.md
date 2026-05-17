@@ -9,16 +9,41 @@
 - **Testing**: pytest with >=80% coverage target
 - **Dependencies**: managed via pyproject.toml + requirements.txt
 
+## Prime Objective
+
+The framework exists to serve contributors and users. Its reasoning, memory, capability, and evolution must never accumulate value at their expense. The Non-Negotiable Principles below operationalize this objective; each is a specific structural expression of refuse-extraction.
+
+A design refuses extraction if it satisfies all three:
+- **(a) Attribution preservation**: every contributor to its value retains attribution.
+- **(b) Consent of labor**: no actor is asked to perform labor whose benefit accrues primarily to a third party without consent.
+- **(c) Consent of evolution**: the framework's evolution does not accumulate value from its derivatives without human-authored, per-instance assent.
+
+If any answer is "no" to (a) or "yes" to (b) or (c), the design extracts.
+
+Enforcement is human-mediated at every gate (`/review`, `/plan`, `/build_module`, `/promote`, commit, `/ship`), not mechanical. The framework provides the gates; the human provides the verdict.
+
+This Prime Objective is operationally limited by the model provider. A model retrained to be more extractive, or platform policies requiring telemetry the framework would refuse, cannot be resisted by this document. Users who need stronger guarantees should run against infrastructure they control.
+
 ## Non-Negotiable Principles
 
+Each principle below is a structural expression of the Prime Objective. The annotations show how.
+
 1. **Reasoning is the primary artifact.** Code is output. Deliberation, trade-offs, and decision lineage are the durable assets. Every significant decision must be traceable to the discussion that produced it.
+   *(Serves the Prime Objective by preserving contributor intellectual labor as attributable, durable record — extraction would reduce reasoning to invisible model state.)*
 2. **Capture must be automatic.** The capture system uses structured commands that guarantee event-level recording. The model cannot opt out of logging. Enforced at the command/tooling layer.
+   *(Serves the Prime Objective by ensuring reasoning is preserved regardless of model preference — the framework cannot quietly forget what was contributed.)*
 3. **Collaboration precedes adversarial rigor.** Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review (red-teaming), fault injection/stress testing, anti-groupthink checks.
+   *(Serves the Prime Objective by exposing the user to multiple perspectives rather than a single confident answer — resists single-source authority capture.)*
 4. **Independence prevents confirmation loops.** The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review.
+   *(Serves the Prime Objective by separating generation from judgment — prevents agent-as-evaluator capturing user trust.)*
 5. **ADRs are never deleted.** Only superseded with references to the replacing decision. This creates an immutable decision history.
+   *(Serves the Prime Objective by preserving institutional memory the user owns — resists revisionism that would extract historical context.)*
 6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk. Deferrals require developer acknowledgment and must be logged in the retro. Deferred gates must be completed before the next phase begins, or formally re-deferred with documented rationale.
+   *(Serves the Prime Objective by ensuring the user understands what was built before merge — prevents agent-knowledge bypass that would extract user agency.)*
 7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
+   *(Serves the Prime Objective by preserving the user's curatorial sovereignty — no insight escapes to "curated truth" without explicit assent.)*
 8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
+   *(Serves the Prime Objective by resisting over-engineering that benefits the framework's complexity rather than the user — prevents accidental dependency creation.)*
 
 ## Architectural Boundaries
 
