@@ -1,0 +1,12 @@
+{
+  "command": "deliberate",
+  "discussion_id": "DISC-20260513-062110-code-graph-self-discovery-vision",
+  "status": "complete",
+  "started_at": "2026-05-13T06:21:17.149500+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "discussion_created",
+    "synthesis"
+  ],
+  "topic": "Code-graph + discussion-graph for token-efficient agent self-discovery: vision-vs-built gap and concrete measurable path"
+}

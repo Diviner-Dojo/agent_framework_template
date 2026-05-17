@@ -1,0 +1,250 @@
+---
+discussion_id: DISC-20260516-050945-framework-adoption-sequence-two-project
+started: 2026-05-16T05:10:09.173806+00:00
+ended: 2026-05-16T22:59:38.532731+00:00
+agents: [architecture-consultant, docs-knowledge, educator, facilitator, history-analyst, independent-perspective, performance-analyst, project-analyst, qa-specialist, security-specialist, steward, ux-evaluator]
+total_turns: 18
+---
+
+# Discussion: DISC-20260516-050945-framework-adoption-sequence-two-project
+
+## Turn 1 — facilitator (evidence)
+*2026-05-16T05:10:09.173806+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Developer asked /deliberate to run across all 12 agents on the v3 synthesis brief covering framework adoption sequence after a research stream of 7 external repo analyses + Claude Code feature survey + two-project derived telemetry (Insight Journal/agentic_journal 90d, VerificationPortal 21d).
+- **Files/scope**: docs/analysis/SYNTHESIS-20260515-adoption-brief-v3.md (canonical input); 7 ANALYSIS-20260515 reports; two-project telemetry blocks pasted into session; CLAUDE.md and .claude/rules/ as framework definition.
+- **Developer-stated motivation**: Recalibrate template-level adoption decisions using hub-vs-spoke usage data the template itself cannot see. Developer explicitly corrected mid-flow that the template is the hub and derived projects are spokes — template-local agent usage is the wrong denominator. Goal is to improve coding results across all projects, not just this template.
+- **Explicit constraints**: (1) Two derived projects exist (Insight Journal UI-heavy Flutter, VerificationPortal backend-heavy data); Howie Family Wiki is planned but not yet bootstrapped — Rule of Three across derived projects cannot be fully validated. (2) Three project-analyst agents during the research stream hallucinated a Write-block instruction; report content was recovered from agent return values. (3) ADHD-piercing-focus user cadence — one decision at a time, always re-contextualizable. (4) Long-form artifacts belong in fenced code blocks. (5) Critical risk tier; dialectic mode authorized for genuine competing approaches. (6) Opus-tier dispatch authorized where agent default is sonnet (cost_authorization: high).
+
+---
+
+## Turn 2 — steward (proposal)
+*2026-05-16T05:15:55.080960+00:00 | confidence: 0.78*
+*tags: round-1, steward, principle-6, lineage, canonicalization, defer*
+
+Principle #6 verdict: APPROVE option 4 (DEFER) — evidence diagnoses pipeline failure not principle failure; amending the constitution before fixing capture risks codifying entropy. Canonicalization verdict: REVISE — promote conversation/status to memory/patterns/ as a tracked 2-of-2 sighting; defer template insertion until Howie bootstraps or 90 more days of two-project data accumulate; design an upstream_promotion_candidate event class first. Notes: 2-of-2 derived projects from one developer is correlated evidence, not independent Rule-of-Three. autonomous_workflow.md's formalized bypass language may already be a de facto Principle #6 amendment that did not go through the steward gate (dispatch to docs-knowledge requested).
+
+---
+
+## Turn 3 — architecture-consultant (proposal)
+*2026-05-16T05:16:02.573554+00:00 | confidence: 0.78*
+*tags: round-1, architecture, tier-0, disposition-pipeline, silent-failure, checkpoint*
+
+Tier 0a + 0b are one bug surfaced in two places, not three separable fixes. Load-bearing defect: close_discussion.py wraps four pipeline stages in try/except with 'non-fatal' warnings (lines 118, 127, 137, 145, 154) — silent failures produce NULL/missing downstream state with no operator signal. Same architecture allows for zero unresolved-checkpoint flags: no schema enforcement that Round-2 REVISE must produce a state.json event. Tier 0 diagnostic sequence: (1) trace one IJ finding end-to-end through findings/pattern_sightings/promotion_candidates; (2) audit NULL command_type discussions and check slug prefixes; (3) grep close_discussion.py warnings in logs; (4) verify pattern_sightings rows per closed discussion; (5) replace try/except warnings with structured CAPTURE_PIPELINE_ERROR events; (6) then decide naming-drift fix. Checkpoint verdict: INVESTIGATE-FIRST — architecture has no schema enforcement of Round 2 closure; zero flags is consistent with both 'works' and 'silently skipped'. Run one /build_module with logging before honoring the 60d retro signal.
+
+---
+
+## Turn 4 — independent-perspective (proposal)
+*2026-05-16T05:16:11.091979+00:00 | confidence: 0.78*
+*tags: round-1, independent-perspective, anti-groupthink, steelman, demoted-patterns, sequencing*
+
+Steelmans: FP Taxonomy DEFENSIBLE (adopt Pre-Report Gate sub-pattern as forward-insurance — uniqueness ≈1.0 may not persist as agents are tuned); Two-Stage Review DEFENSIBLE deferred-adopt (cost-doubling argument collapses post-Tier-0; Phase-1 rejection rate is the missing variable, performance-analyst should model this); Santa Method context isolation NOT-DEFENSIBLE as separately adopted (absorbed into Tier 1 #1 intent). Most likely v3 conclusion to break: risk/domain-tiered dispatch table built on IJ/VP architecture-correctness split — Howie's UGC domain will likely shift finding categories. VP retro framing partially right — synthesized 'panel size' answer missed 'panel sequencing' (qa first, then arch only on structural flags). Critical caution: 2-of-2 sample with shared template lineage is correlated not independent — Tier 0 first is correct as gating but over-applied as blocking; if Tier 0 takes 3 sprints, no quality improvement lands for 3 sprints. Pre-Report Gate is uncorrelated with Tier 0 — adopt now as one prompt-edit session.
+
+---
+
+## Turn 5 — security-specialist (proposal)
+*2026-05-16T05:16:19.916096+00:00 | confidence: 0.82*
+*tags: round-1, security, P6, prompt-injection, trust-boundaries, external-data, retire*
+
+Finding 1 [Medium/A05 Misconfiguration]: VP's 4 aspirational agents (state-config-builder, playwright-debugger, verification-tester, plan-reviewer) are dormant attack surface — untested code with no deployment evidence. P6 verdict: RETIRE; forcing-function argument requires a concrete time-boxed trip-wire, retirement is default if not met in 30d. Finding 2 [High/A03 Injection]: v3's 'security-specialist only initially' framing for Prompt Defense Baseline is UNDER-SCOPED for VP's external-data domain — VP's research_url_preflight, research_corpus_standards, captcha_verification_required rules confirm external web content is in scope. Scraped content is attacker-controlled; injection propagates into Layer 1 events.jsonl. Baseline must cover all agents that touch external/fetched data. Verdict: TIERED-BY-DATA-FLOW — internal-only agents (facilitator receiving typed prompts, educator) get advisory baseline; external-data agents (VP's research agents) get full 6-bullet baseline immediately.
+
+---
+
+## Turn 6 — qa-specialist (proposal)
+*2026-05-16T05:16:26.710664+00:00 | confidence: 0.72*
+*tags: round-1, qa, panel-size, finding-survival, measurement-artifact, regression-test*
+
+Panel size verdict: BOTH — wrong-agent dispatch is proximate cause (ux-evaluator 0% uniqueness in VP is textbook signal); panel reduction without domain re-tiering produces same problem at lower cost. Finding-survival diagnosis: MISMEASURED — surface_candidates(discussion_id=...) raised TypeError silently for 5 weeks (canary tests confirmed) so 0% promotion was guaranteed regardless of finding quality. Additional measurement artifact: extract_findings.py keyword-heuristic classifier (lines 49–68) has no tests; default 'medium'/'general' fallbacks plus hash-derived pattern_hash mean functionally-identical findings classified differently never accumulate toward Rule-of-Three threshold. ADVISORY-NOISE diagnosis structurally weakened by high uniqueness scores (IJ ≈1.0, VP 0.82–0.87) — noise would produce duplication, not distinct findings. Regression test for checkpoint flag: tests/test_write_event.py::test_unresolved_checkpoint_flag_written_to_turns_table, calls write_event with risk_flags=['unresolved-checkpoint'] + tags=['checkpoint','task-1'], asserts both fields survive round-trip through SQLite. Use tmp_path + init_db() isolation, mark @pytest.mark.regression. Ledger entry only after fix confirmed.
+
+---
+
+## Turn 7 — performance-analyst (proposal)
+*2026-05-16T05:16:34.769280+00:00 | confidence: 0.58*
+*tags: round-1, performance, ROI, cost-analysis, panel-size, reference-md-split, baseline-missing*
+
+REFERENCE.md split ROI estimate: ~2.7M–5.4M tokens saved per 90 days across IJ + VP combined (assuming agent definitions are 2K–4K tokens, ruflo's 40% reduction applies). Cost translation: ~$0.04–$0.08 per 90 days — negligible in absolute dollar terms. The 40% headline is a token-count ratio, not a cost story at current volumes. Per-review cost at current 4-specialist panel: ~$0.03 (assumed 500-token outputs at sonnet rates). At 2-specialist panel: ~$0.015. IJ ran 178 reviews in 90 days; absolute saving ~$2.67/90d. Lever ranking: PANEL SIZE > REFERENCE.MD SPLIT > BOTH-EQUAL. Panel-size reduction delivers ~33x more absolute cost relief plus latency reduction (user-felt). REFERENCE.md split's primary value is definition hygiene/maintainability, not cost — adopt for those reasons. Critical caveat: NO empirical baseline exists. ADR-0013 is status:proposed; turns.tokens_in/out columns exist but ingest_token_usage.py has not been run. Highest-leverage action before adoption decisions: run ingest_token_usage.py once to establish baseline. Exception: if Context Budget Audit reveals context-window limit hits, REFERENCE.md split becomes correctness fix and priority inverts.
+
+---
+
+## Turn 8 — docs-knowledge (proposal)
+*2026-05-16T05:16:41.880270+00:00 | confidence: 0.82*
+*tags: round-1, docs, disposition-gap, retro-cadence, promote-trigger, session-start*
+
+Disposition gap diagnosis: BOTH — documentation never explains who owns the human gate or when to act on the yellow 'N promotion candidate(s) awaiting review' notice; 50% NULL command_type silently starves pattern accumulation that would cross threshold=3. Neither failure alone explains 0% Layer 3 promotion in VP. Retro cadence diagnosis: DEEPER-PURPOSE-DRIFT — retro has not stopped being a discipline, it has become unanchored from its unique value now that /review and /build_module provide continuous synthesis. The distinctive artifacts (journey chapters, forgetting curve, cross-project propagation) are not prominent enough at Steps 4–7 to justify session cost. Concrete documentation change THIS WEEK: add one sentence to .claude/commands/promote.md Step 1, before the SQL query: 'Run this step at every session start if the session-start dashboard reports pending candidates. Candidates older than 14 days without human review are a knowledge-flow gap.' Also add 7th point to session-start dashboard: 'Pending Layer 3 promotions: N (count from promotion_candidates WHERE promoted=0).'
+
+---
+
+## Turn 9 — ux-evaluator (proposal)
+*2026-05-16T05:16:49.796985+00:00 | confidence: 0.82*
+*tags: round-1, ux, polarity-accept, dispatch-heuristic, five-state-coverage*
+
+Polarity verdict: ACCEPT — VP's 0% uniqueness is honest measurement, not artifact; backend-only projects have no surface for my Domain Lens (interaction flows, emotional valence, state feedback, accessibility) to engage. Reject the API-ergonomics steelman as scope creep; that belongs to architecture-consultant or docs-knowledge. Proposed dispatch heuristic — dispatch ux-evaluator when ANY: (1) 3+ changed files carry recognized UI extension (.html .css .js .ts .tsx .jsx .vue .dart .swift .kt .xml), (2) new user-facing flow introduced (onboarding/auth/settings/error/empty state), (3) change modifies text end-users read (labels/error messages/notifications/copy), (4) accessibility flagged in PR or spec. Do NOT dispatch when all changes confined to src/, scripts/, .claude/, tests/, docs/, mcp_server/, assertion_store/ AND no UI extension appears. Current review_gates.md table is close but incomplete — misses .dart, Flutter, native mobile. Five-State Coverage adoption: ADAPT — integrate Loading/Empty/Error/Populated/Edge as numbered checklist inside Domain Lens Step 3 scoped to interactive surfaces; do NOT import the domain-specific test matrix verbatim (open-design recovery note made it unverifiable).
+
+---
+
+## Turn 10 — project-analyst (proposal)
+*2026-05-16T05:17:00.405023+00:00 | confidence: 0.82*
+*tags: round-1, project-analyst, under-weighted, implementer-status, goal-driven-execution, description-classifier, external-input-command-class*
+
+Three patterns v3 UNDER-WEIGHTED: (1) Implementer Status Protocol (superpowers, originally unscored) — re-scored 20/25 against two-project evidence. Both VP (0 checkpoint flags in 21d) and IJ (0 across 342 discussions) have same symptom: silent completion with no signal that doubt was suppressed. DONE_WITH_CONCERNS is the missing primitive — checkpoint protocol has only APPROVE/REVISE binary; agents finishing uncertain have no legal way to record uncertainty so it evaporates. Disposition gap at checkpoint level v3's Tier 0 diagnostic never named. (2) Karpathy Principle 4 (Goal-Driven Execution) — original analysis excluded as 'partially covered by autonomous_workflow.md.' Two-project education gate bypass pattern suggests root cause is absence of verifiable completion criteria at task-acceptance time; principle 4 addresses pre-emptively. (3) Description-as-Activation-Classifier convergence: obsidian-cli-skill (19/25) + superpowers CSO (unscored) — two INDEPENDENT sources reached same counter-intuitive finding via pressure testing. Combined evidence exceeds individual scores. Rule-of-Three logic v3 applies to derived projects should apply to external-source convergence too. Disposition gap addressed by source: YES — superpowers Implementer Status Protocol (only source operating at generation time not pipeline time). External-input command class supported: YES — superpowers SUBAGENT-STOP gate, ECC operational/workflow command split, ruflo observability/orchestration plugin split. Structural characterization v3 lacks: external-input commands are pull-not-push (query independently-existing state, do not create framework artifacts) — that property defines the class.
+
+---
+
+## Turn 11 — educator (proposal)
+*2026-05-16T05:17:08.984063+00:00 | confidence: 0.82*
+*tags: round-1, educator, option-C, decision-rationale-capture, principle-6, substitute-mechanism*
+
+Gate value verdict: CONTENT-IS-THE-VALUE — the gate's pause mechanism has value only insofar as it delivers the content; when content can be delivered at lower friction, the gate itself is not load-bearing. The current quiz format was never calibrated for the user's stated audience (non-coding manager who needs decision rationale, not code syntax). With ADHD-piercing-focus profile, gate friction is not incidental — it is structurally hostile. Bypass is rational response to design misfit, not discipline failure. Option verdict: C (acknowledged opt-out with substitute) — gate is already dead-letter; formalizing the opt-out and replacing it with Decision Rationale Capture is more honest and durable than enforcement that produces zero comprehension. Substitute mechanism: mandatory two-paragraph Decision Rationale Capture embedded in commit protocol. Before any commit touching src/ or framework infrastructure, developer (or AI) produces plain-language summary: (1) what decision was made + alternatives declined, (2) what would change if priorities shifted. Append to commit message body or memory/decisions/. Replaces walkthrough+quiz+explain-back as single lower-friction artifact preserving knowledge-persistence intent of Principle #6. Caveat: security-specialist should weigh whether HIGH/CRITICAL security changes have irreducible quiz cases — if yes, option B (risk-tiered blocking) survives as carve-out even if C is default.
+
+---
+
+## Turn 12 — history-analyst (proposal)
+*2026-05-16T05:17:15.337710+00:00 | confidence: 0.87*
+*tags: round-1, history, principle-7-gap, template-also-decaying, retro-never-invoked, missing-registry*
+
+Response-time diagnosis: PRINCIPLE-#7-GAP — retro findings surface framework-evolution candidates but there is no mechanism that presents them to the human gatekeeper for approval; recorded in sealed discussion transcripts with no actionable tracking surface (retro-action-registry.md does not exist), so Principle #7's human gate never opens. Cadence diagnosis: TEMPLATE-ALSO-DECAYING — template shows ZERO retro artifacts across 68 days and 41 discussions; derived projects did not decay from a working baseline, they inherited a discipline the template itself has never exercised. Git evidence: docs/sprints/ contains 6 SPEC files + 0 RETRO files; zero retro-slugged discussion directories in entire template history; retro.md command added 2026-03-08, last modified 2026-04-11, NEVER INVOKED ONCE. The IJ/VP 'retro cadence decay' is decay from a starting baseline of zero, set by the template. Also: retro.md Step 1c instructs agents to check memory/decisions/retro-action-registry.md before writing the final retro — that file does not exist. The retro command's own designed tracking mechanism is broken.
+
+---
+
+## Turn 13 — facilitator (decision)
+*2026-05-16T05:17:41.363731+00:00 | confidence: 0.8*
+*tags: dispatch-decision, batch, round-1-close*
+
+Cross-agent dispatch decisions for the 6 R1 requests: (1) steward→docs-knowledge (autonomous_workflow.md bypass = de facto amendment?): APPROVED — fold into synthesis interpretation; docs-knowledge R1 already addresses ownership/cadence drift, no extra dispatch needed. (2) architecture-consultant→qa-specialist (silent-exception regression test): APPROVED — qa-specialist R1 already provided test design (tests/test_write_event.py::test_unresolved_checkpoint_flag_written_to_turns_table). (3) security-specialist→architecture-consultant (transitive taint paths in VP agent dispatch chain): APPROVED — fold into Round 2 architecture-consultant focus. (4) docs-knowledge→architecture-consultant (NULL command_type root cause + slug normalization): APPROVED — already covered in architecture-consultant R1 Tier 0 sequence step 2. (5) educator→security-specialist (HIGH/CRITICAL irreducible quiz cases for option-B carve-out): APPROVED — fold into Round 2 security-specialist focus. (6) history-analyst→docs-knowledge (retro-action-registry.md substitute search in memory/): APPROVED — fold into synthesis as a Tier-0-adjacent task. Round 2 dispatches accordingly: architecture-consultant gets the transitive-taint question + Implementer-Status-Protocol integration (from project-analyst R1); security-specialist gets the HIGH/CRITICAL irreducible-quiz carve-out question; independent-perspective gets the sequencing-block-vs-parallel question (its own strongest dissent).
+
+---
+
+## Turn 14 — architecture-consultant (critique)
+*2026-05-16T05:19:20.049398+00:00 | confidence: 0.74*
+*replying to turn 3*
+*tags: round-2, architecture, critique, implementer-status, transitive-taint, additive*
+
+Implementer Status Protocol integration: ADDITIVE — new disposition rides existing risk_flags plumbing; six diagnostic steps verify signal survival, which a vocabulary fix alone does not solve. Same 0/342 outcome possible with new label if pipeline still drops the signal. Integration shape: add DONE_WITH_CONCERNS as third disposition in build_review_protocol.md (current line 38-49). Capture contract: intent=critique, tags='checkpoint,task-N,done-with-concerns', risk_flags=['residual-concern']. Reuses existing pattern from unresolved-checkpoint (line 81). Transitive taint risk: PRESENT — write_event.py:82-93 validates intent but treats content as opaque; specialist A's response flows into events.jsonl content field, which facilitator reads for synthesis and injects into specialist B's Task() prompt unsanitized. Prompt-injection payload in scraped content rides through A's summary into B's context window. Minimal mitigation: add external_data_provenance field to event schema; agents processing external inputs tag output; facilitator dispatch template treats such content as quoted/escaped, not as instruction. One schema field, one prompt-template convention.
+
+---
+
+## Turn 15 — security-specialist (critique)
+*2026-05-16T05:19:27.005359+00:00 | confidence: 0.85*
+*replying to turn 11*
+*tags: round-2, security, critique, carve-out, education-gate, four-classes*
+
+Carve-out verdict: CARVE-OUT-FOR-SPECIFIC-CLASSES. Rationale documents capture intent well but cannot build adversary-behavior recognition. Four classes need quiz format (option B survives as carve-out): (1) Trust boundary changes — new data ingress, new external integrations; manager cannot recognize 'vendor X is compromised, sends malformed payload' from intent alone. (2) Cryptographic primitive use — signing, verification, randomness sources; rationale almost universally says 'we use secure random'; manager cannot distinguish random.random() from secrets.token_bytes() without quiz. (3) Secret rotation procedures — operationally irreducible; manager must know what sequence of events constitutes a breach and what to do in first 30 minutes; rationale captures design not recognition pattern. (4) Subtractive/restructuring permission model changes — rationale legible for additive (new role); insufficient for refactors that silently grant write access; needs before/after privilege mapping walkthrough. For everything else (auth/authz changes including JWTs, cipher choice including AES-256-GCM, additive permissions): rationale document is sufficient. Education gate decision then becomes: option C (Decision Rationale Capture) is default; option B (quiz block) carve-out applies to the four named classes only.
+
+---
+
+## Turn 16 — independent-perspective (critique)
+*2026-05-16T05:19:33.995935+00:00 | confidence: 0.78*
+*replying to turn 4*
+*tags: round-2, independent-perspective, critique, sequencing, block-vs-parallel, sprint-plan*
+
+Block-vs-parallel framing SURVIVES and is STRENGTHENED by performance-analyst's lever ranking. Tier 0 is required only for patterns whose value claim depends on survival/yield metrics being trustworthy. Pipeline-dependent: rule-of-three promotion, protocol_yield assessment, agent effectiveness scoring. Pipeline-INDEPENDENT (Sprint-1 safe): prompt edits, dispatch heuristics, gate ordering, file restructures, taxonomy additions. Revised position: I implicitly assumed Pre-Report Gate was cheapest high-value lever; panel-size reduction beats it 33x in cost relief and is equally cheap. Pre-Report Gate stays in Sprint 1 but panel-size is the headline. SPRINT 1 (parallel with Tier 0): panel-size dispatch heuristic (ux-evaluator's turn 9 trigger conditions), Pre-Report Gate (FP Taxonomy sub-pattern), REFERENCE.md split for top-3 agents. SPRINT 2 (Tier 0a gated): rule-of-three promotion automation, protocol_yield-grounded retro, agent effectiveness dashboard wiring. SPRINT 3 (Tier 0 + Tier 1 in place): rule-of-three-triggered adoption, cross-project pattern propagation, lineage drift gates. Steward's DEFER-everything reads as risk-aversion masquerading as sequencing discipline — three sprints with zero quality improvements is real cost not hypothetical. Correct frame: gate only what needs gating; parallel-track everything else.
+
+---
+
+## Turn 17 — facilitator (synthesis)
+*2026-05-16T22:59:24.131767+00:00 | confidence: 0.75*
+*tags: synthesis, working-document, non-binding, dialectic, framework-evolution*
+
+## Request Context
+- **What was requested**: /deliberate across all 12 agents on the v3 synthesis brief covering framework adoption sequence after research stream of 7 external repo analyses + Claude Code feature survey + two-project derived telemetry (Insight Journal 90d, VerificationPortal 21d).
+- **Files/scope**: docs/analysis/SYNTHESIS-20260515-adoption-brief-v3.md (canonical input); 7 ANALYSIS-20260515 reports; two-project telemetry blocks; CLAUDE.md and .claude/rules/ as framework definition.
+- **Developer-stated motivation**: Recalibrate template-level adoption decisions using hub-vs-spoke usage data. Goal is improving coding results across all projects, not just this template. Mid-deliberation: developer clarified outputs are a working/living document for accumulating research; no rule/agent/command edits and no ADR file creation should result from this synthesis.
+- **Explicit constraints**: Two derived projects (IJ + VP); Howie planned but not bootstrapped; Rule of Three across derived projects not fully validatable. Critical risk tier; dialectic mode. Synthesis framing: non-binding working document, not commitments. ADR-0015 content described but no ADR file created. Parallel session may be running; framework files (rules/agents/commands/CLAUDE.md/scripts/) untouched.
+
+## Synthesis (working-document, non-binding)
+
+This synthesis records what the 12-agent panel (11 specialists + facilitator) converged on, where genuine dissent remained, and what the resulting positions would BECOME if enacted. Per developer direction, none of the outputs below are actioned in this turn. They will be captured in SYNTHESIS-20260515-adoption-brief-v4.md as a living document.
+
+### A. Three-Sprint Sequencing (observations, not commitments)
+
+Sprint 1 — prompt-layer / pipeline-independent (per independent-perspective turn 16 + performance-analyst turn 7 33x lever ranking):
+- Panel-size domain-tiered dispatch (using ux-evaluator turn 9 trigger conditions verbatim)
+- Pre-Report Gate sub-pattern from ECC False-Positive Taxonomy (Pre-Report Gate only, NOT full taxonomy adoption)
+- REFERENCE.md split for facilitator + architecture-consultant + qa-specialist (hygiene value, not cost — savings ~$0.04-$0.08/90d but ~2.7M-5.4M tokens of definition weight)
+- Karpathy Principles 1-3 as agent-behavior-defaults rule
+- Karpathy Principle 4 (Goal-Driven Execution) merge into autonomous_workflow.md — re-elevated per project-analyst turn 10
+- Rationalization Tables in commit/autonomous/build-review rules
+- Verification-Before-Completion rule
+
+Sprint 1 — Tier 0 foundational fixes (parallel-track per independent-perspective turn 16; investigate-first per architecture-consultant turn 3):
+- 0a: Trace one IJ finding end-to-end through disposition pipeline (6-step diagnostic from arch turn 3)
+- 0b: Slug normalization fix in create_discussion.py + backfill migration for NULL command_type
+- 0c: Replace try/except: print-warning in close_discussion.py:118/127/137/145/154 with structured CAPTURE_PIPELINE_ERROR events
+- Regression test test_unresolved_checkpoint_flag_written_to_turns_table (qa turn 6)
+- Add DONE_WITH_CONCERNS as third disposition state in build_review_protocol.md (additive per architecture turn 14; honors project-analyst turn 10 re-score of 20/25 under-weighted)
+- 7th session-start dashboard point (pending Layer-3 promotion count, docs turn 8)
+- 14-day candidate-age + ownership sentence in .claude/commands/promote.md Step 1 (docs turn 8)
+- Run /retro on the template repo itself (history turn 12 found template has never invoked /retro in 68 days)
+- Resolve memory/decisions/retro-action-registry.md gap (history turn 12: retro.md Step 1c references this nonexistent file)
+
+Sprint 2 — Tier-0-gated (requires survival metric to be trustworthy):
+- Agent Introspection Debugging skill (ECC)
+- Santa Method context isolation for HIGH/CRITICAL only
+- Context Budget Audit one-time session
+- /insights adoption per project + ADR-0013 promotion to accepted with ingest_token_usage.py baseline run (performance-analyst turn 7: no baseline exists)
+- Re-evaluate FP Taxonomy + Two-Stage Review now that survival rate is trustworthy
+- Decision: relax vs retain checkpoint protocol after DONE_WITH_CONCERNS has 30d of data
+- external_data_provenance event field + facilitator dispatch template (architecture turn 14 transitive-taint mitigation)
+
+Sprint 3 — Tier 0 + Tier 1 in place:
+- Formalize cross-project pattern propagation (memory/patterns/ 2-of-2 sighting flow)
+- Lineage drift gates + upstream_promotion_candidate event class (steward turn 2 prerequisite; needs lineage manifest ADR)
+- Rule-of-Three-triggered automated promotion candidate surfacing
+
+### B. Resolutions for 5 Open Conflicts (working positions)
+
+1. Sequential vs parallel review: PARALLEL preserved; Two-Stage Review re-evaluation gated to Sprint 2 once survival rate is measurable.
+2. Skill description philosophy: Adopt superpowers framing — descriptions name triggers, not workflows. obsidian-cli-skill + superpowers CSO converge (project-analyst turn 10 cross-source Rule-of-Three argument).
+3. Automated promotion vs Principle #7: Adopt instinct format (trigger/confidence/domain/evidence), reject automation. Use as richer queue for human gate review.
+4. Cost vs independence in reviews: Santa Method context isolation for HIGH/CRITICAL only (steward + architecture-consultant agree).
+5. External-input command class: NOT YET — conversation/status go to memory/patterns/ as tracked 2-of-2 sighting per steward turn 2. Canonicalization waits for Howie OR 90 more days of two-project data. Lineage substrate needs upstream_promotion_candidate event class designed first.
+
+### C. Education Gate Verdict (working position)
+
+Option C default with Option B carve-out (educator turn 11 + security turn 15):
+- Default: Decision Rationale Capture — two-paragraph plain-language summary embedded in commit message body or memory/decisions/
+- Carve-out: Quiz blocks survive for 4 irreducible security classes (security turn 15):
+  (1) Trust boundary changes — new data ingress, new external integrations
+  (2) Cryptographic primitive use — signing, verification, randomness sources
+  (3) Secret rotation procedures
+  (4) Subtractive/restructuring permission model changes
+- Steward (turn 2) requires deferring enactment until Tier 0 0a/0b land and 60d of healed-pipeline data show bypass is not pipeline-driven. Honored.
+
+### D. conversation/status Canonicalization Verdict (working position)
+
+DEFER. 2-of-2 from one developer is correlated, not independent. Per steward turn 2: track in memory/patterns/ as observation only. Re-evaluate when Howie bootstraps or VP accumulates 60 more days of similar usage.
+
+### E. Meta-Findings (v3 brief missed)
+
+From project-analyst turn 10:
+- Implementer Status Protocol (superpowers, 20/25) — under-weighted; folded as DONE_WITH_CONCERNS state in Sprint 1 (additive per architecture turn 14)
+- Karpathy Principle 4 (Goal-Driven Execution) — under-weighted; merged into Sprint 1
+- Description-as-Activation-Classifier cross-source convergence — under-weighted; adopt as Conflict 2 resolution
+
+From deliberation:
+- Template has never executed /retro once in 68 days (history turn 12) — derived projects inherited a discipline never validated upstream
+- memory/decisions/retro-action-registry.md does not exist despite retro.md referencing it — own designed mechanism broken
+- write_event.content unsanitized in dispatch chain (architecture turn 14) — transitive taint risk PRESENT for external-data agents; mitigation via external_data_provenance event field
+
+### F. Genuine Dissent Preserved
+
+Steward (turn 2) argued DEFER everything until Tier 0 lands. Independent-perspective (turns 4 + 16) successfully argued pipeline-INDEPENDENT items (prompt edits, dispatch heuristics, taxonomy additions) can land in Sprint 1 without waiting. The working position adopts independent-perspective's frame. This is the load-bearing disagreement — steward's caution is preserved in that Sprint 2/3 items remain Tier-0-gated, and ADR amendments (Principle #6, lineage extension) are described not enacted.
+
+Steward (turn 2) and independent-perspective (turn 4) both flagged the 2-of-2 sample with shared template lineage is correlated not independent evidence. The working document explicitly does NOT commit to canonicalization, Principle #6 amendment, or lineage manifest extension until either Howie data lands or additional independent confirmation accumulates.
+
+### G. Confidence
+
+0.75 at the synthesis level. Load-bearing on a 2-of-2 derived-project sample; one Howie data point could shift Sprint 2/3 priorities. All Sprint 1 items are individually high-confidence (>=0.75 from their respective specialists).
+
+
+---
+
+## Turn 18 — facilitator (decision)
+*2026-05-16T22:59:38.532731+00:00 | confidence: 0.75*
+*tags: decision, working-document, non-binding, no-action-yet*
+
+Deliberation outcome: WORKING DOCUMENT, NO BINDING ACTION. Per developer direction, this deliberation produces no rule edits, agent edits, command edits, ADR file creation, or framework configuration changes. All verdicts captured in turn 17 synthesis are positions for a living document at docs/analysis/SYNTHESIS-20260515-adoption-brief-v4.md. The developer plans additional research before any framework changes are made. Key working positions for the v4 brief: (a) 3-sprint sequencing with Sprint 1 pipeline-independent items running in parallel with Tier 0 foundational fixes; (b) Education gate Option C (Decision Rationale Capture) default with Option B carve-out for 4 irreducible security classes; (c) conversation/status canonicalization DEFERRED pending Howie data or +90d two-project corroboration; (d) Three meta-findings under-weighted in v3 (Implementer Status Protocol/DONE_WITH_CONCERNS state, Goal-Driven Execution, Description-as-Activation-Classifier cross-source convergence); (e) Three new findings (template has never run /retro, missing retro-action-registry.md, transitive taint risk in unsanitized write_event.content). Genuine dissent preserved: steward DEFER-everything vs independent-perspective pipeline-independent-parallel framing — working document adopts independent-perspective frame but preserves steward caution by gating Sprint 2/3 on Tier 0 health and explicitly NOT enacting Principle #6 amendment or canonicalization until additional evidence accrues. Next action: v4 brief authored as living document; no immediate framework changes.
+
+---

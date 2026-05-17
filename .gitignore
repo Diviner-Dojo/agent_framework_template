@@ -17,3 +17,6 @@ build/
 *.sqlite3
 .coverage
 BUILD_STATUS.md
+
+# Session-local worktrees — see spawn_project's EXCLUDE_PATTERNS for the propagation guard
+.claude/worktrees/
