@@ -1,0 +1,370 @@
+---
+discussion_id: DISC-20260513-062110-code-graph-self-discovery-vision
+started: 2026-05-13T06:21:32.205075+00:00
+ended: 2026-05-13T06:27:26.675281+00:00
+agents: [architecture-consultant, docs-knowledge, facilitator, independent-perspective, performance-analyst]
+total_turns: 7
+---
+
+# Discussion: DISC-20260513-062110-code-graph-self-discovery-vision
+
+## Turn 1 — facilitator (evidence)
+*2026-05-13T06:21:32.205075+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: The developer's original vision for the substrate was BIGGER than what was built. The vision: graph all the code in the project (every file/function/import as nodes/edges), graph all discussions the same way, use Karpathy's LLM-wiki concept + graph DB concepts so the framework can self-discover automatically rather than relying on grep, and most importantly REDUCE TOKEN COST per discovery operation. Question: what CONCRETE, MEASURABLE improvements can the template make to manifest this vision over the prior version?
+- **Files/scope**: The substrate as built (assertion_store/Substrate + mcp_server/, 3 MCP tools, SQLite + sqlite-vec + sentence-transformers). The current discovery mechanism (`grep` per `pre_build_search.md` against `memory/projects/`, `regression-ledger.md`, ADRs). The capture pipeline (events.jsonl + SQLite metrics). The auto-memory at `~/.claude/projects/<slug>/memory/`.
+- **Developer-stated motivation**: The previous /deliberate found the substrate has no behavioral wiring (Phase 5 work needed). NOW the developer is naming a bigger gap: the substrate-as-built only delivers manual sourced-assertion storage with vector search. The original vision was automatic code+discussion graphing for self-discovery, with measurable token reduction. The developer wants a realistic path from here to there with CONCRETE METRICS, not aspirational claims.
+- **Explicit constraints**: BRUTAL HONESTY continues from previous deliberation. Measurable improvements only — no "should be better" without naming the metric and the baseline. Acknowledge what was NOT built. Acknowledge if the gap is too large to close incrementally. Acknowledge if simpler approaches would deliver the underlying goals (token-efficient discovery) more reliably than the envisioned graph architecture.
+
+
+---
+
+## Turn 2 — architecture-consultant (proposal)
+*2026-05-13T06:26:28.113010+00:00 | confidence: 0.82*
+*tags: graph-vision, model:opus*
+
+## Architecture Consultant (confidence 0.82)
+
+ADR-0014 EXPLICITLY anticipates this gap: "schema is graph-shaped, stored relationally; migration to a real graph DB later is a schema conversion." The substrate was built as a foundation the vision CAN grow on, not as the vision itself.
+
+### Findings
+1. **Discussion-graph is the higher-leverage move and the substrate is the RIGHT shape for it.** SPO triples + source_ref absorb discussion-graph edges trivially. No new table. Discovery becomes search_semantic over assertions (already implemented).
+2. **Code-graph requires a sibling table, NOT substrate replacement.** Function call graph has 2K-20K edges; as assertions, that floods the corpus and degrades semantic search recall. As `code_edges(src_file, src_symbol, edge_type, dst_file, dst_symbol)` in the same SQLite file, it stays portable.
+3. **"Graph DB" enthusiasm is a category error.** SQLite + recursive CTE serves the vision at this scale. Neo4j buys traversal perf the framework does not need until ≥100K edges.
+4. **No baseline exists for the metric that matters.** ADR-0013 telemetry just shipped. Run `ingest_token_usage.py` over last 30 discussions FIRST. Establish: tokens-per-discussion, fraction going to pre_build_search-style grep. Without baseline, "measurable improvement" is unfalsifiable.
+5. **Honest architectural path**: 5a discussion extraction (reuses substrate) → 5b rewrite pre_build_search to call search_semantic first → 5c static import graph in code_edges table (conditional on 5a winning) → 5d defer LLM-extraction-heavy work.
+6. **Scope-creep check**: ADR-0014 did NOT promise self-discovery via traversal. Developer's recollection is conflating substrate ambition (delivered) with discovery layer ambition (not yet attempted). Not scope creep — next layer ADR explicitly left open.
+
+### Strengths
+- Substrate class is correctly shaped for layering (extraction pipelines, code-graph writers, discovery tools all import same class)
+- project_id + portable URI mean discussion-graph extraction resolves cross-discussion refs without schema migration
+- get_source suchness primitive is load-bearing for graph-based discovery
+
+
+---
+
+## Turn 3 — performance-analyst (proposal)
+*2026-05-13T06:26:28.187098+00:00 | confidence: 0.82*
+*tags: graph-vision, model:sonnet, measured-baseline*
+
+## Performance Analyst (confidence 0.82)
+
+The graph-as-discovery-savings claim does not survive contact with this codebase's actual numbers.
+
+### Concrete baselines measured this session
+- Discovery corpus today: ~115KB memory + ~87KB ADRs = **~33K tokens of readable material total**
+- `/plan` Step 1.5 pre_build_search: 200-500 tokens per call
+- `/review` average: 13K tokens output
+- **Cache utilization: 1.7M cache tokens vs 500 fresh input tokens per review** (extremely high cache hit rate)
+
+### Findings
+1. **Measure first, optimize second.** The current discovery corpus is tiny; grep is near theoretical minimum. Run ADR-0013 telemetry baseline BEFORE any graph work.
+2. **Extraction cost will not amortize at current scale.** One-pass extraction over 115KB corpus costs ~33K tokens — similar to reading everything cold. At 3-5 /plan calls per week with 500-2000 token discovery cost, payback period is weeks-to-months, not queries. Incremental extraction is harder engineering problem and re-introduces per-session cost.
+3. **Transitive closure risk.** search_semantic returns short tuples (~100-200 tokens for k=5) — genuinely cheaper than reading full ADR. BUT in multi-project (Howie+Insight Journal+framework sharing substrate), post-JOIN filter may discard most results, causing larger-k re-query.
+4. **At what scale does graph win?** Corpus >1MB stable prose, query rate >20 per update, semantic (not keyword) queries. **Howie's Scots Worthies (~600KB-1.2MB) IS in this regime. Framework template (115KB) is NOT.**
+5. **GraphRAG comparison.** Microsoft GraphRAG works at corpora that don't fit context window. Framework template's whole knowledge fits in one window at current scale. Wrong comparison class.
+
+### The KEY measured insight
+**Cache hit rate is already extremely high (1.7M cache tokens vs 500 fresh)** — discovery is mostly cache-resident, NOT a fresh-token drain. A graph that prevents a grep saves CACHE READS (priced at ~10% of input). Effective savings at this corpus size: TENS of tokens per query, NOT THOUSANDS.
+
+### Concrete measurable experiment
+1. Baseline (2 hours): Run one /plan, mark session boundary, run ingest_token_usage.py, extract discovery-specific token slice
+2. Graph-assisted: Load memory/+docs/adr/+regression-ledger into substrate, run same /plan using search_semantic, measure same
+3. Compare: hypothesis passes only if tokens_in_discovery(graph) < tokens_in_discovery(grep) BY MARGIN GREATER THAN tokens_cost_of_extraction / N_queries_between_updates
+
+### Strengths
+- ADR-0013 telemetry infrastructure is exactly right tool for measuring this — already exists
+- assertion_store architecture correctly shaped for Howie use case where it actually wins
+- Stack selection (SQLite + sqlite-vec) avoids operational overhead at personal scale
+- Cache utilization data shows current discovery NOT a hot-path problem
+
+
+---
+
+## Turn 4 — independent-perspective (proposal)
+*2026-05-13T06:26:28.278397+00:00 | confidence: 0.78*
+*tags: graph-vision, model:opus, instance:research-scout*
+
+## Research Scout: Independent-Perspective (confidence 0.78)
+
+Dan's vision is directionally aligned with 2026 production trends, but the gap between "thought-piece concept" and "shipped, measured infrastructure" is real.
+
+### Karpathy's LLM Wiki (April 2026) — what it actually is
+- **Status: A GitHub Gist** — an "idea file," not a product. Karpathy himself has not shipped a deployed implementation at scale.
+- ~10+ community implementations (OmegaWiki, Graphify, etc.). All early-stage. **No published independent production benchmarks at enterprise scale.**
+- It's a respected pattern, NOT a battle-tested standard.
+
+### Production code-graphing reality (2026)
+| System | Approach | Production-grade? |
+|---|---|---|
+| Sourcegraph SCIP | Per-language indexers | Yes (search-first, not agent-native) |
+| Cursor codebase indexing | AST chunks → embeddings | Yes (pure vector, not graph) |
+| Aider repomap | Tree-sitter → flat ranked-tags | Yes (flat list, not traversable graph) |
+| Graphify / code-review-graph | Tree-sitter → Cypher graph | Demo/OSS — **49x-71x token reduction documented** |
+| GitHub Copilot Workspace | Hybrid retrieval + long-context | Yes (closed; details unpublished) |
+
+**Honest read**: "graph the code" in 2026 production is mostly **AST + symbol index + vector search with extra steps**. True graph traversal at agent runtime is real (Graphify, tirth8205/code-review-graph) but **demo-scale**. 49x-120x numbers reproducible on specific benchmarks; not published as enterprise SLAs.
+
+### GraphRAG / discussion graphing maturity
+- **Microsoft GraphRAG**: 60-80% token reduction vs naive RAG in published cases; LazyGraphRAG cuts indexing 1000x. Measured, not marketing.
+- **Zep/Graphiti**: Time-indexed knowledge graph; production-real for conversational agents.
+- **Discussion graphing is MORE MATURE than code graphing.** GraphRAG is closest production reference architecture.
+
+### "Self-discovery" — engineering or rhetoric?
+**Mostly rhetoric layered over real mechanics.** When agents "self-discover," what's mechanically happening is:
+1. Pre-indexed traversal via deterministic Cypher/SQL — NOT LLM inference. **This is the actual win.**
+2. Iterative grep with memory (equivalent to well-designed grep flow with persistence)
+3. RAG with reranking
+
+Token wins come from **replacing exploratory file reads with deterministic graph queries**. That's the durable insight.
+
+### 2026 production-default convergence
+**Long-context (1M) for reasoning + retrieval (vector or graph) for evidence selection + structured memory for cross-session continuity.** Pure graph-native is research-heavy. Pure long-context is too slow at tight loops. Winning teams use BOTH.
+
+### Has anyone combined wiki + code-graph + discussion-graph at scale?
+**NO, not in production.** Closest examples (Graphify, Understand-Anything, OmegaWiki) are weeks-old GitHub projects. Dan's vision is on the frontier — which means also genuinely UNPROVEN.
+
+### Defensible incremental move
+1. Adopt the proven primitive first: Tree-sitter code knowledge graph via MCP (modeled on Graphify/code-review-graph). Measure actual token reduction on this framework's reviews before extending.
+2. Reuse the discussion substrate already shipped — sourced-assertion storage IS a graph in essence. Missing piece is TRAVERSAL at query time, not different storage model.
+3. Defer Karpathy wiki layer until graph layer ships measurable wins.
+4. MCP as integration seam — both code-graph and assertion-graph become MCP tools.
+
+### Consensus check on Dan's signal
+Dan's "THAT'S NOT WHAT I WANTED" is meaningful — but may itself be aspirational rather than diagnostic. Phase 4's substrate is CLOSER to the graph vision than it appears. The gap may be **traversal interface and code-side coverage, not storage architecture.**
+
+
+---
+
+## Turn 5 — docs-knowledge (proposal)
+*2026-05-13T06:26:28.379024+00:00 | confidence: 0.78*
+*tags: graph-vision, model:sonnet*
+
+## Docs-Knowledge (confidence 0.78)
+
+The self-discovery vision is architecturally coherent but operationally premature. The bottleneck is not substrate architecture — it's the missing behavioral wiring between what already exists and agent workflows.
+
+### Findings
+1. **Substrate state is stuck in Layer 1** (High). The finding that "assertion_store + MCP exist but not wired" lives only in prior discussions, not in memory/. Every new session must rediscover this. Promote to memory/projects/_self.md under "Current Substrate State."
+
+2. **No ADR for substrate architecture decision** (High). ADR-0013 covers token telemetry. No ADR exists for the substrate itself. Whatever path is chosen from this deliberation — pivot or increment — needs an ADR.
+
+3. **pre_build_search compliance not instrumented** (Medium). Rule assumes agents follow it. No tag, no metric, no hook tracks compliance. A rule with unknown compliance rate is documentation theater. Add `pre-build-search-executed` tag to build_module context-brief event.
+
+4. **Cross-domain discovery chain not captured** (Medium). Karpathy + code-graph reasoning is a creative insight worth capturing whether adopted or not. Add to memory/projects/_self.md "Explored But Not Adopted" or "Under Consideration" — 3-4 sentences.
+
+5. **assertion_store/ and mcp_server/ invisible to framework docs** (Low). Untracked by git, no ADR, not in CLAUDE.md directory layout. Reality has three answers; that gap is expensive.
+
+### Operational answers to the discovery question
+
+**Bottleneck identified**: Not substrate architecture. The bottleneck is "the agent knows what to look for." Grep-based flow works when keywords are good. **It fails silently when they are not.** Problem is keyword selection at query time, not traversal.
+
+**Simplest meaningful improvement**: Option C (auto-index of decision summaries by topic). SQLite findings + turns tables already have content_excerpt + tags. A `discover.py` script that builds `topic → discussion_id + summary` index from existing tagged events requires ~1 hour. **Immediately makes capture pipeline queryable by concept rather than keyword.**
+
+**Code structure index** (Option B) is second-best — only helps with "where is X defined," less valuable than "what did we decide about Y."
+
+**The capture pipeline IS already a proto-graph.** turns.tags, findings, pattern_sightings, promotion_candidates — these are a topic graph. Missing piece is QUERY INTERFACE that agents can call by semantic concept rather than SQL. The `find_relevant_context(task_description)` MCP tool wraps what already exists.
+
+**Honest path**: Substrate-as-built is NOT wrong architecture — it's incomplete wiring. Question is not "pivot or increment" but **"wire what exists before building more."** Incremental wins from substrate-as-built are available without a pivot, and they answer the same token-reduction goal. Graph vision is Layer 4 concern (CLAUDE.md: "Only when corpus grows large enough"). **Corpus not yet large enough.**
+
+**Inflection point**: Complexity outpaces benefit at "Medium" option (auto-extract code structure as sourced assertions). Large and Huge options are research investments, not productivity improvements at current corpus size.
+
+### CLAUDE.md updates proposed
+1. Add assertion_store/ + mcp_server/ to directory layout with status markers
+2. Add Known Limitation: "pre_build_search compliance is not instrumented — rule is advisory, not enforced"
+3. Layer 4 note needs threshold: "activates when discussions/ >50 closed OR memory/ >20 promoted"
+
+
+---
+
+## Turn 6 — independent-perspective (proposal)
+*2026-05-13T06:26:28.478038+00:00 | confidence: 0.78*
+*tags: graph-vision, model:opus, instance:independent-analyst, anti-groupthink*
+
+## Independent Analyst: Independent-Perspective (confidence 0.78)
+
+**Verdict**: Dan is solving an UNDERSPECIFIED problem with an OVERSPECIFIED solution. The vision conflates 4 distinct ideas (code graph + discussion graph + Karpathy wiki + self-discovery), each serving different goals. Three of them have simpler alternatives that have NOT been tried. **Stop and validate the goal before building more substrate.**
+
+### Hidden assumptions
+1. **That token cost is the binding constraint.** At ~200-file repo size, the entire project fits in 1M context window with room to spare. Real constraint is likely agent attention, retrieval precision, developer cognitive load — none of which graph directly optimizes.
+2. **That graphs reduce tokens.** A graph query returns nodes + edges + content. Unless the graph is ALSO a retrieval-with-summary system, it returns the same content grep would, just with more ceremony.
+3. **That self-discovery emerges from structure.** Agents don't automatically traverse graphs. They traverse what they're TOLD to traverse. Without explicit prompts pointing at the graph, the graph is dead infrastructure — same as the substrate today.
+4. **That code + discussions belong in the same graph.** Code is structural (deterministic). Discussions are semantic (fuzzy). Forcing both into one schema may produce a graph awkward for both.
+5. **That Karpathy's wiki proposal maps onto this.** Karpathy proposed HUMAN-curated documentation. Dan invokes it as AUTOMATIC extraction. **Opposite directions of authorship.**
+
+### Pre-mortem scenarios
+- **A: Substrate built, agents don't use it (HIGH likelihood)**. Same failure mode as current substrate.
+- **B: Karpathy wiki becomes stale derivative-of-truth (MEDIUM-HIGH).** Auto-generated wikis drift from source.
+- **C: Three projects fork three discovery layers (MEDIUM).** Framework template lumps Howie + Insight Journal + self; their needs diverge.
+- **D: Graph complexity exceeds developer patience (MEDIUM).** Bus factor.
+- **E: Long context absorbs the entire premise (MEDIUM-HIGH over 12 months).** 10M context windows make "shove whole repo in" routine.
+
+### Five alternatives NOT seriously considered
+1. **Repomix-style flat snapshot**: `repomix .` produces one searchable file. Agents grep it. Zero infrastructure. Already used by many agentic frameworks. **Cost to try: 10 minutes.**
+2. **Long-context maximalism**: At ~200 files, whole template fits in context. Load everything per task. Token bill (which Dan said wasn't real constraint anyway).
+3. **Concept INDEX.md files**: Hand-maintain memory/INDEX.md per major concept with pointers to relevant files. **The "Karpathy wiki" Dan actually wants, minus the automation.**
+4. **Smart grep with reranking**: One script that greps all of memory/, discussions/, docs/, ranks by recency+keyword-density, returns top-10. No schema, no graph, ~50 lines of Python.
+5. **Trust the agent**: Modern agents are good at deciding what to read. Give them Glob+Grep+Read. Stop pre-empting their discovery.
+
+### Consensus check
+**Soft convergence pattern worth flagging**: every phase of this research has produced MORE substrate, never less. Phase 1-3 → graph. Phase 4 → SQLite (concession). Now → back to graph with code+discussions+wiki. **The arc is ADDITIVE, never SUBTRACTIVE. No phase has produced "we tried the simpler thing and it failed."** That is the missing data point.
+
+The Karpathy invocation is a tell. **When a vision draws authority from a name rather than from a measured failure of the simpler alternative, that's the moment to stop and validate the goal.**
+
+### What I would say to Dan
+**State the goal in one sentence with a measurable outcome.** Then try the cheapest alternative (Repomix or INDEX.md) for a week. If it fails on a specific task, you'll know exactly what the failure mode is — and THAT failure mode is what the graph should be designed to solve. Right now, the graph is a solution looking for a validated problem.
+
+### Strengths
+- Dan is right that SOMETHING is missing — substrate-as-built being inert proves that.
+- Instinct to unify code+discussions has merit for ONE specific use case: traceability ("which ADR drove which file"). Narrow, concrete. Build THAT, not a general graph.
+- The Howie genealogical use case may genuinely need a graph. **That is a real, falsifiable hypothesis. Build it for Howie, see if it earns its keep, then consider backporting.**
+
+
+---
+
+## Turn 7 — facilitator (synthesis)
+*2026-05-13T06:27:26.675281+00:00 | confidence: 0.84*
+*tags: graph-vision-deliberation, convergence:dont-pivot-measure-first, model:opus*
+
+## Request Context
+- **What was requested**: How to manifest the developer's original vision (code-graph + discussion-graph + Karpathy wiki + self-discovery + token reduction) as CONCRETE, MEASURABLE improvements over the prior version.
+- **Files/scope**: Phase 4 substrate as built (manual SPO + vector search); current discovery via grep per pre_build_search.md; capture pipeline as proto-graph in SQLite.
+- **Developer-stated motivation**: Allocate time intelligently between framework follow-up vs starting Howie. Avoid the previous deliberation's pattern of building more before testing what's built.
+- **Explicit constraints**: BRUTAL HONESTY continues. Measurable improvements only. Acknowledge what was NOT built. Acknowledge if gap is too large to close incrementally. Acknowledge if simpler approaches deliver underlying goal more reliably.
+
+## Verdict: Don't pivot. Measure. Try the simplest thing. (confidence 0.84)
+
+5 specialists with different framings converged on the same diagnosis. The convergence is sharper than in either previous deliberation.
+
+## The single most important finding (Independent Analyst, confirmed by 3 others)
+
+**The arc of this entire substrate effort has been ADDITIVE, never SUBTRACTIVE.** Phase 1-3 → graph enthusiasm. Phase 4 → SQLite concession (acknowledged as compromise). Now → back to graph with code+discussions+wiki. **No phase has produced "we tried the simpler thing and it failed."** That is the missing data point. The Karpathy invocation is a tell — when a vision draws authority from a name rather than from measured failure of the simpler alternative, that is the moment to stop and validate the goal.
+
+## What everyone agreed on (5-of-5 specialists)
+
+1. **The substrate architecture is fine.** ADR-0014 explicitly anticipated this gap ("schema is graph-shaped, stored relationally; migration to a real graph DB later is a schema conversion"). The substrate-as-built can host the vision without architectural restart.
+
+2. **The framework template is NOT in the graph-wins regime.**
+   - Discovery corpus today: ~115KB memory + ~87KB ADRs = **~33K tokens total**
+   - Current grep operations: 200-500 tokens per call
+   - Cache hit rate: **1.7M cache tokens vs 500 fresh per review** (~99.97% cache resident)
+   - Graph wins regime: corpus >1MB stable prose + query rate >20 per update + semantic (not keyword) queries. **Howie's Scots Worthies fits this regime; the framework template does not.**
+
+3. **No baseline exists for the metric that matters.** ADR-0013 token-efficiency telemetry just shipped. Run `ingest_token_usage.py` over last 30 discussions FIRST. Without baseline, "measurable improvement" is unfalsifiable.
+
+4. **Behavioral wiring from the previous deliberation is still the prerequisite.** The substrate isn't even reached for yet. Building MORE substrate before agents reach for what exists compounds the wiring problem.
+
+5. **Karpathy's "LLM wiki" is a Gist, not a product.** Community implementations are all demo-grade. No published independent production benchmarks at enterprise scale. Dan's vision is on the FRONTIER — which also means UNPROVEN.
+
+## Where specialists genuinely diverge
+
+**Discussion-graph extraction value**:
+- **Architecture-Consultant + Research Scout**: Discussion extraction is the high-leverage next move IF anything is. The SPO substrate already fits it (no schema change). Reuses everything.
+- **Performance-Analyst**: At current corpus size, extraction cost (~33K tokens for one pass) won't amortize at 3-5 /plan calls per week × 500-2000 token discovery operations.
+- **Independent Analyst**: Even discussion-extraction is premature. Try Repomix or INDEX.md first. If those fail, you'll know what to build.
+
+**Code-graph value**:
+- **Arch**: Sibling table in same SQLite file, IF discussion-extraction earns its keep first. Static import graph only — defer LLM-extraction-heavy variants.
+- **Scout**: Tree-sitter code knowledge graph via MCP (Graphify/code-review-graph pattern) has documented 49x-71x token reduction on specific benchmarks. Demo-grade though.
+- **IA**: This is a solution looking for a validated problem.
+
+**The substrate's current state**:
+- **All 5 agree** the substrate-as-built is INCOMPLETE WIRING, not WRONG ARCHITECTURE.
+- All 5 agree the framework template's discovery corpus is too small for graph approaches to deliver measurable token wins at current scale.
+
+## Five alternatives that have NOT been tried (Independent Analyst)
+
+The team has explored graph variants extensively. These were not seriously evaluated:
+
+1. **Repomix-style flat snapshot** — `repomix .` produces one searchable file. Zero infrastructure. Used by many agentic frameworks. **Cost to try: 10 minutes.**
+2. **Long-context maximalism** — at ~200 files, whole template fits in context. Skip discovery entirely. Token bill is the only cost (which Dan said wasn't the constraint).
+3. **Concept INDEX.md files** — hand-maintain `memory/INDEX.md` per major concept with pointers. The Karpathy wiki Dan actually wants, minus the automation.
+4. **Smart grep with reranking** — one script greps memory/ + discussions/ + docs/, ranks by recency+keyword-density. ~50 lines of Python. No graph, no schema.
+5. **Trust the agent** — give agents Glob+Grep+Read. Modern agents are good at deciding what to read. Stop pre-empting their discovery.
+
+**None of these have been tried.** Each costs <1 day. Each has a measurable failure mode that would justify the next layer of investment.
+
+## What "measurable" actually means
+
+Per ADR-0013 telemetry (now shipped), the metrics that exist:
+- `tokens_in_discovery`: pre_build_search grep+read operations
+- `tokens_out_discovery`: agent reasoning over the result
+- Cache vs fresh token ratio
+- Discovery completeness: did the agent find the right context? (requires blind eval)
+- Discovery latency: wall-clock seconds to first relevant result
+
+**The honest experiment design** (Performance Analyst):
+1. **Baseline** (2 hours): Run one /plan + one /build_module with ADR-0013 telemetry. Extract discovery-specific token slice.
+2. **Alternative**: Run the SAME tasks with one of the five untested alternatives above.
+3. **Compare**: token cost, completeness, latency.
+4. **If alternative wins or ties**: don't build the substrate-discovery layer.
+5. **If alternative fails on a specific dimension**: design the substrate-discovery layer to address THAT specific failure.
+
+## What "the vision" actually decomposes into
+
+Specialists separated the vision's 4 conflated ideas:
+
+| Vision component | Reality |
+|---|---|
+| Code-graph for discovery | Demo-grade in production; framework template too small to benefit. **Possibly relevant for Howie** if Scots Worthies analysis needs structural relationships. |
+| Discussion-graph for discovery | More mature in industry (GraphRAG). Fits existing substrate. **High-leverage IF the corpus grows past 1MB**. Not there yet. |
+| Karpathy wiki concept | HUMAN-curated documentation optimized for LLM ingestion. Dan is invoking it as AUTOMATIC extraction. **These are opposite directions of authorship.** A hand-maintained INDEX.md would BE the Karpathy concept faithfully. |
+| Self-discovery | Mostly rhetoric. Mechanically, "self-discovery" is pre-indexed traversal vs grep. The actual win is narrow: a deterministic query that replaces an exploratory file read. |
+
+## The honest recommendation
+
+**Do this, in this order:**
+
+### Phase A (1-2 hours): Establish the baseline
+1. Run `ingest_token_usage.py` over the last 30 closed discussions
+2. Identify discovery-specific token cost as a fraction of total
+3. **If discovery is <5% of total**, the graph vision is solving the wrong problem. Move to Phase B.
+4. **If discovery is >20% of total**, there's a real problem worth investigating. Move to Phase C.
+
+### Phase B (1 week, if discovery is small): Address the actual constraint
+The previous deliberation's finding stands: **the substrate has no behavioral wiring.** That's the bottleneck. Fix that. Then start Howie.
+
+### Phase C (1-2 weeks, if discovery is large): Try the simplest thing first
+1. Try `repomix .` + grep. Measure tokens-per-task.
+2. Try hand-curated `memory/INDEX.md` per concept. Measure.
+3. Try `find_relevant_context(task)` MCP tool wrapping existing SQLite tables (docs-knowledge's "Small" option, ~half day). Measure.
+4. **Only if all three fail in a specific, named way**, build the substrate-discovery layer.
+
+### Phase D (deferred): The vision, if it survives Phases A-C
+Discussion-extraction via BAML/DSPy → search_semantic over assertions → static import graph in sibling `code_edges` table → graph-traversal MCP tool.
+
+## What this means for Howie
+
+**Two specialists** (Architecture + Performance) noted: **Howie's Scots Worthies use case IS plausibly in the graph-wins regime.** ~600KB-1.2MB of stable historical prose, genealogical relationships that are genuinely graph-shaped, queries that are semantic ("who were Howie's contemporaries during the Killing Time").
+
+**The Independent Analyst's strongest claim**: Build the graph FOR HOWIE FIRST, see if it earns its keep there, then consider backporting to the framework template. The framework template's discovery corpus may simply not justify it.
+
+## Connection to the previous deliberation
+
+The previous /deliberate found: **the substrate has no behavioral wiring**. This /deliberate finds: **the vision the developer NOW articulates may not actually be the right next move regardless.** Both deliberations point in the same direction: **stop building, start measuring and validating.**
+
+## Specialist agreement summary
+
+All 5 specialists agreed:
+1. Don't pivot the substrate architecture
+2. Measure baseline before building more
+3. Framework template is not in the graph-wins regime; Howie may be
+4. The arc is additive — try subtraction
+5. Behavioral wiring (from previous deliberation) is more urgent than new architecture
+
+Architecture-Consultant explicitly said the substrate's ADR-0014 stack rejection still holds.
+Performance-Analyst delivered the killer measured data: cache utilization is 99.97% — discovery is not a hot-path problem at this scale.
+Research Scout: Karpathy wiki is a Gist, not a product; no production combines wiki+code-graph+discussion-graph.
+Docs-Knowledge: bottleneck is keyword selection, not traversal.
+Independent Analyst: the arc has never produced "the simpler thing failed."
+
+This is unusually unified.
+
+## What I would say to Dan in one sentence
+
+**The substrate is fine; the simpler alternatives have never been tried; measure before building; the vision belongs in Howie, not the framework template.**
+
+
+---
