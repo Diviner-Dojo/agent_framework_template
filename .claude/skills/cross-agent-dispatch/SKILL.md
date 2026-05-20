@@ -1,3 +1,8 @@
+---
+name: cross-agent-dispatch
+description: Protocol for any specialist to request the facilitator dispatch a different agent. Use during multi-agent reviews or builds when a specialist needs another agent's expertise, or when capturing dispatch-request / dispatch-decision events. For multi-instance splits of the same agent, see the multi-instance-dispatch skill instead.
+---
+
 # Cross-Agent Dispatch Protocol
 
 > Enables any specialist to request the facilitator dispatch another agent when domain expertise
@@ -75,7 +80,7 @@ These are established cross-agent collaboration patterns. The facilitator should
 
 ## What This Protocol Does NOT Cover
 
-- **Multi-instance splits**: Covered by `multi_instance_protocol.md`. Splits are an agent requesting copies of itself; dispatch requests are an agent requesting a *different* agent.
+- **Multi-instance splits**: Covered by the `multi-instance-dispatch` skill. Splits are an agent requesting copies of itself; dispatch requests are an agent requesting a *different* agent.
 - **Standard facilitator dispatch**: The facilitator's normal specialist assembly during reviews and builds is not a "dispatch request" — it's the facilitator's core responsibility. This protocol covers agent-initiated requests only.
 - **Model tier overrides**: The facilitator's ability to dispatch agents at higher model tiers is independent of this protocol and documented in the facilitator agent definition.
 

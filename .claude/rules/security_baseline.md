@@ -1,3 +1,9 @@
+---
+paths:
+  - "src/**"
+  - "scripts/**"
+---
+
 # Security Baseline
 
 ## Input Validation

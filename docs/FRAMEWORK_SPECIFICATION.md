@@ -1010,37 +1010,40 @@ When you build your first module with `/build_module`, the framework will guide 
 - Error handling documentation
 - Hook documentation
 
-### Rule Files (Auto-Loaded)
+### Rule Files
 
-All agents inherit 13 rule files from [`.claude/rules/`](../.claude/rules/):
+Per ADR-0016 (progressive disclosure), only **4 rule files** reach context: `autonomous_workflow.md` is always-loaded; the other three are **path-scoped** (`paths:` frontmatter) and load only when matching files are touched. The remaining standards were relocated to on-demand skills (see below).
 
-| File | Scope |
-|------|-------|
-| [`autonomous_workflow.md`](../.claude/rules/autonomous_workflow.md) | Mandatory workflow sequencing for code changes |
-| [`build_review_protocol.md`](../.claude/rules/build_review_protocol.md) | Mid-build checkpoint reviews, Principle #4 enforcement |
-| [`coding_standards.md`](../.claude/rules/coding_standards.md) | Python conventions, naming, structure |
-| [`commit_protocol.md`](../.claude/rules/commit_protocol.md) | Quality gate → review → education gate → commit |
-| [`cross_agent_dispatch_protocol.md`](../.claude/rules/cross_agent_dispatch_protocol.md) | Cross-agent collaboration, dispatch-request/decision capture |
-| [`documentation_policy.md`](../.claude/rules/documentation_policy.md) | What, where, and how to document |
-| [`framework_doc_sync.md`](../.claude/rules/framework_doc_sync.md) | Documentation artifact sync points for framework changes |
-| [`micro_fix_protocol.md`](../.claude/rules/micro_fix_protocol.md) | Cosmetic change sizing heuristic and two-strike escalation |
-| [`multi_instance_protocol.md`](../.claude/rules/multi_instance_protocol.md) | Parallel agent instance splits, facilitator approval |
-| [`pre_build_search.md`](../.claude/rules/pre_build_search.md) | Prior art lookup before implementation (v3.4) |
-| [`review_gates.md`](../.claude/rules/review_gates.md) | Quality thresholds, architectural gates, education gates |
-| [`security_baseline.md`](../.claude/rules/security_baseline.md) | Input validation, DB security, secrets management, API security |
-| [`testing_requirements.md`](../.claude/rules/testing_requirements.md) | Coverage, quality, isolation, organization, markers |
+| File | Load | Scope |
+|------|------|-------|
+| [`autonomous_workflow.md`](../.claude/rules/autonomous_workflow.md) | always | Workflow sequencing + the ~95% confidence gate |
+| [`coding_standards.md`](../.claude/rules/coding_standards.md) | path-scoped `**/*.py` | Python conventions, naming, structure |
+| [`security_baseline.md`](../.claude/rules/security_baseline.md) | path-scoped `src/**`, `scripts/**` | Input validation, DB security, secrets, API security |
+| [`testing_requirements.md`](../.claude/rules/testing_requirements.md) | path-scoped `tests/**` | Coverage, quality, isolation, organization, markers |
 
 ### Skill Reference Documents
 
-5 reference playbooks in [`.claude/skills/`](../.claude/skills/):
+**17 on-demand skills** in [`.claude/skills/`](../.claude/skills/) — loaded by description match, not always-resident. 6 reference playbooks plus 11 protocol skills relocated from `.claude/rules/` per ADR-0016:
 
-| Skill | File | Scope |
-|-------|------|-------|
-| ADR Writing | [`.claude/skills/adr-writing/SKILL.md`](../.claude/skills/adr-writing/SKILL.md) | Quality criteria, lifecycle, common mistakes |
-| Performance Playbook | [`.claude/skills/performance-playbook/SKILL.md`](../.claude/skills/performance-playbook/SKILL.md) | Complexity assessment, async patterns, N+1 detection |
-| Python Project Patterns | [`.claude/skills/python-project-patterns/SKILL.md`](../.claude/skills/python-project-patterns/SKILL.md) | App factory, lifespan, DI, Pydantic separation |
-| Security Checklist | [`.claude/skills/security-checklist/SKILL.md`](../.claude/skills/security-checklist/SKILL.md) | Structured checklist for security reviews |
-| Testing Playbook | [`.claude/skills/testing-playbook/SKILL.md`](../.claude/skills/testing-playbook/SKILL.md) | pytest patterns, parametrize, edge cases |
+| Skill | Scope |
+|-------|-------|
+| adr-writing | ADR quality criteria, lifecycle, common mistakes |
+| performance-playbook | Complexity assessment, async patterns, N+1 detection |
+| python-project-patterns | App factory, lifespan, DI, Pydantic separation, AppError hierarchy |
+| security-checklist | Structured checklist for security reviews |
+| testing-playbook | pytest patterns, parametrize, edge cases |
+| feature-status-registry | Feature-status tracking for derived projects |
+| recovering-from-failures | 8 failure classes + recovery *(was failure_taxonomy)* |
+| notifying-the-developer | ntfy push + AFK ask protocol *(was notification_protocol)* |
+| selecting-review-gates | Risk tiers, specialist selection, advisory lifecycle *(was review_gates)* |
+| running-build-checkpoints | Mid-build checkpoint protocol *(was build_review_protocol)* |
+| searching-prior-art | Prior-art lookup before building *(was pre_build_search)* |
+| committing-changes | Commit protocol *(was commit_protocol)* |
+| documenting-decisions | Documentation policy *(was documentation_policy)* |
+| syncing-framework-docs | Doc sync points for framework changes *(was framework_doc_sync)* |
+| cross-agent-dispatch | Cross-agent dispatch requests *(was cross_agent_dispatch_protocol)* |
+| multi-instance-dispatch | Parallel instance splits *(was multi_instance_protocol)* |
+| handling-micro-fixes | Cosmetic-change sizing + two-strike escalation *(was micro_fix_protocol)* |
 
 ### Session State
 
@@ -1067,12 +1070,12 @@ All agents inherit 13 rule files from [`.claude/rules/`](../.claude/rules/):
 | Structured exception hierarchy (pattern documented) | See coding standards + error handling in CLAUDE.md | Add to `src/` when building your app |
 | LLM-gated test markers | `pyproject.toml` marker registration | `--run-llm`, `--run-slow` |
 | Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 77 patterns tracked |
-| 5 skill reference documents | `.claude/skills/*/SKILL.md` | Security, performance, testing, patterns, ADR |
-| 13 auto-loaded rule files | `.claude/rules/*.md` | Coding, commit, docs, review, security, testing, build review, autonomous workflow, cross-agent dispatch, multi-instance, framework doc sync, micro-fix protocol, pre-build search |
+| 17 on-demand skills | `.claude/skills/*/SKILL.md` | 6 reference playbooks + 11 protocol skills relocated from rules (ADR-0016) |
+| 4 context-loaded rule files | `.claude/rules/*.md` | autonomous_workflow (always) + coding/testing/security (path-scoped) per ADR-0016 |
 | 6 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review, project profile |
 | Steward agent + lineage tracking | `.claude/agents/steward.md`, `scripts/lineage/`, `framework-lineage.yaml`, `.claude/custodian/` | ADR-0002 accepted, Phase 1 operational |
 | UX evaluator agent | `.claude/agents/ux-evaluator.md` | Interaction flow, accessibility, platform conventions |
-| Build review protocol | `.claude/rules/build_review_protocol.md` | Mid-build checkpoint reviews, Principle #4 |
+| Build review protocol | `.claude/skills/running-build-checkpoints/SKILL.md` | Mid-build checkpoint reviews, Principle #4 |
 | 4 new commands (batch-evaluate, knowledge-health, lineage, ship) | `.claude/commands/*.md` | Lineage, release, knowledge pipeline, adoption evaluation |
 | Lineage test suite | `tests/test_lineage.py` | Manifest parsing, drift detection |
 | Education gate workflow | `.claude/commands/walkthrough.md`, `.claude/commands/quiz.md` | Generated per-session by educator agent |
@@ -1339,27 +1342,20 @@ agent_framework_template/
 │   ├── custodian/                     # Steward lineage tracking
 │   │   └── lineage-events.jsonl      #   Append-only lineage event log
 │   │
-│   ├── rules/                         # 13 auto-loaded rule files
-│   │   ├── autonomous_workflow.md    #   Mandatory workflow sequencing
-│   │   ├── build_review_protocol.md  #   Mid-build checkpoint reviews
-│   │   ├── coding_standards.md
-│   │   ├── commit_protocol.md
-│   │   ├── cross_agent_dispatch_protocol.md
-│   │   ├── documentation_policy.md
-│   │   ├── framework_doc_sync.md
-│   │   ├── micro_fix_protocol.md
-│   │   ├── multi_instance_protocol.md
-│   │   ├── pre_build_search.md       #   Prior art lookup (v3.4)
-│   │   ├── review_gates.md
-│   │   ├── security_baseline.md
-│   │   └── testing_requirements.md
+│   ├── rules/                         # 4 context-loaded rule files (ADR-0016)
+│   │   ├── autonomous_workflow.md    #   Always-loaded: workflow sequencing + 95% gate
+│   │   ├── coding_standards.md       #   path-scoped **/*.py
+│   │   ├── security_baseline.md      #   path-scoped src/**, scripts/**
+│   │   └── testing_requirements.md   #   path-scoped tests/**
 │   │
-│   └── skills/                        # 5 reference playbooks
+│   └── skills/                        # 17 on-demand skills (6 playbooks + 11 relocated protocols, ADR-0016)
 │       ├── adr-writing/SKILL.md
 │       ├── performance-playbook/SKILL.md
 │       ├── python-project-patterns/SKILL.md
 │       ├── security-checklist/SKILL.md
-│       └── testing-playbook/SKILL.md
+│       ├── testing-playbook/SKILL.md
+│       ├── feature-status-registry/SKILL.md
+│       └── ...11 protocol skills (recovering-from-failures, selecting-review-gates, … ; see §14)
 │
 ├── docs/
 │   ├── FRAMEWORK_SPECIFICATION.md     # THIS DOCUMENT

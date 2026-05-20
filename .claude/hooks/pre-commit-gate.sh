@@ -111,7 +111,7 @@ if [[ "$HAS_CODE_FILES" == "true" ]]; then
 
 6. REVIEW REMINDER:
    Code files (src/ or tests/) are staged but no review report exists for today.
-   Consider running /review before committing (per commit_protocol.md)."
+   Consider running /review before committing (per the committing-changes skill)."
     fi
 fi
 

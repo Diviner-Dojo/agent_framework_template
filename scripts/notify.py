@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from urllib.error import URLError
@@ -36,6 +37,15 @@ logger = logging.getLogger(__name__)
 
 # Load .env if python-dotenv is not available — manual parse
 _ENV_FILE = Path(__file__).parent.parent / ".env"
+
+# Topic must be ntfy-compatible: ASCII alphanumerics with `_-` separators, 1-64 chars.
+# This rejects path traversal, URL escapes, host injection, and credential-in-URL
+# patterns (e.g. "topic@evil.com", "../admin", "topic?x=1").
+_TOPIC_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+# Server must be a plain http/https URL. Validated against scheme prefix only —
+# downstream urlopen handles the rest. The check exists to refuse javascript:,
+# file:, data:, and any non-network scheme.
+_ALLOWED_SCHEMES = ("https://", "http://")
 
 
 def _load_env() -> None:
@@ -62,6 +72,32 @@ def _load_env() -> None:
 _load_env()
 
 DEFAULT_SERVER = "https://ntfy.sh"
+
+
+def validate_topic(topic: str) -> str | None:
+    """Return an error message if the topic is invalid, or None if it passes.
+
+    A valid topic is 1-64 ASCII alphanumerics with `_-` separators. This rejects
+    path traversal, URL-escape, host-injection, and credential-in-URL patterns
+    before the value is interpolated into the ntfy URL.
+    """
+    if not topic:
+        return "topic is empty"
+    if not _TOPIC_PATTERN.match(topic):
+        return (
+            f"topic contains invalid characters or is too long; "
+            f"must match {_TOPIC_PATTERN.pattern}"
+        )
+    return None
+
+
+def validate_server(server: str) -> str | None:
+    """Return an error message if the server URL is invalid, or None if it passes."""
+    if not server:
+        return "server is empty"
+    if not server.startswith(_ALLOWED_SCHEMES):
+        return f"server must start with one of {_ALLOWED_SCHEMES}"
+    return None
 
 
 def send_notification(
@@ -95,6 +131,16 @@ def send_notification(
 
     if not topic:
         logger.debug("NTFY_TOPIC not set — skipping notification")
+        return False
+
+    topic_err = validate_topic(topic)
+    if topic_err:
+        logger.warning("Invalid NTFY_TOPIC — refusing to send: %s", topic_err)
+        return False
+
+    server_err = validate_server(server)
+    if server_err:
+        logger.warning("Invalid NTFY_SERVER — refusing to send: %s", server_err)
         return False
 
     url = f"{server.rstrip('/')}/{topic}"

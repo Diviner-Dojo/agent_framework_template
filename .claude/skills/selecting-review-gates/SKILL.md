@@ -1,3 +1,8 @@
+---
+name: selecting-review-gates
+description: Risk tiers (low/medium/high/critical), the specialist-selection matrix, minimum quality thresholds, and the advisory-finding lifecycle. Use when running /review, /ship, or /retro to assess change risk, pick the specialist panel, set the collaboration mode, or track and escalate advisory findings.
+---
+
 # Review Gates
 
 ## Minimum Quality Thresholds

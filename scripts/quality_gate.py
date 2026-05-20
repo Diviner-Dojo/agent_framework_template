@@ -1,7 +1,7 @@
 """Run all quality checks defined in the framework's rules files.
 
 Converts the documented standards from .claude/rules/ (coding_standards.md,
-testing_requirements.md, review_gates.md) into executable validation.
+testing_requirements.md) and the selecting-review-gates skill into executable validation.
 
 Usage:
     python scripts/quality_gate.py            # run all checks

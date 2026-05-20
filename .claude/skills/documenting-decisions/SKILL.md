@@ -1,3 +1,8 @@
+---
+name: documenting-decisions
+description: Documentation policy — what must be documented and where (ADRs, reviews, discussions, promoted memory), the ADR scope classification (framework/project/hybrid), cross-project propagation, and CLAUDE.md maintenance triggers. Use when creating ADRs or reviews, or deciding where documentation belongs. Cross-refs the selecting-review-gates and syncing-framework-docs skills.
+---
+
 # Documentation Policy
 
 ## What Must Be Documented

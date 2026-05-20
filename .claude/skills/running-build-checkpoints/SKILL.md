@@ -1,3 +1,8 @@
+---
+name: running-build-checkpoints
+description: Mid-build checkpoint review protocol for /build_module — trigger categories, the 2-specialist dispatch rule, the 2-iteration cap, and REVISE reflections. Use during /build_module after generating code for a task, to decide whether a checkpoint review fires and which two specialists to dispatch.
+---
+
 # Build Review Protocol
 
 Enforces Principle #4 (independence prevents confirmation loops) within `/build_module` execution.

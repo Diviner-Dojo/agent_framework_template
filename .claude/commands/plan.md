@@ -16,6 +16,7 @@ These rules are pass/fail. Violating any of them is a workflow failure.
 2. **NEVER continue on failure**: If any step fails (script error, agent dispatch failure), HALT immediately. Present the error and ask the user how to proceed. Do NOT silently continue.
 3. **NEVER synthesize before all specialists report**: Wait for ALL dispatched specialists to return before writing the synthesis. Premature synthesis misses findings.
 4. **ALWAYS close the discussion**: Every planning session MUST end with `scripts/close_discussion.py`, even if abandoned. Unclosed discussions corrupt the capture stack.
+5. **Confidence gate before building**: A spec is not approved for `/build_module` until intent and scope are ~95% clear. If material ambiguity remains, list your assumptions explicitly and ask the developer (in-conversation `AskUserQuestion`, or the `notifying-the-developer` skill if AFK) rather than proceeding on a guess — wrong-path implementation costs far more than a clarifying question. The developer may explicitly override to accept the risk. (Implements the CLAUDE.md Workflow Sequencing confidence gate.)
 
 ## Pre-Flight Checks
 

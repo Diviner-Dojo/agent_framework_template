@@ -1,3 +1,8 @@
+---
+name: multi-instance-dispatch
+description: Protocol for dispatching one specialist as multiple parallel instances. Use when the facilitator evaluates a specialist's split_request, or to apply independent-perspective's 4 instance types (Independent Analyst, Team Observer, Research Scout, Process Critic). Max 3 instances per agent per review.
+---
+
 # Multi-Instance Protocol
 
 ## Principle
