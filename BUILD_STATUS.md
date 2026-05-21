@@ -1,67 +1,40 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-05-16 evening (PR #7 merged; Phase 0 education gate complete; post-merge triage commits stacked on chore/post-merge-triage; Phase 1 deferred per Track B finding; awaiting push)
+> Last updated: 2026-05-20 (token-efficiency restructure executed; awaiting commit-gate GO/HOLD via ntfy)
 
 ## Current Task
 
-**Status:** Closure pass on the post-merge triage. 6 commits stacked on `chore/post-merge-triage` (not pushed; not yet a PR). Phase 1 spec frontmatter flipped to `status: deferred` with a documented `deferred_reason` naming Howie as the intended real driver. Working tree should now be clean except for the auto-appending `metrics/quality_gate_log.jsonl`.
+**Token-efficiency restructure (ADR-0016) — executed, quality-gate-clean, awaiting commit gate.**
 
-## Today's history
+Branch: `chore/template-version-bump-3.5`. Plan file: `~/.claude/plans/i-think-my-claude-md-jazzy-manatee.md` (the authoritative spec for this work). Ratifying deliberation: `DISC-20260520-161826-efficiency-ledger-ratification` (panel ratified, no dissent).
 
-**PR #7 merged** (`35d4fab` on main). Contains Phase 0 + spawn fix + Path 4 (Prime Objective / ADR-0015) + docs sync + BUILD_STATUS chore. ADR-0015 propagation entry pushed to `~/.claude/shared-memory/` at `c9ae948`.
+**Done this session:**
+- **CLAUDE.md**: 432 → 106 lines (~8.9K → ~3K tok). Added Always-On Invariants, Workflow Sequencing (incl. the ~95% confidence gate), a keyword-rich Rules Index, and docs/ pointers. Version bumped v3.4 → v3.5 (sync with pyproject).
+- **Always-loaded footprint**: ~22K → ~3.8K tokens/turn (~83% cut); re-paid per specialist dispatch, so the real saving is larger.
+- **Rules relocated**: `autonomous_workflow` kept always-loaded; `coding_standards`/`testing_requirements`/`security_baseline` **path-scoped** (`paths:` frontmatter); the other **11 rules → on-demand skills** under `.claude/skills/` (recovering-from-failures, notifying-the-developer, cross-agent-dispatch, multi-instance-dispatch, syncing-framework-docs, handling-micro-fixes, selecting-review-gates, searching-prior-art, running-build-checkpoints, committing-changes, documenting-decisions). NOTE: `commit_protocol` + `documentation_policy` were "CUT" in the ledger but conservatively converted to skills (no content loss) — flagged for /review.
+- **docs/ created** (homes for content cut from CLAUDE.md): AGENT_ARCHITECTURE.md, CAPTURE_PIPELINE.md, HOOKS.md.
+- **Confidence gate (Phase 2)**: always-on invariant in CLAUDE.md + formal Confidence Check in `/plan` (rule #5) and `/build_module` (build-start). Override + micro-fix exemptions included.
+- **14 stale references repointed** to skills (build_module, ship, autonomous_workflow, facilitator, 2 skills, pre-commit-gate.sh). The functional break (build_module pre-flight existence check) is fixed.
+- **ADR-0016** written (`scope: framework`, refs the DISC id).
+- **Quality gate: 6/6 PASS** (formatting, lint, tests, coverage, ADRs, regression ledger; review-existence skipped pending /review).
 
-**Phase 0 education gate**: COMPLETE. Session EDU-20260516-phase0 recorded 4/4 passing in `education_results` SQLite table:
-- Apply / change-impact (swallow-and-warn trade-off applied to Phase 1 hypothetical) — 1.0
-- Analyze / debug-scenario (canary contract enforcement layers; weakening attack) — 1.0
-- Apply / change-impact (C4-a applied to novel schema-extension PR) — 1.0
-- Evaluate / change-impact (verification before trust + long-tail trustworthiness, with two distinct failure modes + meta-thinking on test infrastructure) — 1.0
-All four answers extended beyond the walkthrough. Walkthrough lives at `docs/walkthroughs/PHASE-0-promotion-pipeline-walkthrough.md`.
+**Status (2026-05-20, updated):** Developer replied GO. `/review` ran (REV-20260520-175237, APPROVE-WITH-CHANGES; blocking FRAMEWORK_SPECIFICATION corpus-drift finding fixed). Committed **1c4fe0c** to the branch (NOT pushed). Close-out done: FRAMEWORK_CHANGELOG propagation entry, adoption-log capture of the 7 Phase 0a candidates (+counts), FRAMEWORK_SPECIFICATION link fixes; validation passed (all 17 skills have valid frontmatter; 3 path-scoped rules' globs correct; tree clean of stale refs). Validation fidelity note: config correctness + the live skill-index were verified; the harness's *runtime* deferral of path-scoped rules / on-demand skill bodies is per Anthropic spec but not directly observable in one session — Phase 5 will exercise it. **Next: developer to choose push/PR vs Phase 5 (Howie co-migration first).** Won't-fix: upgrade-prompt doc paths (historical migration guide, like an ADR).
 
-**Note on a near-miss**: my final BUILD_STATUS commit `91583b0` (which recorded the gate completion) was pushed to the feature branch but orphaned — the user merged PR #7 at `cf3d7da` before `91583b0` landed. The education results are in the SQLite table (where they belong); only the BUILD_STATUS prose was lost. This file is the prose restoration.
+## Pending follow-on (approved, not yet executed)
+- **Phase 3**: tooling hygiene — verify/disable the `sqlite` MCP (confirm no dependents first); de-dupe the 8× pre-flight Python block into `scripts/preflight.py`.
+- **Phase 4**: offload deterministic in-context work to CLI/hooks (ADR supersession graph, adoption rule-of-three counter, coverage-gap report, spec-status, frontmatter validation).
+- **Phase 5**: co-migrate howie / agentic_journal / VerificationPortal (content-analysis FIRST, preserve their domain rules/agents).
+- **Phase 6**: `scripts/route.py` deterministic dispatch routing (sole authority; via /plan + /review). Structural win (ends risk→specialist table triplication), modest token win.
+- **Phase 7**: `/retro` non-destructive consolidate cadence.
+- **ADR-0016 follow-ups**: update `docs/FRAMEWORK_SPECIFICATION.md` (rule count 15→4 always-loaded + skills count) + presentations via the `syncing-framework-docs` skill; add an entry to `~/.claude/shared-memory/FRAMEWORK_CHANGELOG.md`; log the Phase 0a adoption candidates to `memory/lessons/adoption-log.md`.
 
-## Post-merge triage commits (this branch)
+## Carried-forward architectural debt (from prior sessions)
+- arch-F2 `/promote --list-promoted`; arch-F3 canary contract enforceability; arch-F5 swallow-and-warn ADR; confabulation/dispatch-grounding fix (DISC-20260516-062518); quality_gate `_parse_regression_ledger` table-distinction refactor; presentation slide 3 Prime Objective element.
 
-Stacked on `chore/post-merge-triage`, not pushed:
+## Previous Session (2026-05-16)
 
-- `31e2f4c` chore: post-merge triage — sealed discussions + Phase 1 spec + worktree gitignore (Cat A + Cat F)
-- `00bc18c` feat: /conversation command for cross-project messaging via shared-memory (B1)
-- `3cf288a` feat: /status command + git_visualize interactive repo map (B2: 3 files)
-- `3f37fd6` feat: efficiency_report CLI consumer of ADR-0013 telemetry (B3)
-- `4964edd` docs: derived-project telemetry prompt (cross-instance usage survey) (C2)
-- `<next>` chore: snapshot in-flight adoption-brief research (Cat D)
-- `<this>` chore: defer Phase 1 + BUILD_STATUS reflecting full triage closure
-
-**Discards** (untracked → removed from disk; not commits):
-- `docs/copilot-adaptation-guide.md` (B4 — was for the developer's work-side-effort; not for this framework)
-- `SESSION-2026-05-16-narrative.md` (C1 — session artifact, moment passed)
-- `docs/dispatches/phase1-handoff.md` (C3 — obsolete; the research it pointed to landed)
-- `docs/plans/phase-1-kickoff-prompt.md` (C4 — superseded by the approved SPEC-20260516-045622, now deferred)
-
-## Phase 1 deferred
-
-`SPEC-20260516-045622` flipped to `status: deferred`. Rationale captured in the spec's `deferred_reason` field. Short version: Track B baseline showed cost-reduction rationale is structurally weak; quality-grounds reframe is speculative; build Phase 1 when a real consumer (Howie) drives genuine demand.
-
-## Outstanding open items (not in this triage)
-
-- **Push `chore/post-merge-triage` and open PR** — developer action. Single PR for the 7 commits is reasonable.
-- **Local cleanup after merge**: `git checkout main && git pull && git branch -d chore/post-merge-triage`.
-- **Architectural debt carried forward** (from REV-20260515-221223, surfaced earlier in the session):
-  - arch-F2: `/promote --list-promoted` affordance
-  - arch-F3: canary contract enforceability — content-hash or CODEOWNERS-style required reviewer for weakening
-  - arch-F5: swallow-and-warn pattern needs future ADR distinguishing "non-fatal but must surface in metrics" from "truly non-fatal"
-  - Confabulation problem (from DISC-20260516-062518): specialists misrepresenting framework-wide claims due to single-instance reasoning; needs dispatch-time grounding fix
-  - Anthropic-as-threat limit (acknowledged in CLAUDE.md and PHILOSOPHY.md; framework cannot enforce against model-provider policy changes)
-  - quality_gate.py's `_parse_regression_ledger` doesn't distinguish "Fixed Bug" vs "Known-Broken Approaches" tables — flagged inline; refactor pending
-- **Presentation slide 3 in `docs/diviner-dojo-framework-presentation.html`** needs a new HTML element above the principle list for the Prime Objective (Track C STRUCTURAL change deferred to focused presentation update).
-
-## Open questions / next-major-decision
-
-After the triage PR merges, the substantive next decision is what to do *instead* of Phase 1. Options the user has named:
-- Spawn Howie (`/spawn-project howie`) and start the first research arc
-- Continue the adoption-brief research arc (docs/analysis/SYNTHESIS-v4 → toward a deliberation)
-- Something else from the developer's roadmap
+**PR #7 merged** (`35d4fab` on main): Phase 0 + spawn fix + Path 4 (Prime Objective / ADR-0015) + docs sync. ADR-0015 propagation pushed to `~/.claude/shared-memory/` at `c9ae948`. **Phase 0 education gate COMPLETE** (EDU-20260516-phase0, 4/4 in `education_results`). Post-merge triage: 6 commits stacked on `chore/post-merge-triage` (B1 /conversation, B2 /status, B3 efficiency_report, C2 telemetry prompt, Cat D adoption-brief snapshot, defer-Phase-1). **Phase 1 deferred** (`SPEC-20260516-045622` → `status: deferred`; rationale: cost-reduction rationale structurally weak, build when Howie drives real demand). Discards: copilot-adaptation-guide, session narrative, phase1-handoff, phase-1-kickoff-prompt. Open then: push triage branch + open PR; local cleanup after merge.
 
 ## Previous Session (2026-05-15)
-
-(See git history `cf3d7da` and earlier for the previous session's BUILD_STATUS content. Phase 0 build + review + commit narrative.)
+(See git history `cf3d7da` and earlier — Phase 0 build + review + commit narrative.)

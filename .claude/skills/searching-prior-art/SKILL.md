@@ -1,3 +1,8 @@
+---
+name: searching-prior-art
+description: Grep-before-you-build checklist for finding existing solution paths, known-broken approaches, ADRs, and promoted patterns before implementing. Use during /plan (prior-art lookup) and /build_module (pre-build enrichment), or whenever deciding how to implement something new.
+---
+
 # Pre-Build Search: Grep Before You Build
 
 > Before building something new, check if a solution path already exists in the knowledge base.

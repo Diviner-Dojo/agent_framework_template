@@ -214,6 +214,9 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
       <span class="badge badge-accent anim-fade-up-d1">Practical Guide</span>
       <h1 class="anim-fade-up-d2">How to Use the<br>Agentic Development Framework</h1>
       <p class="subtitle anim-fade-up-d3">A step-by-step walkthrough of the commands,<br>workflows, and daily patterns that make it work.</p>
+      <div class="card anim-fade-up-d4" style="max-width:660px; margin:20px auto 0; border-left:3px solid var(--gold); text-align:left;">
+        <p style="font-size:13px; color:var(--text-secondary); margin:0;"><span style="color:var(--gold); font-weight:600;">&#9888; Evolving rapidly &mdash; much is proof-of-concept.</span> This framework changes frequently. Several capabilities are POC and will shift (the sourced-assertion memory substrate, lineage tracking, the progressive-disclosure restructure, deterministic routing). Pin a version if you need stability; expect the rest to move.</p>
+      </div>
       <div style="margin-top: 24px;" class="anim-fade-up-d4">
         <span class="keyboard-hint">
           Navigate: <span class="key-badge">&#8592;</span> <span class="key-badge">&#8594;</span> arrow keys
@@ -311,7 +314,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           </div>
           <div class="card" style="margin-bottom:12px;">
             <h3>What You Get</h3>
-            <p style="margin-top:6px;">The full framework infrastructure: 12 agents, 17 commands, 7 hooks, and the four-layer capture stack. Add your application code to <code style="color:var(--green);">src/</code> and start building.</p>
+            <p style="margin-top:6px;">The full framework infrastructure: 12 agents, 17 commands, 17 on-demand skills, 7 hooks, and the four-layer capture stack. Add your application code to <code style="color:var(--green);">src/</code> and start building.</p>
           </div>
           <div class="card" style="border-left: 3px solid var(--gold);">
             <h3>For Existing Projects</h3>
@@ -832,8 +835,51 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 14: GET STARTED ==================== -->
+  <!-- ==================== SLIDE 14: GETTING THE MOST OUT OF IT ==================== -->
   <div class="slide" data-slide="14">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Avoid These Traps</p>
+      <h2 class="anim-fade-up-d1">Getting the Most Out of It</h2>
+      <p class="subtitle anim-fade-up-d2">The most common mistake is treating this like vanilla Claude Code &mdash; typing &ldquo;build X&rdquo; and accepting the first answer. Then you pay for a framework you&rsquo;re not using. <strong style="color:var(--text-primary);">The commands <em>are</em> the framework.</strong></p>
+      <div class="card-grid cols-2 anim-fade-up-d3" style="gap:12px;">
+        <div class="card" style="padding:16px; border-left:3px solid var(--red);">
+          <h3 style="font-size:14px;">Skipping the commands</h3>
+          <p style="margin-top:6px;">If you don&rsquo;t invoke them, none of the capture, independent review, or education value fires. Use <code style="color:var(--green);">/plan</code> &rarr; <code style="color:var(--green);">/build_module</code> &rarr; <code style="color:var(--blue);">/review</code>.</p>
+        </div>
+        <div class="card" style="padding:16px; border-left:3px solid var(--red);">
+          <h3 style="font-size:14px;">Committing code you didn&rsquo;t <code style="color:var(--blue);">/review</code></h3>
+          <p style="margin-top:6px;">Never. The agent that wrote the code can&rsquo;t objectively judge it &mdash; independent review is the whole point (Principle #4).</p>
+        </div>
+        <div class="card" style="padding:16px; border-left:3px solid var(--gold);">
+          <h3 style="font-size:14px;">Treating the <em>code</em> as the deliverable</h3>
+          <p style="margin-top:6px;">The durable asset is the <strong style="color:var(--text-primary);">reasoning</strong> in <code>discussions/</code>. In three months, the <em>why</em> is what saves you &mdash; not the diff.</p>
+        </div>
+        <div class="card" style="padding:16px; border-left:3px solid var(--gold);">
+          <h3 style="font-size:14px;">Convening a panel for a typo</h3>
+          <p style="margin-top:6px;">Match ceremony to risk. Micro-fixes skip <code style="color:var(--green);">/plan</code> and <code style="color:var(--green);">/build_module</code>. Don&rsquo;t burn a 5-specialist <code style="color:var(--accent-light);">/deliberate</code> on a label change.</p>
+        </div>
+        <div class="card" style="padding:16px; border-left:3px solid var(--blue);">
+          <h3 style="font-size:14px;">Reflexively overriding &ldquo;are you sure?&rdquo;</h3>
+          <p style="margin-top:6px;">When Claude asks a clarifying question before building, that&rsquo;s the <strong style="color:var(--text-primary);">~95% confidence gate</strong> saving you wrong-path tokens. Answer it &mdash; don&rsquo;t auto-dismiss it.</p>
+        </div>
+        <div class="card" style="padding:16px; border-left:3px solid var(--blue);">
+          <h3 style="font-size:14px;">Merging code you can&rsquo;t explain</h3>
+          <p style="margin-top:6px;">The education gate (<code style="color:var(--accent-light);">/walkthrough</code> + <code style="color:var(--gold);">/quiz</code>) keeps <em>you</em> the owner. If you can&rsquo;t explain it back, don&rsquo;t ship it.</p>
+        </div>
+        <div class="card" style="padding:16px; border-left:3px solid var(--accent);">
+          <h3 style="font-size:14px;">Hand-hacking agents &amp; rules</h3>
+          <p style="margin-top:6px;">To change how the framework behaves, use the evolution path (Steward gate &rarr; your approval &rarr; <code style="color:var(--blue);">/review</code>) &mdash; not ad-hoc edits that drift silently.</p>
+        </div>
+        <div class="card" style="padding:16px; border-left:3px solid var(--green);">
+          <h3 style="font-size:14px;">Running it uncustomized &amp; letting CLAUDE.md bloat</h3>
+          <p style="margin-top:6px;">Before your first real task, fill in Project Identity, <strong style="color:var(--text-primary);">Domain Safety Constraints</strong>, and Autonomous Execution in <code>CLAUDE.md</code>. Keep it lean (&lt;~200 lines) &mdash; detail belongs in path-scoped rules and on-demand skills, not always-loaded.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 15: GET STARTED ==================== -->
+  <div class="slide" data-slide="15">
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up" style="width:80px; height:80px;">
@@ -854,7 +900,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </a>
       </div>
       <p style="margin-top:24px; color:var(--text-muted); font-size:13px;">
-        AI-Native Agentic Development Framework v3.4 &middot; Diviner Dojo
+        AI-Native Agentic Development Framework v3.5 &middot; Diviner Dojo
         <br><a href="mailto:diviner-dojo@gmail.com" style="color:var(--text-muted); text-decoration:none;">diviner-dojo@gmail.com</a>
       </p>
     </div>
@@ -871,17 +917,17 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
   </div>
   <div class="nav-controls">
     <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
-    <span class="slide-counter" id="slideCounter">1 / 14</span>
+    <span class="slide-counter" id="slideCounter">1 / 15</span>
     <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">&#8594;</button>
   </div>
 </div>
 
-<div class="progress-bar" id="progressBar" style="width: 7.14%;"></div>
+<div class="progress-bar" id="progressBar" style="width: 6.67%;"></div>
 
 <script>
 // ===== SLIDE NAVIGATION =====
 let currentSlide = 1;
-const totalSlides = 14;
+const totalSlides = 15;
 
 function showSlide(n) {
   if (n < 1 || n > totalSlides) return;

@@ -1,3 +1,8 @@
+---
+paths:
+  - "**/*.py"
+---
+
 # Coding Standards
 
 ## Python Conventions

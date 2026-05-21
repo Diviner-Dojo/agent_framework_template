@@ -1,3 +1,8 @@
+---
+name: syncing-framework-docs
+description: Checklist for keeping downstream docs (FRAMEWORK_SPECIFICATION, presentation HTMLs) in sync when framework-defining files change. Use when editing .claude/agents, .claude/rules, .claude/commands, CLAUDE.md, PHILOSOPHY.md, or the project version — and during /review and /ship of framework changes.
+---
+
 # Framework Documentation Sync
 
 > Ensures downstream documentation artifacts stay in sync when the framework evolves.
@@ -48,5 +53,5 @@ This table maps framework elements to the specific locations in each artifact th
 ## What This Rule Does NOT Cover
 
 - Content accuracy of the documentation (that's the author's responsibility)
-- CLAUDE.md updates (covered by `documentation_policy.md`)
-- ADR creation for architectural changes (covered by `review_gates.md`)
+- CLAUDE.md updates (covered by the `documenting-decisions` skill)
+- ADR creation for architectural changes (covered by the `selecting-review-gates` skill)

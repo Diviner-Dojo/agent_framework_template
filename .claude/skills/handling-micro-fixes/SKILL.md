@@ -1,3 +1,8 @@
+---
+name: handling-micro-fixes
+description: Sizing heuristic and workflow for cosmetic, presentation-only changes (icon/text/label/color/spacing edits). Use when deciding whether a small change is a micro-fix (skip /plan and /build_module) or a behavior change needing the full workflow. Includes the two-strike escalation rule.
+---
+
 # Micro-Fix Protocol
 
 > Prevents over-engineering of cosmetic changes. Ensures small fixes stay small.

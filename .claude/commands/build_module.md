@@ -35,7 +35,7 @@ for d in ['src', 'tests']:
 for script in ['scripts/create_discussion.py', 'scripts/write_event.py', 'scripts/close_discussion.py']:
     if not pathlib.Path(script).exists():
         errors.append(f'Missing required script: {script}')
-for rule in ['.claude/rules/coding_standards.md', '.claude/rules/security_baseline.md', '.claude/rules/testing_requirements.md', '.claude/rules/build_review_protocol.md']:
+for rule in ['.claude/rules/coding_standards.md', '.claude/rules/security_baseline.md', '.claude/rules/testing_requirements.md', '.claude/skills/running-build-checkpoints/SKILL.md']:
     if not pathlib.Path(rule).exists():
         errors.append(f'Missing required rule file: {rule}')
 if errors:
@@ -52,6 +52,8 @@ If pre-flight fails, tell the developer what's missing and suggest running `/onb
 If a spec file path is provided, read it. If not, check `docs/sprints/` for the most recent approved spec, or ask the developer what to build.
 
 Parse the spec into a numbered task list. Each task becomes a build unit that may trigger a checkpoint.
+
+**Confidence check (CLAUDE.md Workflow Sequencing gate):** before generating code, confirm each task's intent and scope is ~95% clear from the spec. For any task with material ambiguity, list the assumptions and ask the developer (in-conversation `AskUserQuestion`, or the `notifying-the-developer` skill if AFK) rather than guessing. Micro-fix-sized tasks are exempt; the developer may explicitly override to accept the risk.
 
 ## Step 2: Create Build Discussion
 
@@ -92,7 +94,7 @@ python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Build 
 
 ## Step 2.5: Pre-Build Enrichment
 
-Before executing the first task, search for existing solutions relevant to the build's domain per `.claude/rules/pre_build_search.md`:
+Before executing the first task, search for existing solutions relevant to the build's domain per the `searching-prior-art` skill:
 
 1. **Grep the regression ledger** for the build's domain: `grep -i "<domain>" memory/bugs/regression-ledger.md` — check both the bug table and the `## Known-Broken Approaches` section.
 2. **Read solution paths** in `memory/projects/_self.md` for the relevant taxonomy domain(s). If any solution paths match the build's scope, inject them into checkpoint specialist context as `## Known Solution Paths` so specialists are aware of prior art.
@@ -119,7 +121,7 @@ Based on the current task:
 
 ### Step 3b: Checkpoint Evaluation
 
-After generating code for the task, evaluate whether it triggers a checkpoint per `.claude/rules/build_review_protocol.md`:
+After generating code for the task, evaluate whether it triggers a checkpoint per the `running-build-checkpoints` skill:
 
 **Check trigger categories:**
 - New module (2+ new files under `src/`)

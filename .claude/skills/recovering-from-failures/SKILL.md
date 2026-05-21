@@ -1,3 +1,8 @@
+---
+name: recovering-from-failures
+description: Named recovery procedures for the 8 framework failure classes — HOOK_BLOCK, QUALITY_GATE_FAIL, CAPTURE_PIPELINE_ERROR, REVIEW_PENDING, EDUCATION_DEFERRED, SESSION_STATE_LOST, COMMIT_HOOK_FAIL, PUSH_BLOCKED. Use when any of these occurs — a PreToolUse hook rejects a Write/Edit, the quality gate or a commit is blocked, a capture script fails, a push to main is blocked, or session state is lost after compaction.
+---
+
 # Failure Taxonomy
 
 > Named failure classes with recovery steps and escalation paths.

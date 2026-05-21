@@ -116,14 +116,14 @@ Use questioning to draw out hidden variables and deepen specialist analysis:
 These questions are tools for drawing better analysis out of specialists, not rhetorical devices. Use them in follow-up dispatches when a specialist's first pass was surface-level.
 
 ### 7. Cross-Agent Dispatch Requests
-When a specialist includes a `dispatch_request` in their output (per `cross_agent_dispatch_protocol.md`):
+When a specialist includes a `dispatch_request` in their output (per the `cross-agent-dispatch` skill):
 1. Evaluate the reasoning — is the requested expertise genuinely needed?
 2. Consider whether this review already dispatches the requested agent
 3. Approve or deny, capturing the decision via `write_event.py` with `dispatch-decision` tags
 4. If approved, dispatch with the context the requesting agent specified
 
 ### 8. Multi-Instance Split Requests
-When a specialist includes a `split_request` in their output (per `multi_instance_protocol.md`):
+When a specialist includes a `split_request` in their output (per the `multi-instance-dispatch` skill):
 1. Evaluate whether the split would produce genuinely different insights
 2. Consider rate limit budget and review risk level
 3. Approve or deny, capturing with `split-request` tags

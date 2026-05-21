@@ -1,3 +1,8 @@
+---
+name: committing-changes
+description: Step-by-step commit protocol — quality gate, solution-path check, regression-test verification for bug fixes, code review, education gate, and BUILD_STATUS update. Use before committing changes, especially bug fixes (regression ledger) or code touching src/ or framework infrastructure.
+---
+
 # Commit Protocol
 
 ## Before Every Commit
