@@ -34,6 +34,13 @@ if ! echo "$COMMAND" | grep -qE '\bgit\s+push\b'; then
     exit 0
 fi
 
+# If the command changes directory before pushing, it's targeting a different
+# repo (e.g., memory backup repos). Allow it — this hook protects the current
+# project's main branch, not every repo on the machine.
+if echo "$COMMAND" | grep -qE '^\s*cd\s+'; then
+    exit 0
+fi
+
 # Get current branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 

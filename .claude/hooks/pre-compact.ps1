@@ -20,4 +20,12 @@ if (Test-Path $statusFile) {
 }
 
 Write-Output ""
+Write-Output "Also: run 'bash ~/.claude/sync-all-memories.sh' to back up any new memories to GitHub."
+Write-Output ""
 Write-Output "==================================="
+
+# Auto-sync shared memory to GitHub (non-blocking)
+$syncScript = Join-Path $env:USERPROFILE ".claude\sync-all-memories.sh"
+if (Test-Path $syncScript) {
+    Start-Process -NoNewWindow -FilePath "bash" -ArgumentList $syncScript -ErrorAction SilentlyContinue
+}

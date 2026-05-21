@@ -7,6 +7,7 @@ decision_makers: [architect, facilitator]  # agents involved in the decision
 discussion_id: DISC-YYYYMMDD-HHMMSS-slug  # link to the discussion that produced this
 supersedes: null  # ADR-NNNN if this replaces a previous decision
 risk_level: medium  # low / medium / high / critical
+scope: project  # framework (universal to all projects) / project (this project only) / hybrid (universal principle, project-specific implementation)
 confidence: 0.80  # 0-1, team confidence in this decision
 tags: [topic1, topic2]
 ---

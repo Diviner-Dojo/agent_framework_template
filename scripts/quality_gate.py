@@ -1,7 +1,7 @@
 """Run all quality checks defined in the framework's rules files.
 
 Converts the documented standards from .claude/rules/ (coding_standards.md,
-testing_requirements.md, review_gates.md) into executable validation.
+testing_requirements.md) and the selecting-review-gates skill into executable validation.
 
 Usage:
     python scripts/quality_gate.py            # run all checks
@@ -231,18 +231,21 @@ def _parse_regression_ledger() -> list[dict[str, str]]:
             not line.startswith("|")
             or line.startswith("| File")
             or line.startswith("| Approach")
+            or line.startswith("| Class")
+            or line.startswith("| **")
             or line.startswith("|--")
         ):
             continue
         if "<!--" in line:
             continue
         cells = [c.strip() for c in line.split("|")[1:-1]]
-        if len(cells) >= 5 and cells[0] and not cells[0].startswith("-"):
+        # Ledger format (6 cols): File | Bug Description | Root Cause Class | Fix Date | Test File | Test Function
+        if len(cells) >= 6 and cells[0] and not cells[0].startswith("-"):
             entries.append(
                 {
                     "file": cells[0],
-                    "test_file": cells[3],
-                    "test_function": cells[4],
+                    "test_file": cells[4],
+                    "test_function": cells[5],
                 }
             )
     return entries
@@ -328,13 +331,24 @@ def _get_staged_code_files() -> list[str]:
 
 
 def _find_todays_reviews() -> list[Path]:
-    """Find review reports created today (matching REV-YYYYMMDD pattern)."""
+    """Find review reports created today (matching REV-YYYYMMDD pattern).
+
+    Checks both local-today and UTC-today since framework IDs are minted in
+    UTC (see DISC-, REV- conventions) while ``date.today()`` returns local.
+    Without this, commits in the local-evening / UTC-next-day window would
+    falsely report 'no review today' even when a review file exists.
+    """
     import datetime
 
-    today = datetime.date.today().strftime("%Y%m%d")
     if not REVIEWS_DIR.is_dir():
         return []
-    return sorted(REVIEWS_DIR.glob(f"REV-{today}*.md"))
+    candidates: set[Path] = set()
+    for date_str in {
+        datetime.date.today().strftime("%Y%m%d"),
+        datetime.datetime.now(datetime.UTC).strftime("%Y%m%d"),
+    }:
+        candidates.update(REVIEWS_DIR.glob(f"REV-{date_str}*.md"))
+    return sorted(candidates)
 
 
 def check_review_existence() -> bool:

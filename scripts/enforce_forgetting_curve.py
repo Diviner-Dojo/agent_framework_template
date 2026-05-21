@@ -5,9 +5,12 @@ or updated recently:
 - 90 days: flag for review
 - 180 days: auto-archive to `memory/archive/`
 
-Uses SQLite `last_referenced_at` when available (from promotion_candidates
-table), falling back to filesystem mtime when the DB column is NULL or
-the database is unavailable.
+Uses filesystem modification time exclusively. An earlier draft of this
+script queried a SQLite `last_referenced_at` column on `promotion_candidates`
+that was never part of the canonical schema (`scripts/init_db.py:124`); the
+query has been removed rather than backed by fictional columns. A future
+`memory_items` table with a real `last_referenced_at` would be the place
+to reintroduce reference-tracking; that is out of scope for Phase 0.
 
 Usage:
     python scripts/enforce_forgetting_curve.py [--dry-run] [--review-days 90] [--archive-days 180]
@@ -15,14 +18,12 @@ Usage:
 
 import argparse
 import shutil
-import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 MEMORY_DIR = PROJECT_ROOT / "memory"
 ARCHIVE_DIR = MEMORY_DIR / "archive"
-DB_PATH = PROJECT_ROOT / "metrics" / "evaluation.db"
 
 # Subdirectories to scan (exclude archive itself)
 _SCAN_DIRS = ["decisions", "lessons", "patterns", "reflections", "rules", "bugs"]
@@ -34,65 +35,16 @@ _PROTECTED_FILES = {"adoption-log.md", "deploy-safety.md", "regression-ledger.md
 _SKIP_FILES = {".gitkeep"}
 
 
-def _get_last_referenced_dates(db_path: Path) -> dict[str, datetime]:
-    """Query SQLite for last_referenced_at dates from promotion_candidates.
-
-    Args:
-        db_path: Path to the evaluation database.
-
-    Returns:
-        Dict mapping relative file paths to their last-referenced datetime.
-    """
-    if not db_path.exists():
-        return {}
-
-    try:
-        conn = sqlite3.connect(str(db_path))
-        rows = conn.execute(
-            "SELECT source_file, last_referenced_at FROM promotion_candidates "
-            "WHERE last_referenced_at IS NOT NULL"
-        ).fetchall()
-        conn.close()
-    except (sqlite3.OperationalError, sqlite3.DatabaseError):
-        return {}
-
-    result: dict[str, datetime] = {}
-    for source_file, last_ref in rows:
-        if last_ref:
-            try:
-                result[source_file] = datetime.fromisoformat(last_ref).replace(tzinfo=UTC)
-            except (ValueError, TypeError):
-                continue
-    return result
-
-
-def _file_age_days(
-    filepath: Path,
-    memory_dir: Path,
-    ref_dates: dict[str, datetime],
-) -> int:
-    """Get the age of a file in days.
-
-    Uses last_referenced_at from SQLite if available, otherwise falls back
-    to filesystem modification time.
+def _file_age_days(filepath: Path) -> int:
+    """Get the age of a file in days based on filesystem modification time.
 
     Args:
         filepath: Absolute path to the file.
-        memory_dir: Root memory directory (for computing relative paths).
-        ref_dates: Dict of relative paths to last-referenced datetimes.
 
     Returns:
-        Age in days since last reference or modification.
+        Age in days since the file was last modified.
     """
     now = datetime.now(UTC)
-    # Use forward slashes for cross-platform consistency with SQLite data
-    rel_path = filepath.relative_to(memory_dir).as_posix()
-
-    # Try SQLite last_referenced_at first
-    if rel_path in ref_dates:
-        return (now - ref_dates[rel_path]).days
-
-    # Fall back to filesystem mtime
     mtime = datetime.fromtimestamp(filepath.stat().st_mtime, tz=UTC)
     return (now - mtime).days
 
@@ -102,7 +54,6 @@ def enforce_forgetting_curve(
     archive_days: int = 180,
     dry_run: bool = False,
     memory_dir: Path | None = None,
-    db_path: Path | None = None,
 ) -> dict[str, list[str]]:
     """Scan memory for stale items and flag/archive them.
 
@@ -111,14 +62,12 @@ def enforce_forgetting_curve(
         archive_days: Days before auto-archiving.
         dry_run: If True, report but don't move files.
         memory_dir: Override memory directory (for testing).
-        db_path: Override database path (for testing).
 
     Returns:
         Dict with 'flagged' and 'archived' file lists.
     """
     mem_dir = memory_dir or MEMORY_DIR
     archive_dir = mem_dir / "archive"
-    database = db_path or DB_PATH
 
     result: dict[str, list[str]] = {"flagged": [], "archived": []}
 
@@ -127,9 +76,6 @@ def enforce_forgetting_curve(
         return result
 
     archive_dir.mkdir(parents=True, exist_ok=True)
-
-    # Load reference dates from SQLite
-    ref_dates = _get_last_referenced_dates(database)
 
     for subdir_name in _SCAN_DIRS:
         subdir = mem_dir / subdir_name
@@ -142,7 +88,7 @@ def enforce_forgetting_curve(
             if filepath.name in _SKIP_FILES:
                 continue
 
-            age = _file_age_days(filepath, mem_dir, ref_dates)
+            age = _file_age_days(filepath)
 
             if age >= archive_days:
                 rel_path = filepath.relative_to(mem_dir)

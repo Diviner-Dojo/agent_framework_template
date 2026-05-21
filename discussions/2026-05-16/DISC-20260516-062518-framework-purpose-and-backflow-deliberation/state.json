@@ -1,0 +1,14 @@
+{
+  "command": "deliberate",
+  "discussion_id": "DISC-20260516-062518-framework-purpose-and-backflow-deliberation",
+  "status": "complete",
+  "started_at": "2026-05-16T06:25:41.779062+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "discussion_created",
+    "synthesis"
+  ],
+  "topic": "framework-purpose-and-backflow",
+  "risk_level": "high",
+  "collaboration_mode": "dialectic"
+}

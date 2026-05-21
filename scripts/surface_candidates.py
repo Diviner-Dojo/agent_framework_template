@@ -5,6 +5,7 @@ them as promotion candidates for human review.
 
 Usage:
     python scripts/surface_candidates.py [--threshold 3]
+    python scripts/surface_candidates.py --discussion-id <id> [--threshold 3]
 """
 
 import argparse
@@ -17,14 +18,26 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "metrics" / "evaluation.db"
 
 
-def surface_candidates(threshold: int = 3) -> int:
+def surface_candidates(threshold: int = 3, discussion_id: str | None = None) -> int:
     """Identify recurring patterns and create promotion candidates.
 
     Patterns seen in >= threshold distinct discussions become candidates
     for promotion to Layer 3 (curated memory).
 
+    When ``discussion_id`` is provided, Rule-of-Three counting always uses
+    the full ``pattern_sightings`` table (so cross-discussion accumulation
+    is preserved), but only rows whose ``pattern_hash`` has at least one
+    sighting in the closing discussion are emitted or updated. This is the
+    auto-invoke contract from ``close_discussion.py``: a closure should
+    refresh only the patterns it could possibly have changed. Counting is
+    always global; scoping is applied at the emission step, never at the
+    counting step.
+
     Args:
         threshold: Minimum distinct discussion count to surface a candidate.
+        discussion_id: When set, restrict emission/update to patterns
+            sighted in this discussion. When None, retain project-wide
+            behaviour (the manual ``--all`` CLI path).
 
     Returns:
         Number of new candidates surfaced.
@@ -37,22 +50,46 @@ def surface_candidates(threshold: int = 3) -> int:
     conn.execute("PRAGMA foreign_keys=ON")
     now = datetime.now(UTC).isoformat()
 
-    # Find patterns meeting the threshold
-    recurring = conn.execute(
-        """SELECT
-               pattern_hash,
-               category,
-               summary,
-               COUNT(DISTINCT discussion_id) as disc_count,
-               MIN(created_at) as first_seen,
-               MAX(created_at) as last_seen,
-               GROUP_CONCAT(DISTINCT discussion_id) as discussion_ids
-           FROM pattern_sightings
-           GROUP BY pattern_hash
-           HAVING COUNT(DISTINCT discussion_id) >= ?
-           ORDER BY disc_count DESC""",
-        (threshold,),
-    ).fetchall()
+    # Find patterns meeting the threshold. Rule-of-Three counting always
+    # uses the full pattern_sightings table — scoping is applied at the
+    # emission step below, never at the counting step.
+    if discussion_id is None:
+        recurring = conn.execute(
+            """SELECT
+                   pattern_hash,
+                   category,
+                   summary,
+                   COUNT(DISTINCT discussion_id) as disc_count,
+                   MIN(created_at) as first_seen,
+                   MAX(created_at) as last_seen,
+                   GROUP_CONCAT(DISTINCT discussion_id) as discussion_ids
+               FROM pattern_sightings
+               GROUP BY pattern_hash
+               HAVING COUNT(DISTINCT discussion_id) >= ?
+               ORDER BY disc_count DESC""",
+            (threshold,),
+        ).fetchall()
+    else:
+        recurring = conn.execute(
+            """SELECT
+                   pattern_hash,
+                   category,
+                   summary,
+                   COUNT(DISTINCT discussion_id) as disc_count,
+                   MIN(created_at) as first_seen,
+                   MAX(created_at) as last_seen,
+                   GROUP_CONCAT(DISTINCT discussion_id) as discussion_ids
+               FROM pattern_sightings
+               WHERE pattern_hash IN (
+                   SELECT DISTINCT pattern_hash
+                   FROM pattern_sightings
+                   WHERE discussion_id = ?
+               )
+               GROUP BY pattern_hash
+               HAVING COUNT(DISTINCT discussion_id) >= ?
+               ORDER BY disc_count DESC""",
+            (discussion_id, threshold),
+        ).fetchall()
 
     if not recurring:
         print(f"No patterns found with >= {threshold} sightings")
@@ -109,8 +146,16 @@ def main() -> None:
         default=3,
         help="Minimum discussion count to surface (default: 3)",
     )
+    parser.add_argument(
+        "--discussion-id",
+        default=None,
+        help=(
+            "Restrict emission/update to patterns sighted in this discussion "
+            "(default: project-wide)"
+        ),
+    )
     args = parser.parse_args()
-    surface_candidates(args.threshold)
+    surface_candidates(args.threshold, discussion_id=args.discussion_id)
 
 
 if __name__ == "__main__":

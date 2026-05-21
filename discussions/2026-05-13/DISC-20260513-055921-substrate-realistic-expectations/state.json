@@ -1,0 +1,12 @@
+{
+  "command": "deliberate",
+  "discussion_id": "DISC-20260513-055921-substrate-realistic-expectations",
+  "status": "complete",
+  "started_at": "2026-05-13T05:59:29.612625+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "discussion_created",
+    "synthesis"
+  ],
+  "topic": "Realistic expectations for the sourced-assertion substrate: improvement vs hype"
+}

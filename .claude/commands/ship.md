@@ -113,8 +113,8 @@ config_files = [f for f in changed if f.endswith(('.toml', '.cfg', '.ini', '.yam
 doc_files = [f for f in changed if f.endswith('.md') or f.startswith('docs/')]
 
 # Determine change type
-# Per commit_protocol.md: code changes (src/ or tests/) require /review
-# Per review_gates.md: framework changes > 5 files require /review
+# Per the committing-changes skill: code changes (src/ or tests/) require /review
+# Per the selecting-review-gates skill: framework changes > 5 files require /review
 has_code = len(code_files) > 0 or len(test_files) > 0
 has_framework = len(framework_files) > 0
 large_framework = len(framework_files) > 5
@@ -153,9 +153,9 @@ print(f'Suggested bump: {suggested_bump}')
 "
 ```
 
-**Review requirement logic** (derived from `commit_protocol.md` and `review_gates.md`):
+**Review requirement logic** (derived from the `committing-changes` and `selecting-review-gates` skills):
 - **CODE changes** (`src/` or `tests/` files modified): `/review` always required — no exceptions
-- **FRAMEWORK changes** (`.claude/`, `scripts/`) touching **> 5 files**: `/review` required (medium-risk per `review_gates.md`)
+- **FRAMEWORK changes** (`.claude/`, `scripts/`) touching **> 5 files**: `/review` required (medium-risk per the `selecting-review-gates` skill)
 - **Small FRAMEWORK changes** (≤ 5 files): Quality gate sufficient
 - **CONFIG/DOCS only**: Quality gate sufficient
 
@@ -168,7 +168,7 @@ If the change type is FRAMEWORK or FRAMEWORK (large), verify that downstream doc
 - `docs/diviner-dojo-framework-presentation.html` (title, version badge, footer)
 - `docs/how-to-use-presentation.html` (footer, stats)
 
-If any artifact references an older framework version, WARN the developer and recommend updating per `.claude/rules/framework_doc_sync.md` before release.
+If any artifact references an older framework version, WARN the developer and recommend updating per the `syncing-framework-docs` skill before release.
 
 ## Step 3: Quality Gate
 

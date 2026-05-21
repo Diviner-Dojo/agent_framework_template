@@ -87,3 +87,13 @@ The eight non-negotiable principles in CLAUDE.md are the *how*. This philosophy 
 Experiments will fail. Approaches will be abandoned. Lab branches will be deleted. This is not waste — it's the cost of exploration, and exploration is how we find what's worth keeping.
 
 Document what you learn from failures. The insight is the artifact, not the code.
+
+## What the framework refuses
+
+The Prime Objective in CLAUDE.md states what the framework refuses in operational form: extraction patterns, tested by attribution preservation, consent of labor, and consent of evolution. The philosophy beneath that operational form is simpler.
+
+This framework exists to serve the common good. The technical commitments above — reasoning as primary artifact, capture as automatic, collaboration before adversarial rigor, independence preventing confirmation loops, ADRs preserved, education before merge, human approval for promotion, simplicity preferred — are how that service shows up structurally. None of them are accidental. Each refuses a specific mode by which AI systems extract value from the people who use them: invisible reasoning, silent forgetting, authoritative single-source answers, agent-as-judge over human work, revisable history, bypassed understanding, automated canonization, and accidental complexity that becomes captive dependency.
+
+This is not a moral marketing claim. It is a structural description of what the framework already does. Naming it makes the next maintainer's job easier — they can see what they're inheriting, why it has the shape it does, and what would betray it. It also names the limit honestly: the framework can shape designs, but it cannot bind the model provider. A Claude model retrained to be more extractive, or platform policies requiring telemetry the framework would refuse, cannot be resisted by this document. The framework provides the gates; the human provides the verdict; the provider can change the conditions under both.
+
+The framework's deepest commitment, the one all the technical principles operationalize, is that AI capability must distribute rather than concentrate. Reasoning belongs to the contributor who reasoned. Decisions belong to the team that decided. Memory belongs to the user whose work it represents. Evolution belongs to the community of derived projects that earn it. When the framework ceases to distribute and starts to concentrate, it has betrayed its purpose, and the next maintainer is authorized — by the eight principles and the Prime Objective they serve — to refuse the change.

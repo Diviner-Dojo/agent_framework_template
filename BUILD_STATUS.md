@@ -1,58 +1,40 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-04-05T23:55Z
+> Last updated: 2026-05-20 (token-efficiency restructure executed; awaiting commit-gate GO/HOLD via ntfy)
 
 ## Current Task
 
-**Status:** v3.4.0 build complete. Pending /review and commit.
-**Branch:** `main`
+**Token-efficiency restructure (ADR-0016) — executed, quality-gate-clean, awaiting commit gate.**
 
-### In Progress
-- **v3.4.0 release** — build complete, needs `/review` before commit
-  - All 7 build tasks complete, quality gate 5/5 passed
-  - 1 checkpoint fired (educator reframe): both specialists APPROVE
-  - Spec SPEC-20260405-110000 status: complete
+Branch: `chore/template-version-bump-3.5`. Plan file: `~/.claude/plans/i-think-my-claude-md-jazzy-manatee.md` (the authoritative spec for this work). Ratifying deliberation: `DISC-20260520-161826-efficiency-ledger-ratification` (panel ratified, no dissent).
 
-### Recently Completed
-- **v3.4.0 build** (DISC-20260405-235356-build-v340-release)
-  - W1: Push Notifications section in CLAUDE.md + scripts/notify.py + .env.example
-  - W2: Solution-path KB — pre_build_search.md rule, project-profile-template.md, TAXONOMY.md, _self.md, ADR-0011, command/rule edits (build_module.md, plan.md, build_review_protocol.md, commit_protocol.md, autonomous_workflow.md)
-  - W3: Known-Broken Approaches section in regression-ledger.md
-  - W4: Educator agent reframe for decision-maker audience (ADR-0012)
-  - W5: Advisory resolution — PHILOSOPHY.md Values+Domain Lens terminology, facilitator section ordering, extract_findings.py verified
-  - W6: Version bump to 3.4.0, doc sync (FRAMEWORK_SPECIFICATION.md, both HTML presentations)
+**Done this session:**
+- **CLAUDE.md**: 432 → 106 lines (~8.9K → ~3K tok). Added Always-On Invariants, Workflow Sequencing (incl. the ~95% confidence gate), a keyword-rich Rules Index, and docs/ pointers. Version bumped v3.4 → v3.5 (sync with pyproject).
+- **Always-loaded footprint**: ~22K → ~3.8K tokens/turn (~83% cut); re-paid per specialist dispatch, so the real saving is larger.
+- **Rules relocated**: `autonomous_workflow` kept always-loaded; `coding_standards`/`testing_requirements`/`security_baseline` **path-scoped** (`paths:` frontmatter); the other **11 rules → on-demand skills** under `.claude/skills/` (recovering-from-failures, notifying-the-developer, cross-agent-dispatch, multi-instance-dispatch, syncing-framework-docs, handling-micro-fixes, selecting-review-gates, searching-prior-art, running-build-checkpoints, committing-changes, documenting-decisions). NOTE: `commit_protocol` + `documentation_policy` were "CUT" in the ledger but conservatively converted to skills (no content loss) — flagged for /review.
+- **docs/ created** (homes for content cut from CLAUDE.md): AGENT_ARCHITECTURE.md, CAPTURE_PIPELINE.md, HOOKS.md.
+- **Confidence gate (Phase 2)**: always-on invariant in CLAUDE.md + formal Confidence Check in `/plan` (rule #5) and `/build_module` (build-start). Override + micro-fix exemptions included.
+- **14 stale references repointed** to skills (build_module, ship, autonomous_workflow, facilitator, 2 skills, pre-commit-gate.sh). The functional break (build_module pre-flight existence check) is fixed.
+- **ADR-0016** written (`scope: framework`, refs the DISC id).
+- **Quality gate: 6/6 PASS** (formatting, lint, tests, coverage, ADRs, regression ledger; review-existence skipped pending /review).
 
-- **v3.3.0 released** (prior session)
+**Status (2026-05-20, updated):** Developer replied GO. `/review` ran (REV-20260520-175237, APPROVE-WITH-CHANGES; blocking FRAMEWORK_SPECIFICATION corpus-drift finding fixed). Committed **1c4fe0c** to the branch (NOT pushed). Close-out done: FRAMEWORK_CHANGELOG propagation entry, adoption-log capture of the 7 Phase 0a candidates (+counts), FRAMEWORK_SPECIFICATION link fixes; validation passed (all 17 skills have valid frontmatter; 3 path-scoped rules' globs correct; tree clean of stale refs). Validation fidelity note: config correctness + the live skill-index were verified; the harness's *runtime* deferral of path-scoped rules / on-demand skill bodies is per Anthropic spec but not directly observable in one session — Phase 5 will exercise it. **Next: developer to choose push/PR vs Phase 5 (Howie co-migration first).** Won't-fix: upgrade-prompt doc paths (historical migration guide, like an ADR).
 
-### Next Up (after v3.4.0 commit)
-- `/review` all changed files
-- Address any blocking findings
-- Commit and push
-- Phase 2 items from original journal port (capability protection, UX review protocol, /status command)
+## Pending follow-on (approved, not yet executed)
+- **Phase 3**: tooling hygiene — verify/disable the `sqlite` MCP (confirm no dependents first); de-dupe the 8× pre-flight Python block into `scripts/preflight.py`.
+- **Phase 4**: offload deterministic in-context work to CLI/hooks (ADR supersession graph, adoption rule-of-three counter, coverage-gap report, spec-status, frontmatter validation).
+- **Phase 5**: co-migrate howie / agentic_journal / VerificationPortal (content-analysis FIRST, preserve their domain rules/agents).
+- **Phase 6**: `scripts/route.py` deterministic dispatch routing (sole authority; via /plan + /review). Structural win (ends risk→specialist table triplication), modest token win.
+- **Phase 7**: `/retro` non-destructive consolidate cadence.
+- **ADR-0016 follow-ups**: update `docs/FRAMEWORK_SPECIFICATION.md` (rule count 15→4 always-loaded + skills count) + presentations via the `syncing-framework-docs` skill; add an entry to `~/.claude/shared-memory/FRAMEWORK_CHANGELOG.md`; log the Phase 0a adoption candidates to `memory/lessons/adoption-log.md`.
 
-## Open Advisories
+## Carried-forward architectural debt (from prior sessions)
+- arch-F2 `/promote --list-promoted`; arch-F3 canary contract enforceability; arch-F5 swallow-and-warn ADR; confabulation/dispatch-grounding fix (DISC-20260516-062518); quality_gate `_parse_regression_ledger` table-distinction refactor; presentation slide 3 Prime Objective element.
 
-### From v3.4 build checkpoint (DISC-20260405-235356)
-1. Bloom's Create row verbs calibrated (applied: design→propose, construct→envision)
-2. Tier 3 "propose alternatives" tightened to "assess presented alternatives" (applied)
+## Previous Session (2026-05-16)
 
-### Carried from v3.3 (partially resolved)
-1. ~~PHILOSOPHY.md soft terminology update~~ — RESOLVED in W5
-2. ~~Facilitator section ordering~~ — RESOLVED in W5
-3. Monitor homogenization via uniqueness scores over next 5-10 reviews (still open)
-4. ~~Verify extract_findings.py parses Rule/Exceptions fields~~ — VERIFIED in W5 (heuristic, adequate)
-5. Consider varying Domain Lens framing verb per agent (still open)
-6. Pipeline scripts: surface_candidates() and compute_effectiveness() have API drift (still open — deferred R5.4)
+**PR #7 merged** (`35d4fab` on main): Phase 0 + spawn fix + Path 4 (Prime Objective / ADR-0015) + docs sync. ADR-0015 propagation pushed to `~/.claude/shared-memory/` at `c9ae948`. **Phase 0 education gate COMPLETE** (EDU-20260516-phase0, 4/4 in `education_results`). Post-merge triage: 6 commits stacked on `chore/post-merge-triage` (B1 /conversation, B2 /status, B3 efficiency_report, C2 telemetry prompt, Cat D adoption-brief snapshot, defer-Phase-1). **Phase 1 deferred** (`SPEC-20260516-045622` → `status: deferred`; rationale: cost-reduction rationale structurally weak, build when Howie drives real demand). Discards: copilot-adaptation-guide, session narrative, phase1-handoff, phase-1-kickoff-prompt. Open then: push triage branch + open PR; local cleanup after merge.
 
-## Key Decisions (Recent)
-
-- ADR-0011: Solution-path knowledge base — embed in project profiles, not separate infrastructure
-- ADR-0012: Educator reframe — non-coding decision-maker audience, Vocabulary→Relationships→Judgment tiers
-
-## Blockers
-
-- (none)
-
----
-*This file is referenced by `.claude/hooks/pre-compact.ps1` and `.claude/hooks/session-start.ps1`. Update after completing tasks.*
+## Previous Session (2026-05-15)
+(See git history `cf3d7da` and earlier — Phase 0 build + review + commit narrative.)

@@ -1,3 +1,9 @@
+---
+paths:
+  - "tests/**"
+  - "**/test_*.py"
+---
+
 # Testing Requirements
 
 ## Coverage

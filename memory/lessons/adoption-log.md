@@ -1,10 +1,11 @@
 ---
-last_updated: "2026-03-09"
-total_analyses: 9
-patterns_evaluated: 86
-patterns_adopted: 42
-patterns_deferred: 19
-patterns_rejected: 18
+last_updated: "2026-05-20"
+total_analyses: 18
+patterns_evaluated: 165
+patterns_adopted: 62
+patterns_already_confirmed: 7
+patterns_deferred: 42
+patterns_rejected: 33
 ---
 
 # Adoption Log (Learning Ledger)
@@ -39,6 +40,297 @@ Each entry records:
 
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
+*Note (ADR-0016, 2026-05-20): some entries list adopted patterns at a `.claude/rules/` path; 11 rules were relocated to `.claude/skills/` — map old filenames to skill slugs via FRAMEWORK_SPECIFICATION §14.*
+
+---
+
+### Deliberation: Token-Efficiency Restructure (2026-05-20)
+**Source**: DISC-20260520-161826 (ledger ratification) + Phase 0a efficiency-project scan (3 deep-dive research agents). Not a single `/analyze-project` run — candidates surfaced during the framework token-efficiency effort.
+**Discussion path**: `discussions/2026-05-20/DISC-20260520-161826-efficiency-ledger-ratification/`
+**ADR**: ADR-0016 (progressive-disclosure restructure of the always-loaded corpus)
+**Primary theme**: Token efficiency — progressive disclosure, deterministic routing, memory/context compression, skill debloating
+**7 patterns scored; 5 adopted, 1 deferred, 1 rejected** (confidence: 0.85)
+
+### Pattern: Concise-is-key skill authoring (Anthropic)
+- **First seen**: Anthropic Agent Skills best-practices docs
+- **Score**: 24/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:5)
+- **Sightings**: 1 (first-party Anthropic guidance)
+- **Status**: ADOPTED — PENDING. Folded into the Phase 1 rule→skill conversions (challenge every token; ≤500-line bodies; refs one level deep).
+
+### Pattern: Deterministic dispatch routing (Conductor-style)
+- **First seen**: Microsoft Conductor; genta.dev LLM-vs-code orchestration
+- **Score**: 21/25 (prevalence:5, elegance:5, evidence:3, fit:5, maintenance:3)
+- **Sightings**: 2 (Conductor, genta.dev; corroborated by Anthropic code-execution guidance)
+- **Status**: ADOPTED — PENDING (Phase 6). `scripts/route.py` makes risk→specialist dispatch deterministic, collapsing the table triplicated across facilitator.md/selecting-review-gates/review.md. NOT a full DAG engine. Structural/consistency win; modest token win.
+
+### Pattern: SkillReducer 5-category body taxonomy (arXiv 2603.29919)
+- **First seen**: SkillReducer paper (55k-skill study; >60% of skill bodies non-actionable)
+- **Score**: 20/25 (prevalence:4, elegance:5, evidence:5, fit:3, maintenance:3)
+- **Sightings**: 1
+- **Status**: ADOPTED (taxonomy applied manually in Phase 1) — automated pipeline DEFERRED until skill count + an eval harness justify it.
+
+### Pattern: Mastra observational-memory tool-output digest
+- **First seen**: Mastra "Observational Memory" (append-only prefix → 4–10x cache savings; tool-output compression 5–40x)
+- **Score**: 18/25 (prevalence:3, elegance:5, evidence:4, fit:4, maintenance:2)
+- **Sightings**: 1
+- **Status**: ADOPTED — PENDING (prompt-only). Tool-output-digest + stable-prefix idea folded into the BUILD_STATUS compaction guidance (Phase 1e). Full two-agent runtime NOT adopted (Principle #8).
+
+### Pattern: Anthropic Dreaming consolidation cadence
+- **First seen**: Anthropic Memory tool + Dreaming (beta ~2026-04)
+- **Score**: 17/25 (prevalence:4, elegance:4, evidence:2, fit:3, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED — PENDING the cadence only (Phase 7: a non-destructive, human-gated /retro "consolidate" step). REJECT the auto-delete (violates Principles #5/#7). Substrate stays the durable store.
+
+### Pattern: AgentDiet trajectory reduction (arXiv 2509.23586)
+- **First seen**: AgentDiet (online ReAct trajectory pruning; 39.9–59.7% input-token cut)
+- **Score**: 15/25 (prevalence:3, elegance:4, evidence:4, fit:2, maintenance:2)
+- **Sightings**: 1
+- **Status**: DEFERRED. Targets live tool-spam loops; framework transcripts are sealed (Principle #5) and already distilled. Revisit if long autonomous build lanes land.
+
+### Pattern: Active Context Compression / "Focus" (arXiv 2601.07190)
+- **First seen**: "Focus" — start_focus/complete_focus with physical history deletion
+- **Score**: 13/25 (prevalence:1, elegance:4, evidence:2, fit:3, maintenance:3)
+- **Status**: REJECTED (this round). N=5 sample, one +110% regression; delete-history conflicts with Principles #1/#5; already approximated by seal-and-summarize. Revisit on a real benchmark + code release.
+
+---
+
+### Deliberation: Token-Efficiency Telemetry (2026-05-12)
+**Source deliberation**: DISC-20260512-025323-token-efficiency-telemetry (not a `/analyze-project` run — patterns surfaced during a deliberation on framework telemetry).
+**Discussion path**: `discussions/2026-05-12/DISC-20260512-025323-token-efficiency-telemetry/`
+**ADR**: ADR-0013 (Token-efficiency telemetry via post-hoc JSONL ingest)
+**Primary theme**: Token-efficiency measurement; capture-pipeline extension
+**3 patterns scored, 2 adopted, 1 deferred** (confidence: 0.78)
+
+---
+
+### Pattern: AG2 dict-of-agents usage-summary schema
+- **First seen**: AG2 (AutoGen 2.0) — https://docs.ag2.ai/latest/docs/use-cases/notebooks/notebooks/agentchat_cost_token_tracking/
+- **Deliberation**: DISC-20260512-025323-token-efficiency-telemetry
+- **Score**: 22/25 (prevalence:4, elegance:5, evidence:4, fit:4, maintenance:5)
+- **Sightings**: 1 (AG2; conceptually corroborated by AutoGen, the parent project)
+- **Status**: ADOPTED — PENDING
+- **Adopted as**: The agent-keyed, model-keyed, token-leaf shape `{agent: {model: {input, output, cache_read, cache_create}}}` translated into 4 NULL-safe columns on the `turns` table (`tokens_in`, `tokens_out`, `cache_read_tokens`, `cache_create_tokens`). Per-discussion totals rolled up to `discussions.total_*`.
+- **Location**: `scripts/init_db.py` `_migrations` block; `scripts/close_discussion.py` Step 3b
+- **NOT adopted**: AG2's `gather_usage_summary()` function or `total_cost` field. Cost is computed at analysis time via `config/model_pricing.yaml`, never stored.
+- **Why this works for us**: Maps directly onto our existing table shape; turns table already keyed by agent. Zero new dependencies. Cache fields are first-class — collapsing them was a real economics mistake the deliberation surfaced.
+
+---
+
+### Pattern: LangSmith rollup-at-close
+- **First seen**: LangSmith — https://docs.langchain.com/langsmith/cost-tracking
+- **Deliberation**: DISC-20260512-025323-token-efficiency-telemetry
+- **Score**: 22/25 (prevalence:3, elegance:5, evidence:4, fit:5, maintenance:5)
+- **Sightings**: 1 (LangSmith; pattern is general enough to count as the conceptual lineage of close-time rollups across observability tooling)
+- **Status**: ADOPTED — PENDING
+- **Adopted as**: A close-time rollup step in `scripts/close_discussion.py` that aggregates per-turn token columns into per-discussion totals — but only when per-turn data is present (avoids clobbering the JSONL ingester, which is the authoritative source per ADR-0013).
+- **Location**: `scripts/close_discussion.py` Step 3b
+- **NOT adopted**: LangSmith's run-hierarchy model, parent/child run threading, or any of its SDK primitives. Only the close-time trigger point.
+- **Why this works for us**: `close_discussion.py` already runs 8 sequential operations at seal time. Adding a 9th is structurally identical to the existing `duration_minutes` rollup.
+
+---
+
+### Pattern: Claude Code transcript JSONL parsing (`~/.claude/projects/`)
+- **First seen**: ccusage (https://github.com/ryoppippi/ccusage), token-dashboard (https://github.com/nateherkai/token-dashboard), Claudetop
+- **Deliberation**: DISC-20260512-025323-token-efficiency-telemetry
+- **Score**: 17/25 (prevalence:5, elegance:4, evidence:3, fit:3, maintenance:2)
+- **Sightings**: 3 (ccusage, token-dashboard, Claudetop — Rule of Three met for the *technique*, not the *data source*)
+- **Status**: DEFERRED-AS-PATTERN-BUT-ADOPTED-AS-INFRASTRUCTURE
+- **Why deferred as pattern**: The `~/.claude/projects/` path is undocumented by Anthropic — unsuitable as a long-term library-recommended approach. Score did not meet the >=20/25 threshold for pattern promotion.
+- **Why adopted as infrastructure anyway**: Architecture-consultant resolved that JSONL ingest is the *less-fragile of two fragile paths* — structured field data beats parsing a presentation suffix. We adopt the technique but contain the fragility behind a single parser interface so a future path change is a one-file patch.
+- **Schema attribution**: The 4-field schema (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`) directly informed our column choice and corrected an earlier proposal that omitted cache fields.
+- **Location**: `scripts/ingest_token_usage.py` (parser interface isolated; path change = one-file patch)
+- **Audit trigger**: If Anthropic restructures or documents `~/.claude/projects/`, revisit pattern status.
+
+---
+
+### Analysis: Claw Code Agent Harness (2026-04-07)
+**Source project**: Claw Code (ultraworkers/claw-code) — Rust/Python clean-room rewrite of Claude Code agent harness. 60K Rust LOC, 9 crates, 173K+ stars. NO LICENSE FILE (website claims MIT).
+**Analysis report**: `docs/reviews/ANALYSIS-20260407-002600-claw-code.md`
+**Primary theme**: Agent harness architecture, failure recovery, testing determinism, session management
+**4 patterns adopted (ideas-only), 6 deferred, 3 rejected** (confidence: 0.85; 6 specialists: architecture-consultant, security-specialist, performance-analyst, qa-specialist, docs-knowledge, independent-perspective)
+**License constraint**: All adoptions are ideas-only — no direct code adaptation due to missing license file.
+
+---
+
+### Pattern: Named Failure Taxonomy
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 22/25 (prevalence:4, elegance:4, evidence:4, fit:5, maintenance:5)
+- **Sightings**: 1 (related: ACH failure-mode taxonomy from prior analysis)
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `.claude/rules/failure_taxonomy.md`, CLAUDE.md Failure Taxonomy section
+- **Date**: 2026-04-07
+- **Notes**: 8 named failure classes with recovery steps and escalation paths. Cross-references Claw Code's 22 operational failures. Documentation only, no code.
+
+### Pattern: Incremental Summary Merging
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 21/25 (prevalence:3, elegance:5, evidence:3, fit:5, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: CLAUDE.md BUILD_STATUS.md section, `.claude/hooks/pre-compact.ps1`
+- **Date**: 2026-04-07
+- **Notes**: Preserve previous session content under "Previous Session" heading during compaction. Cap at 3 retained sessions. Convention change, no code.
+
+### Pattern: Deterministic Mock Anthropic Service
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 21/25 (prevalence:5, elegance:4, evidence:3, fit:5, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Strongest specialist consensus (3/6 agents), but our framework doesn't call the Anthropic API directly — Claude Code does. No immediate testing gap to fill.
+- **Revisit if**: We build LLM-integrated application code in src/ that needs deterministic testing.
+
+### Pattern: Parse-Don't-Validate with Error Accumulation
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 21/25 (prevalence:4, elegance:5, evidence:4, fit:3, maintenance:5)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Clean pattern but our capture pipeline scripts are simple and working. No recurring invalid-data problem to solve.
+- **Revisit if**: Capture pipeline validation errors become a recurring issue, or we add complex data ingestion.
+
+### Pattern: Typed/Named Quality Levels (GreenContract)
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 19/25 (prevalence:4, elegance:4, evidence:3, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Would replace binary pass/fail quality gate with ordered levels. Novel concept, not widely adopted. Requires refactoring quality_gate.py.
+- **Revisit if**: The --skip-reviews workaround causes recurring friction, or we formalize change-type-specific quality requirements.
+
+### Pattern: Recovery As Data (Recipes)
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 18/25 (prevalence:4, elegance:4, evidence:2, fit:4, maintenance:4)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Source implementation is stubs not wired to real operations. Concept captured in our failure taxonomy as documentation.
+- **Revisit if**: Failure taxonomy documentation proves insufficient and recovery steps need to become executable code.
+
+### Pattern: ROADMAP as Operational Failure Archive
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 19/25 (prevalence:5, elegance:3, evidence:2, fit:4, maintenance:5)
+- **Sightings**: 1
+- **Status**: ADOPTED
+- **Adoption Status**: PENDING
+- **Location**: `.claude/rules/failure_taxonomy.md` (Cross-Reference section)
+- **Date**: 2026-04-07
+- **Notes**: 22 operational failures cross-referenced against our framework. 5 relevant items documented, 5+ marked not applicable.
+
+### Pattern: Composable Policy Engine (And/Or/Chain)
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 15/25 (prevalence:3, elegance:4, evidence:3, fit:2, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Our framework has ~3 policy domains — doesn't justify engine overhead. Independent-perspective noted premature optimization.
+- **Revisit if**: Policy domain count exceeds 5 or facilitator dispatch logic outgrows prompt-based expression.
+
+### Pattern: Permission Rule DSL
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 15/25 (prevalence:3, elegance:4, evidence:3, fit:2, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Our permission model is hook-based (settings.json). Migration cost is high.
+- **Revisit if**: Hook-based permission model hits scaling limits.
+
+### Pattern: JSON Output Contract for All Commands
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 16/25 (prevalence:4, elegance:3, evidence:4, fit:2, maintenance:3)
+- **Sightings**: 1
+- **Status**: DEFERRED
+- **Reason**: Our slash commands run inside Claude Code's context, not as standalone CLI tools. Different testability solution needed.
+- **Revisit if**: We build automated testing of slash command workflows.
+
+### Pattern: Worker Lifecycle State Machine
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 13/25 (prevalence:2, elegance:4, evidence:3, fit:1, maintenance:3)
+- **Sightings**: 1
+- **Status**: REJECTED
+- **Decision**: Specific to persistent CLI session management. Our agents receive prompts via Task(), not terminal injection.
+
+### Pattern: MCP Lifecycle State Machine
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 13/25 (prevalence:2, elegance:4, evidence:3, fit:1, maintenance:3)
+- **Sightings**: 1
+- **Status**: REJECTED
+- **Decision**: We don't manage MCP servers directly. Not applicable to our architecture.
+
+### Pattern: Session Rotation (256KB cap)
+- **First seen**: Claw Code (2026-04-07)
+- **Analysis**: ANALYSIS-20260407-002600-claw-code
+- **Score**: 14/25 (prevalence:3, elegance:3, evidence:3, fit:1, maintenance:4)
+- **Sightings**: 1
+- **Status**: REJECTED
+- **Decision**: Our discussion files close when sealed. Unbounded growth is not our problem.
+
+---
+
+### Re-Analysis: All 8 Projects — Enhanced Project-Analyst Sweep (2026-04-06)
+**Projects re-analyzed**: agentic_journal (3rd), CritInsight (2nd), ContractorVerification (2nd), sa4s-serc/AgenticAKM (2nd), MaximeRobeyns/self_improving_coding_agent (2nd), daegwang/self-learning-agent (2nd), wshobson/agents (2nd), dralgorhythm/claude-agentic-framework (2nd)
+**Project profiles created**: `memory/projects/` (8 files — previously missing gap filled)
+**Primary themes**: Standing documents, token optimization, Stop hooks, inline rationale, domain validation hooks, regression diagnosis, agent self-evaluation
+**56 new patterns evaluated: 9 genuinely new adoptions, 7 confirmed already-upstreamed, 15 deferred, 11 rejected** (plus 14 strong adapts at 18-19/25)
+**Correction**: 7 patterns from ContractorVerification/agentic_journal were "discovered" by analysts but already exist in the template (previously upstreamed). Marked CONFIRMED below.
+**Highest-scoring genuinely new pattern**: Standing Documents for Specialist Domains (23/25, agentic_journal)
+**Urgent audit finding**: `set -e` present in 2 of our hooks (pre-push-main-blocker.sh, pre-commit-gate.sh) — confirmed bug from claude-agentic-framework production fix
+
+#### Already Present in Template (CONFIRMED — analysts rediscovered existing patterns)
+
+| Pattern | Source | Already exists as |
+|---------|--------|-------------------|
+| /ship Command with Auto Classification | ContractorVerification | `.claude/commands/ship.md` |
+| /evaluate-repo-security Command | ContractorVerification | `.claude/commands/evaluate-repo-security.md` |
+| /onboard Command (Takeover Protocol) | ContractorVerification | `.claude/commands/onboard.md` |
+| Feature Status Registry (FEATURE_STATUS.md) | ContractorVerification | `.claude/skills/feature-status-registry/` |
+| Education Gate Manifest Template | ContractorVerification | `docs/templates/education-gate-manifest-template.md` |
+| Domain-Specific PostToolUse Validation Hook | ContractorVerification | Pattern in `validate_tool_use.py` |
+| Failure Taxonomy (from Claw Code) | Claw Code | `.claude/rules/failure_taxonomy.md` |
+
+#### Genuinely New Adopted Patterns (not yet in template)
+
+| Pattern | Source | Score | What's missing |
+|---------|--------|-------|----------------|
+| Standing Documents for Specialist Domains | agentic_journal | 23 | 4 memory/ subdirs with seed files |
+| Token Budget Optimization Methodology | claude-agentic-framework | 22 | Methodology (CLAUDE.md audit) |
+| Stop Event Hooks (mypy + pytest) | ContractorVerification | 22 | Stop hooks in settings.json |
+| Per-Resource Circuit Breaker | ContractorVerification | 22 | memory/patterns/circuit-breaker.md |
+| Inline "Why" Decision Rationale | CritInsight | 22 | Writing convention (Key Design Decisions table) |
+| Regression Diagnosis SOP (Root-Cause Taxonomy) | agentic_journal | 21 | Taxonomy in regression-ledger.md |
+| Anchored Rubric Design for LLM Evaluation | wshobson/agents | 20 | Agent definition updates |
+| Project-Scoped MCP Configuration (.mcp.json) | ContractorVerification | 20 | .mcp.json file |
+| Acceptance Criteria Document (ACCEPTANCE.md) | ContractorVerification | 20 | docs/ACCEPTANCE.md |
+| Agent Notes as Failure Log (AGENT_NOTES.md) | ContractorVerification | 20 | docs/AGENT_NOTES.md |
+| .claude/docs/ Agent-Targeted Onboarding | ContractorVerification | 20 | .claude/docs/ directory |
+| Agent Self-Evaluation Protocol | agentic_journal | 20 | Retro health checklist |
+| Deterministic Seeded Metrics Factory | self_improving_coding_agent | 20 | tests/fixtures.py |
+
+#### Strong Adapts (18-19/25, also adopted)
+
+| Pattern | Source | Score | What's missing |
+|---------|--------|-------|----------------|
+| Swarm Research — Verification Tiers | claude-agentic-framework | 19 | Agent prompt updates |
+| Plan-Reviewer Agent | ContractorVerification | 19 | .claude/agents/plan-reviewer.md |
+| Strategic Education Gates | agentic_journal | 19 | Educator agent rewrite |
+| Named Anti-Pattern Detection | wshobson/agents | 18 | quality_gate.py check |
+| Dangerous Command Guard (Warn Tier) | claude-agentic-framework | 18 | New hook file |
+| Orientation Documents (current-arc.md) | agentic_journal | 18 | memory/decisions/current-arc.md |
+| Deploy-Safety Hook Pattern | agentic_journal | 18 | Hook stub |
+| Spec Closure Check (session-start 5b) | agentic_journal | 18 | session-start.ps1 update |
+| Named-Role Review Committee | self_improving_coding_agent | — | review_gates.md update |
+| Two-Hat Refactoring Rule | claude-agentic-framework | 17 | coding_standards.md update |
+| Remove set -e from Hooks | claude-agentic-framework | 15 | Bug fix in 2 hooks |
+| Pipe-to-Shell Deny Patterns | claude-agentic-framework | 16 | settings.json deny list |
+
+See individual pattern entries in `memory/projects/*.md` project profiles for full details, solution paths, and applicability assessments.
 
 ---
 

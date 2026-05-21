@@ -1,0 +1,16 @@
+{
+  "command": "deliberate",
+  "discussion_id": "DISC-20260516-050945-framework-adoption-sequence-two-project",
+  "status": "complete",
+  "started_at": "2026-05-16T05:09:57.592284+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "discussion_created",
+    "synthesis",
+    "decision"
+  ],
+  "topic": "Framework adoption sequence given two-project telemetry plus 7 external-source analyses",
+  "risk": "critical",
+  "mode": "dialectic",
+  "panel_size": 12
+}

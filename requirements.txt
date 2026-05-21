@@ -7,3 +7,8 @@ httpx>=0.27.0
 ruff>=0.2.0
 pytest-cov>=4.1.0
 pyyaml>=6.0
+
+# Phase 4 — sourced-assertion memory substrate (Stack A')
+sqlite-vec>=0.1.0
+sentence-transformers>=2.0.0
+fastmcp>=0.4.0

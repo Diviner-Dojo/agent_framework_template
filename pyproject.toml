@@ -1,6 +1,6 @@
 [project]
 name = "agentic-framework-template"
-version = "3.4.0"
+version = "3.5.0"
 description = "AI-Native Agentic Development Framework template for Claude Code"
 requires-python = ">=3.11"
 
@@ -30,7 +30,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["src", "assertion_store", "mcp_server"]
 
 [tool.coverage.report]
 fail_under = 80

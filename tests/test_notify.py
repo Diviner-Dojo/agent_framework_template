@@ -25,9 +25,17 @@ class TestSendNotification:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_no_topic_returns_false(self) -> None:
-        """send_notification returns False when no topic is configured."""
+        """send_notification returns False when no topic is configured.
+
+        Defensive: explicitly pop NTFY_TOPIC here. The @patch.dict decorator
+        should be enough, but in practice notify._load_env() (run at module
+        import time) can populate os.environ with NTFY_TOPIC from .env
+        depending on test ordering and cached-module state — pop is robust
+        against every pollution mode.
+        """
         from notify import send_notification
 
+        os.environ.pop("NTFY_TOPIC", None)
         result = send_notification("test message")
         assert result is False
 
@@ -159,6 +167,85 @@ class TestSendNotification:
 
         req = mock_urlopen.call_args[0][0]
         assert req.data == b"Hello world!"
+
+
+class TestValidators:
+    """Tests for the validate_topic and validate_server helpers."""
+
+    def test_accepts_valid_topic(self) -> None:
+        from notify import validate_topic
+
+        assert validate_topic("topic-x") is None
+        assert validate_topic("my_topic_42") is None
+        assert validate_topic("a") is None
+        assert validate_topic("A" * 64) is None
+
+    def test_rejects_empty_topic(self) -> None:
+        from notify import validate_topic
+
+        err = validate_topic("")
+        assert err is not None
+        assert "empty" in err
+
+    def test_rejects_topic_with_special_chars(self) -> None:
+        """Topic must reject path traversal, URL-escape, host-injection."""
+        from notify import validate_topic
+
+        for bad in [
+            "topic@evil.com",
+            "../admin",
+            "topic?x=1",
+            "topic/path",
+            "topic with spaces",
+            "topic%2F",
+            "topic#frag",
+        ]:
+            err = validate_topic(bad)
+            assert err is not None, f"expected rejection for {bad!r}"
+
+    def test_rejects_topic_over_64_chars(self) -> None:
+        from notify import validate_topic
+
+        err = validate_topic("A" * 65)
+        assert err is not None
+
+    def test_accepts_valid_server(self) -> None:
+        from notify import validate_server
+
+        assert validate_server("https://ntfy.sh") is None
+        assert validate_server("http://localhost:8080") is None
+        assert validate_server("https://my-ntfy.example.com/path") is None
+
+    def test_rejects_empty_server(self) -> None:
+        from notify import validate_server
+
+        err = validate_server("")
+        assert err is not None
+
+    def test_rejects_non_http_schemes(self) -> None:
+        from notify import validate_server
+
+        for bad in ["javascript:alert(1)", "file:///etc/passwd", "data:text/plain,x", "ntfy.sh"]:
+            err = validate_server(bad)
+            assert err is not None, f"expected rejection for {bad!r}"
+
+    @patch("notify.urlopen")
+    def test_send_notification_refuses_invalid_topic(self, mock_urlopen: MagicMock) -> None:
+        """send_notification must not POST when topic is invalid."""
+        from notify import send_notification
+
+        result = send_notification("test", topic="bad/topic")
+        assert result is False
+        mock_urlopen.assert_not_called()
+
+    @patch("notify.urlopen")
+    def test_send_notification_refuses_invalid_server(self, mock_urlopen: MagicMock) -> None:
+        """send_notification must not POST when server has an unsafe scheme."""
+        from notify import send_notification
+
+        result = send_notification("test", topic="ok-topic", server="javascript:alert(1)")
+        assert result is False
+        mock_urlopen.assert_not_called()
 
 
 class TestLoadEnv:

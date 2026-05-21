@@ -12,7 +12,7 @@ When implementing features, bug fixes, or any change touching `src/` or `tests/`
 ### Multi-file features (3+ files or 2+ new files under `src/`)
 
 1. **`/plan`** — Structured spec + specialist design review + developer approval
-2. **`/build_module`** — Implementation with mid-build checkpoint reviews (per `build_review_protocol.md`)
+2. **`/build_module`** — Implementation with mid-build checkpoint reviews (per the `running-build-checkpoints` skill)
 3. **Quality gate** — `python scripts/quality_gate.py`
 4. **`/review`** — Multi-agent specialist code review
 5. **Address blocking findings** — fix before commit
@@ -29,7 +29,7 @@ When implementing features, bug fixes, or any change touching `src/` or `tests/`
 
 - **BUILD_STATUS.md**: Update at session start, before compaction, and after each commit
 - **`/review`**: Required before any commit touching `src/` — no exceptions
-- **Pre-build search**: Check `memory/projects/` and `memory/bugs/regression-ledger.md` for prior art before building (per `pre_build_search.md`)
+- **Pre-build search**: Check `memory/projects/` and `memory/bugs/regression-ledger.md` for prior art before building (per the `searching-prior-art` skill)
 - **Layer 1 capture**: Every `/review`, `/build_module`, `/plan` creates a discussion automatically via capture pipeline
 
 ## What "Autonomous Execution" Means
@@ -48,7 +48,7 @@ If you are about to implement a multi-file feature without `/plan`, **STOP**. Th
 
 ## Relationship to Other Rules
 
-- `commit_protocol.md` — defines the commit sequence (quality gate → review → education gate → commit)
-- `build_review_protocol.md` — defines mid-build checkpoint triggers and specialist dispatch
-- `review_gates.md` — defines risk tiers, specialist selection, and quality thresholds
+- `committing-changes` skill — defines the commit sequence (quality gate → review → education gate → commit)
+- `running-build-checkpoints` skill — defines mid-build checkpoint triggers and specialist dispatch
+- `selecting-review-gates` skill — defines risk tiers, specialist selection, and quality thresholds
 - This rule adds the **sequencing requirement**: which commands must run, in what order, for what scope of change

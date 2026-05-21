@@ -35,7 +35,7 @@ for d in ['src', 'tests']:
 for script in ['scripts/create_discussion.py', 'scripts/write_event.py', 'scripts/close_discussion.py']:
     if not pathlib.Path(script).exists():
         errors.append(f'Missing required script: {script}')
-for rule in ['.claude/rules/coding_standards.md', '.claude/rules/security_baseline.md', '.claude/rules/testing_requirements.md', '.claude/rules/build_review_protocol.md']:
+for rule in ['.claude/rules/coding_standards.md', '.claude/rules/security_baseline.md', '.claude/rules/testing_requirements.md', '.claude/skills/running-build-checkpoints/SKILL.md']:
     if not pathlib.Path(rule).exists():
         errors.append(f'Missing required rule file: {rule}')
 if errors:
@@ -52,6 +52,8 @@ If pre-flight fails, tell the developer what's missing and suggest running `/onb
 If a spec file path is provided, read it. If not, check `docs/sprints/` for the most recent approved spec, or ask the developer what to build.
 
 Parse the spec into a numbered task list. Each task becomes a build unit that may trigger a checkpoint.
+
+**Confidence check (CLAUDE.md Workflow Sequencing gate):** before generating code, confirm each task's intent and scope is ~95% clear from the spec. For any task with material ambiguity, list the assumptions and ask the developer (in-conversation `AskUserQuestion`, or the `notifying-the-developer` skill if AFK) rather than guessing. Micro-fix-sized tasks are exempt; the developer may explicitly override to accept the risk.
 
 ## Step 2: Create Build Discussion
 
@@ -92,14 +94,16 @@ python scripts/write_event.py "<discussion_id>" "facilitator" "proposal" "Build 
 
 ## Step 2.5: Pre-Build Enrichment
 
-Before generating code, search for prior art per `.claude/rules/pre_build_search.md`:
+Before executing the first task, search for existing solutions relevant to the build's domain per the `searching-prior-art` skill:
 
-1. Search `memory/projects/` for solution paths related to this module's domain
-2. Search `memory/bugs/regression-ledger.md` Known-Broken Approaches for approaches to avoid
-3. Search `docs/adr/` for relevant architectural decisions
-4. Search `memory/patterns/` for promoted patterns
+1. **Grep the regression ledger** for the build's domain: `grep -i "<domain>" memory/bugs/regression-ledger.md` — check both the bug table and the `## Known-Broken Approaches` section.
+2. **Read solution paths** in `memory/projects/_self.md` for the relevant taxonomy domain(s). If any solution paths match the build's scope, inject them into checkpoint specialist context as `## Known Solution Paths` so specialists are aware of prior art.
+3. **Search `docs/adr/`** for relevant architectural decisions that constrain this build.
+4. **Search `memory/patterns/`** for promoted patterns in this domain.
 
-If relevant prior art is found, reference it in the build plan and incorporate lessons learned. If a known-broken approach is found, explicitly note it and explain the alternative.
+This is a context-assembly step, not a checkpoint. It runs once at build start, not per-task. If no relevant prior art exists, proceed without injecting — zero matches is the normal case for novel domains.
+
+If a known-broken approach is found, explicitly note it and explain the alternative.
 
 ## Step 3: Execute Tasks (Loop)
 
@@ -117,7 +121,7 @@ Based on the current task:
 
 ### Step 3b: Checkpoint Evaluation
 
-After generating code for the task, evaluate whether it triggers a checkpoint per `.claude/rules/build_review_protocol.md`:
+After generating code for the task, evaluate whether it triggers a checkpoint per the `running-build-checkpoints` skill:
 
 **Check trigger categories:**
 - New module (2+ new files under `src/`)
@@ -234,6 +238,8 @@ if spec_path.exists():
     # Add completion metadata if not present
     if 'completed_at:' not in text:
         text = re.sub(r'^(status: complete)$', r'\1\ncompleted_at: ' + datetime.now(timezone.utc).strftime('%Y-%m-%d'), text, count=1, flags=re.MULTILINE)
+    # Note: completed_commit should be added AFTER committing (when SHA is available).
+    # Run this step post-merge to solve the timing problem.
     spec_path.write_text(text, encoding='utf-8')
     print(f'Spec updated to complete: {spec_path.name}')
 
