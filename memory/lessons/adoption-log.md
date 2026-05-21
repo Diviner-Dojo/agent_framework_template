@@ -1,11 +1,11 @@
 ---
-last_updated: "2026-05-12"
-total_analyses: 17
-patterns_evaluated: 158
-patterns_adopted: 57
+last_updated: "2026-05-20"
+total_analyses: 18
+patterns_evaluated: 165
+patterns_adopted: 62
 patterns_already_confirmed: 7
-patterns_deferred: 41
-patterns_rejected: 32
+patterns_deferred: 42
+patterns_rejected: 33
 ---
 
 # Adoption Log (Learning Ledger)
@@ -40,6 +40,57 @@ Each entry records:
 
 *Entries are added by `/analyze-project` as patterns are evaluated.*
 *Most recent entries appear at the top.*
+*Note (ADR-0016, 2026-05-20): some entries list adopted patterns at a `.claude/rules/` path; 11 rules were relocated to `.claude/skills/` — map old filenames to skill slugs via FRAMEWORK_SPECIFICATION §14.*
+
+---
+
+### Deliberation: Token-Efficiency Restructure (2026-05-20)
+**Source**: DISC-20260520-161826 (ledger ratification) + Phase 0a efficiency-project scan (3 deep-dive research agents). Not a single `/analyze-project` run — candidates surfaced during the framework token-efficiency effort.
+**Discussion path**: `discussions/2026-05-20/DISC-20260520-161826-efficiency-ledger-ratification/`
+**ADR**: ADR-0016 (progressive-disclosure restructure of the always-loaded corpus)
+**Primary theme**: Token efficiency — progressive disclosure, deterministic routing, memory/context compression, skill debloating
+**7 patterns scored; 5 adopted, 1 deferred, 1 rejected** (confidence: 0.85)
+
+### Pattern: Concise-is-key skill authoring (Anthropic)
+- **First seen**: Anthropic Agent Skills best-practices docs
+- **Score**: 24/25 (prevalence:5, elegance:5, evidence:4, fit:5, maintenance:5)
+- **Sightings**: 1 (first-party Anthropic guidance)
+- **Status**: ADOPTED — PENDING. Folded into the Phase 1 rule→skill conversions (challenge every token; ≤500-line bodies; refs one level deep).
+
+### Pattern: Deterministic dispatch routing (Conductor-style)
+- **First seen**: Microsoft Conductor; genta.dev LLM-vs-code orchestration
+- **Score**: 21/25 (prevalence:5, elegance:5, evidence:3, fit:5, maintenance:3)
+- **Sightings**: 2 (Conductor, genta.dev; corroborated by Anthropic code-execution guidance)
+- **Status**: ADOPTED — PENDING (Phase 6). `scripts/route.py` makes risk→specialist dispatch deterministic, collapsing the table triplicated across facilitator.md/selecting-review-gates/review.md. NOT a full DAG engine. Structural/consistency win; modest token win.
+
+### Pattern: SkillReducer 5-category body taxonomy (arXiv 2603.29919)
+- **First seen**: SkillReducer paper (55k-skill study; >60% of skill bodies non-actionable)
+- **Score**: 20/25 (prevalence:4, elegance:5, evidence:5, fit:3, maintenance:3)
+- **Sightings**: 1
+- **Status**: ADOPTED (taxonomy applied manually in Phase 1) — automated pipeline DEFERRED until skill count + an eval harness justify it.
+
+### Pattern: Mastra observational-memory tool-output digest
+- **First seen**: Mastra "Observational Memory" (append-only prefix → 4–10x cache savings; tool-output compression 5–40x)
+- **Score**: 18/25 (prevalence:3, elegance:5, evidence:4, fit:4, maintenance:2)
+- **Sightings**: 1
+- **Status**: ADOPTED — PENDING (prompt-only). Tool-output-digest + stable-prefix idea folded into the BUILD_STATUS compaction guidance (Phase 1e). Full two-agent runtime NOT adopted (Principle #8).
+
+### Pattern: Anthropic Dreaming consolidation cadence
+- **First seen**: Anthropic Memory tool + Dreaming (beta ~2026-04)
+- **Score**: 17/25 (prevalence:4, elegance:4, evidence:2, fit:3, maintenance:4)
+- **Sightings**: 1
+- **Status**: ADOPTED — PENDING the cadence only (Phase 7: a non-destructive, human-gated /retro "consolidate" step). REJECT the auto-delete (violates Principles #5/#7). Substrate stays the durable store.
+
+### Pattern: AgentDiet trajectory reduction (arXiv 2509.23586)
+- **First seen**: AgentDiet (online ReAct trajectory pruning; 39.9–59.7% input-token cut)
+- **Score**: 15/25 (prevalence:3, elegance:4, evidence:4, fit:2, maintenance:2)
+- **Sightings**: 1
+- **Status**: DEFERRED. Targets live tool-spam loops; framework transcripts are sealed (Principle #5) and already distilled. Revisit if long autonomous build lanes land.
+
+### Pattern: Active Context Compression / "Focus" (arXiv 2601.07190)
+- **First seen**: "Focus" — start_focus/complete_focus with physical history deletion
+- **Score**: 13/25 (prevalence:1, elegance:4, evidence:2, fit:3, maintenance:3)
+- **Status**: REJECTED (this round). N=5 sample, one +110% regression; delete-history conflicts with Principles #1/#5; already approximated by seal-and-summarize. Revisit on a real benchmark + code release.
 
 ---
 

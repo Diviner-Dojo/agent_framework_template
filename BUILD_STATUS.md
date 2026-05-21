@@ -19,7 +19,7 @@ Branch: `chore/template-version-bump-3.5`. Plan file: `~/.claude/plans/i-think-m
 - **ADR-0016** written (`scope: framework`, refs the DISC id).
 - **Quality gate: 6/6 PASS** (formatting, lint, tests, coverage, ADRs, regression ledger; review-existence skipped pending /review).
 
-**Awaiting:** developer GO/HOLD via ntfy (background poll `boko19fjq`). GO ⇒ run the required `/review`, commit-on-pass to the branch (NO push). HOLD ⇒ stop for developer diff inspection. Default after 1h = HOLD.
+**Status (2026-05-20, updated):** Developer replied GO. `/review` ran (REV-20260520-175237, APPROVE-WITH-CHANGES; blocking FRAMEWORK_SPECIFICATION corpus-drift finding fixed). Committed **1c4fe0c** to the branch (NOT pushed). Close-out done: FRAMEWORK_CHANGELOG propagation entry, adoption-log capture of the 7 Phase 0a candidates (+counts), FRAMEWORK_SPECIFICATION link fixes; validation passed (all 17 skills have valid frontmatter; 3 path-scoped rules' globs correct; tree clean of stale refs). Validation fidelity note: config correctness + the live skill-index were verified; the harness's *runtime* deferral of path-scoped rules / on-demand skill bodies is per Anthropic spec but not directly observable in one session — Phase 5 will exercise it. **Next: developer to choose push/PR vs Phase 5 (Howie co-migration first).** Won't-fix: upgrade-prompt doc paths (historical migration guide, like an ADR).
 
 ## Pending follow-on (approved, not yet executed)
 - **Phase 3**: tooling hygiene — verify/disable the `sqlite` MCP (confirm no dependents first); de-dupe the 8× pre-flight Python block into `scripts/preflight.py`.

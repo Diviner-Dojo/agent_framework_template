@@ -396,8 +396,8 @@ Agents declare a `model:` tier in their YAML frontmatter for cost optimization:
 
 v3.0 formalized two collaboration protocols that enable organic inter-agent cooperation:
 
-- **Cross-Agent Dispatch** ([`.claude/rules/cross_agent_dispatch_protocol.md`](../.claude/rules/cross_agent_dispatch_protocol.md)): Any specialist can request dispatch of another agent through the facilitator. Requests are tagged `blocking` or `enhancing`. All requests and decisions are captured with `dispatch-request` / `dispatch-decision` tags.
-- **Multi-Instance Dispatch** ([`.claude/rules/multi_instance_protocol.md`](../.claude/rules/multi_instance_protocol.md)): Specialists can request parallel instance splits when splitting would produce meaningfully better results. The independent-perspective agent has pre-approved multi-instance dispatch with 4 instance types (Independent Analyst, Team Observer, Research Scout, Process Critic). Max 3 instances per agent per review.
+- **Cross-Agent Dispatch** ([`cross-agent-dispatch` skill](../.claude/skills/cross-agent-dispatch/SKILL.md)): Any specialist can request dispatch of another agent through the facilitator. Requests are tagged `blocking` or `enhancing`. All requests and decisions are captured with `dispatch-request` / `dispatch-decision` tags.
+- **Multi-Instance Dispatch** ([`multi-instance-dispatch` skill](../.claude/skills/multi-instance-dispatch/SKILL.md)): Specialists can request parallel instance splits when splitting would produce meaningfully better results. The independent-perspective agent has pre-approved multi-instance dispatch with 4 instance types (Independent Analyst, Team Observer, Research Scout, Process Critic). Max 3 instances per agent per review.
 - **Discovery Pipeline**: independent-perspective (Research Scout) → project-analyst → docs-knowledge chain for cross-domain innovation capture.
 
 ### Values + Domain Lens (v3.3)
@@ -420,7 +420,7 @@ Changes to agent definitions, rules, or framework philosophy follow a gated path
 3. **Steward Gate**: Steward evaluates alignment with `PHILOSOPHY.md` and principles — verdicts: APPROVE / REVISE / DEFER / DECLINE
 4. **Developer Approval**: Human gate preserved (Principle #7)
 5. **Review**: Change goes through `/review` like any code change
-6. **Documentation Sync**: Verify downstream documentation artifacts are updated per `.claude/rules/framework_doc_sync.md`
+6. **Documentation Sync**: Verify downstream documentation artifacts are updated per the `syncing-framework-docs` skill
 
 ### "Use When" Activation Triggers
 
@@ -887,7 +887,7 @@ The education gate ensures developers understand AI-generated code before it's m
 
 ### Configuration
 
-From [`.claude/rules/review_gates.md`](../.claude/rules/review_gates.md):
+From [`selecting-review-gates` skill](../.claude/skills/selecting-review-gates/SKILL.md):
 - Quiz pass threshold: **70%**
 - Bloom's level mix: 60–70% Understand/Apply, 30–40% Analyze/Evaluate
 - At least 1 debug scenario and 1 change-impact question per quiz
