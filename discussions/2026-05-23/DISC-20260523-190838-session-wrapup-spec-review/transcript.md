@@ -1,0 +1,108 @@
+---
+discussion_id: DISC-20260523-190838-session-wrapup-spec-review
+started: 2026-05-23T19:08:57.691381+00:00
+ended: 2026-05-23T19:16:42.465313+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist]
+total_turns: 5
+---
+
+# Discussion: DISC-20260523-190838-session-wrapup-spec-review
+
+## Turn 1 — facilitator (evidence)
+*2026-05-23T19:08:57.691381+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Build a way to automatically manage long-running sessions so they stay self-aware of context usage and cleanly wrap up with a handoff prompt once context becomes suboptimal *for that specific model*; research how each model works optimally with its context window to inform the wrap-up point; make this the default behavior of every session, with the option of launching another agent to pick up where we left off.
+- **Files/scope**: SPEC-20260523-110504-session-wrapup (ADR-0018). New: config/model_context_profiles.yaml; .claude/hooks/{context_sensor.py,context-statusline.sh,context_statusline.py,context-guard.sh,context_guard.py}; .claude/skills/wrapping-up-sessions/; .claude/commands/handoff.md; docs/templates/handoff-template.md; docs/handoff/. Modified: .claude/settings.json (statusLine + UserPromptSubmit + env), pre-compact.ps1, CLAUDE.md, doc-sync surface.
+- **Developer-stated motivation**: Long sessions degrade in quality (context rot) and cost more per turn as the window fills; the framework currently only reacts at lossy ~83% auto-compaction. Wants proactive, model-aware, clean handoffs.
+- **Explicit constraints**: Developer LOCKED three decisions: (1) Wrap-up point = quality-first/early using min(fraction x window, absolute_cap) so a token cap binds on 1M windows (~140-180K) and percentage binds on 200K (~55-70%); (2) On trigger = AUTO-LAUNCH a fresh continuation by default, but inside the autonomous-execution authorization boundary (no push, file-path-seeded, ntfy-notified); (3) Enforcement = PHASED (advisory self-awareness v1; coercive Stop-hook block v2). statusLine is the only confirmed live signal and is display-only; hook context access is undocumented (sidecar bridge + transcript fallback). No Anthropic-official threshold exists (defaults heuristic, tunable). .sh->Python delegate pattern (PowerShell sandbox-blocked).
+
+---
+
+## Turn 2 — architecture-consultant (critique)
+*2026-05-23T19:13:07.075978+00:00 | confidence: 0.82*
+*tags: spec-review, architecture, blocking, advisory*
+
+## Architecture review of SPEC-20260523-110504 — verdict APPROVE-WITH-CHANGES (0.82)
+
+**BLOCKING:**
+- B-ARCH-1: R9 references a `/update-config` skill that DOES NOT EXIST; settings.json is in validate_tool_use.py PROTECTED_PATTERNS (will be denied). Edit path is undefined. Fix: descope to a documented MANUAL settings.json edit in the skill (matches /seed precedent), OR declare /update-config as an external dependency. Recommend manual for v1.
+- B-ARCH-2: context_sensor.py is listed in Affected Components but NO requirement specifies what it owns. R1 puts transcript+sidecar in statusline.py, R2 puts fallback in guard.py -> would DUPLICATE transcript-read + threshold-resolution across two scripts. Fix: add a requirement making context_sensor.py the SOLE owner of (model resolution, resolve_threshold(), sidecar read+freshness, transcript-estimate fallback, unified occupancy record); both hooks + skill stay thin. Lock function signatures in the spec.
+
+**ADVISORY:**
+- A-ARCH-5: avoid drifting a 2nd model-ID list vs model_pricing.yaml models:. Reuse the same tier names / derive window-class, OR consciously accept two ID lists (different update cadences) and note it in ADR-0018.
+- A-ARCH-6: confirm the guard can resolve the SAME session_id the statusline writer used; if not, document 'pick most-recent sidecar by written_at_epoch' as the degradation.
+
+**INFO (good):** three-artifact separation (handoff/BUILD_STATUS/dispatches) is correct, not over-fragmentation; phasing seam advisory->coercive is textbook risk-isolation; min(fraction,cap) aligns with ADR-0013; reuse of ingest_token_usage.py contains the undocumented-internals blast radius.
+
+---
+
+## Turn 3 — security-specialist (critique)
+*2026-05-23T19:13:21.960925+00:00 | confidence: 0.87*
+*tags: spec-review, security, blocking, advisory, prime-objective*
+
+## Security review of SPEC-20260523-110504 — verdict REVISE (0.87)
+
+**BLOCKING:**
+- B-SEC-1 (Critical, A03 injection): the handoff file path flows into the spawned `claude -p <path>`. R6/R7 state 'file-path-only' but never specify path construction/validation/invocation. Mandate in spec: (a) subprocess.run([...,'--print',path], shell=False) — NEVER string-interpolated; (b) canonicalize + assert Path(path).resolve().is_relative_to(HANDOFF_DIR); (c) validate session_id against ^[A-Za-z0-9_-]{1,64}$ before it touches any path/arg. Blast radius = whole workstation.
+- B-SEC-2 (High, sensitive-data exposure): docs/handoff/ is under the git-tracked docs/ tree; handoff files carry session context/model/threshold/possibly transcript fragments. Spec has NO gitignore requirement. Fix: add docs/handoff/ to .gitignore (spec requirement), OR relocate handoffs under the gitignored .claude/hooks/.state/ area, OR mandate a sanitization step.
+
+**ADVISORY:**
+- A-SEC-1: validate session_id (^[A-Za-z0-9_-]{1,64}$) before building .state/context-occupancy.<session_id>.json (path traversal; Windows \ and /).
+- A-SEC-2: explicitly gitignore .claude/hooks/.state/ (state + debounce flags leak session metadata).
+- A-SEC-3 (consent posture): auto-launch-by-default gated only on the existing autonomous-auth flag conflates 'run workflow w/o per-step ask' with 'spawn OS processes'. Add a SEPARATE explicit key (e.g. ALLOW_AUTO_LAUNCH_SESSION) + MAX_AUTO_LAUNCH_DEPTH (default 1, written into the handoff + checked) to prevent runaway spawn chains. Ties to Prime Objective (c) per-instance assent + Principle #7.
+- A-SEC-4: R2 transcript parse must read ONLY numeric usage.* fields; never pass raw transcript string content into additionalContext (prompt-injection).
+- A-SEC-5: confirm no feature hook writes to PROTECTED_PATTERNS files directly (hooks read config only).
+
+**STRENGTHS:** file-path-only instinct correct; /update-config routing sound (but see arch B-ARCH-1 — it doesn't exist); phasing is good security posture; inherits ntfy allow-list invariant.
+
+---
+
+## Turn 4 — qa-specialist (critique)
+*2026-05-23T19:13:39.341487+00:00 | confidence: 0.82*
+*tags: spec-review, qa, blocking, advisory, testability*
+
+## QA review of SPEC-20260523-110504 — verdict REVISE (0.82)
+
+**BLOCKING (must resolve before /build_module):**
+- B-QA-1: COVERAGE PATH MISMATCH. quality_gate.py runs pytest --cov=src/; the new modules live under .claude/hooks/, OUTSIDE the coverage perimeter -> 'coverage >=80% green' is trivially satisfiable while covering ZERO new code. Fix: put the pure-logic core in src/ (e.g. src/context_sensor.py) and have hook wrappers import it (matches the .sh->python delegate pattern), OR extend the coverage source to include .claude/hooks/*.py. Spec must state which.
+- B-QA-2: command-builder seam undefined. Define an explicit function e.g. build_launch_command(handoff_path: Path, auth: bool) -> list[str] | None; state HOW auth is detected (env var? settings flag?). Test asserts on returned command structure, not side effects.
+- B-QA-3: min(fraction*window, cap) crossover untested. Spec lists effective tokens but not the FRACTIONS. Require 3 cases: fraction*window<cap (fraction governs), >cap (cap governs), ==cap (degenerate). Parameterize.
+- B-QA-4: debounce flag path + re-arm semantics unspecified. Name the flag (e.g. .state/context-guard-armed.<session_id>), define content/absence semantics + how 'dropped below soft' is detected. 4-step state-machine test: emit -> silent -> re-arm-on-drop -> re-emit.
+- B-QA-5: sidecar freshness threshold unnamed. Add SIDECAR_FRESHNESS_SECONDS (default 300, mirrors commit-verified) + boundary test (now-thr-1 stale; now-thr+1 fresh).
+- B-QA-6: statusLine JSON shape not pinned. Require a _make_statusline_json() fixture factory (analogous to _make_jsonl_line() in test_ingest_token_usage.py) so schema drift is detectable.
+- B-QA-7: advisory-nudge oracle undefined. Test must parse the hook's stdout JSON and assert additionalContext is a non-empty string with threshold info; 2nd call has NO additionalContext key (silent). Behavioral, not execution, assertion.
+
+**ADVISORY:** boundary >= vs > and int-token vs float-pct comparison must be stated (B-QA-10); unknown-model fallback assert thresholds <= any known (B-QA-8); malformed/empty/huge transcript -> silence tests (B-QA-9); concurrent per-session sidecar selection test (B-QA-11); retention cap exact value (replace '~5' with HANDOFF_RETENTION_CAP=5 + FIFO eviction test) (B-QA-12); statusLine missing-field graceful-degrade (B-QA-13); pre-compact.ps1 syntax smoke (B-QA-14); BUILD_STATUS pointer glob-match not exact (B-QA-15).
+
+**STRENGTHS:** phasing correct; per-session atomic sidecar mirrors .state/; ingest_token_usage.py reuse is well-tested seam; conservative unknown-model default; Task()-not-for-continuation correctly ruled out.
+
+---
+
+## Turn 5 — facilitator (synthesis)
+*2026-05-23T19:16:42.465313+00:00 | confidence: 0.85*
+
+## Request Context
+- **What was requested**: Self-aware long-running sessions that cleanly wrap up with a handoff at a model-specific context threshold, defaulting to auto-launching a fresh continuation; research per-model optimal context behavior to set the threshold; default behavior of every session.
+- **Files/scope**: SPEC-20260523-110504-session-wrapup (-> ADR-0018). New config/model_context_profiles.yaml + src/context_sensor.py + thin hook wrappers + wrapping-up-sessions skill + /handoff command + handoff template + tests. Modified settings.json (manual), pre-compact.ps1, .gitignore, CLAUDE.md, doc-sync.
+- **Developer-stated motivation**: Long sessions degrade (context rot) and cost more per turn; framework only reacts at lossy ~83% auto-compaction today.
+- **Explicit constraints**: LOCKED — quality-first min(fraction x window, abs_cap) thresholds; auto-launch default (auth-gated); phased enforcement (advisory v1, coercive Stop v2). statusLine display-only; hook context access undocumented; no Anthropic-official threshold; .sh->python delegate (PowerShell sandbox-blocked).
+
+## Synthesis
+Three specialists reviewed the SPEC. Verdicts: architecture APPROVE-WITH-CHANGES (0.82), security REVISE (0.87), qa REVISE (0.82). The reviews were strongly convergent and caught real, build-blocking gaps. ALL blocking findings folded into the revised spec (status draft->reviewed):
+
+1. **Coverage perimeter (B-QA-1) + module ownership (B-ARCH-2):** the pure-logic core moved to src/context_sensor.py (inside --cov=src/) and made the SOLE owner of model resolution, resolve_threshold(), sidecar+freshness, transcript fallback, occupancy record. Hook wrappers + skill stay thin. This single change resolves both the coverage-gate hole and the duplication risk.
+2. **Spawn-path injection (B-SEC-1, Critical):** R7 now mandates shell=False + discrete-arg list, path canonicalization + is_relative_to(HANDOFF_DIR), and session_id allowlist ^[A-Za-z0-9_-]{1,64}$ (also applied to sidecar/flag filenames, A-SEC-1).
+3. **Leak channels (B-SEC-2/A-SEC-2):** docs/handoff/ + .claude/hooks/.state/ added to .gitignore; transcript fallback reads only numeric usage.* (A-SEC-4); injected nudge text is fixed template + numbers only.
+4. **Consent posture (A-SEC-3, elevated):** auto-launch now requires a SEPARATE explicit ALLOW_AUTO_LAUNCH_SESSION key in addition to the autonomous-auth gate, plus MAX_AUTO_LAUNCH_DEPTH (default 1) to prevent runaway spawn chains. This is the key Prime-Objective/Principle-#7 tension and is the headline item for the Steward gate.
+5. **Missing tooling (B-ARCH-1):** dropped the non-existent /update-config dependency; settings.json edit is a documented MANUAL step (per /seed). No config-mutation tool smuggled in.
+6. **Testability (B-QA-2..7,10,12,13,14,15):** named constants (SIDECAR_FRESHNESS_SECONDS=300, HANDOFF_RETENTION_CAP=5), explicit fractions+caps per profile for min() crossover tests, named debounce flags + delete-to-re-arm state machine, _make_statusline_json() fixture factory, build_launch_command() pure seam, behavioral nudge oracle, inclusive >= int-token comparison, FIFO retention test, glob-not-exact BUILD_STATUS pointer, ps1 parse-check.
+
+INFO-level agreement: three-artifact separation (handoff/BUILD_STATUS/dispatches) correct; phasing advisory->coercive is sound risk-isolation; ingest_token_usage.py reuse contains undocumented-internals blast radius; conservative unknown-model default correct; Task() correctly ruled out for continuation.
+
+One advisory deferred to build (A-ARCH-6): guard resolves the same session_id as the writer, else picks newest sidecar by written_at_epoch (documented degradation).
+
+**Next:** Steward gate (changes default session behavior; ALLOW_AUTO_LAUNCH_SESSION consent design is the focus) -> developer approval (Principle #7) -> /build_module.
+
+---
