@@ -1,9 +1,29 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-05-20 (token-efficiency restructure executed; awaiting commit-gate GO/HOLD via ntfy)
+> Last updated: 2026-05-24 — **/distribute B1-floor build COMPLETE + re-reviewed APPROVE, committed on `feat/distribute-b1-floor` (NO push).** This branch's BUILD_STATUS is scoped to the distribute work; the broader session ledger lives on `feat/session-wrapup`.
 
-## Current Task
+## ⮕ CURRENT — /distribute B1 mechanical floor + interpreted assessment (feat/distribute-b1-floor)
+
+**Status: built, reviewed, re-confirmed APPROVE, committed (NO push — developer is merge authority).**
+`SPEC-20260523-100224` implemented: R1 `value-unverified` mechanical floor; R2 `OverwriteDiff`/`triage_diff`
+(new `scripts/distribute/assessment.py`); R3/R3a/R5/R6/R7 doc orchestration (`distribute.md`); R4 pure
+`reclassify_route` + escalate-only `stage(exclude_paths=…)`; R8 secret-scrub; R9 **ADR-0017** (down-propagation
+protocol, clears review B5). Review `REV-20260523-125823`: REQUEST-CHANGES → **APPROVE** — all 4 blocking
+findings fixed and **independently re-confirmed** (qa-specialist + independent-perspective, reading worktree
+paths). Original review's must-fix carry-overs **B2** (TOCTOU doc-path single-resolve), **B3** (`_bound_patterns`
+500/500), **B4** (gate-bypass ⚠️ header) also folded. Quality gate **7/7**, 73 tests, coverage ≥80%.
+
+**Open v1.1 advisories (carry forward):** (a) hub-side ancestor tracking / 3-way merge so a *proven-safe*
+overwrite can resolve back to silent `value` (the deferred half of B1); (b) `stage()` backstop covers an
+orchestrator that *forgets to halt* an escalated file but not one that *never populates* `exclude_paths` (only
+relevant if orchestration is ported to Python); (c) disclaimer-exhaustion at scale — surface a secondary
+"M are behavioral" count; (d) shared `secret_patterns` module vs. the `scripts/→.claude/hooks` `sys.path` import.
+
+**Next after merge:** `--dry-run` vs the 3 real targets (each must first add `custodian.accepts_distribution`
+— opt-in HARD GATE); then doc-sync (FRAMEWORK_SPECIFICATION + presentations) + version bump at `/ship`.
+
+## Earlier context (ADR-0016 restructure, 2026-05-20)
 
 **Token-efficiency restructure (ADR-0016) — executed, quality-gate-clean, awaiting commit gate.**
 

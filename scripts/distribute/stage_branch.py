@@ -145,14 +145,15 @@ def stage(
     template_root: Path | str,
     base_branch: str | None = None,
     doc_relpath: str | None = None,
+    exclude_paths: set[str] | None = None,
 ) -> StageResult:
     """Stage a distribution proposal onto a fresh branch in the target.
 
-    Copies only ``package.stageable`` (value + inert) files from the hub into the target, writes
-    the advisory assessment doc, and commits to a new branch off the target's main. The original
-    branch is restored afterward; on any failure the partial branch is deleted so the target is
-    left exactly as found. Never pushes, never commits to the base branch, never copies a pinned
-    or diverged file.
+    Copies only ``package.stageable`` (value-unverified + inert) files from the hub to the target,
+    writes the advisory assessment doc, and commits to a new branch off the target's main. The
+    original branch is restored afterward; on any failure the partial branch is deleted so the
+    target is left exactly as found. Never pushes, never commits to the base branch, never copies a
+    pinned, diverged, or ``exclude_paths`` (escalated) file.
 
     The staging commit uses ``--no-verify`` (the target's pre-commit hook expects a target
     ``/review`` a hub proposal cannot have). The caller MUST therefore run the target's quality
@@ -170,6 +171,12 @@ def stage(
             back to :func:`detect_base_branch` (main/master/HEAD) for direct callers.
         doc_relpath: Where to write the assessment doc (defaults to
             ``docs/distribution/<branch>.md``).
+        exclude_paths: Stageable files to refuse to copy even though they are in
+            ``package.stageable`` — **mechanical backstop** for the escalate-only reclassification
+            bridge. A ``value-unverified`` file the interpretation room escalated to
+            ``collision-diverged`` is passed here so it is never physically written to the branch,
+            even if a future orchestrator forgets to halt. The guarantee is mechanical, not prose
+            (the override is a ``RouteDecision``, not a mutation of ``classification``).
 
     Returns:
         A :class:`StageResult`.
@@ -197,14 +204,21 @@ def stage(
     _validate_ref_name(base)
     _validate_ref_name(original_branch)
     doc_rel = doc_relpath or f"{DEFAULT_DOC_DIR}/{branch.replace('/', '-')}.md"
-    _resolve_within(target, doc_rel)  # validate before we start mutating
+    doc_dest = _resolve_within(
+        target, doc_rel
+    )  # resolve + validate ONCE; reused below (no TOCTOU)
 
     # Create the fresh branch off base; from here we must restore on failure.
     _git(target, "checkout", "-b", branch, base, check=True)
 
     try:
         files_staged: list[str] = []
+        excluded = exclude_paths or set()
         for item in package.stageable:
+            # Mechanical backstop for the escalate-only bridge: never copy an escalated file, even
+            # if it is still in package.stageable (the override is a RouteDecision, not mutation).
+            if item.file_path in excluded:
+                continue
             # Contain both sides: a crafted file_path must not read outside the hub or write
             # outside the target.
             src = _resolve_within(hub_root, item.file_path)
@@ -215,7 +229,7 @@ def stage(
             shutil.copy2(src, dest)
             files_staged.append(item.file_path)
 
-        doc_dest = _resolve_within(target, doc_rel)
+        # doc_dest was resolved + validated above — do not re-resolve (closes the TOCTOU window).
         doc_dest.parent.mkdir(parents=True, exist_ok=True)
         doc_dest.write_text(assessment_doc, encoding="utf-8")
 
