@@ -23,6 +23,26 @@ relevant if orchestration is ported to Python); (c) disclaimer-exhaustion at sca
 **Next after merge:** `--dry-run` vs the 3 real targets (each must first add `custodian.accepts_distribution`
 — opt-in HARD GATE); then doc-sync (FRAMEWORK_SPECIFICATION + presentations) + version bump at `/ship`.
 
+## ⮕ NEXT — /apply-framework unified command (SPEC-20260524-203931, APPROVED, ready to build)
+
+**Cleared for `/build_module`.** Unifies `/distribute` (UPDATE) + `/onboard` (APPLY) into ONE command:
+point at any project → UPDATE if it has the framework, APPLY if not → up-front value/risk report → deploy
+gated on a clean tree, dedicated back-out branch, never push/auto-merge, one target at a time.
+- **Gate trail:** design review `DISC-20260524-204142` (4 specialists, REVISE → mechanical fixes folded)
+  → Steward gate `DISC-20260524-205732` (**APPROVE 0.86**) → **developer Principle-#7 APPROVED 2026-05-24**.
+- **Settled decisions:** consent = **write a human-authored assent stub INTO the target** (named human +
+  `accepts_distribution:true`, FAIL CLOSED); architecture = **two engines + shared shell** behind an injected
+  `Baseline` protocol (`LineageBaseline`/`OnDiskBaseline`), one floor primitive tested against both; name =
+  **`/apply-framework`** (`/onboard` → thin alias to the deeper takeover).
+- **4 Steward conditions to honor in the build (already in the spec ACs):** (1) successor ADR records the
+  inversion insight (lineage-absence inversely correlated with ownership → APPLY needs the strongest assent);
+  (2) assent stub fail-closed (`primary_human:null` blocks); (3) stub written on the deploy branch so back-out
+  reverts it; (4) `baseline_gate_green` on APPLY defaults to skip + distinct logged confirm-to-run.
+- **Build base:** `feat/distribute-b1-floor` (reuses the B1 work `ef9a485` — change_package/assessment/
+  stage_branch/repo_safety_check). New: router, `OnDiskBaseline`+`compute_greenfield_package`,
+  `build_assess_report`+section-builders, feature/change interpretation, decomposed safety checks, the assent
+  deploy-step-zero, the successor ADR (supersedes ADR-0017), and the full test suite incl. `greenfield_env`.
+
 ## Earlier context (ADR-0016 restructure, 2026-05-20)
 
 **Token-efficiency restructure (ADR-0016) — executed, quality-gate-clean, awaiting commit gate.**
