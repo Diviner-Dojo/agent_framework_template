@@ -32,6 +32,37 @@ python scripts/notify.py "Build complete" --title "My Project"
 Requires `NTFY_TOPIC` set in `.env` (per-developer; not committed). Best-effort
 delivery — failures are logged but never block the calling script.
 
+## Task-Boundary Hooks: Pinging on Long-Running Script Completion
+
+Beyond explicit "notify me when X" requests, a long-running script can fire a
+push at its own completion/failure boundary so the developer can step away during
+a slow run. This is the same primitive (`send_notification`) called at the *end*
+of a script, on both the success and failure paths.
+
+**The contract (mirrors `notify.py`'s own design rules):**
+- **Best-effort, never fatal.** Wrap the call so a notification failure can never
+  change the script's exit code. `send_notification` already no-ops silently when
+  `NTFY_TOPIC` is unset and never raises on network error; task-boundary callers
+  additionally guard the *import* (and the call) so a missing `notify.py` degrades
+  to silence rather than a crash.
+- **Fire on completion AND failure** — the two moments a developer away from the
+  machine wants to know about. Convention: `tags="white_check_mark"` for success,
+  `priority="high", tags="warning"` for failure.
+- **Opt-in for high-frequency scripts.** A script that runs on every commit (e.g.
+  the quality gate, invoked by the pre-commit hook) must NOT ping unconditionally
+  — that is notification spam. Gate it behind an explicit `--notify` flag so the
+  automated path stays silent and the developer opts in only for long *manual*
+  runs. A script that runs rarely (e.g. `close_discussion.py`) may fire
+  unconditionally.
+- **Generic, confidentiality-safe text** (see Confidentiality below) — counts and
+  status only, never paths / IDs / secrets.
+
+**Already wired in this template:**
+- `scripts/close_discussion.py` — fires unconditionally when a discussion is sealed.
+- `scripts/quality_gate.py --notify` — opt-in; pings pass / fail / setup-error when
+  a manual gate run finishes (the pre-commit hook omits the flag, so commits stay
+  quiet). See `_notify_outcome` for the reference implementation of the contract above.
+
 ## Inbound: Asking the Developer When They May Be AFK
 
 Use `scripts/ask_developer.py` to publish a question to ntfy AND wait for the
