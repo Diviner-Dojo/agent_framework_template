@@ -3,7 +3,8 @@ spec_id: SPEC-20260525-233208
 title: "Async Human-in-the-Loop Collaboration Loop (ntfy) + Uninterrupted-Autonomy Protocol"
 type: spec
 scope: framework
-status: reviewed
+status: complete
+completed_commit: 915c142
 risk_level: medium
 origin: "agentic_journal — Journal Modes Phase 2 build (2026-05-25), built end-to-end while the developer was away via this loop"
 audience: "any project using the AI-Native Agentic Development Framework template"
