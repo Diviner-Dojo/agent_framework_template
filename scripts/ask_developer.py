@@ -1,4 +1,11 @@
-"""Ask the developer a question via ntfy and read the reply.
+"""Ask the developer a question via ntfy and read the reply (legacy single-topic shim).
+
+This is the **single-topic, free-text** inbound-ask wrapper. The canonical two-way
+collaboration loop (reply topic, tap-to-answer buttons, ``poll``/``check``/``say``) is
+``scripts/collab_loop.py`` (ADR-0019). This module is kept as a thin backward-compatible
+shim for existing callers: it delegates config resolution to ``collab_loop.resolve_config``
+and stream parsing to ``collab_loop.parse_ntfy_stream`` (no duplicated inbound logic), and
+adds only the single-topic echo-by-title filter below. Prefer ``collab_loop`` for new code.
 
 Two usage patterns:
 
@@ -35,9 +42,7 @@ question text generic — the topic slug is the only access control. See
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -50,7 +55,8 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from scripts.notify import send_notification, validate_server, validate_topic  # noqa: E402
+from scripts.collab_loop import parse_ntfy_stream, resolve_config  # noqa: E402
+from scripts.notify import send_notification  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -63,23 +69,15 @@ POLL_HTTP_TIMEOUT = 15
 
 
 def _topic_and_server() -> tuple[str, str]:
-    """Resolve and validate topic + server from environment.
+    """Resolve and validate topic + server from the environment (single-topic).
 
-    Raises RuntimeError if NTFY_TOPIC is missing or fails validation, or if
-    NTFY_SERVER fails validation. Validation rejects topics with path-traversal,
-    URL-escape, or host-injection characters, and servers without an http(s)
-    scheme — preventing the env-controlled URL from escaping the intended host.
+    Delegates to ``collab_loop.resolve_config`` (the shared resolver/validator)
+    with ``require_reply=False`` — this single-topic shim does not use a reply
+    topic. Raises RuntimeError (with a topic-safe message) if NTFY_TOPIC is missing
+    or if topic/server fail validation; validation rejects path-traversal,
+    URL-escape, and host-injection characters and non-http(s) schemes.
     """
-    topic = os.environ.get("NTFY_TOPIC", "").strip()
-    server = os.environ.get("NTFY_SERVER", DEFAULT_SERVER).rstrip("/")
-    if not topic:
-        raise RuntimeError("NTFY_TOPIC not set (check .env)")
-    topic_err = validate_topic(topic)
-    if topic_err:
-        raise RuntimeError(f"NTFY_TOPIC invalid: {topic_err}")
-    server_err = validate_server(server)
-    if server_err:
-        raise RuntimeError(f"NTFY_SERVER invalid: {server_err}")
+    server, topic, _reply_topic, _token = resolve_config(require_reply=False)
     return topic, server
 
 
@@ -114,28 +112,34 @@ def fetch_reply(
     """Poll ntfy once for a reply posted after `since` (unix timestamp).
 
     Returns the first reply body that is NOT an echo of our outbound question
-    (filtered by title). Returns None if no qualifying message is available.
-    Network errors are swallowed and treated as "no reply yet".
+    (filtered by exact title match). Returns None if no qualifying message is
+    available. Network errors are swallowed and treated as "no reply yet".
+
+    Stream parsing is delegated to ``collab_loop.parse_ntfy_stream`` (the shared
+    parse seam); only the single-topic echo-by-title filter lives here.
+
+    SECURITY: the returned body is **untrusted out-of-band input** — anyone with
+    the topic slug can publish it, and this single-topic shim applies no in-code
+    allow-list. The caller MUST validate it against a fixed allow-list and act on
+    the matched label only, never the raw text (CLAUDE.md Always-On Invariant).
+    For gated decisions prefer ``collab_loop.poll``/``check`` with ``choices``,
+    which enforce the allow-list at the boundary in code.
     """
     topic, server = _topic_and_server()
     url = f"{server}/{topic}/json?poll=1&since={since}"
     try:
         with urlopen(url, timeout=POLL_HTTP_TIMEOUT) as resp:
-            for raw in resp:
-                try:
-                    msg = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-                if msg.get("event") != "message":
-                    continue
-                if msg.get("title") == question_title:
-                    continue
-                body = msg.get("message", "").strip()
-                if body:
-                    return body
+            text = b"".join(resp).decode("utf-8")
     except URLError as e:
-        logger.debug("ntfy poll failed (treating as no reply): %s", e)
+        # Log the exception TYPE only — str(e) can embed the URL (topic slug).
+        logger.debug("ntfy poll failed (treating as no reply): %s", type(e).__name__)
         return None
+    for msg in parse_ntfy_stream(text):
+        if msg.get("title") == question_title:
+            continue  # echo of our own outbound question
+        body = (msg.get("message") or "").strip()
+        if body:
+            return body
     return None
 
 
@@ -159,7 +163,12 @@ def ask(
         sleep: Sleep function (injected for testing).
 
     Returns:
-        The reply body, or None if no reply within `timeout`.
+        The reply body, or None if no reply within `timeout`. The reply is
+        **untrusted out-of-band input** (anyone with the topic slug can publish):
+        the caller MUST validate it against a fixed allow-list and act on the
+        matched label only, never the raw text (CLAUDE.md Always-On Invariant).
+        Prefer ``collab_loop.poll``/``check`` with ``choices`` for gated
+        decisions — they enforce the allow-list at the boundary in code.
     """
     sent_at = send_question(question, title=title, priority=priority)
     deadline = sent_at + timeout

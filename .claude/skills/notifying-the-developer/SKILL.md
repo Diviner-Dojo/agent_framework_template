@@ -32,6 +32,12 @@ python scripts/notify.py "Build complete" --title "My Project"
 Requires `NTFY_TOPIC` set in `.env` (per-developer; not committed). Best-effort
 delivery — failures are logged but never block the calling script.
 
+**ASCII titles only (Protocol 7).** ntfy titles ride in an HTTP header (latin-1); a non-ASCII
+char (e.g. an emoji) raises `UnicodeEncodeError`. `notify.py`'s `send_notification` sanitizes the
+`Title` via `ensure_ascii_title` (preserving its never-raises contract), but keep titles ASCII by
+convention and put emoji in the *body* (the body is UTF-8). Regression precedent:
+`src/context_sensor.py`, 2026-05-23.
+
 ## Task-Boundary Hooks: Pinging on Long-Running Script Completion
 
 Beyond explicit "notify me when X" requests, a long-running script can fire a
@@ -64,6 +70,12 @@ of a script, on both the success and failure paths.
   quiet). See `_notify_outcome` for the reference implementation of the contract above.
 
 ## Inbound: Asking the Developer When They May Be AFK
+
+> **For interactive gating decisions, prefer the two-way loop** (`scripts/collab_loop.py`,
+> ADR-0019) — it adds tap-to-answer buttons, a dedicated reply topic, and a `check`-before-`poll`
+> resume primitive. See the `collaborating-async` skill. `scripts/ask_developer.py` (below) is the
+> legacy single-topic, **free-text** blocking ask; it now delegates config + parsing to
+> `collab_loop` and is retained for existing callers.
 
 Use `scripts/ask_developer.py` to publish a question to ntfy AND wait for the
 developer's free-text reply on the same topic. Returns the reply body or `None`
@@ -172,8 +184,10 @@ guidance.
 
 ## Related Files
 
-- `scripts/notify.py` — outbound publisher
-- `scripts/ask_developer.py` — inbound poller + blocking `ask()`
+- `scripts/notify.py` — outbound publisher (+ `ensure_ascii_title` guard)
+- `scripts/collab_loop.py` — canonical two-way loop (ask/poll/check/say); see `collaborating-async` skill
+- `scripts/ask_developer.py` — legacy single-topic free-text shim (delegates to `collab_loop`)
 - `tests/test_notify.py` — regression coverage for the notify flow
 - `tests/test_ask_developer.py` — regression coverage for the ask flow
+- `tests/test_collab_loop.py` — regression coverage for the two-way loop
 - `CLAUDE.md` "Push Notifications" — BYOK setup, design principles

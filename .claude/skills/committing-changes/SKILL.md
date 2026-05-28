@@ -35,6 +35,17 @@ When committing a bug fix:
 - Add an entry to `memory/bugs/regression-ledger.md` documenting the bug, root cause, fix, and test location
 - Commit fixes promptly — uncommitted fixes are invisible to git and WILL be lost across sessions
 
+### Step 1.8: Stage Only Your Own Files (Required)
+Stage *your* changes explicitly — list the exact paths you created/modified. **Never use
+`git add -A` / `git add .`** when the working tree may hold pre-existing dirty or untracked files
+from prior sessions or parallel work. Sweeping unrelated files into your commit corrupts
+attribution and can ship half-baked work.
+- `git status` first; confirm every staged path is one you actually changed.
+- Keep a "not mine — exclude" note in `BUILD_STATUS.md` (or the resume anchor) when the tree is
+  entangled, so the next session does not re-sweep them.
+- This pairs with the secrets rule below: explicit staging is the first guard against committing
+  an untracked `.env` or credential file you never meant to touch.
+
 ### Step 2: Code Review (Required for code changes)
 For any change that modifies application source code (`src/`), tests (`tests/`), or framework infrastructure (`.claude/agents/`, `.claude/commands/`, `.claude/rules/`, `scripts/`):
 - Run `/review <changed files>` to trigger multi-agent specialist review
@@ -67,6 +78,7 @@ After committing, update BUILD_STATUS.md with:
 - Clear any resolved blockers
 
 ## What NOT to Do
+- Do NOT `git add -A` / `git add .` with an entangled working tree — stage your own paths explicitly (Step 1.8)
 - Do NOT commit with `--no-verify` unless the developer explicitly requests it and explains why
 - Do NOT skip the review for code changes — Principle #4 requires independent evaluation
 - Do NOT commit files that contain secrets (.env, credentials, API keys)

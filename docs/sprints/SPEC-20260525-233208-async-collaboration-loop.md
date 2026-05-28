@@ -3,12 +3,14 @@ spec_id: SPEC-20260525-233208
 title: "Async Human-in-the-Loop Collaboration Loop (ntfy) + Uninterrupted-Autonomy Protocol"
 type: spec
 scope: framework
-status: draft
+status: reviewed
 risk_level: medium
 origin: "agentic_journal — Journal Modes Phase 2 build (2026-05-25), built end-to-end while the developer was away via this loop"
 audience: "any project using the AI-Native Agentic Development Framework template"
 original_spec_id: SPEC-FRAMEWORK-async-collaboration-loop
 captured: 2026-05-25
+reviewed_by: [architecture-consultant, security-specialist, qa-specialist]
+discussion_id: DISC-20260526-003910-async-collaboration-loop-spec-review
 captured_note: >
   Developer-authored spec from agentic_journal, captured verbatim into the template's
   spec registry pending /plan. Conformance gap analysis recorded in the handoff
@@ -354,3 +356,87 @@ Do not ship two overlapping inbound-ask tools — either `collab_loop.py` supers
 `ask_developer.py`, or `ask_developer.py` is extended with the reply-topic + action
 buttons. The template's hardened `notify.py` validation (topic/scheme) and
 never-print-topic rule must be preserved in whatever lands.
+
+---
+
+## Specialist review resolutions (/plan, 2026-05-26)
+
+> Reviewed by architecture-consultant, security-specialist, qa-specialist via
+> `DISC-20260526-003910-async-collaboration-loop-spec-review`. All three returned
+> **approve-with-changes** with no contradictions. These resolutions are **binding on
+> `/build_module`** — they supersede the verbatim reference implementation above wherever
+> they differ (treat the reference impl as a hypothesis to adapt, per Lesson 10).
+
+### R1 — Reconciliation = Path A: supersede via thin shim (BLOCKING, architecture)
+`ask_developer.py` has **zero `src/` callers** and exactly **one real code call site**
+(`.claude/commands/distribute.md:183`) plus skill examples and its own test suite.
+Therefore:
+- **`scripts/collab_loop.py`** is the single two-way implementation (`ask`/`poll`/`check`/`say`).
+  It **imports** `validate_topic`, `validate_server`, `send_notification` from `notify.py` —
+  it does **not** reimplement them.
+- **`scripts/ask_developer.py`** is reduced to a backward-compat **shim**: keep its public
+  surface (`ask()`, `send_question()`, `fetch_reply()`) delegating to `collab_loop` primitives,
+  so `distribute.md` and the skill examples keep working unchanged and all 17 existing
+  `test_ask_developer.py` tests stay green.
+- The `distribute.md:183` import and the `notifying-the-developer` skill examples are
+  re-pointed in the doc-sync step. Path B (extending `ask_developer.py`) is rejected:
+  it would overload one module with two concurrency models and an identity/naming drift.
+
+### R2 — Validation at the config boundary (BLOCKING, architecture+security+qa)
+`load_env()` (or a shared `notify.py` resolver both modules call) MUST run
+`validate_topic(topic)`, `validate_server(server)`, **and** `validate_topic(reply_topic)`
+after deriving `reply_topic = topic + "-reply"`. **Fail closed** on any failure with a
+non-revealing message (never print the topic). Reuse `notify.py`'s root-relative `.env`
+resolution (`Path(__file__).parent.parent / ".env"`) — **do not** use the reference impl's
+CWD-relative `Path(".env")` (a Monitor with a non-root CWD would silently read no topic).
+
+### R3 — Allow-list enforcement is mandatory in the rule (BLOCKING, security)
+`.claude/rules/async_collaboration.md` MUST contain an explicit, mandatory clause (not just
+a cross-reference to the `notifying-the-developer` skill): *every reply consumed from `poll`
+or `check` is validated against the question's fixed allow-list before triggering any gated
+action; the **matched label** — not the raw reply text — is the action input; free-text that
+matches no allow-list entry triggers no gated action.* Reply text is **untrusted out-of-band
+input** (anyone with the slug can publish) and must never reach a shell, path, or eval sink.
+Choice strings must come from a hardcoded set, never from reply-derived/external content.
+
+### R4 — Pure-function seams (BLOCKING, qa+architecture; Lesson 14)
+Extract decision logic out of I/O before writing other tests:
+- `classify_message(msg, *, require_empty_title, seen) -> "skip-event"|"skip-seen"|"skip-titled"|"emit"`
+- `parse_ntfy_stream(text) -> list[dict]` and/or `parse_reply_text(msg) -> str`
+
+`_emit`, `poll`, and `check` all consume these (eliminating `check`'s inline duplication of
+`_emit`). `poll()` gains injectable `sleep`, `source_fn`, and `max_iterations` seams (mirroring
+`ask_developer.ask()`'s injected `sleep`) so the infinite loop is testable.
+
+### R5 — Never-print-topic is a regression (BLOCKING, qa+security)
+Confirmed past leak bug. Add `@pytest.mark.regression` tests on **both** error branches
+(`HTTPError` + bare `Exception`) asserting the slug never appears in stdout/stderr **and** that
+a `WARN` line still prints (not a silent failure). In `_emit`'s broad `except`, replace
+`str(e)[:120]` with `type(e).__name__` only (a `urllib` exception's `str()` could embed the
+URL+topic). Add a regression-ledger entry.
+
+### R6 — ASCII-title hard guard (ADOPT, security+qa; Protocol 7)
+Enforce at the **`notify.py` sending layer** (the single primitive both tools use): sanitize the
+HTTP-header `Title` to ASCII (`title.encode("ascii", "replace").decode("ascii")`) or raise a
+clear, non-crashing error. `say()` is the risk surface (caller-supplied title); `ask()`
+hardcodes `"ASK"`. Add a regression test (same class as the `context_sensor.py` ledger bug,
+2026-05-23). Also validate `check`'s `since` argument (`^\d+[smhd]$` or `^\d+$`).
+
+### R7 — ADR-0019 (architecture; Principle #1)
+Author **ADR-0019** (framework capability) mirroring ADR-0018's "one core module owns the
+logic" precedent. Record: supersede-via-shim, `notify.py` validation as the shared base, the
+two-topic + empty-title trust model, and the pure-function seam. `supersedes: null` (additive).
+
+### R8 — Acceptance-criteria reframe (qa)
+- **AC-6** (hold gated actions) and **AC-7** (receipt ack) are **agent-behavior protocols**
+  enforced by `.claude/rules/async_collaboration.md`, **not** `collab_loop.py` unit tests —
+  verified by reading the rule, not by the test suite.
+- **AC-1** round-trip (tap → received by `poll`) is a **manual smoke** item; the `ask` JSON
+  payload structure (action buttons → reply topic, body == label, ≤3 cap) **is** unit-testable.
+- AC-2/AC-3/AC-4/AC-8 are unit-testable once the R4 seams exist.
+
+### Build test target (qa)
+~20 blocking + ~3 advisory unit tests in `tests/test_collab_loop.py` (classify_message matrix,
+empty-title incl. whitespace boundary, dedup, never-print-topic ×2, check-backlog recovery,
+ascii-title raise/pass, load_env validation, ask payload + ≤3 cap, poll bounded-iteration).
+All 17 `test_ask_developer.py` tests must remain green.

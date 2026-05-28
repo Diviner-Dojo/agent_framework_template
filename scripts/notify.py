@@ -100,6 +100,22 @@ def validate_server(server: str) -> str | None:
     return None
 
 
+def ensure_ascii_title(title: str) -> str:
+    """Return an ASCII-safe version of an ntfy notification title.
+
+    ntfy titles are sent as an HTTP header, which urllib encodes as latin-1. A
+    non-latin-1 character (e.g. an emoji) raises ``UnicodeEncodeError`` and crashes
+    the send path. This replaces any non-ASCII character with ``?`` so a title built
+    from dynamic content can never crash a notification — preserving this module's
+    never-raises contract. Emoji belong in the message body, which is UTF-8.
+
+    Regression precedent: ``src/context_sensor.py`` statusLine crash, 2026-05-23
+    (a non-ASCII char in an HTTP/terminal sink). See the ``notifying-the-developer``
+    skill (Protocol 7: ASCII titles only).
+    """
+    return title.encode("ascii", "replace").decode("ascii")
+
+
 def send_notification(
     message: str,
     *,
@@ -147,7 +163,9 @@ def send_notification(
 
     headers: dict[str, str] = {}
     if title:
-        headers["Title"] = title
+        # ntfy titles ride in an HTTP header (latin-1); sanitize to ASCII so an
+        # emoji/non-latin-1 char can never raise UnicodeEncodeError mid-send.
+        headers["Title"] = ensure_ascii_title(title)
     if priority and priority != "default":
         headers["Priority"] = priority
     if tags:
@@ -170,10 +188,12 @@ def send_notification(
                 logger.warning("ntfy returned status %d", resp.status)
                 return False
     except URLError as e:
-        logger.debug("ntfy send failed (best-effort): %s", e)
+        # Log the exception TYPE only — str(e)/URLError repr can embed the full
+        # URL (and thus the topic slug) into DEBUG logs. Never log the topic.
+        logger.debug("ntfy send failed (best-effort): %s", type(e).__name__)
         return False
     except Exception as e:
-        logger.debug("ntfy unexpected error (best-effort): %s", e)
+        logger.debug("ntfy unexpected error (best-effort): %s", type(e).__name__)
         return False
 
 

@@ -314,7 +314,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           </div>
           <div class="card" style="margin-bottom:12px;">
             <h3>What You Get</h3>
-            <p style="margin-top:6px;">The full framework infrastructure: 12 agents, 17 commands, 17 on-demand skills, 7 hooks, and the four-layer capture stack. Add your application code to <code style="color:var(--green);">src/</code> and start building.</p>
+            <p style="margin-top:6px;">The full framework infrastructure: 12 agents, 17 commands, 19 on-demand skills, 7 hooks, and the four-layer capture stack. Add your application code to <code style="color:var(--green);">src/</code> and start building.</p>
           </div>
           <div class="card" style="border-left: 3px solid var(--gold);">
             <h3>For Existing Projects</h3>
@@ -741,8 +741,69 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 12: LINEAGE & SHIP ==================== -->
+
+  <!-- ==================== SLIDE 12: ASYNC AUTONOMY / AFK COLLABORATION ==================== -->
   <div class="slide" data-slide="12">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Async Autonomy</p>
+      <h2 class="anim-fade-up-d1">Working While You're AFK</h2>
+      <p class="subtitle anim-fade-up-d2">The agent keeps building. Gating decisions reach your phone. You tap to answer and it continues &mdash; no session needed.</p>
+      <div class="two-col anim-fade-up-d3">
+        <div>
+          <div class="step-list">
+            <div class="step-item">
+              <div class="step-num" style="background:var(--blue-dim); color:var(--blue);">1</div>
+              <div class="step-info">
+                <h3>Agent hits a decision point</h3>
+                <p>It needs your input before proceeding &mdash; an architectural choice, a risky operation, a confidence gate. Rather than blocking or guessing, it sends the question to your phone.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--gold-dim); color:var(--gold);">2</div>
+              <div class="step-info">
+                <h3>You tap to answer</h3>
+                <p>Up to 3 labeled options appear as ntfy notification buttons. Tap one &mdash; no app, no session, no context switch. Just a phone tap.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--green-dim); color:var(--green);">3</div>
+              <div class="step-info">
+                <h3>Agent resumes</h3>
+                <p>The reply is validated against an allow-list, matched to the question, and the agent continues. Free-text replies go to the developer-only channel; the agent never trusts raw reply text directly.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--accent-glow); color:var(--accent-light);">4</div>
+              <div class="step-info">
+                <h3>Resume after a break? Check first.</h3>
+                <p>Use <code>collab_loop check</code> to look back at recent messages on the reply channel before starting a poll. This is the resume primitive &mdash; avoids missed answers.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--blue);">
+            <h3>Two Topics, One Model</h3>
+            <p style="margin-top:6px;">The agent publishes to <code>NTFY_TOPIC</code> (MAIN). Your replies go to <code>NTFY_TOPIC-reply</code> (REPLY). An empty title on MAIN is the agent's signal for your free-text &mdash; titled messages are the agent's own structured output. The two channels never cross.</p>
+          </div>
+          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--gold);">
+            <h3>Four Modes</h3>
+            <p style="margin-top:6px;"><code style="color:var(--blue);">ask</code> &mdash; push a question with tap-to-answer buttons (max 3)<br>
+            <code style="color:var(--blue);">poll</code> &mdash; stream live replies under a persistent Monitor<br>
+            <code style="color:var(--blue);">check</code> &mdash; one-shot lookback for missed answers (resume primitive)<br>
+            <code style="color:var(--blue);">say</code> &mdash; send a status or acknowledgement with no reply expected</p>
+          </div>
+          <div class="card" style="border-left: 3px solid var(--red);">
+            <h3>Security Invariants</h3>
+            <p style="margin-top:6px;">Replies are unauthenticated. The framework validates every reply against a fixed allow-list before acting. Raw reply text is never passed to a command, path, or eval sink. The topic name is never printed in conversation output. See the <code style="color:var(--accent-light);">collaborating-async</code> skill and CLAUDE.md always-on invariants.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 13: LINEAGE & SHIP ==================== -->
+  <div class="slide" data-slide="13">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Release &amp; Lineage</p>
       <h2 class="anim-fade-up-d1">Shipping and Tracking Your Fork</h2>
@@ -785,8 +846,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 13: CHEAT SHEET ==================== -->
-  <div class="slide" data-slide="13">
+  <!-- ==================== SLIDE 14: CHEAT SHEET ==================== -->
+  <div class="slide" data-slide="14">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Reference</p>
       <h2 class="anim-fade-up-d1">Command Cheat Sheet</h2>
@@ -835,8 +896,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 14: GETTING THE MOST OUT OF IT ==================== -->
-  <div class="slide" data-slide="14">
+  <!-- ==================== SLIDE 15: GETTING THE MOST OUT OF IT ==================== -->
+  <div class="slide" data-slide="15">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Avoid These Traps</p>
       <h2 class="anim-fade-up-d1">Getting the Most Out of It</h2>
@@ -878,8 +939,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 15: GET STARTED ==================== -->
-  <div class="slide" data-slide="15">
+  <!-- ==================== SLIDE 16: GET STARTED ==================== -->
+  <div class="slide" data-slide="16">
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up" style="width:80px; height:80px;">
@@ -917,17 +978,17 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
   </div>
   <div class="nav-controls">
     <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
-    <span class="slide-counter" id="slideCounter">1 / 15</span>
+    <span class="slide-counter" id="slideCounter">1 / 16</span>
     <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">&#8594;</button>
   </div>
 </div>
 
-<div class="progress-bar" id="progressBar" style="width: 6.67%;"></div>
+<div class="progress-bar" id="progressBar" style="width: 6.25%;"></div>
 
 <script>
 // ===== SLIDE NAVIGATION =====
 let currentSlide = 1;
-const totalSlides = 15;
+const totalSlides = 16;
 
 function showSlide(n) {
   if (n < 1 || n > totalSlides) return;
