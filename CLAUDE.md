@@ -67,7 +67,7 @@ Session-scoped working state at the project root; read at start, update before c
 
 ## Known Limitations
 - The pre-commit hook does not support `--skip-reviews` passthrough — the review-existence check cannot be bypassed from `git commit` arguments.
-- The pre-commit hook's regression-ledger check and review reminder are suppressed during the 5-minute verification-cache window after a quality gate run; stale cache entries may cause silent skips.
+- The pre-commit hook's regression-ledger check and review reminder are suppressed during the 5-minute verification-cache window after a quality gate run; stale cache entries may cause silent skips. The cache lives in `.claude/hooks/pre-commit-gate.sh` and only suppresses the reminder injection — it does **not** write to `quality_gate_log.jsonl` and cannot produce false `pass` entries (investigated 2026-05-29; see the `scripts/quality_gate.py` regression-ledger entry).
 - The MCP server requires thread-local SQLite connections (`threading.local()`); `Substrate._get_conn()` is the authoritative model. Drop-in code in the Phase 3 decision brief predates this and must be adapted. Regression test: `tests/test_mcp_server.py::TestThreadLocalIsolation`.
 - `EMBEDDING_DIM = 384` (all-MiniLM-L6-v2) is baked into the `assertion_vecs` schema; switching models requires a migration + full re-embedding, not a config change (ADR-0014).
 

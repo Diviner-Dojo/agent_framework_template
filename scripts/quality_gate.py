@@ -9,7 +9,10 @@ Usage:
     python scripts/quality_gate.py --skip-tests --skip-coverage
     python scripts/quality_gate.py --skip-reviews  # bypass review check
 
-Exit code 0 if all checks pass, 1 if any fail.
+Exit code 0 if all checks pass, 1 if any fail. Skipped checks (``--skip-*``) are
+recorded honestly in the JSONL log as ``overall: "pass_with_skips"`` — never as a
+clean ``"pass"`` — so a skipped or vacuous run cannot be read as a complete pass
+(Principle #2). See ``_build_outcome_record`` for the record schema.
 """
 
 import argparse
@@ -407,40 +410,89 @@ def check_build_status_freshness() -> bool:
 
 
 _CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
+# The argparse ``--skip-*`` flag attribute for each check, in _CHECK_NAMES order.
+# Derived from _CHECK_NAMES so a new check is added in exactly one place.
+_SKIP_ATTRS = [f"skip_{name}" for name in _CHECK_NAMES]
 
 
-def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, total: int) -> None:
-    """Append a JSONL record of the quality gate outcome for trend analysis."""
-    import json
+def _build_outcome_record(
+    args: argparse.Namespace, results: list[bool], passed: int, total: int
+) -> dict:
+    """Build the JSONL outcome record, recording skipped checks honestly.
+
+    ``overall`` distinguishes three states so a run that skipped checks can
+    never be read as a clean, complete pass (Principle #2 — capture must be
+    honest):
+
+    - ``"fail"`` — at least one check that ran failed (``passed != total``).
+    - ``"pass_with_skips"`` — every check that ran passed, but one or more were
+      skipped (via ``--skip-*``). This also covers the vacuous case where every
+      check is skipped (``total == 0``): ``passed == total`` holds, but the run
+      verified nothing, so it is not a plain ``"pass"``.
+    - ``"pass"`` — every check ran and passed.
+
+    The per-check ``checks`` map records ``"skipped"`` / ``"pass"`` / ``"fail"``
+    individually, and ``skipped_count`` exposes the skip total for trend queries
+    without having to walk the nested map.
+
+    ``passed`` and ``total`` are computed by the caller (``main``) and must be
+    consistent with ``results`` — ``total`` counts only the checks that ran (one
+    per ``True``/``False`` entry in ``results``), and ``passed`` is the number of
+    ``True`` entries. This function does not re-derive them from ``results``.
+    """
     from datetime import UTC, datetime
 
-    check_results = {}
+    check_results: dict[str, str] = {}
     idx = 0
-    for name, skip_attr in zip(
-        _CHECK_NAMES,
-        [
-            "skip_format",
-            "skip_lint",
-            "skip_tests",
-            "skip_coverage",
-            "skip_adrs",
-            "skip_reviews",
-            "skip_regression",
-        ],
-    ):
+    for name, skip_attr in zip(_CHECK_NAMES, _SKIP_ATTRS):
         if getattr(args, skip_attr, False):
             check_results[name] = "skipped"
         else:
             check_results[name] = "pass" if idx < len(results) and results[idx] else "fail"
             idx += 1
 
-    record = {
+    skipped_count = sum(1 for status in check_results.values() if status == "skipped")
+    if passed != total:
+        overall = "fail"
+    elif skipped_count:
+        overall = "pass_with_skips"
+    else:
+        overall = "pass"
+
+    return {
         "timestamp": datetime.now(UTC).isoformat(),
-        "overall": "pass" if passed == total else "fail",
+        "overall": overall,
         "passed_count": passed,
         "total": total,
+        "skipped_count": skipped_count,
         "checks": check_results,
     }
+
+
+def _format_summary(passed: int, total: int, skipped: int) -> str:
+    """Build the colored one-line gate summary printed at the end of a run.
+
+    The text is intentionally ASCII-only (apart from the ANSI color escapes,
+    which are themselves ASCII): this line is printed to a raw terminal whose
+    codec on Windows is cp1252, which cannot encode characters like the em-dash
+    and raises UnicodeEncodeError mid-run (the same class as the context_sensor
+    statusLine and notify-title crashes — see the regression ledger).
+    """
+    if passed != total:
+        return f"{RED}{BOLD}Quality Gate: FAILED ({passed}/{total} passed){RESET}"
+    if skipped:
+        return (
+            f"{YELLOW}{BOLD}Quality Gate: {passed}/{total} passed "
+            f"({skipped} skipped - not a complete pass){RESET}"
+        )
+    return f"{GREEN}{BOLD}Quality Gate: {passed}/{total} passed{RESET}"
+
+
+def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, total: int) -> None:
+    """Append a JSONL record of the quality gate outcome for trend analysis."""
+    import json
+
+    record = _build_outcome_record(args, results, passed, total)
 
     QUALITY_GATE_LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(QUALITY_GATE_LOG, "a", encoding="utf-8") as f:
@@ -626,12 +678,9 @@ def main() -> int:
     # Best-effort push notification (opt-in via --notify; no-op otherwise)
     _notify_outcome(passed, total, enabled=args.notify)
 
-    if passed == total:
-        print(f"{GREEN}{BOLD}Quality Gate: {passed}/{total} passed{RESET}\n")
-        return 0
-    else:
-        print(f"{RED}{BOLD}Quality Gate: FAILED ({passed}/{total} passed){RESET}\n")
-        return 1
+    skipped = sum(1 for skip_attr in _SKIP_ATTRS if getattr(args, skip_attr, False))
+    print(_format_summary(passed, total, skipped) + "\n")
+    return 0 if passed == total else 1
 
 
 if __name__ == "__main__":
