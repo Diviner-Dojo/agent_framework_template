@@ -19,6 +19,7 @@ The framework exists to serve contributors and users; its reasoning, memory, cap
 6. **Education gates before merge** — walkthrough → quiz → explain-back → merge; deferrals logged and completed before the next phase.
 7. **Layer 3 promotion requires human approval** — no discussion insight is promoted automatically.
 8. **Least-complex intervention first** — prompt < command/tool < agent-definition < architectural change.
+9. **Clarify before acting (95% rule)** — before producing a plan, writing code, or any substantive action, ask until ≥95% confident on intent **and** scope; a wrong assumption costs far more than a question. Mandatory unless the developer explicitly overrides ("proceed" / "just do it" / "risk it"). Exempt: micro-fixes.
 
 ## Always-On Invariants
 - **Sanitize at every trust boundary** — including data interpolated into LLM prompts, action triggers, or cross-process channels; never assume internal-origin data is safe.
@@ -31,7 +32,7 @@ The framework exists to serve contributors and users; its reasoning, memory, cap
 - **Multi-file change** (3+ files, or 2+ new files under `src/`): `/plan` → `/build_module` → quality gate → `/review` → commit.
 - **Small change** (1-2 files): implement → quality gate → `/review` → commit. Skip `/review` only for docs/config-only changes.
 - **"Proceed without asking" ≠ "proceed without reviewing."** Autonomous authorization runs the full workflow without pausing for per-step permission — it NEVER authorizes skipping `/plan`, `/review`, or capture. Detail: `.claude/rules/autonomous_workflow.md`.
-- **Confidence gate** — before building, if you are not ~95% confident on intent **and** scope, STOP and ask (in-conversation `AskUserQuestion`, or the `notifying-the-developer` skill if the developer is AFK) rather than guess; wrong-path tokens cost far more than a clarifying question. **Exemptions**: micro-fixes proceed (`handling-micro-fixes` skill); the developer may explicitly override ("proceed" / "just do it" / "risk it") to accept the risk. A formal confidence check also runs inside `/plan` and `/build_module`.
+- **Confidence gate** — Principle #9 (clarify to ≥95% before acting) applied to building: if unsure on intent **and** scope, STOP and ask in-conversation (`AskUserQuestion`), or via the `notifying-the-developer` skill if the developer is AFK. Exemptions/overrides per Principle #9 (micro-fixes proceed — `handling-micro-fixes` skill). A formal confidence check also runs inside `/plan` and `/build_module`.
 
 ## Quality & Commit Gates
 - `python scripts/quality_gate.py` checks: formatting (ruff), lint, tests (pytest), coverage ≥80%, ADR completeness, review existence (code changes), regression ledger, BUILD_STATUS freshness (advisory). `--fix` auto-remediates; `--skip-*` bypasses a check. Each run logs to `metrics/quality_gate_log.jsonl`.
