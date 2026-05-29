@@ -46,6 +46,54 @@ _CATEGORY_PATTERNS: dict[str, list[str]] = {
 }
 
 
+# Verdict / round-marker boilerplate patterns (ADR-pending F2, BUILD_STATUS 2026-05-28).
+# Synthesis verdict headers and round/confidence markers are NOT code findings. When they
+# leak into the findings table their summaries pollute the severity histogram and the token
+# sets fed to mine_patterns (pattern_hash consumes the summary), producing phantom
+# verdict-header promotion candidates. These match against the *extracted summary* (the first
+# line/sentence) so that verdict-PREFIXED lines carrying substantive text — e.g.
+# "REVISE: tests/ classification gap ..." — are kept, while pure boilerplate is dropped.
+_VERDICT_TOKENS = "approve[- ]with[- ]changes|request[- ]changes|approve|reject|revise|pass|fail"
+# A "Verdict:"/"Verdict." header line, with optional leading markdown hashes.
+_VERDICT_HEADER_RE = re.compile(r"^\s*#*\s*verdict\s*[:.]", re.IGNORECASE)
+# A round-marker line, e.g. "round 2: approve" or "(Round 2)".
+_ROUND_MARKER_RE = re.compile(r"^\s*\(?\s*round\s+\d", re.IGNORECASE)
+# A confidence-only line, e.g. "Confidence 0.91".
+_CONFIDENCE_ONLY_RE = re.compile(r"^\s*confidence[\s:]*[\d.]+\s*$", re.IGNORECASE)
+# A bare verdict marker: just the verdict word, optionally annotated with a round and/or
+# confidence note and trailing punctuation, with no substantive text following.
+# Conservative by design (REVIEW.md REV-20260529-054131 A3): a verdict token followed by a
+# colon and prose — e.g. "Approve: the implementation looks correct" — is intentionally KEPT
+# (the terminal $ anchor fails), since under-dropping a borderline finding is preferable to
+# silently discarding a real one. events.jsonl is framework-agent-written, so the residual
+# evasion is a quality, not a security, concern.
+_BARE_VERDICT_RE = re.compile(
+    rf"^\s*(?:{_VERDICT_TOKENS})"
+    r"\s*(?:\(?\s*round\s*\d+\s*\)?)?"  # optional round annotation
+    r"\s*(?:\(?\s*confidence[:\s]*[\d.]+\s*\)?)?"  # optional confidence annotation
+    r"\s*[.:]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_verdict_boilerplate(summary: str) -> bool:
+    """Return True if a summary is a synthesis verdict / round marker, not a real finding.
+
+    Args:
+        summary: The extracted summary (first line/sentence of finding content).
+
+    Returns:
+        True if the summary is verdict/round/confidence boilerplate that should not be
+        recorded as a finding.
+    """
+    return bool(
+        _VERDICT_HEADER_RE.match(summary)
+        or _ROUND_MARKER_RE.match(summary)
+        or _CONFIDENCE_ONLY_RE.match(summary)
+        or _BARE_VERDICT_RE.match(summary)
+    )
+
+
 def _classify_severity(content: str) -> str:
     """Classify finding severity based on content keywords."""
     content_lower = content.lower()
@@ -140,9 +188,16 @@ def extract_findings(discussion_id: str) -> int:
             if any(t in tags for t in ["context-brief", "build-plan"]):
                 continue
 
+        summary = _extract_summary(content)
+
+        # Drop empty/whitespace summaries (e.g. an event with no content) and synthesis
+        # verdict / round-marker boilerplate before they are recorded as findings (F2).
+        # Both pollute the severity histogram and the pattern-mining token sets.
+        if not summary or _is_verdict_boilerplate(summary):
+            continue
+
         severity = _classify_severity(content)
         category = _classify_category(content)
-        summary = _extract_summary(content)
 
         # Extract a raw excerpt (first 500 chars)
         raw_excerpt = content[:500] if len(content) > 500 else content
