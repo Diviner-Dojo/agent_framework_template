@@ -1700,6 +1700,17 @@ h3 {
               </div>
             </div>
           </div>
+          <h3 style="margin-top:20px; margin-bottom:8px; color:var(--accent-light);">Async Autonomy (ADR-0019)</h3>
+          <div class="card" style="padding:14px 18px;">
+            <p style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
+              While the agent works autonomously, gating decisions surface to your phone via ntfy.sh.
+              <strong style="color:var(--text-primary);">ask</strong> sends tap-to-answer buttons (max 3).
+              <strong style="color:var(--text-primary);">check</strong> looks back for missed answers on resume.
+              <strong style="color:var(--text-primary);">poll</strong> streams live replies.
+              Replies are validated against an allow-list before the agent acts &mdash; never trusted as raw input.
+              Two topics: MAIN (agent outbound) + REPLY (developer inbound). See the <code>collaborating-async</code> skill.
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -1900,7 +1911,7 @@ h3 {
               <div class="tree-file">  custodian/ <span class="tree-comment">— Lineage tracking</span></div>
               <div class="tree-file">  hooks/ <span class="tree-comment">— 7 lifecycle hooks</span></div>
               <div class="tree-file">  rules/ <span class="tree-comment">— 4 context-loaded standards (rest are on-demand skills)</span></div>
-              <div class="tree-file">  skills/ <span class="tree-comment">— 17 on-demand skills (playbooks + relocated protocols)</span></div>
+              <div class="tree-file">  skills/ <span class="tree-comment">— 19 on-demand skills (playbooks + relocated protocols, ADR-0016/ADR-0019)</span></div>
             </div>
           </div>
 

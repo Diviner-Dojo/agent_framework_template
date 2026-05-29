@@ -11,6 +11,10 @@ Write-Output "  - Files modified since last update"
 Write-Output "  - Open discussion IDs and their status"
 Write-Output "  - Resume instructions for after compaction"
 Write-Output ""
+Write-Output "If this is a LONG session (a soft/hard wrap-up may have been missed),"
+Write-Output "run the 'wrapping-up-sessions' skill / '/handoff' to write a clean handoff"
+Write-Output "artifact BEFORE this compaction (ADR-0018). Compaction is the lossy backstop."
+Write-Output ""
 
 if (Test-Path $statusFile) {
     $lastMod = (Get-Item $statusFile).LastWriteTime

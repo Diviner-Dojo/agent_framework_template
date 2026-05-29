@@ -32,7 +32,50 @@ python scripts/notify.py "Build complete" --title "My Project"
 Requires `NTFY_TOPIC` set in `.env` (per-developer; not committed). Best-effort
 delivery — failures are logged but never block the calling script.
 
+**ASCII titles only (Protocol 7).** ntfy titles ride in an HTTP header (latin-1); a non-ASCII
+char (e.g. an emoji) raises `UnicodeEncodeError`. `notify.py`'s `send_notification` sanitizes the
+`Title` via `ensure_ascii_title` (preserving its never-raises contract), but keep titles ASCII by
+convention and put emoji in the *body* (the body is UTF-8). Regression precedent:
+`src/context_sensor.py`, 2026-05-23.
+
+## Task-Boundary Hooks: Pinging on Long-Running Script Completion
+
+Beyond explicit "notify me when X" requests, a long-running script can fire a
+push at its own completion/failure boundary so the developer can step away during
+a slow run. This is the same primitive (`send_notification`) called at the *end*
+of a script, on both the success and failure paths.
+
+**The contract (mirrors `notify.py`'s own design rules):**
+- **Best-effort, never fatal.** Wrap the call so a notification failure can never
+  change the script's exit code. `send_notification` already no-ops silently when
+  `NTFY_TOPIC` is unset and never raises on network error; task-boundary callers
+  additionally guard the *import* (and the call) so a missing `notify.py` degrades
+  to silence rather than a crash.
+- **Fire on completion AND failure** — the two moments a developer away from the
+  machine wants to know about. Convention: `tags="white_check_mark"` for success,
+  `priority="high", tags="warning"` for failure.
+- **Opt-in for high-frequency scripts.** A script that runs on every commit (e.g.
+  the quality gate, invoked by the pre-commit hook) must NOT ping unconditionally
+  — that is notification spam. Gate it behind an explicit `--notify` flag so the
+  automated path stays silent and the developer opts in only for long *manual*
+  runs. A script that runs rarely (e.g. `close_discussion.py`) may fire
+  unconditionally.
+- **Generic, confidentiality-safe text** (see Confidentiality below) — counts and
+  status only, never paths / IDs / secrets.
+
+**Already wired in this template:**
+- `scripts/close_discussion.py` — fires unconditionally when a discussion is sealed.
+- `scripts/quality_gate.py --notify` — opt-in; pings pass / fail / setup-error when
+  a manual gate run finishes (the pre-commit hook omits the flag, so commits stay
+  quiet). See `_notify_outcome` for the reference implementation of the contract above.
+
 ## Inbound: Asking the Developer When They May Be AFK
+
+> **For interactive gating decisions, prefer the two-way loop** (`scripts/collab_loop.py`,
+> ADR-0019) — it adds tap-to-answer buttons, a dedicated reply topic, and a `check`-before-`poll`
+> resume primitive. See the `collaborating-async` skill. `scripts/ask_developer.py` (below) is the
+> legacy single-topic, **free-text** blocking ask; it now delegates config + parsing to
+> `collab_loop` and is retained for existing callers.
 
 Use `scripts/ask_developer.py` to publish a question to ntfy AND wait for the
 developer's free-text reply on the same topic. Returns the reply body or `None`
@@ -141,8 +184,10 @@ guidance.
 
 ## Related Files
 
-- `scripts/notify.py` — outbound publisher
-- `scripts/ask_developer.py` — inbound poller + blocking `ask()`
+- `scripts/notify.py` — outbound publisher (+ `ensure_ascii_title` guard)
+- `scripts/collab_loop.py` — canonical two-way loop (ask/poll/check/say); see `collaborating-async` skill
+- `scripts/ask_developer.py` — legacy single-topic free-text shim (delegates to `collab_loop`)
 - `tests/test_notify.py` — regression coverage for the notify flow
 - `tests/test_ask_developer.py` — regression coverage for the ask flow
+- `tests/test_collab_loop.py` — regression coverage for the two-way loop
 - `CLAUDE.md` "Push Notifications" — BYOK setup, design principles

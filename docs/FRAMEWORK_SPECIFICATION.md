@@ -1023,7 +1023,7 @@ Per ADR-0016 (progressive disclosure), only **4 rule files** reach context: `aut
 
 ### Skill Reference Documents
 
-**17 on-demand skills** in [`.claude/skills/`](../.claude/skills/) — loaded by description match, not always-resident. 6 reference playbooks plus 11 protocol skills relocated from `.claude/rules/` per ADR-0016:
+**19 on-demand skills** in [`.claude/skills/`](../.claude/skills/) — loaded by description match, not always-resident. 6 reference playbooks plus 12 protocol skills relocated from `.claude/rules/` per ADR-0016, plus `collaborating-async` (ADR-0019):
 
 | Skill | Scope |
 |-------|-------|
@@ -1044,6 +1044,25 @@ Per ADR-0016 (progressive disclosure), only **4 rule files** reach context: `aut
 | cross-agent-dispatch | Cross-agent dispatch requests *(was cross_agent_dispatch_protocol)* |
 | multi-instance-dispatch | Parallel instance splits *(was multi_instance_protocol)* |
 | handling-micro-fixes | Cosmetic-change sizing + two-strike escalation *(was micro_fix_protocol)* |
+| collaborating-async | Two-way ntfy loop (ADR-0019): ask/poll/check/say modes, MAIN + REPLY topic model, untrusted-reply allow-list, AFK-safe gating decisions |
+
+### Push Notifications & Async Collaboration (ADR-0019)
+
+The framework supports two-way async communication with the developer via ntfy.sh while autonomous work continues:
+
+| Script | Role |
+|--------|------|
+| [`scripts/collab_loop.py`](../scripts/collab_loop.py) | Canonical two-way loop: `ask` (tap-to-answer phone buttons, max 3), `poll` (stream replies under a persistent Monitor), `check` (one-shot lookback — the resume primitive), `say` (status/ack) |
+| [`scripts/notify.py`](../scripts/notify.py) | One-way outbound push; gained `ensure_ascii_title` for HTTP-header-safe titles |
+| [`scripts/ask_developer.py`](../scripts/ask_developer.py) | Thin shim for single-topic free-text asks; delegates to `collab_loop` |
+
+**Topic model**: `$NTFY_TOPIC` (MAIN, outbound from agent) + `$NTFY_TOPIC-reply` (REPLY, inbound from developer). The empty-title rule on MAIN distinguishes developer free-text from the agent's own titled outbound messages.
+
+**Security invariants** (always-on, codified in CLAUDE.md):
+- Validate reply text against a fixed allow-list before acting — never pass reply text to a command, path, or eval sink
+- Never print the raw topic name in conversation output
+
+**On-demand skill**: `collaborating-async` — loaded when async collaboration context is needed. Full protocol detail including allow-list validation and the check-before-poll resume pattern lives there.
 
 ### Session State
 
@@ -1070,7 +1089,7 @@ Per ADR-0016 (progressive disclosure), only **4 rule files** reach context: `aut
 | Structured exception hierarchy (pattern documented) | See coding standards + error handling in CLAUDE.md | Add to `src/` when building your app |
 | LLM-gated test markers | `pyproject.toml` marker registration | `--run-llm`, `--run-slow` |
 | Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 77 patterns tracked |
-| 17 on-demand skills | `.claude/skills/*/SKILL.md` | 6 reference playbooks + 11 protocol skills relocated from rules (ADR-0016) |
+| 19 on-demand skills | `.claude/skills/*/SKILL.md` | 6 reference playbooks + 12 protocol skills relocated from rules (ADR-0016) + `collaborating-async` (ADR-0019) |
 | 4 context-loaded rule files | `.claude/rules/*.md` | autonomous_workflow (always) + coding/testing/security (path-scoped) per ADR-0016 |
 | 6 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review, project profile |
 | Steward agent + lineage tracking | `.claude/agents/steward.md`, `scripts/lineage/`, `framework-lineage.yaml`, `.claude/custodian/` | ADR-0002 accepted, Phase 1 operational |
@@ -1348,7 +1367,7 @@ agent_framework_template/
 │   │   ├── security_baseline.md      #   path-scoped src/**, scripts/**
 │   │   └── testing_requirements.md   #   path-scoped tests/**
 │   │
-│   └── skills/                        # 17 on-demand skills (6 playbooks + 11 relocated protocols, ADR-0016)
+│   └── skills/                        # 19 on-demand skills (6 playbooks + 12 relocated protocols + collaborating-async, ADR-0016/ADR-0019)
 │       ├── adr-writing/SKILL.md
 │       ├── performance-playbook/SKILL.md
 │       ├── python-project-patterns/SKILL.md
@@ -1475,3 +1494,4 @@ agent_framework_template/
 | 2026-05-12 | Token-efficiency telemetry (ADR-0013) — JSONL ingest + SQLite schema. `scripts/ingest_token_usage.py` parses Claude Code transcripts and attributes token usage to discussions. Per-turn tokens_in/out/cache_read/cache_create columns added to `turns` table; `discussions.total_tokens_*` rollup columns added. `v_token_efficiency` view enables blocking-findings-per-1K-output-tokens analysis grouped by command_type. |
 | 2026-05-12 | Sourced-assertion memory substrate (ADR-0014, Phase 4) — `assertion_store/Substrate` class + `mcp_server/` FastMCP transport. Three primitives: `assert_fact`, `search_semantic`, `get_source`. SQLite + sqlite-vec + sentence-transformers. Suchness preservation as first-class architectural action (get_source returns the original passage at a project:// URI line range). Substrate is transport-agnostic; MCP is one transport. Phase 4 mods: per-assertion project_id, portable `project://<id>/<path>#L<a>-L<b>` URI, scope parameter reserved for future cross-project layer (local-only this round). |
 | 2026-05-16 | v3.5: Prime Objective above the eight principles (ADR-0015) — the framework's first principle is named as serving contributors and users and refusing extraction patterns. The eight Non-Negotiable Principles are recast as operational expressions of the Prime Objective. Three-part test (attribution preservation, consent of labor, consent of evolution) named as a specialist instrument. PHILOSOPHY.md extended with positive moral frame and the model-provider limit acknowledged. REVIEW.md cues specialists to apply the test on designs touching attribution, consent of labor, value flow, or framework evolution. Cross-instance propagation via `~/.claude/shared-memory/FRAMEWORK_CHANGELOG.md`. |
+| 2026-05-26 | ADR-0019: Async human-in-the-loop collaboration loop — `scripts/collab_loop.py` (ask/poll/check/say, two-topic ntfy model), `ask_developer.py` refactored as thin shim, `notify.py` ASCII-safe titles, `collaborating-async` on-demand skill. Skill count: 17 → 18. Untrusted-reply allow-list and never-print-topic promoted to CLAUDE.md always-on invariants. |

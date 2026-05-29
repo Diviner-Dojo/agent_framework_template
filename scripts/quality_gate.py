@@ -447,6 +447,69 @@ def _log_outcome(args: argparse.Namespace, results: list[bool], passed: int, tot
         f.write(json.dumps(record) + "\n")
 
 
+def _notify_outcome(
+    passed: int,
+    total: int,
+    *,
+    enabled: bool,
+    setup_error: bool = False,
+) -> None:
+    """Fire a best-effort ntfy push with the gate result, if --notify was passed.
+
+    No-op unless ``enabled`` (the ``--notify`` flag), so the pre-commit hook —
+    which runs the gate on every commit and never passes ``--notify`` — stays
+    silent. Delivery is best-effort: ``notify.send_notification`` itself never
+    raises and silently no-ops when ``NTFY_TOPIC`` is unset, and this helper
+    swallows any remaining error so a notification problem can never change the
+    gate's exit code (the "never crash the caller" rule).
+
+    Message text is intentionally generic — counts only, no file paths, IDs, or
+    secrets — because ntfy.sh is a public relay (see the notifying-the-developer
+    skill).
+
+    A ``total`` of 0 (every check skipped via ``--skip-*``) satisfies
+    ``passed == total``, so a "passed" ping is sent — a vacuous pass is treated
+    as a pass.
+
+    Args:
+        passed: Number of checks that passed.
+        total: Total number of checks run.
+        enabled: Whether --notify was requested.
+        setup_error: True when the gate bailed before running checks (e.g.
+            missing source/test directories); sends a distinct failure ping.
+    """
+    if not enabled:
+        return
+    try:
+        from notify import send_notification
+
+        if setup_error:
+            send_notification(
+                "Quality gate could not run — source or test directories missing.",
+                title="Quality Gate: setup error",
+                priority="high",
+                tags="warning",
+            )
+        elif passed == total:
+            send_notification(
+                f"All {total} checks passed.",
+                title="Quality Gate: passed",
+                tags="white_check_mark",
+            )
+        else:
+            send_notification(
+                f"{passed}/{total} checks passed — gate FAILED.",
+                title="Quality Gate: FAILED",
+                priority="high",
+                tags="warning",
+            )
+    except Exception as exc:
+        # Best-effort only — a notification failure (including notify.py being
+        # absent from the path) must never break the gate. Emit a one-line stderr
+        # notice for debuggability; the exit code is unaffected.
+        print(f"  [notify] gate-result notification skipped: {exc}", file=sys.stderr)
+
+
 def main() -> int:
     """Run all quality checks and return exit code."""
     parser = argparse.ArgumentParser(description="Quality gate — validate all framework standards")
@@ -470,6 +533,16 @@ def main() -> int:
         action="store_true",
         help="Skip regression ledger check",
     )
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        help=(
+            "Send a push notification (ntfy) with the result when the gate "
+            "finishes. Off by default so the pre-commit hook stays silent; add "
+            "it for long manual runs when stepping away. No-op unless NTFY_TOPIC "
+            "is set in .env."
+        ),
+    )
     args = parser.parse_args()
 
     print(f"\n{BOLD}Quality Gate{RESET}")
@@ -484,6 +557,7 @@ def main() -> int:
         print(
             f"{RED}{BOLD}Quality Gate: FAILED — source or test directories missing or empty{RESET}\n"
         )
+        _notify_outcome(0, 0, enabled=args.notify, setup_error=True)
         return 1
 
     results: list[bool] = []
@@ -548,6 +622,9 @@ def main() -> int:
 
     # Log outcome to JSONL for trend analysis
     _log_outcome(args, results, passed, total)
+
+    # Best-effort push notification (opt-in via --notify; no-op otherwise)
+    _notify_outcome(passed, total, enabled=args.notify)
 
     if passed == total:
         print(f"{GREEN}{BOLD}Quality Gate: {passed}/{total} passed{RESET}\n")

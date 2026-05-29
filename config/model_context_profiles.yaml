@@ -1,0 +1,94 @@
+# Per-model context-budget profiles that drive the session wrap-up / handoff
+# protocol (ADR-0018). When resident context crosses a profile's soft or hard
+# threshold, the `wrapping-up-sessions` skill produces a structured handoff.
+#
+# DESIGN (mirrors config/model_pricing.yaml / ADR-0013):
+#   - `profiles:` is the stable dimension, keyed by tier x window-class
+#     (the "sonnet" tier spans a 1M model AND a 200K model, so window-class
+#     must be part of the key — it is NOT tier-stable).
+#   - `models:` resolves a full model ID -> a profile. Model IDs churn
+#     quarterly; adding a model is a ONE-LINE edit here, never a migration.
+#   - This `models:` map is DELIBERATELY independent of model_pricing.yaml's
+#     `models:` map (different update cadences: pricing on price changes,
+#     profiles on new-model windows). ADR-0018 records this conscious
+#     duplication.
+#
+# THRESHOLD MODEL (the 1M-window fix):
+#   effective_soft = min(soft_wrapup_fraction * context_window, soft_abs_cap_tokens)
+#   effective_hard = min(hard_wrapup_fraction * context_window, hard_abs_cap_tokens)
+#   The percentage binds on the 200K window; the absolute cap binds on the 1M
+#   window, so large windows get more headroom WITHOUT paying for ~550K of
+#   resident context rot. Comparison is on INTEGER tokens, inclusive (>=).
+#   auto_compact_fraction is the harness backstop, NOT our trigger — we always
+#   fire soft (then hard) BELOW it.
+#
+# RESEARCH BASIS (no Anthropic-official hard %; third-party benchmarks):
+#   - High-quality "effective working fraction" ~= 50-65% of the window.
+#   - Claude degrades slowest among frontier models but is NOT immune to
+#     "context rot" / "lost in the middle".
+#   - Harness auto-compaction default ~83% is the floor we stay above.
+
+last_updated: 2026-05-23
+unit: tokens
+schema_version: 1
+
+# Operational tunables (one-line edits; the sensor falls back to its own
+# module constants if this block or a key is absent).
+settings:
+  sidecar_freshness_seconds: 300   # a sidecar older than this is stale -> transcript fallback
+  handoff_retention_cap: 5         # keep the N most-recent HANDOFF-*.md; FIFO-evict older
+  max_auto_launch_depth: 1         # spawn-chain depth cap (prevents runaway continuations)
+
+defaults:
+  # Unknown model -> the MOST CONSERVATIVE profile (lowest soft/hard fractions of
+  # the four), so an unmapped/new model wraps up earliest, never never
+  # (ADR-0018 / AC-8). haiku_200k is the floor.
+  profile: haiku_200k
+
+profiles:
+
+  # ---- 1M-window class (Opus 4.7, Sonnet 4.6) ----
+  opus_1m:
+    context_window: 1000000
+    soft_wrapup_fraction: 0.55      # 550K nominal...
+    hard_wrapup_fraction: 0.70      # 700K nominal...
+    soft_abs_cap_tokens: 140000     # ...but the cap binds first. Opus degrades
+    hard_abs_cap_tokens: 180000     # slowest -> highest caps of the four.
+    auto_compact_fraction: 0.83     # harness backstop; we always fire before this.
+
+  sonnet_1m:
+    context_window: 1000000
+    soft_wrapup_fraction: 0.55
+    hard_wrapup_fraction: 0.70
+    soft_abs_cap_tokens: 120000     # tighter than opus: faster degradation risk.
+    hard_abs_cap_tokens: 160000
+    auto_compact_fraction: 0.83
+
+  # ---- 200K-window class (Sonnet 4.5, Haiku 4.5) ----
+  sonnet_200k:
+    context_window: 200000
+    soft_wrapup_fraction: 0.55      # 110K -> percentage binds (below the abs cap).
+    hard_wrapup_fraction: 0.70      # 140K.
+    soft_abs_cap_tokens: 140000     # set ABOVE the % product so the % stays binding.
+    hard_abs_cap_tokens: 175000
+    auto_compact_fraction: 0.83
+
+  haiku_200k:
+    context_window: 200000
+    soft_wrapup_fraction: 0.50      # haiku degrades fastest -> wrap up earlier.
+    hard_wrapup_fraction: 0.65
+    soft_abs_cap_tokens: 130000
+    hard_abs_cap_tokens: 160000
+    auto_compact_fraction: 0.83
+
+# Full model ID -> profile. Unlisted IDs fall back to `defaults.profile`.
+# Verify the window at add-time when a new model lands.
+models:
+  claude-opus-4-7:   opus_1m
+  claude-opus-4-6:   opus_1m
+  claude-opus-4:     opus_1m        # historically 200K — re-check at add-time.
+  claude-sonnet-4-7: sonnet_1m
+  claude-sonnet-4-6: sonnet_1m
+  claude-sonnet-4-5: sonnet_200k
+  claude-sonnet-4:   sonnet_200k
+  claude-haiku-4-5:  haiku_200k

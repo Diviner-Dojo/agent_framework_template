@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.error import URLError
 
+import pytest
+
 # Add scripts to path for import
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
@@ -334,3 +336,41 @@ class TestLoadEnv:
 
         with patch("notify._ENV_FILE", fake_path):
             _load_env()  # Should not raise
+
+
+class TestEnsureAsciiTitle:
+    """Tests for the ensure_ascii_title guard (Protocol 7 / ADR-0019)."""
+
+    def test_ascii_title_unchanged(self) -> None:
+        from notify import ensure_ascii_title
+
+        assert ensure_ascii_title("Build complete") == "Build complete"
+
+    def test_emoji_replaced_with_ascii(self) -> None:
+        from notify import ensure_ascii_title
+
+        result = ensure_ascii_title("✅ done")
+        result.encode("ascii")  # must not raise
+        assert "✅" not in result
+
+    @pytest.mark.regression
+    @patch("notify.urlopen")
+    def test_emoji_title_header_is_latin1_safe(self, mock_urlopen: MagicMock) -> None:
+        """Regression: a non-ASCII Title would raise UnicodeEncodeError when urllib
+        encodes the HTTP header as latin-1 (same class as src/context_sensor.py,
+        2026-05-23). The Title header must be latin-1-encodable after sanitizing.
+        """
+        from notify import send_notification
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        send_notification("body", title="✅ deploy done", topic="test-topic")
+
+        req = mock_urlopen.call_args[0][0]
+        title_header = req.get_header("Title")
+        title_header.encode("latin-1")  # the regression assertion: must not raise
+        assert "✅" not in title_header

@@ -11,6 +11,10 @@
       "Skill(build_module:*)"
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "bash .claude/hooks/context-statusline.sh"
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -50,6 +54,17 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/post-tool-use-unlock.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/context-guard.sh",
             "timeout": 5
           }
         ]
