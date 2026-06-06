@@ -9,6 +9,7 @@ reused ``ingest_token_usage`` module and the DB path is a ``tmp_path`` SQLite.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -17,7 +18,17 @@ import pytest
 from scripts import ingest_token_usage as itu
 from scripts.init_db import init_db
 from scripts.telemetry import analyze_cost as ac
+from scripts.telemetry import analyze_failures as af
 from src.telemetry.cost import ModelTokenRow, build_cost_report
+from src.telemetry.failures import (
+    FailureSignal,
+    SubagentDispatch,
+    SubagentRun,
+    ToolCall,
+    detect_orphaned_subagents,
+    detect_retry_loops,
+    rank_failures,
+)
 from src.telemetry.pricing import (
     UNKNOWN_TIER,
     PricingTable,
@@ -519,3 +530,609 @@ def _all_tables(db_path: Path) -> set[str]:
         }
     finally:
         conn.close()
+
+
+# =========================================================================== #
+# Layer A2 — failure signals (orphaned subagents + retry loops)
+# =========================================================================== #
+
+
+def _call(
+    name: str, input_hash: str, message_id: str, *, tier: str = "opus", out: int = 0
+) -> ToolCall:
+    return ToolCall(
+        name=name, input_hash=input_hash, message_id=message_id, tier=tier, tokens_out=out
+    )
+
+
+# --- detect_retry_loops (pure) --------------------------------------------- #
+
+
+def test_retry_loop_flags_three_identical_in_a_row() -> None:
+    calls = [
+        _call("Bash", "h1", "m1", out=10),
+        _call("Bash", "h1", "m2", out=10),
+        _call("Bash", "h1", "m3", out=10),
+    ]
+    sigs = detect_retry_loops(calls)
+    assert len(sigs) == 1
+    assert sigs[0].failure_type == "retry_loop"
+    assert sigs[0].occurrence_count == 3
+    # Wasted = the redundant repeats (m2, m3) only — the first call is real work.
+    assert sigs[0].wasted_tokens_out == 20
+
+
+def test_retry_loop_below_threshold_not_flagged() -> None:
+    calls = [_call("Bash", "h1", "m1"), _call("Bash", "h1", "m2")]
+    assert detect_retry_loops(calls) == []
+
+
+def test_retry_loop_threshold_clamped_to_two() -> None:
+    # A threshold below 2 is meaningless (every call would "loop"); it clamps to 2.
+    calls = [_call("Bash", "h1", "m1", out=10), _call("Bash", "h1", "m2", out=10)]
+    sigs = detect_retry_loops(calls, threshold=1)
+    assert len(sigs) == 1
+    assert sigs[0].occurrence_count == 2
+
+
+def test_retry_loop_distinct_inputs_not_a_loop() -> None:
+    calls = [_call("Bash", "h1", "m1"), _call("Bash", "h2", "m2"), _call("Bash", "h3", "m3")]
+    assert detect_retry_loops(calls) == []
+
+
+def test_retry_loop_dedups_wasted_tokens_by_message_id() -> None:
+    # One assistant message emitting three identical calls: occurrence_count is 3
+    # but the wasted-token sum counts that message's usage once (m1 deduped).
+    calls = [_call("Bash", "h1", "m1", out=10) for _ in range(3)]
+    sigs = detect_retry_loops(calls)
+    assert sigs[0].occurrence_count == 3
+    assert sigs[0].wasted_tokens_out == 10
+
+
+def test_retry_loop_detects_two_separate_loops() -> None:
+    calls = [
+        _call("A", "h1", "m1"),
+        _call("A", "h1", "m2"),
+        _call("A", "h1", "m3"),
+        _call("B", "h2", "m4"),
+        _call("B", "h2", "m5"),
+        _call("B", "h2", "m6"),
+    ]
+    sigs = detect_retry_loops(calls)
+    assert len(sigs) == 2
+    assert {s.signature for s in sigs} == {"A:h1", "B:h2"}
+
+
+def test_retry_loop_interleaved_calls_not_flagged() -> None:
+    # Ping-pong A,B,A,B,A repeats A 3x but never in an unbroken run — by design
+    # only consecutive runs are flagged (conservative; documented A2.1 gap).
+    calls = [
+        _call("A", "h1", "m1"),
+        _call("B", "h2", "m2"),
+        _call("A", "h1", "m3"),
+        _call("B", "h2", "m4"),
+        _call("A", "h1", "m5"),
+    ]
+    assert detect_retry_loops(calls) == []
+
+
+def test_retry_loop_empty_input_returns_empty() -> None:
+    assert detect_retry_loops([]) == []
+
+
+# --- detect_orphaned_subagents (pure) -------------------------------------- #
+
+
+def test_orphan_dispatch_without_result_is_flagged() -> None:
+    sigs = detect_orphaned_subagents([SubagentDispatch("toolu_1", "qa-specialist")], set(), [])
+    assert len(sigs) == 1
+    assert sigs[0].failure_type == "orphaned_subagent"
+    assert sigs[0].signature == "toolu_1"
+
+
+def test_orphan_dispatch_with_result_not_flagged() -> None:
+    sigs = detect_orphaned_subagents([SubagentDispatch("toolu_1", "qa")], {"toolu_1"}, [])
+    assert sigs == []
+
+
+def test_orphan_background_dispatch_without_result_not_flagged() -> None:
+    # run_in_background dispatches return async — a missing sync result is normal.
+    d = [SubagentDispatch("toolu_1", "qa", run_in_background=True)]
+    assert detect_orphaned_subagents(d, set(), []) == []
+
+
+def test_orphan_incomplete_run_flagged() -> None:
+    runs = [SubagentRun("aX", None, completed=False, tier="opus", tokens_out=100)]
+    sigs = detect_orphaned_subagents([], set(), runs)
+    assert len(sigs) == 1
+    assert sigs[0].signature == "aX"
+    assert sigs[0].wasted_tokens_out == 100
+
+
+def test_orphan_completed_run_not_flagged() -> None:
+    runs = [SubagentRun("aX", None, completed=True, tier="opus")]
+    assert detect_orphaned_subagents([], set(), runs) == []
+
+
+def test_orphan_linked_run_not_double_counted() -> None:
+    # A dispatch with no result whose subagent run is linked by source id must be
+    # reported once (the dispatch), with the run's tokens pulled in for weighting.
+    d = [SubagentDispatch("toolu_1", "qa")]
+    runs = [SubagentRun("aX", "toolu_1", completed=False, tier="opus", tokens_out=50)]
+    sigs = detect_orphaned_subagents(d, set(), runs)
+    assert len(sigs) == 1
+    assert sigs[0].signature == "toolu_1"
+    assert sigs[0].wasted_tokens_out == 50
+
+
+# --- rank_failures (pure) -------------------------------------------------- #
+
+
+def test_rank_priced_before_unpriced(pricing: PricingTable) -> None:
+    s_unknown = FailureSignal("retry_loop", "u", 1, UNKNOWN_TIER, wasted_tokens_out=100000)
+    s_opus = FailureSignal("retry_loop", "o", 1, "opus", wasted_tokens_out=10)
+    ranked = rank_failures([s_unknown, s_opus], pricing)
+    # Priced opus ranks first despite far fewer tokens; unknown is uncosted (None).
+    assert ranked[0].signal.tier == "opus"
+    assert ranked[0].cost_usd is not None
+    assert ranked[1].cost_usd is None
+
+
+def test_rank_unpriced_ordered_by_wasted_tokens(pricing: PricingTable) -> None:
+    a = FailureSignal("retry_loop", "a", 1, UNKNOWN_TIER, wasted_tokens_out=100)
+    b = FailureSignal("retry_loop", "b", 1, UNKNOWN_TIER, wasted_tokens_out=500)
+    ranked = rank_failures([a, b], pricing)
+    assert ranked[0].signal.signature == "b"
+
+
+def test_wasted_total_tokens_treats_none_as_zero() -> None:
+    s = FailureSignal(
+        "retry_loop",
+        "x",
+        1,
+        "opus",
+        wasted_tokens_in=None,
+        wasted_tokens_out=5,
+        wasted_cache_read_tokens=None,
+        wasted_cache_create_tokens=2,
+    )
+    assert s.wasted_total_tokens() == 7
+
+
+# --- transport helpers ----------------------------------------------------- #
+
+
+def _assistant_line(
+    mid: str,
+    ts: str,
+    model: str,
+    tool_uses: list[tuple[str, str, dict]],
+    *,
+    stop_reason: str = "end_turn",
+    output_tokens: int = 0,
+    cache_read: int = 0,
+) -> str:
+    content = [
+        {"type": "tool_use", "id": tid, "name": name, "input": inp} for tid, name, inp in tool_uses
+    ]
+    msg = {
+        "role": "assistant",
+        "id": mid,
+        "model": model,
+        "stop_reason": stop_reason,
+        "usage": {
+            "input_tokens": 0,
+            "output_tokens": output_tokens,
+            "cache_read_input_tokens": cache_read,
+            "cache_creation_input_tokens": 0,
+        },
+        "content": content,
+    }
+    return json.dumps({"timestamp": ts, "message": msg})
+
+
+def _result_line(ts: str, tool_use_id: str) -> str:
+    return json.dumps(
+        {
+            "timestamp": ts,
+            "message": {
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": tool_use_id}],
+            },
+        }
+    )
+
+
+def _subagent_line(
+    mid: str, ts: str, model: str, *, stop_reason: str = "end_turn", output_tokens: int = 0
+) -> str:
+    msg = {
+        "role": "assistant",
+        "id": mid,
+        "model": model,
+        "stop_reason": stop_reason,
+        "usage": {
+            "input_tokens": 0,
+            "output_tokens": output_tokens,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+        },
+        "content": [{"type": "text", "text": "ok"}],
+    }
+    return json.dumps({"timestamp": ts, "message": msg})
+
+
+def _write_session(
+    projects_root: Path,
+    project_root: Path,
+    sid: str,
+    main_lines: list[str],
+    subagents: dict[str, list[str]] | None = None,
+) -> Path:
+    """Create a <slug>/<sid>/ session dir with main + subagent transcripts.
+
+    Returns the session directory path (so tests can set mtimes deterministically).
+    """
+    slug = itu._project_slug(project_root)
+    sdir = projects_root / slug / sid
+    sdir.mkdir(parents=True, exist_ok=True)
+    (sdir / f"{sid}.jsonl").write_text("\n".join(main_lines), encoding="utf-8")
+    if subagents:
+        sub = sdir / "subagents"
+        sub.mkdir(exist_ok=True)
+        for name, lines in subagents.items():
+            (sub / f"agent-{name}.jsonl").write_text("\n".join(lines), encoding="utf-8")
+    return sdir
+
+
+def _set_mtime(session_dir: Path, mtime: float) -> None:
+    for path in session_dir.rglob("*.jsonl"):
+        os.utime(path, (mtime, mtime))
+
+
+# --- transport: parsing ---------------------------------------------------- #
+
+
+def test_input_hash_is_order_independent_and_value_sensitive() -> None:
+    assert af._input_hash({"a": 1, "b": 2}) == af._input_hash({"b": 2, "a": 1})
+    assert af._input_hash({"a": 1}) != af._input_hash({"a": 2})
+
+
+def test_parse_main_session_extracts_calls_dispatch_and_results(
+    tmp_path: Path, pricing: PricingTable
+) -> None:
+    lines = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            [("toolu_a", "Bash", {"c": "ls"})],
+            output_tokens=5,
+        ),
+        _result_line("2026-01-01T00:00:02Z", "toolu_a"),
+        _assistant_line(
+            "m2",
+            "2026-01-01T00:00:03Z",
+            "claude-opus-4-7",
+            [("toolu_b", "Agent", {"subagent_type": "qa"})],
+        ),
+    ]
+    path = tmp_path / "s.jsonl"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    calls, dispatches, results = af.parse_main_session(path, pricing)
+    assert [c.name for c in calls] == ["Bash", "Agent"]
+    assert calls[0].tier == "opus"
+    assert len(dispatches) == 1 and dispatches[0].subagent_type == "qa"
+    assert results == {"toolu_a"}
+
+
+def test_parse_subagent_run_completed_vs_incomplete(tmp_path: Path, pricing: PricingTable) -> None:
+    done = tmp_path / "agent-done.jsonl"
+    done.write_text(
+        _subagent_line("s1", "2026-01-01T00:00:01Z", "claude-opus-4-7", output_tokens=20),
+        encoding="utf-8",
+    )
+    hung = tmp_path / "agent-hung.jsonl"
+    hung.write_text(
+        _subagent_line(
+            "s2",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            stop_reason="tool_use",
+            output_tokens=99,
+        ),
+        encoding="utf-8",
+    )
+    run_done = af.parse_subagent_run(done, pricing)
+    run_hung = af.parse_subagent_run(hung, pricing)
+    assert run_done.completed is True and run_done.agent_id == "done"
+    assert run_hung.completed is False and run_hung.tokens_out == 99
+
+
+# --- transport: end-to-end ------------------------------------------------- #
+
+
+def test_analyze_failures_detects_orphan_and_retry(env, pricing: PricingTable) -> None:
+    main = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            [("t1", "Bash", {"c": "ls"})],
+            output_tokens=10,
+        ),
+        _result_line("2026-01-01T00:00:02Z", "t1"),
+        _assistant_line(
+            "m2",
+            "2026-01-01T00:00:03Z",
+            "claude-opus-4-7",
+            [("t2", "Bash", {"c": "ls"})],
+            output_tokens=10,
+        ),
+        _result_line("2026-01-01T00:00:04Z", "t2"),
+        _assistant_line(
+            "m3",
+            "2026-01-01T00:00:05Z",
+            "claude-opus-4-7",
+            [("t3", "Bash", {"c": "ls"})],
+            output_tokens=10,
+        ),
+        _result_line("2026-01-01T00:00:06Z", "t3"),
+        _assistant_line(
+            "m4",
+            "2026-01-01T00:00:07Z",
+            "claude-opus-4-7",
+            [("t4", "Agent", {"subagent_type": "qa"})],
+        ),
+    ]
+    _write_session(env.projects_root, env.project_root, "sess1", main)
+    summary = af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    assert summary["retry_loops"] == 1
+    assert summary["orphaned_subagents"] == 1
+    assert summary["rows_written"] == 2
+
+
+def test_analyze_failures_flags_incomplete_subagent(env, pricing: PricingTable) -> None:
+    main = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            [("t1", "Agent", {"subagent_type": "qa"})],
+        ),
+        _result_line(
+            "2026-01-01T00:00:02Z", "t1"
+        ),  # dispatch HAS a result -> not a no-result orphan
+    ]
+    hung = [
+        _subagent_line(
+            "s1",
+            "2026-01-01T00:00:03Z",
+            "claude-opus-4-7",
+            stop_reason="tool_use",
+            output_tokens=100,
+        )
+    ]
+    _write_session(env.projects_root, env.project_root, "sess2", main, {"hung": hung})
+    summary = af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    assert summary["orphaned_subagents"] == 1
+
+
+def test_analyze_failures_clean_session_reports_nothing(env, pricing: PricingTable) -> None:
+    main = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            [("t1", "Bash", {"c": "ls"})],
+            output_tokens=5,
+        ),
+        _result_line("2026-01-01T00:00:02Z", "t1"),
+        _assistant_line(
+            "m2",
+            "2026-01-01T00:00:03Z",
+            "claude-opus-4-7",
+            [("t2", "Read", {"p": "x"})],
+            output_tokens=5,
+        ),
+        _result_line("2026-01-01T00:00:04Z", "t2"),
+    ]
+    _write_session(env.projects_root, env.project_root, "clean", main)
+    summary = af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    assert summary["retry_loops"] == 0
+    assert summary["orphaned_subagents"] == 0
+    assert summary["rows_written"] == 0
+
+
+def test_analyze_failures_is_idempotent(env, pricing: PricingTable) -> None:
+    main = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            [("t1", "Agent", {"subagent_type": "qa"})],
+        ),
+    ]
+    _write_session(env.projects_root, env.project_root, "s", main)
+    af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    conn = sqlite3.connect(str(env.db_path))
+    first = conn.execute("SELECT COUNT(*) FROM telemetry_failures").fetchone()[0]
+    conn.close()
+    af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    conn = sqlite3.connect(str(env.db_path))
+    second = conn.execute("SELECT COUNT(*) FROM telemetry_failures").fetchone()[0]
+    conn.close()
+    assert first == second == 1
+
+
+def test_failure_attributed_to_discussion_window(env, pricing: PricingTable) -> None:
+    _insert_discussion(env.db_path, "DISC-x", "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z")
+    main = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T12:00:00Z",
+            "claude-opus-4-7",
+            [("t1", "Agent", {"subagent_type": "qa"})],
+        ),
+    ]
+    _write_session(env.projects_root, env.project_root, "s", main)
+    af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    conn = sqlite3.connect(str(env.db_path))
+    row = conn.execute("SELECT discussion_id FROM telemetry_failures").fetchone()
+    conn.close()
+    assert row[0] == "DISC-x"
+
+
+def test_failures_mtime_watermark_skips_older_sessions(env, pricing: PricingTable) -> None:
+    older = _write_session(
+        env.projects_root,
+        env.project_root,
+        "older",
+        [
+            _assistant_line(
+                "m1",
+                "2026-01-01T00:00:01Z",
+                "claude-opus-4-7",
+                [("t1", "Agent", {"subagent_type": "qa"})],
+            )
+        ],
+    )
+    newer = _write_session(
+        env.projects_root,
+        env.project_root,
+        "newer",
+        [
+            _assistant_line(
+                "m2",
+                "2026-01-01T00:00:01Z",
+                "claude-opus-4-7",
+                [("t2", "Agent", {"subagent_type": "qa"})],
+            )
+        ],
+    )
+    _set_mtime(older, 1000.0)
+    _set_mtime(newer, 2000.0)
+    full = af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    assert full["sessions_analyzed"] == 2
+    incr = af.analyze_failures(db_path=env.db_path, pricing=pricing)
+    # Only the newer session (>= watermark) is re-analyzed; the older is skipped.
+    assert incr["sessions_analyzed"] == 1
+
+
+@pytest.mark.regression
+def test_failures_watermark_boundary_not_silently_skipped(env, pricing: PricingTable) -> None:
+    # Regression: a session whose mtime exactly equals the stored watermark must
+    # STILL be re-analyzed (the selector uses >=, not >). A strict > would
+    # silently skip it — the same same-timestamp hole the A1 review caught.
+    s = _write_session(
+        env.projects_root,
+        env.project_root,
+        "boundary",
+        [
+            _assistant_line(
+                "m1",
+                "2026-01-01T00:00:01Z",
+                "claude-opus-4-7",
+                [("t1", "Agent", {"subagent_type": "qa"})],
+            )
+        ],
+    )
+    _set_mtime(s, 5000.0)
+    af.analyze_failures(
+        db_path=env.db_path, full_rescan=True, pricing=pricing
+    )  # watermark -> 5000
+    incr = af.analyze_failures(db_path=env.db_path, pricing=pricing)
+    assert incr["sessions_analyzed"] == 1  # boundary session not skipped
+
+
+def test_telemetry_failures_table_exists(tmp_path: Path) -> None:
+    db_path = _make_db(tmp_path)
+    cols = _columns(db_path, "telemetry_failures")
+    assert {"failure_type", "signature", "tier", "wasted_tokens_out", "occurrence_count"} <= cols
+
+
+def test_parse_subagent_run_empty_transcript_is_incomplete(
+    tmp_path: Path, pricing: PricingTable
+) -> None:
+    # An empty subagent transcript has produced no answer -> incomplete (orphan).
+    empty = tmp_path / "agent-empty.jsonl"
+    empty.write_text("", encoding="utf-8")
+    run = af.parse_subagent_run(empty, pricing)
+    assert run.completed is False
+    assert run.tokens_out is None
+
+
+def test_analyze_failures_dispatched_orphan_tier_is_unknown(env, pricing: PricingTable) -> None:
+    # A no-result dispatch is detected parent-side; subagent files carry no
+    # back-link, so its tier is honestly 'unknown' (never zero-rated) — documents
+    # the dead-seam: the run-link path is unreachable from the transport.
+    main = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            [("t1", "Agent", {"subagent_type": "qa"})],
+        ),
+    ]
+    _write_session(env.projects_root, env.project_root, "s", main)
+    af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    conn = sqlite3.connect(str(env.db_path))
+    row = conn.execute(
+        "SELECT tier, wasted_tokens_out FROM telemetry_failures "
+        "WHERE failure_type='orphaned_subagent'"
+    ).fetchone()
+    conn.close()
+    assert row[0] == "unknown"
+    assert row[1] is None
+
+
+@pytest.mark.regression
+def test_migration_allowlist_rejects_unsafe_identifier() -> None:
+    # Regression (security B1): the ALTER TABLE migration loop interpolates DDL
+    # identifiers (SQLite can't bind them). An off-allowlist table/column/type
+    # must be rejected loudly so a future non-literal entry can't become injection.
+    from scripts.init_db import _assert_safe_migration
+
+    _assert_safe_migration("turns", "tokens_in", "INTEGER")  # known-good: no raise
+    with pytest.raises(ValueError):
+        _assert_safe_migration("turns; DROP TABLE turns", "x", "TEXT")
+    with pytest.raises(ValueError):
+        _assert_safe_migration("turns", "x) --", "TEXT")
+    with pytest.raises(ValueError):
+        _assert_safe_migration("turns", "x", "TEXT; DROP TABLE turns")
+
+
+@pytest.mark.regression
+def test_subagent_file_outside_projects_root_is_skipped(
+    env, pricing: PricingTable, monkeypatch
+) -> None:
+    # Regression (security B2): _detect_for_session must consult
+    # _is_inside_projects_root before opening subagent files (symlink-escape
+    # guard). Before the fix the guard was absent here, so an escaping agent file
+    # would be read and flagged. Forcing the guard to reject agent-* paths must
+    # now suppress the orphan (old code would still report 1).
+    main = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            [("t1", "Agent", {"subagent_type": "qa"})],
+        ),
+        _result_line("2026-01-01T00:00:02Z", "t1"),
+    ]
+    hung = [
+        _subagent_line(
+            "s1",
+            "2026-01-01T00:00:03Z",
+            "claude-opus-4-7",
+            stop_reason="tool_use",
+            output_tokens=10,
+        )
+    ]
+    _write_session(env.projects_root, env.project_root, "s", main, {"hung": hung})
+    real = itu._is_inside_projects_root
+    monkeypatch.setattr(
+        itu, "_is_inside_projects_root", lambda p: False if "agent-" in str(p) else real(p)
+    )
+    summary = af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    assert summary["orphaned_subagents"] == 0

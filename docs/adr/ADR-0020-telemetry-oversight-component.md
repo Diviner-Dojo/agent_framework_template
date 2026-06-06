@@ -137,7 +137,32 @@ store would fork the schema, the migration path, and the backup story for no ben
 - Carried advisories (to /review): promote reused `ingest_token_usage` helpers to public;
   add an allowlist/pragma to the pre-existing `init_db` f-string DDL.
 
+## Implementation note — Layer A2 (failure signals), 2026-06-06
+
+A2 detects token-waste failures over the same transcript corpus, persisted to a
+new `telemetry_failures` table (wasted tokens + tier as the cost INPUT; dollar
+weight derived at read — same compute-don't-store rule as A1). Two decisions made
+during the build, grounded on real transcripts (NOT the spec's assumptions):
+
+- **The subagent dispatch tool is named `Agent`, not `Task`.** CLAUDE.md still
+  documents `Task(subagent_type=...)`; that name returns zero matches across the
+  whole transcript corpus. A2 keys on `Agent`. Subagent transcripts live in
+  `<sessionId>/subagents/agent-<id>.jsonl` and carry no back-link to their
+  dispatch id — so a no-result orphan is detected parent-side (tokens left
+  honestly uncosted) and a hung subagent is detected from its own transcript's
+  non-clean terminal. (See the `reference_subagent_transcript_layout` memory.)
+- **The third failure class (stop-loop / forced-continuation) is deferred to
+  A2.1.** No reliable transcript signal was found — only a rare `stop_hook_summary`
+  record and ambiguous `"continue."` user messages (indistinguishable from a human
+  typing it). Shipping a guessed detector would violate the smoke-test-fidelity
+  lesson; the two grounded classes (`retry_loop`, `orphaned_subagent`) ship now.
+- **The A1 watermark perf advisory is folded in** for the failures path via an
+  mtime watermark (`failures_last_analyzed_mtime`) using a `>=` boundary to avoid
+  the same-timestamp silent-skip the A1 review caught. The cost path
+  (`ingest_token_usage`) retrofit remains a carried advisory.
+
 ## Linked Discussions
 - Spec review: discussions/2026-06-06/DISC-20260606-041937-telemetry-oversight-spec-review/
 - Steward gate: (framework-evolution review, APPROVE 0.86, 5 conditions)
 - Build (A1): discussions/2026-06-06/DISC-20260606-063822-build-telemetry-cost-a1/
+- Review (A2): discussions/2026-06-06/DISC-20260606-085949-review-telemetry-failures-a2/ (REV-20260606-085949, approve-with-changes, 2 blocking fixed)

@@ -4,10 +4,33 @@ Creates metrics/evaluation.db with all framework tables.
 Safe to run multiple times — uses CREATE TABLE IF NOT EXISTS.
 """
 
+import re
 import sqlite3
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "metrics" / "evaluation.db"
+
+# Allowlist for the ALTER TABLE migration loop. SQLite cannot bind DDL
+# identifiers (`?` is values-only), so they are interpolated — these sets make
+# the safety explicit and fail loudly if a future entry ever sources an
+# identifier from config/input (security review B1).
+_MIGRATION_ALLOWED_TABLES = {"discussions", "turns"}
+_MIGRATION_ALLOWED_TYPES = {"TEXT", "REAL", "INTEGER", "TEXT DEFAULT '[]'"}
+_MIGRATION_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _assert_safe_migration(table: str, column: str, col_type: str) -> None:
+    """Reject any ALTER TABLE identifier not on the allowlist (DDL can't bind).
+
+    Raises:
+        ValueError: if the table, column, or column type is not allowlisted.
+    """
+    if (
+        table not in _MIGRATION_ALLOWED_TABLES
+        or not _MIGRATION_IDENT.match(column)
+        or col_type not in _MIGRATION_ALLOWED_TYPES
+    ):
+        raise ValueError(f"Unsafe migration target rejected: {table}.{column} {col_type}")
 
 
 def init_db(db_path: Path = DB_PATH) -> None:
@@ -205,10 +228,45 @@ def init_db(db_path: Path = DB_PATH) -> None:
         -- Watermark / run-state for incremental telemetry analysis (R-A4).
         -- e.g. key='cost_last_analyzed_at' -> ISO 8601 of the newest discussion
         -- closed_at processed, so subsequent runs skip already-analyzed history.
+        -- Layer A2 adds key='failures_last_analyzed_mtime' -> the newest session
+        -- transcript file mtime (epoch seconds) processed, so a re-run only
+        -- re-parses session files that changed (the mtime watermark; ADR-0020).
         CREATE TABLE IF NOT EXISTS telemetry_run_state (
             key         TEXT PRIMARY KEY,
             value       TEXT,
             updated_at  DATETIME NOT NULL
+        );
+
+        -- Telemetry & Oversight (Layer A2 — failure/waste signals, ADR-0020).
+        -- One row per detected failure signal, keyed by (session, type,
+        -- signature) so re-analysis of a session is idempotent (DELETE-then-
+        -- INSERT per session, like discussion_model_tokens). Compute-don't-store
+        -- (ADR-0013): we persist the WASTED token counts + tier (the cost
+        -- INPUT) and never a dollar figure — the cost-weight used for ranking is
+        -- derived at read time from config/model_pricing.yaml. 'tier' may be the
+        -- literal 'unknown' (honest; never silently zero-rated downstream).
+        --   failure_type: 'orphaned_subagent' | 'retry_loop'
+        --   signature:    dedup key within a session (tool+input hash, or agentId)
+        --   occurrence_count: repeats in a retry loop (>=1)
+        CREATE TABLE IF NOT EXISTS telemetry_failures (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id                  TEXT NOT NULL,
+            discussion_id               TEXT,
+            failure_type                TEXT NOT NULL CHECK(failure_type IN (
+                'orphaned_subagent', 'retry_loop'
+            )),
+            signature                   TEXT NOT NULL,
+            occurrence_count            INTEGER NOT NULL DEFAULT 1,
+            tier                        TEXT NOT NULL,
+            wasted_tokens_in            INTEGER,
+            wasted_tokens_out           INTEGER,
+            wasted_cache_read_tokens    INTEGER,
+            wasted_cache_create_tokens  INTEGER,
+            detail                      TEXT,
+            first_seen                  DATETIME,
+            last_seen                   DATETIME,
+            computed_at                 DATETIME NOT NULL,
+            UNIQUE(session_id, failure_type, signature)
         );
 
         -- Indexes for common query patterns
@@ -236,6 +294,9 @@ def init_db(db_path: Path = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_lineage_file_drift_status ON lineage_file_drift(drift_status);
         CREATE INDEX IF NOT EXISTS idx_dmt_discussion ON discussion_model_tokens(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_dmt_tier ON discussion_model_tokens(tier);
+        CREATE INDEX IF NOT EXISTS idx_tf_session ON telemetry_failures(session_id);
+        CREATE INDEX IF NOT EXISTS idx_tf_type ON telemetry_failures(failure_type);
+        CREATE INDEX IF NOT EXISTS idx_tf_discussion ON telemetry_failures(discussion_id);
     """)
 
     # Create views for knowledge pipeline reporting
@@ -329,7 +390,11 @@ def init_db(db_path: Path = DB_PATH) -> None:
         ("discussions", "total_tokens_out", "INTEGER"),
         ("discussions", "total_cache_tokens", "INTEGER"),
     ]
+    # DDL identifiers are interpolated (SQLite can't bind them); the allowlist
+    # guard fails loudly if a future entry is ever non-literal (security B1; the
+    # same guard should be mirrored into ingest_token_usage._ensure_token_columns).
     for table, column, col_type in _migrations:
+        _assert_safe_migration(table, column, col_type)
         try:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
             conn.commit()
