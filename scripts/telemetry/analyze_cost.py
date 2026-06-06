@@ -117,7 +117,7 @@ def _target_discussion_ids(
     if discussion_filter:
         return {discussion_filter}
     rows = conn.execute("SELECT discussion_id, status, closed_at FROM discussions").fetchall()
-    wm = itu._parse_timestamp(watermark) if watermark else None
+    wm = itu.parse_timestamp(watermark) if watermark else None
     targets: set[str] = set()
     for discussion_id, status, closed_at in rows:
         if full_rescan or wm is None:
@@ -129,7 +129,7 @@ def _target_discussion_ids(
         if discussion_id not in analyzed:  # never analyzed -> always a target
             targets.add(discussion_id)
             continue
-        closed_dt = itu._parse_timestamp(closed_at)
+        closed_dt = itu.parse_timestamp(closed_at)
         if closed_dt is None or closed_dt > wm:
             targets.add(discussion_id)
     return targets
@@ -277,13 +277,13 @@ def analyze_cost(
         return _empty_summary()
 
     pricing = pricing or load_pricing()
-    init_db(db_path)  # ensure telemetry tables exist (shared, idempotent schema)
+    init_db(db_path, quiet=True)  # ensure telemetry tables exist (shared, idempotent schema)
 
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute("PRAGMA foreign_keys=ON")
         messages = itu._collect_messages(session_paths, since)
-        windows = itu._load_discussion_windows(conn, discussion_filter)
+        windows = itu.load_discussion_windows(conn, discussion_filter)
         watermark = None if full_rescan else _read_watermark(conn)
         analyzed = _analyzed_discussion_ids(conn)
         targets = _target_discussion_ids(

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -79,8 +80,6 @@ def _project_slug(project_root: Path) -> str:
     If discovery fails to find a match for the computed slug we also try a
     case-insensitive scan inside ``discover_session_dirs`` as a safety net.
     """
-    import re
-
     abs_path = str(project_root.resolve())
     # Capitalise the leading drive letter (Windows convention) before any
     # separator-stripping, so the drive letter is preserved.
@@ -145,7 +144,7 @@ def discover_session_dirs(project_root: Path) -> list[Path]:
     return paths
 
 
-def _parse_timestamp(value: str) -> datetime | None:
+def parse_timestamp(value: str) -> datetime | None:
     """Parse an ISO 8601 timestamp into a timezone-aware UTC datetime."""
     if not value:
         return None
@@ -161,7 +160,7 @@ def _parse_timestamp(value: str) -> datetime | None:
         return None
 
 
-def _coerce_int(value: object) -> int | None:
+def coerce_int(value: object) -> int | None:
     """Return ``int(value)`` if it is a non-negative integer, else ``None``."""
     if isinstance(value, bool):  # bools are ints in Python — exclude explicitly
         return None
@@ -189,7 +188,7 @@ def _parse_message_line(line: str, source_file: Path) -> MessageRecord | None:
     message_id = message.get("id")
     if not isinstance(message_id, str) or not message_id:
         return None
-    ts = _parse_timestamp(record.get("timestamp", ""))
+    ts = parse_timestamp(record.get("timestamp", ""))
     if ts is None:
         return None
     usage = message.get("usage") or {}
@@ -199,10 +198,10 @@ def _parse_message_line(line: str, source_file: Path) -> MessageRecord | None:
         message_id=message_id,
         timestamp=ts,
         model=message.get("model") if isinstance(message.get("model"), str) else None,
-        input_tokens=_coerce_int(usage.get("input_tokens")),
-        output_tokens=_coerce_int(usage.get("output_tokens")),
-        cache_read_tokens=_coerce_int(usage.get("cache_read_input_tokens")),
-        cache_create_tokens=_coerce_int(usage.get("cache_creation_input_tokens")),
+        input_tokens=coerce_int(usage.get("input_tokens")),
+        output_tokens=coerce_int(usage.get("output_tokens")),
+        cache_read_tokens=coerce_int(usage.get("cache_read_input_tokens")),
+        cache_create_tokens=coerce_int(usage.get("cache_creation_input_tokens")),
         source_file=source_file,
     )
 
@@ -261,13 +260,42 @@ def parse_session_dir(path: Path) -> Iterator[MessageRecord]:
 # Schema migration — defensive, idempotent.
 # ---------------------------------------------------------------------------
 
+# Allowlist for the ALTER TABLE migration loop below. SQLite cannot bind DDL
+# identifiers (``?`` is values-only), so they are interpolated — this guard
+# mirrors ``scripts/init_db._assert_safe_migration`` (security review B1) and
+# fails loudly if a future entry ever sources an identifier from config/input.
+# The two allowlists are intentionally duplicated: this parser is deliberately
+# kept as a one-file patch surface (see the module docstring), so it carries its
+# own guard rather than importing init_db's private API. Keep them in sync.
+_MIGRATION_ALLOWED_TABLES = {"turns", "discussions"}
+_MIGRATION_ALLOWED_TYPES = {"INTEGER"}
+_MIGRATION_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _assert_safe_migration(table: str, column: str, col_type: str) -> None:
+    """Reject any ALTER TABLE identifier not on the allowlist (DDL can't bind).
+
+    Mirrors ``scripts/init_db._assert_safe_migration`` (security review B1).
+
+    Raises:
+        ValueError: if the table, column, or column type is not allowlisted.
+    """
+    if (
+        table not in _MIGRATION_ALLOWED_TABLES
+        or not _MIGRATION_IDENT.match(column)
+        or col_type not in _MIGRATION_ALLOWED_TYPES
+    ):
+        raise ValueError(f"Unsafe migration target rejected: {table}.{column} {col_type}")
+
 
 def _ensure_token_columns(conn: sqlite3.Connection) -> None:
     """Add token columns to ``turns`` and ``discussions`` if missing.
 
     Mirrors the migration pattern in ``init_db.py``: wraps each ALTER TABLE in
     a try/except so the call is safe to repeat. Required so this script can
-    run against a database that pre-dates the ADR-0013 schema bump.
+    run against a database that pre-dates the ADR-0013 schema bump. The
+    allowlist guard (``_assert_safe_migration``) fails loudly if a future entry
+    ever uses a non-allowlisted identifier (security review B1).
     """
     migrations = [
         ("turns", "tokens_in", "INTEGER"),
@@ -279,6 +307,7 @@ def _ensure_token_columns(conn: sqlite3.Connection) -> None:
         ("discussions", "total_cache_tokens", "INTEGER"),
     ]
     for table, column, col_type in migrations:
+        _assert_safe_migration(table, column, col_type)
         try:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
         except sqlite3.OperationalError:
@@ -300,7 +329,7 @@ class DiscussionWindow:
     end: datetime  # closed_at, or now() if still open
 
 
-def _load_discussion_windows(
+def load_discussion_windows(
     conn: sqlite3.Connection, discussion_filter: str | None
 ) -> list[DiscussionWindow]:
     """Load discussion windows from SQLite, optionally restricted to one id."""
@@ -316,10 +345,10 @@ def _load_discussion_windows(
     windows: list[DiscussionWindow] = []
     now = datetime.now(UTC)
     for discussion_id, created_at, closed_at in rows:
-        start = _parse_timestamp(created_at) if created_at else None
+        start = parse_timestamp(created_at) if created_at else None
         if start is None:
             continue
-        end = _parse_timestamp(closed_at) if closed_at else now
+        end = parse_timestamp(closed_at) if closed_at else now
         if end is None:
             end = now
         windows.append(DiscussionWindow(discussion_id, start, end))
@@ -538,7 +567,7 @@ def ingest_token_usage(
     try:
         conn.execute("PRAGMA foreign_keys=ON")
         _ensure_token_columns(conn)
-        windows = _load_discussion_windows(conn, discussion_filter)
+        windows = load_discussion_windows(conn, discussion_filter)
         totals = _aggregate_by_discussion(messages, windows)
 
         attributed_count = sum(t["message_count"] or 0 for t in totals.values())

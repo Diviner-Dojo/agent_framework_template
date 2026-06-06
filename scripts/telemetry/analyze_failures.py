@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sqlite3
 import sys
 from collections.abc import Iterator
@@ -117,10 +118,10 @@ def _usage_tokens(message: dict) -> tuple[int | None, int | None, int | None, in
     if not isinstance(usage, dict):
         return (None, None, None, None)
     return (
-        itu._coerce_int(usage.get("input_tokens")),
-        itu._coerce_int(usage.get("output_tokens")),
-        itu._coerce_int(usage.get("cache_read_input_tokens")),
-        itu._coerce_int(usage.get("cache_creation_input_tokens")),
+        itu.coerce_int(usage.get("input_tokens")),
+        itu.coerce_int(usage.get("output_tokens")),
+        itu.coerce_int(usage.get("cache_read_input_tokens")),
+        itu.coerce_int(usage.get("cache_creation_input_tokens")),
     )
 
 
@@ -148,7 +149,7 @@ def parse_main_session(
         content = message.get("content")
         if not isinstance(content, list):
             continue
-        ts = itu._parse_timestamp(record.get("timestamp", ""))
+        ts = itu.parse_timestamp(record.get("timestamp", ""))
         role = message.get("role")
         if role == "assistant":
             model = message.get("model") if isinstance(message.get("model"), str) else None
@@ -209,7 +210,7 @@ def parse_subagent_run(path: Path, pricing: PricingTable) -> SubagentRun:
     first_ts: datetime | None = None
     last_ts: datetime | None = None
     for record in _iter_records(path):
-        ts = itu._parse_timestamp(record.get("timestamp", ""))
+        ts = itu.parse_timestamp(record.get("timestamp", ""))
         if ts is not None:
             first_ts = ts if first_ts is None else min(first_ts, ts)
             last_ts = ts if last_ts is None else max(last_ts, ts)
@@ -284,7 +285,16 @@ def _group_sessions(session_paths: list[Path]) -> dict[str, dict[str, object]]:
 
 
 def _session_mtime(group: dict[str, object]) -> float:
-    """Return the newest mtime across a session's main + subagent files."""
+    """Return the newest mtime across a session's main + subagent files.
+
+    The subagents directory is walked with ``os.scandir`` so each entry's mtime
+    comes from the directory read itself — ``DirEntry.stat()`` and ``is_file()``
+    are syscall-free for normal files (a reparse point / symlink still issues a
+    real ``stat()``), avoiding a separate ``stat()`` per file (review advisory,
+    perf). Each entry is bounds-checked with ``itu._is_inside_projects_root``
+    before it is stat'd, mirroring the symlink-escape guard ``_detect_for_session``
+    applies before opening files (review advisory, security — stat parity).
+    """
     mtimes: list[float] = []
     main = group.get("main")
     if isinstance(main, Path):
@@ -294,12 +304,19 @@ def _session_mtime(group: dict[str, object]) -> float:
             pass
     sub = group.get("subagents")
     if isinstance(sub, Path):
-        for entry in sub.iterdir():
-            if entry.is_file() and entry.suffix == ".jsonl":
-                try:
-                    mtimes.append(entry.stat().st_mtime)
-                except OSError:
-                    pass
+        try:
+            with os.scandir(sub) as entries:
+                for entry in entries:
+                    if not (entry.name.endswith(".jsonl") and entry.is_file()):
+                        continue
+                    if not itu._is_inside_projects_root(Path(entry.path)):
+                        continue
+                    try:
+                        mtimes.append(entry.stat().st_mtime)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
     return max(mtimes) if mtimes else 0.0
 
 
@@ -432,8 +449,8 @@ def load_failure_signals(conn: sqlite3.Connection) -> list[FailureSignal]:
                 wasted_cache_read_tokens=r[6],
                 wasted_cache_create_tokens=r[7],
                 detail=r[8] or "",
-                first_seen=itu._parse_timestamp(r[9]) if r[9] else None,
-                last_seen=itu._parse_timestamp(r[10]) if r[10] else None,
+                first_seen=itu.parse_timestamp(r[9]) if r[9] else None,
+                last_seen=itu.parse_timestamp(r[10]) if r[10] else None,
             )
         )
     return signals
@@ -477,13 +494,13 @@ def analyze_failures(
         return _empty_summary()
 
     pricing = pricing or load_pricing()
-    init_db(db_path)  # ensure telemetry tables exist (shared, idempotent schema)
+    init_db(db_path, quiet=True)  # ensure telemetry tables exist (shared, idempotent schema)
 
     groups = _group_sessions(session_paths)
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute("PRAGMA foreign_keys=ON")
-        windows = itu._load_discussion_windows(conn, None)
+        windows = itu.load_discussion_windows(conn, None)
         watermark = None if full_rescan else _read_watermark(conn)
 
         targets: dict[str, tuple[dict[str, object], float]] = {}

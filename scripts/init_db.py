@@ -33,8 +33,16 @@ def _assert_safe_migration(table: str, column: str, col_type: str) -> None:
         raise ValueError(f"Unsafe migration target rejected: {table}.{column} {col_type}")
 
 
-def init_db(db_path: Path = DB_PATH) -> None:
-    """Create all framework tables in the SQLite database."""
+def init_db(db_path: Path = DB_PATH, *, quiet: bool = False) -> None:
+    """Create all framework tables in the SQLite database.
+
+    Args:
+        db_path: Target SQLite file (created with its parent if absent).
+        quiet: When True, suppress the "Database initialized" stdout line.
+            Callers that invoke ``init_db`` only to ensure the schema exists
+            (e.g. the telemetry analyzers, which call it on every run) pass
+            ``quiet=True`` so the line does not pollute their own output.
+    """
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
@@ -402,7 +410,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
             pass  # Column already exists
 
     conn.close()
-    print(f"Database initialized at {db_path}")
+    if not quiet:
+        print(f"Database initialized at {db_path}")
 
 
 if __name__ == "__main__":

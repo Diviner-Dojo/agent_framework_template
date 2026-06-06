@@ -1136,3 +1136,82 @@ def test_subagent_file_outside_projects_root_is_skipped(
     )
     summary = af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
     assert summary["orphaned_subagents"] == 0
+
+
+@pytest.mark.regression
+def test_ingest_migration_allowlist_rejects_unsafe_identifier() -> None:
+    # Regression (security B1 mirror): the ALTER TABLE loop in
+    # ingest_token_usage._ensure_token_columns interpolates DDL identifiers
+    # (SQLite can't bind them). Its own _assert_safe_migration guard must reject
+    # off-allowlist table/column/type so a future non-literal entry can't inject.
+    itu._assert_safe_migration("turns", "tokens_in", "INTEGER")  # known-good: no raise
+    with pytest.raises(ValueError):
+        itu._assert_safe_migration("turns; DROP TABLE turns", "x", "INTEGER")
+    with pytest.raises(ValueError):
+        itu._assert_safe_migration("turns", "x) --", "INTEGER")
+    with pytest.raises(ValueError):
+        itu._assert_safe_migration("turns", "x", "TEXT; DROP TABLE turns")
+    # ingest's allowlist is intentionally narrower than init_db's — it only ever
+    # adds INTEGER token columns, so even a plain TEXT must be rejected here.
+    with pytest.raises(ValueError):
+        itu._assert_safe_migration("turns", "x", "TEXT")
+
+
+def test_ingest_migration_allowlist_is_subset_of_init_db() -> None:
+    # Drift guard (arch advisory): the two _assert_safe_migration allowlists are
+    # intentionally duplicated and ingest's is the narrower one. Enforce the
+    # subset invariant so a future edit can't let ingest allow a table/type that
+    # init_db's guard would reject — turning the "keep in sync" comment into a
+    # tested contract without coupling the two modules at runtime.
+    from scripts import init_db as idb
+
+    assert itu._MIGRATION_ALLOWED_TABLES <= idb._MIGRATION_ALLOWED_TABLES
+    assert itu._MIGRATION_ALLOWED_TYPES <= idb._MIGRATION_ALLOWED_TYPES
+
+
+def test_init_db_quiet_suppresses_print(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    # quiet=True is a behavioral contract (the analyzers rely on it to keep their
+    # stdout clean), so assert the suppression directly, not just as a side effect.
+    db_path = tmp_path / "evaluation.db"
+    init_db(db_path, quiet=False)
+    assert "Database initialized" in capsys.readouterr().out
+    init_db(db_path, quiet=True)  # re-init is idempotent (CREATE IF NOT EXISTS)
+    assert capsys.readouterr().out == ""
+
+
+def test_session_mtime_returns_newest_and_handles_scandir_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # _session_mtime computes the incremental watermark; verify it returns the
+    # newest subagent mtime and degrades to 0.0 if the directory scan fails.
+    monkeypatch.setattr(itu, "_is_inside_projects_root", lambda p: True)
+    sub = tmp_path / "subagents"
+    sub.mkdir()
+    (sub / "agent-a.jsonl").write_text("{}", encoding="utf-8")
+    (sub / "agent-b.jsonl").write_text("{}", encoding="utf-8")
+    os.utime(sub / "agent-a.jsonl", (1000.0, 1000.0))
+    os.utime(sub / "agent-b.jsonl", (2000.0, 2000.0))
+    group: dict[str, object] = {"subagents": sub}
+    assert af._session_mtime(group) == 2000.0
+
+    def _boom(_path: object) -> None:
+        raise OSError("scandir failed")
+
+    monkeypatch.setattr(af.os, "scandir", _boom)
+    assert af._session_mtime(group) == 0.0
+
+
+@pytest.mark.regression
+def test_session_mtime_skips_entry_outside_projects_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression (security advisory): _session_mtime must consult
+    # _is_inside_projects_root before stat'ing each subagent entry, matching the
+    # symlink-escape guard _detect_for_session applies before opening files.
+    # Rejecting the only entry must yield 0.0 (excluded, never stat'd).
+    sub = tmp_path / "subagents"
+    sub.mkdir()
+    (sub / "agent-escape.jsonl").write_text("{}", encoding="utf-8")
+    os.utime(sub / "agent-escape.jsonl", (1500.0, 1500.0))
+    monkeypatch.setattr(itu, "_is_inside_projects_root", lambda p: False)
+    assert af._session_mtime({"subagents": sub}) == 0.0
