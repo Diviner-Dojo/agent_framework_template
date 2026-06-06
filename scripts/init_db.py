@@ -183,6 +183,34 @@ def init_db(db_path: Path = DB_PATH) -> None:
             PRIMARY KEY (lineage_id, file_path)
         );
 
+        -- Telemetry & Oversight (Layer A — see ADR-0013, amended).
+        -- Per-discussion, per-model token breakdown: the COST INPUT for
+        -- per-tier dollar cost. Dollar cost is NEVER stored — it is computed at
+        -- analysis time from config/model_pricing.yaml (ADR-0013 compute-don't-
+        -- store). 'tier' is resolved from the model id at ingest; the literal
+        -- 'unknown' is honest and is never silently zero-rated downstream.
+        CREATE TABLE IF NOT EXISTS discussion_model_tokens (
+            discussion_id       TEXT NOT NULL REFERENCES discussions(discussion_id),
+            model_id            TEXT NOT NULL,
+            tier                TEXT NOT NULL,
+            tokens_in           INTEGER,
+            tokens_out          INTEGER,
+            cache_read_tokens   INTEGER,
+            cache_create_tokens INTEGER,
+            message_count       INTEGER NOT NULL DEFAULT 0,
+            computed_at         DATETIME NOT NULL,
+            PRIMARY KEY (discussion_id, model_id)
+        );
+
+        -- Watermark / run-state for incremental telemetry analysis (R-A4).
+        -- e.g. key='cost_last_analyzed_at' -> ISO 8601 of the newest discussion
+        -- closed_at processed, so subsequent runs skip already-analyzed history.
+        CREATE TABLE IF NOT EXISTS telemetry_run_state (
+            key         TEXT PRIMARY KEY,
+            value       TEXT,
+            updated_at  DATETIME NOT NULL
+        );
+
         -- Indexes for common query patterns
         CREATE INDEX IF NOT EXISTS idx_turns_discussion ON turns(discussion_id);
         CREATE INDEX IF NOT EXISTS idx_turns_agent ON turns(agent);
@@ -206,6 +234,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
         CREATE INDEX IF NOT EXISTS idx_promotion_candidates_category ON promotion_candidates(category);
         CREATE INDEX IF NOT EXISTS idx_lineage_file_drift_lineage ON lineage_file_drift(lineage_id);
         CREATE INDEX IF NOT EXISTS idx_lineage_file_drift_status ON lineage_file_drift(drift_status);
+        CREATE INDEX IF NOT EXISTS idx_dmt_discussion ON discussion_model_tokens(discussion_id);
+        CREATE INDEX IF NOT EXISTS idx_dmt_tier ON discussion_model_tokens(tier);
     """)
 
     # Create views for knowledge pipeline reporting

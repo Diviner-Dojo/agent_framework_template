@@ -1,8 +1,10 @@
 ---
 adr_id: ADR-0013
 title: "Token-efficiency telemetry via post-hoc JSONL ingest"
-status: proposed
+status: accepted
+amended_by: ADR-0020
 date: 2026-05-12
+accepted_date: 2026-06-05
 decision_makers: [facilitator, architecture-consultant, performance-analyst, docs-knowledge, project-analyst, independent-perspective]
 discussion_id: DISC-20260512-025323-token-efficiency-telemetry
 supersedes: null
@@ -11,6 +13,12 @@ scope: framework
 confidence: 0.78
 tags: [telemetry, efficiency, instrumentation, capture-pipeline]
 ---
+
+> **Ratified `proposed` → `accepted` on 2026-06-05** alongside ADR-0020, which
+> **amends** §2 ("Cost computation"): accurate per-tier dollar cost is now computed by
+> pricing each model *before* aggregating (via the `discussion_model_tokens` breakdown),
+> dissolving the mixed-tier objection while preserving compute-don't-store. The
+> token-based primary signal here is retained. See ADR-0020.
 
 ## Context
 
