@@ -8,10 +8,60 @@ injected runner so no real `claude -p` subprocess is spawned.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from scripts import session_supervisor as sup
+
+
+class _Proc:
+    """Minimal subprocess.CompletedProcess stand-in."""
+
+    def __init__(self, rc: int = 0, out: str = "{}", err: str = "") -> None:
+        self.returncode = rc
+        self.stdout = out
+        self.stderr = err
+
+
+class TestDefaultRunner:
+    @pytest.mark.regression
+    def test_resolves_executable_via_which(self, monkeypatch) -> None:
+        # Regression (2026-06-07): on Windows `claude` is `claude.CMD`; a bare
+        # subprocess.run(["claude", ...], shell=False) raises FileNotFoundError
+        # (CreateProcess ignores PATHEXT). The runner must resolve cmd[0].
+        captured: dict = {}
+        monkeypatch.setattr(sup.shutil, "which", lambda _n: "/abs/claude.CMD")
+        monkeypatch.setattr(
+            sup.subprocess,
+            "run",
+            lambda argv, **kw: captured.__setitem__("argv", argv) or _Proc(),
+        )
+        rc, out, err = sup._default_runner(["claude", "-p", "hi"], Path("."), 10)
+        assert rc == 0
+        assert captured["argv"][0] == "/abs/claude.CMD"
+        assert captured["argv"][1:] == ["-p", "hi"]
+
+    def test_falls_back_to_bare_name_when_which_none(self, monkeypatch) -> None:
+        captured: dict = {}
+        monkeypatch.setattr(sup.shutil, "which", lambda _n: None)
+        monkeypatch.setattr(
+            sup.subprocess,
+            "run",
+            lambda argv, **kw: captured.__setitem__("argv", argv) or _Proc(),
+        )
+        sup._default_runner(["claude", "-p", "x"], Path("."), 10)
+        assert captured["argv"][0] == "claude"
+
+    def test_timeout_returns_124(self, monkeypatch) -> None:
+        monkeypatch.setattr(sup.shutil, "which", lambda _n: "claude")
+
+        def _raise(argv, **kw):
+            raise sup.subprocess.TimeoutExpired(cmd=argv, timeout=1)
+
+        monkeypatch.setattr(sup.subprocess, "run", _raise)
+        rc, out, err = sup._default_runner(["claude", "-p", "x"], Path("."), 1)
+        assert rc == 124 and "timed out" in err
 
 
 # --------------------------------------------------------------------------- #

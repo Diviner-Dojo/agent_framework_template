@@ -42,7 +42,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -156,10 +158,19 @@ def classify_result(parsed: dict | None) -> str:
 
 
 def _default_runner(cmd: list[str], cwd: Path, timeout: int) -> RunResult:
-    """Run one headless session via subprocess (the only I/O seam)."""
+    """Run one headless session via subprocess (the only I/O seam).
+
+    Resolves ``cmd[0]`` via ``shutil.which`` first: on Windows ``claude`` is a
+    ``claude.CMD`` npm shim, and bare ``subprocess.run(["claude", ...],
+    shell=False)`` raises ``FileNotFoundError`` because ``CreateProcess`` does not
+    apply ``PATHEXT``. The resolved absolute path runs correctly with shell=False
+    (no injection surface added).
+    """
+    exe = shutil.which(cmd[0]) or cmd[0]
+    resolved = [exe, *cmd[1:]]
     try:
         proc = subprocess.run(
-            cmd,
+            resolved,
             cwd=str(cwd),
             capture_output=True,
             text=True,
