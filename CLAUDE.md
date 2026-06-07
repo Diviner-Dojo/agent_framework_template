@@ -73,12 +73,13 @@ Session-scoped working state at the project root; read at start, update before c
 
 ## Autonomous Execution Authorization
 Structured scoping for autonomous execution (derived projects customize). Enabling it authorizes running the **full workflow** without per-step permission — it does NOT authorize skipping steps (see Workflow Sequencing + `autonomous_workflow.md`). Specify: branch scope, effective date, **Authorized Actions** (e.g. run pytest/quality_gate, ruff, create branches + commit), **Prohibited Actions** (push to any remote, destructive git, modifying `.claude/settings.json`).
-<!-- Uncomment and customize:
-**Branch scope**: all   **Effective**: until revoked
-Authorized: run pytest/quality_gate/ruff/init_db/knowledge scripts; create branches, stage, commit (NOT push).
-Prohibited: git push; destructive git (reset --hard, clean -f, branch -D); modifying .claude/settings.json; deleting outside memory/archive/; production-affecting ops.
-Opt-in (separate, ADR-0018): ALLOW_AUTO_LAUNCH_SESSION — authorize the wrap-up protocol to spawn a headless continuation. Required IN ADDITION to this block; absent it, wrap-up only writes a handoff + offers. Never set by /distribute.
--->
+
+**Status**: ACTIVE   **Branch scope**: `fix/c-gate-log-integrity` + telemetry feature branches created off it; **never `main`**.   **Effective**: 2026-06-07, until revoked.
+**Authorized Actions**: run `pytest` / `scripts/quality_gate.py` / `ruff` / `init_db` / knowledge & telemetry scripts; create feature branches off the in-scope branch; stage and commit **after completing the full workflow** (`/plan` → `/build_module` → quality gate → `/review` for code; capture is never bypassed).
+**Prohibited Actions**: push to ANY remote (origin included — pushing always needs explicit per-instance developer confirmation); destructive git (`reset --hard` on shared history, `push --force`, `clean -f`, `branch -D`); modifying `.claude/settings.json` **beyond the single `ALLOW_AUTO_LAUNCH_SESSION` opt-in below** (a developer-applied manual edit); deleting anything outside `memory/archive/`; auto-merging; production-affecting ops.
+**Invariant (does NOT change under this authorization)**: the full workflow runs without per-step permission, but it NEVER skips `/plan`, `/review`, or capture, NEVER pushes, NEVER auto-merges, and STILL STOPS to ask on a genuine design fork (Principle #9). "Proceed without asking" ≠ "proceed without reviewing."
+
+Opt-in (separate, ADR-0018): **`ALLOW_AUTO_LAUNCH_SESSION` — CONSENTED 2026-06-07** (developer, gates preserved). Authorizes the wrap-up protocol to spawn a headless continuation. Required IN ADDITION to this block; it is the value the `wrapping-up-sessions` skill passes as `build_launch_command(..., allow_launch=...)`. The durable signal lives in the `.claude/settings.json` `"env"` block (`ALLOW_AUTO_LAUNCH_SESSION=1`), which is a **protected file → developer applies the one-line edit manually** (the PreToolUse validator denies agent edits by design; ADR-0018 specifies it as a manual edit). Never set by `/distribute`. Auto-launch still inherits every Prohibited Action above (no push, no auto-merge, no skipped `/review`) and is depth-capped at `MAX_AUTO_LAUNCH_DEPTH=1`.
 
 ## Domain Safety Constraints
 <!-- Declare domain constraints (medical / financial / privacy / accessibility) that review specialists must treat as BLOCKING findings. Specialists read CLAUDE.md as context, so constraints here are enforced at blocking severity. -->
