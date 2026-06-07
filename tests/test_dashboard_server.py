@@ -294,14 +294,18 @@ def test_routes_do_not_mutate_database_schema_or_row_counts(tmp_path: Path) -> N
 
 
 def test_db_connection_is_read_only_at_driver_level(tmp_path: Path) -> None:
-    """A write through the server's read-only URI is refused by SQLite (AC5).
+    """A write through the read-only URI helper is refused by SQLite (AC5).
 
-    This is the driver-level guard — not just a convention. A future code
-    path that accidentally calls a mutating analyzer would fail to even
-    open a writable connection through the helper.
+    The daemon delegates DB access to ``assemble_dashboard_data``, which uses
+    ``scripts.telemetry.dashboard._connect_readonly``. This is the driver-level
+    guard — not just a convention. A future code path that accidentally calls
+    a mutating analyzer would fail to even open a writable connection through
+    the helper.
     """
+    from scripts.telemetry import dashboard as static_dashboard
+
     db = _empty_db(tmp_path)
-    conn = dashboard_server._connect_readonly(db)
+    conn = static_dashboard._connect_readonly(db)
     try:
         with pytest.raises(sqlite3.OperationalError):
             conn.execute("CREATE TABLE telemetry_canary(x INTEGER)")
@@ -592,17 +596,23 @@ def test_live_module_has_no_scripts_import() -> None:
 
 @pytest.mark.regression
 def test_a_arch1_helpers_are_public_attributes_on_ingest_module() -> None:
-    """Regression (AC15 / R16): the 4 cross-module-consumed transcript helpers
+    """Regression (AC15 / R16): the cross-module-consumed transcript helpers
     are public attributes of ``scripts.ingest_token_usage``.
 
     The dashboard daemon (the 4th consumer) reuses these; a future edit that
     re-privatised any of them would silently break the daemon's parse seam.
+    ``parse_timestamp`` and ``coerce_int`` are also consumed by the daemon
+    (``_parse_main_session`` / ``_parse_subagent``); arch F1 from
+    REV-20260607-200447 added them to the public surface so the contract
+    matches the actual import graph.
     """
     public_helpers = (
         "collect_messages",
         "discover_session_dirs",
         "parse_since",
         "is_inside_projects_root",
+        "parse_timestamp",
+        "coerce_int",
     )
     for name in public_helpers:
         assert hasattr(itu, name), f"{name} is not public on scripts.ingest_token_usage"
@@ -611,7 +621,14 @@ def test_a_arch1_helpers_are_public_attributes_on_ingest_module() -> None:
 
 
 def test_server_uses_a_arch1_public_helpers_not_underscored() -> None:
-    """The server source uses the public names, NOT the underscored privates."""
+    """The server source uses the public names, NOT the underscored privates.
+
+    Also guards arch F3 (REV-20260607-200447) — the dead ``_connect_readonly``
+    helper must not be re-introduced on ``dashboard_server`` without a 2nd
+    actual consumer (Rule of Three). The surviving helper lives at
+    ``scripts.telemetry.dashboard._connect_readonly`` and is the one
+    ``assemble_dashboard_data`` uses.
+    """
     text = _SERVER_SOURCE.read_text(encoding="utf-8")
     # Either form would still resolve (Python attribute access is liberal),
     # but the contract says public names. A regression to underscores is a
@@ -619,6 +636,47 @@ def test_server_uses_a_arch1_public_helpers_not_underscored() -> None:
     assert "itu._collect_messages" not in text
     assert "itu._parse_since" not in text
     assert "itu._is_inside_projects_root" not in text
+    assert "itu._parse_timestamp" not in text
+    assert "itu._coerce_int" not in text
+    # qa F2-QA fold (REV at DISC-20260607-233516): the deleted helper must
+    # stay deleted until a 2nd real consumer exists. Machine-enforces the
+    # ledger rule ("Do not re-introduce the dead helper without a second
+    # actual consumer").
+    assert not hasattr(dashboard_server, "_connect_readonly"), (
+        "dead helper was re-introduced; promote only when 2nd consumer exists"
+    )
+
+
+@pytest.mark.regression
+def test_a_arch1_promoted_helpers_carry_promotion_docstring_footer() -> None:
+    """Regression (arch F1 / REV-20260607-200447): every A-ARCH1-promoted helper
+    carries the ``Promoted to public in the A-ARCH1 promotion`` docstring footer.
+
+    The public surface is internally consistent: a reader who sees one helper's
+    footer expects the same footer on every promoted neighbour. Before this
+    fix, ``parse_timestamp`` + ``coerce_int`` lacked the footer even though
+    the daemon consumed them — a pattern inconsistency that would invite a
+    future contributor to re-privatise them. This test fails if any of the 6
+    helpers loses the footer.
+    """
+    promoted_helpers = (
+        "collect_messages",
+        "discover_session_dirs",
+        "parse_since",
+        "is_inside_projects_root",
+        "parse_timestamp",
+        "coerce_int",
+    )
+    footer = "Promoted to public in the A-ARCH1 promotion"
+    spec_ref = "SPEC-20260607-183136"
+    for name in promoted_helpers:
+        fn = getattr(itu, name)
+        assert fn.__doc__ is not None, f"{name} has no docstring"
+        assert footer in fn.__doc__, f"{name} docstring missing the A-ARCH1 promotion footer"
+        # qa F1-QA fold (REV at DISC-20260607-233516): also assert the SPEC
+        # reference so a paraphrase of the footer that drops traceability
+        # ("Promoted via A-ARCH1") still fails the guard.
+        assert spec_ref in fn.__doc__, f"{name} docstring missing the SPEC reference"
 
 
 # --------------------------------------------------------------------------- #

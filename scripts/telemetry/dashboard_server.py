@@ -137,17 +137,6 @@ def _allowed_hosts(port: int) -> set[str]:
     return {f"{HARDCODED_HOST}:{port}", HARDCODED_HOST}
 
 
-def _connect_readonly(db_path: Path) -> sqlite3.Connection:
-    """Open ``db_path`` read-only (``file:...?mode=ro``).
-
-    Mirrors the static dashboard's helper: read-only at the driver level so
-    the server has no write capability against the telemetry database
-    (spec R10 / AC5).
-    """
-    uri = f"file:{db_path.as_posix()}?mode=ro"
-    return sqlite3.connect(uri, uri=True)
-
-
 def _safe_text(line: str) -> dict[str, Any] | None:
     """Parse one transcript JSONL line; ``None`` on malformed/truncated (qa F9)."""
     try:

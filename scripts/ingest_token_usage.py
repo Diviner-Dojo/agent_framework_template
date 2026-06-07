@@ -118,6 +118,9 @@ def discover_session_dirs(project_root: Path) -> list[Path]:
 
     Symlinked entries that resolve outside ``CLAUDE_PROJECTS_ROOT`` are
     skipped (see ``is_inside_projects_root``).
+
+    Promoted to public in the A-ARCH1 promotion (SPEC-20260607-183136 R16/AC15);
+    the dashboard daemon is the 4th cross-module consumer.
     """
     if not CLAUDE_PROJECTS_ROOT.exists():
         return []
@@ -148,7 +151,11 @@ def discover_session_dirs(project_root: Path) -> list[Path]:
 
 
 def parse_timestamp(value: str) -> datetime | None:
-    """Parse an ISO 8601 timestamp into a timezone-aware UTC datetime."""
+    """Parse an ISO 8601 timestamp into a timezone-aware UTC datetime.
+
+    Promoted to public in the A-ARCH1 promotion (SPEC-20260607-183136 R16/AC15);
+    the dashboard daemon is the 4th cross-module consumer.
+    """
     if not value:
         return None
     try:
@@ -164,7 +171,11 @@ def parse_timestamp(value: str) -> datetime | None:
 
 
 def coerce_int(value: object) -> int | None:
-    """Return ``int(value)`` if it is a non-negative integer, else ``None``."""
+    """Return ``int(value)`` if it is a non-negative integer, else ``None``.
+
+    Promoted to public in the A-ARCH1 promotion (SPEC-20260607-183136 R16/AC15);
+    the dashboard daemon is the 4th cross-module consumer.
+    """
     if isinstance(value, bool):  # bools are ints in Python — exclude explicitly
         return None
     if isinstance(value, int):
