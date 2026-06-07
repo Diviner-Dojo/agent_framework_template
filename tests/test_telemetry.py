@@ -29,6 +29,8 @@ from src.telemetry.dashboard import (
     DashboardData,
     render_console_summary,
     render_dashboard_html,
+    render_live_fragment,
+    render_live_shell_html,
 )
 from src.telemetry.failures import (
     FailureSignal,
@@ -2883,3 +2885,128 @@ def test_live_module_import_graph_is_pure() -> None:
     assert offenders == [], (
         f"live.py import graph leaked transport / transcript-IO modules: {offenders}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Live-render UX tests (REV-20260607-200447 ux FRICTION-1 / 2 / 4)
+# --------------------------------------------------------------------------- #
+#
+# Phase 1 shipped live-panel renderers but no direct render tests (qa F1 in the
+# same review). These guards cover the three UX advisories addressed in the
+# follow-up commit so a future refactor cannot silently regress them.
+
+
+@pytest.mark.regression
+def test_live_shell_loading_tile_is_distinct_from_absence_tile() -> None:
+    """ux FRICTION-1: first-paint placeholder uses ``tile--loading``, NOT ``tile--absent``.
+
+    A transient htmx delay (or a brief 5xx from ``/fragments/live``) must not
+    visually present as the honest-absence vocabulary used by ``/fragments/live``
+    when the analyzer has not been run — gatekeepers read those two states
+    differently. Asserts the loading vocabulary is present and the absence
+    vocabulary is NOT used by the placeholder.
+    """
+    html = render_live_shell_html(generated_label="2026-06-07 23:15 UTC")
+    assert 'class="tile tile--loading"' in html
+    assert "tile--loading" in html
+    # The loading copy is plain-language ("Connecting…"), not "Loading…" which
+    # would still be acceptable but is the placeholder the ux review flagged.
+    assert "Connecting to live session data" in html
+    # Belt-and-braces: the placeholder must not borrow the absence container's
+    # class, which would re-introduce the FRICTION-1 confusion.
+    placeholder = html.split('id="live-section"', 1)[1].split("</section>", 1)[0]
+    assert "tile--absent" not in placeholder
+    assert "absence-copy" not in placeholder
+
+
+@pytest.mark.regression
+def test_live_shell_exposes_retrospective_link() -> None:
+    """ux FRICTION-4: shell header carries a reachable link to the retrospective view.
+
+    The ``/fragments/retrospective`` route serves a full HTML document (not an
+    htmx swap fragment), so a regular ``<a href>`` is the right affordance.
+    Without this link the route is live-but-unreachable from the UI.
+    """
+    html = render_live_shell_html(generated_label="2026-06-07 23:15 UTC")
+    assert 'href="/fragments/retrospective"' in html
+    assert 'class="nav-link"' in html
+    # The link belongs to the shell <nav>, NOT inside the swap target — htmx
+    # would otherwise replace it on each poll.
+    nav_block = html.split('class="shell-nav"', 1)[1].split("</nav>", 1)[0]
+    assert 'href="/fragments/retrospective"' in nav_block
+    swap_target = html.split('id="live-section"', 1)[1].split("</section>", 1)[0]
+    assert 'href="/fragments/retrospective"' not in swap_target
+
+
+@pytest.mark.regression
+def test_live_fragment_main_lane_renders_primary_badge_and_class(
+    pricing: PricingTable,
+) -> None:
+    """ux FRICTION-2: main session row carries ``lane--primary`` + a ``primary`` badge.
+
+    Differentiates the main lane from dispatched subagent lanes by *position*
+    (badge next to the agent label) and *color tint* (a left-border via the
+    class). Asserts both, plus that a dispatched-subagent row does NOT get the
+    primary treatment (otherwise the differentiation is meaningless).
+    """
+    state = fold_events(
+        [
+            # Main session has output, so the runway estimator engages and the
+            # row renders normally.
+            _msg_event(0, "main", "claude-opus-4-7", input_tokens=200, output_tokens=400),
+            _dispatch_event(1, "sub-rowA", agent_type="qa-specialist"),
+            _msg_event(2, "sub-rowA", "claude-sonnet-4-6", input_tokens=100, output_tokens=50),
+        ],
+        pricing,
+    )
+    html = render_live_fragment(state)
+    assert "lane--primary" in html
+    assert 'class="lane-badge lane-badge--primary">primary</span>' in html
+    # Robust row-isolation: each subagent row is the `<tr>...</tr>` whose first
+    # `<td>` carries the lane_id literal (qa F1 in REV-20260607-200447-supplement
+    # — splitting on a bare lane-id substring is fragile to future fixtures that
+    # repeat the substring elsewhere). We require a `<tr ...><td>sub-rowA</td>`
+    # anchor so a coincidental match earlier in the HTML cannot mis-slice.
+    anchor = "<td>sub-rowA</td>"
+    assert anchor in html
+    sub_row_start = html.rindex("<tr ", 0, html.index(anchor))
+    sub_row_end = html.index("</tr>", sub_row_start) + len("</tr>")
+    sub_row = html[sub_row_start:sub_row_end]
+    assert "lane--primary" not in sub_row
+    assert "lane-badge--primary" not in sub_row
+
+
+@pytest.mark.regression
+def test_live_fragment_without_main_lane_emits_no_primary_marker(
+    pricing: PricingTable,
+) -> None:
+    """ux FRICTION-2 boundary: when no main lane exists, no primary badge appears.
+
+    A subagent that started before the main session was observed (e.g. a
+    transcript truncated at the top) must NOT be falsely promoted to "primary".
+    """
+    # A bare subagent dispatch + message, no main-lane event.
+    state = fold_events(
+        [
+            _dispatch_event(0, "sub-only", agent_type="ux-evaluator"),
+            _msg_event(1, "sub-only", "claude-sonnet-4-6", input_tokens=10, output_tokens=20),
+        ],
+        pricing,
+    )
+    html = render_live_fragment(state)
+    assert "lane--primary" not in html
+    assert "lane-badge--primary" not in html
+
+
+@pytest.mark.regression
+def test_live_css_carries_reduced_motion_guard() -> None:
+    """The loading-pulse animation honours ``prefers-reduced-motion`` (a11y).
+
+    A bare ``@keyframes`` with no opt-out would animate for users with
+    vestibular-disorder accommodations; the CSS must include a media-query
+    override. Surface-level guard: the keyframe + the media query are both
+    present in the shell HTML's inline styles.
+    """
+    html = render_live_shell_html()
+    assert "@keyframes tile-loading-pulse" in html
+    assert "prefers-reduced-motion: reduce" in html

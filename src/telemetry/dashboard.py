@@ -766,16 +766,34 @@ def _render_agent_lanes_panel(state: LiveState) -> str:
 
 
 def _render_agent_lane_row(lane: AgentLane) -> str:
-    """Render one row of the agent-lanes table — fully escaped."""
+    """Render one row of the agent-lanes table — fully escaped.
+
+    The main session lane carries an extra ``lane--primary`` class plus a
+    ``primary`` badge next to the agent label (ux FRICTION-2): the previous
+    row treatment made the main session indistinguishable from a dispatched
+    subagent, which broke the gatekeeper's "is the top-level session
+    healthy?" read at a glance. The badge is the **load-bearing**
+    differentiator — its literal text label ("primary") carries the signal
+    for any reader (including with colour-deficiency or on dim displays).
+    The row's green left-border + 4% green tint are **decorative
+    reinforcement** for users who can see them, not the WCAG-1.4.1
+    accessibility contract.
+    """
     total_tokens = lane.input_tokens + lane.output_tokens + lane.cache_read_tokens
     status_label = _LANE_STATUS_LABEL.get(lane.status, lane.status)
-    lane_class = f"lane--{status_label}"
-    agent = lane.agent_type or ("main" if lane.kind == "main" else "—")
+    is_primary = lane.kind == "main"
+    classes = [f"lane--{status_label}"]
+    if is_primary:
+        classes.append("lane--primary")
+    primary_badge = (
+        '<span class="lane-badge lane-badge--primary">primary</span>' if is_primary else ""
+    )
+    agent = lane.agent_type or ("main" if is_primary else "—")
     model = lane.model or "—"
     return (
-        f'<tr class="{lane_class}">'
+        f'<tr class="{" ".join(classes)}">'
         f"<td>{_esc(lane.lane_id)}</td>"
-        f"<td>{_esc(agent)}</td>"
+        f"<td>{_esc(agent)}{primary_badge}</td>"
         f"<td>{_esc(model)}</td>"
         f'<td><span class="lane-badge">{_esc(status_label)}</span></td>'
         f'<td class="num">{_fmt_int(total_tokens)}</td>'
@@ -830,6 +848,17 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
     and continue to render server-side from :func:`render_dashboard_html`'s
     helpers — the same panel renderers, no duplication (spec R15).
 
+    The header carries a "retrospective view" link to ``/fragments/retrospective``
+    (ux FRICTION-4): that route returns a full HTML document (not an htmx
+    swap-target), so a plain ``<a href>`` is the correct affordance; without
+    it the route is live but unreachable from the UI.
+
+    The first-paint placeholder uses a distinct ``tile--loading`` class (NOT
+    ``tile--absent``) so a transient htmx delay does not present as an
+    honest-absence tile to the gatekeeper — the visual states are different
+    (pulsing opacity vs the dashed-border absence container) and the copy
+    explicitly says "Connecting…" rather than "Not yet…" (ux FRICTION-1).
+
     Args:
         generated_label: A human-readable timestamp for when the page was first
             served (transport owns the clock).
@@ -842,7 +871,12 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
         '<script src="/static/htmx.min.js" defer></script>'
         f"<style>{_CSS}{_LIVE_CSS}</style></head><body>"
         "<header><h1>Telemetry &amp; Oversight — live</h1>"
-        f'<div class="gen">{_esc(generated_label)}</div></header>'
+        f'<div class="gen">{_esc(generated_label)}</div>'
+        '<nav class="shell-nav">'
+        '<a href="/fragments/retrospective" class="nav-link"'
+        ' aria-label="Retrospective view">'
+        "Retrospective view &rarr;</a>"
+        "</nav></header>"
         "<main>"
         # hx-swap-error="outerHTML" so non-2xx (e.g. the 500 honest-error fragment)
         # still swaps the body — htmx's default is to drop the swap, which would
@@ -851,14 +885,31 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
         '<section id="live-section" class="live-section" data-state="loading"'
         ' hx-get="/fragments/live" hx-trigger="load, every 3s"'
         ' hx-swap="outerHTML" hx-swap-error="outerHTML">'
-        '<div class="tile tile--absent" data-state="loading"><h3>Live state</h3>'
-        '<p class="absence-copy">Loading live state…</p></div>'
+        '<div class="tile tile--loading" data-state="loading">'
+        "<h3>Live state</h3>"
+        '<p class="loading-copy">'
+        "Connecting to live session data &mdash; updates every 3 s."
+        "</p></div>"
         "</section>"
         "</main></body></html>"
     )
 
 
 #: Live-panel CSS extension (appended after the shared ``_CSS``).
+#
+# ``.tile--loading`` (ux FRICTION-1) — distinct from ``.tile--absent``: solid
+# border + a subtle accent left-border + a pulsing opacity animation, so a
+# first-paint placeholder reads as "we are connecting" rather than the
+# dashed-border "not yet run" honest-absence vocabulary.
+#
+# ``.lane--primary`` + ``.lane-badge--primary`` (ux FRICTION-2) — the main
+# session row gets a green left-border and a small "primary" pill next to
+# the agent label, so the gatekeeper can find the top-level session at a
+# glance even with several dispatched subagents in flight. The visual
+# differentiation is dual-channel (position + color), WCAG 1.4.1.
+#
+# ``.shell-nav`` / ``.nav-link`` (ux FRICTION-4) — header link to the
+# retrospective view; reachable from the live shell without typing a URL.
 _LIVE_CSS = """
 .live-section{grid-column:1 / -1;display:grid;grid-template-columns:repeat(2,1fr);gap:18px;}
 .live-section>.tile--wide{grid-column:1 / -1;}
@@ -874,4 +925,21 @@ border:1px solid var(--line);color:var(--muted);}
 tr.lane--active .lane-badge{color:var(--ok);border-color:var(--ok);}
 tr.lane--orphaned .lane-badge{color:#f85149;border-color:#f85149;}
 tr.lane--complete .lane-badge{color:var(--muted);}
+tr.lane--primary>td:first-child{border-left:3px solid var(--ok);}
+tr.lane--primary>td{background:rgba(63,185,80,.04);}
+.lane-badge--primary{margin-left:8px;color:var(--ok);border-color:var(--ok);
+background:rgba(63,185,80,.08);font-weight:600;text-transform:uppercase;
+letter-spacing:.4px;font-size:11px;}
+.tile--loading{border-style:solid;border-color:var(--accent);
+background:linear-gradient(180deg,#161b22,#1a2029);
+animation:tile-loading-pulse 1.4s ease-in-out infinite;}
+.loading-copy{color:var(--accent);font-size:13.5px;margin:0;}
+@keyframes tile-loading-pulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+@media (prefers-reduced-motion: reduce){
+.tile--loading{animation:none;}
+}
+.shell-nav{margin-top:6px;}
+.nav-link{color:var(--accent);font-size:13px;text-decoration:none;
+border-bottom:1px dotted var(--accent);padding-bottom:1px;}
+.nav-link:hover{border-bottom-style:solid;}
 """

@@ -495,6 +495,32 @@ def test_root_serves_htmx_shell() -> None:
     assert 'hx-get="/fragments/live"' in body
 
 
+@pytest.mark.regression
+def test_root_exposes_retrospective_link_and_distinct_loading_tile() -> None:
+    """ux FRICTION-1 + FRICTION-4 end-to-end: shell carries the right affordances.
+
+    Together with the unit tests in ``test_telemetry.py``, this guards that
+    a route-level change cannot drop the retrospective link or accidentally
+    revert the loading placeholder back to the ``tile--absent`` vocabulary.
+    """
+    app = create_app(port=8765)
+    client = TestClient(app)
+    r = client.get("/", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+    body = r.text
+    # FRICTION-4: retrospective is reachable from the shell UI.
+    assert 'href="/fragments/retrospective"' in body
+    # FRICTION-1: loading placeholder is visually distinct from honest absence.
+    assert "tile tile--loading" in body
+    assert "Connecting to live session data" in body
+    # Independent transport-layer negative guard (qa F5 in REV-supplement): a
+    # future server-side render hook accidentally re-templating the placeholder
+    # with the absence vocabulary must fail here, not just in the unit test.
+    placeholder = body.split('id="live-section"', 1)[1].split("</section>", 1)[0]
+    assert "tile--absent" not in placeholder
+    assert "absence-copy" not in placeholder
+
+
 def test_live_fragment_root_section_is_htmx_swap_target() -> None:
     """The fragment is one root ``<section>`` so htmx ``outerHTML`` swap is clean."""
     app = create_app(port=8765)
