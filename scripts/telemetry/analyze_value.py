@@ -238,38 +238,50 @@ def _otel_estimate(path: Path = OTEL_EXPORT_PATH) -> IndependentEstimate:
     )
 
 
-def analyze_value(
+def assemble_value_inputs(
+    conn: sqlite3.Connection,
     *,
-    db_path: Path = DB_PATH,
+    pricing: PricingTable,
     project_root: Path | None = None,
     since: object | None = None,
     subscription_path: Path | None = None,
     otel_path: Path = OTEL_EXPORT_PATH,
-    pricing: PricingTable | None = None,
+    a1_report: CostReport | None = None,
 ) -> dict[str, object]:
-    """Assemble inputs, compute both metrics, print, and return a summary.
+    """Assemble A3 inputs + compute both metrics — read-only, no init_db, no print.
+
+    The single read-only computation path for Layer A3, shared by the CLI
+    orchestrator (:func:`analyze_value`) and the Layer B dashboard so neither
+    forks a second cost/leverage path (ADR-0020 single-path discipline). A1 comes
+    from the stored breakdown rows on ``conn`` (no transcript re-parse for cost);
+    the attribution baseline is read live from the transcripts. This function
+    **writes nothing** — it never calls ``init_db`` and only reads ``conn`` — so a
+    caller may pass a ``file:...?mode=ro`` connection.
 
     Args:
-        db_path: SQLite database path (injectable for tests).
-        project_root: Project whose transcripts to scan for the baseline.
-        since: Ignore messages older than this timestamp (passed to the parser).
-        subscription_path: Subscription-fee config path (defaults to the gitignored
-            ``config/subscription.yaml``).
-        otel_path: OTel export path (defaults to the fixed ``data/otel_export.jsonl``).
-        pricing: Pricing table (defaults to loading the YAML).
+        conn: An open SQLite connection (may be read-only) to load A1 from.
+        pricing: Resolved pricing table.
+        project_root: Project whose transcripts feed the attribution baseline
+            (defaults to the framework root used by ``ingest_token_usage``).
+        since: Ignore messages older than this timestamp (passed to the parser);
+            when set, the attribution cross-check reports typed absence (the
+            all-time stored A1 and a windowed baseline are different token
+            populations — the same honesty guard A3's CLI enforces).
+        subscription_path: Subscription-fee config path (defaults to the
+            gitignored ``config/subscription.yaml``).
+        otel_path: OTel export path (defaults to ``data/otel_export.jsonl``).
+        a1_report: A precomputed A1 :class:`CostReport` to reuse (the dashboard
+            builds one for its cost panel); built from ``conn`` when ``None`` so
+            the A1 figure is a single source of truth across callers.
 
     Returns:
-        A summary dict carrying the :class:`LeverageResult` and both
-        :class:`DivergenceResult` objects plus counts — nothing is persisted.
+        A dict carrying ``leverage`` (:class:`LeverageResult`), ``attribution``
+        and ``pricing`` (:class:`DivergenceResult`), ``messages`` (count),
+        ``a1_cost_usd``, and ``a1_report`` (:class:`CostReport`). Nothing is
+        persisted.
     """
     project_root = project_root or itu.PROJECT_ROOT
-    pricing = pricing or load_pricing()
     fee: SubscriptionFee | None = load_subscription_fee(subscription_path)
-
-    if not db_path.exists():
-        print(f"SQLite database not found at {db_path}. Run scripts/init_db.py first.")
-        return {"leverage": None, "attribution": None, "pricing": None, "messages": 0}
-    init_db(db_path, quiet=True)
 
     # Independent attribution baseline needs the transcripts; A1 comes from the DB.
     messages: dict[str, itu.MessageRecord] = {}
@@ -278,14 +290,10 @@ def analyze_value(
         if session_paths:
             messages = itu._collect_messages(session_paths, since)
 
-    conn = sqlite3.connect(str(db_path))
-    try:
-        a1_report = _load_a1_report(conn, pricing)
-    finally:
-        conn.close()
+    report = a1_report if a1_report is not None else _load_a1_report(conn, pricing)
 
     window_months = _window_months(messages)
-    lev: LeverageResult = leverage(a1_report, fee, window_months=window_months)
+    lev: LeverageResult = leverage(report, fee, window_months=window_months)
     # Honesty guard (review BLOCKING): A1 is loaded from the full stored
     # breakdown (all-time), but the baseline is recomputed live and honours
     # ``since``. Comparing all-time A1 against a ``--since``-filtered baseline
@@ -307,18 +315,70 @@ def analyze_value(
             scope_coverage_pct=0.0,
             flaw_class=FLAW_ATTRIBUTION,
         )
-    attribution: DivergenceResult = cross_check(a1_report, baseline)
+    attribution: DivergenceResult = cross_check(report, baseline)
     otel = _otel_estimate(otel_path)
-    pricing_check: DivergenceResult = cross_check(a1_report, otel)
-
-    _print_report(lev, attribution, pricing_check)
+    pricing_check: DivergenceResult = cross_check(report, otel)
     return {
         "leverage": lev,
         "attribution": attribution,
         "pricing": pricing_check,
         "messages": len(messages),
-        "a1_cost_usd": a1_report.total_cost_usd,
+        "a1_cost_usd": report.total_cost_usd,
+        "a1_report": report,
     }
+
+
+def analyze_value(
+    *,
+    db_path: Path = DB_PATH,
+    project_root: Path | None = None,
+    since: object | None = None,
+    subscription_path: Path | None = None,
+    otel_path: Path = OTEL_EXPORT_PATH,
+    pricing: PricingTable | None = None,
+) -> dict[str, object]:
+    """Assemble inputs, compute both metrics, print, and return a summary.
+
+    The CLI orchestrator: it ensures the schema (``init_db``), opens a connection,
+    delegates the read-only assembly to :func:`assemble_value_inputs` (the shared
+    single path), prints the report, and returns the summary.
+
+    Args:
+        db_path: SQLite database path (injectable for tests).
+        project_root: Project whose transcripts to scan for the baseline.
+        since: Ignore messages older than this timestamp (passed to the parser).
+        subscription_path: Subscription-fee config path (defaults to the gitignored
+            ``config/subscription.yaml``).
+        otel_path: OTel export path (defaults to the fixed ``data/otel_export.jsonl``).
+        pricing: Pricing table (defaults to loading the YAML).
+
+    Returns:
+        A summary dict carrying the :class:`LeverageResult` and both
+        :class:`DivergenceResult` objects plus counts — nothing is persisted.
+    """
+    project_root = project_root or itu.PROJECT_ROOT
+    pricing = pricing or load_pricing()
+
+    if not db_path.exists():
+        print(f"SQLite database not found at {db_path}. Run scripts/init_db.py first.")
+        return {"leverage": None, "attribution": None, "pricing": None, "messages": 0}
+    init_db(db_path, quiet=True)
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        result = assemble_value_inputs(
+            conn,
+            pricing=pricing,
+            project_root=project_root,
+            since=since,
+            subscription_path=subscription_path,
+            otel_path=otel_path,
+        )
+    finally:
+        conn.close()
+
+    _print_report(result["leverage"], result["attribution"], result["pricing"])
+    return result
 
 
 def _fmt_ratio(value: float | None) -> str:

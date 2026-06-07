@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Telemetry Dashboard</title><style>
+:root{--bg:#0f1419;--card:#1a2029;--ink:#e6edf3;--muted:#8b949e;--accent:#58a6ff;
+--ok:#3fb950;--absent:#6e7681;--line:#30363d;}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--ink);
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+line-height:1.5;}
+header{padding:28px 32px 8px;}
+header h1{margin:0;font-size:22px;}
+header .gen{color:var(--muted);font-size:13px;margin-top:4px;}
+main{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;padding:18px 32px 40px;}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;}
+.tile--wide{grid-column:1 / -1;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;
+align-items:start;}
+.tile--wide>h3{grid-column:1 / -1;margin:0 0 4px;}
+.tile h3{margin:0 0 10px;font-size:16px;}
+.tile h4{margin:0 0 8px;font-size:14px;}
+.tile--absent{border-style:dashed;border-color:var(--absent);background:repeating-linear-gradient(
+45deg,#161b22,#161b22 10px,#1a2029 10px,#1a2029 20px);}
+.tile__icon{font-size:22px;color:var(--absent);line-height:1;margin-bottom:6px;}
+.subtile{background:#161b22;border:1px solid var(--line);border-radius:10px;padding:14px;}
+.subtile.tile--absent,.tile--absent .subtile{border-style:dashed;}
+.headline{font-size:30px;font-weight:700;letter-spacing:-.5px;margin:6px 0;}
+.headline--ok{color:var(--ok);font-size:22px;}
+.legend{color:var(--muted);font-size:12.5px;margin:0 0 10px;}
+.sub{color:var(--muted);font-size:13px;margin:2px 0;}
+.note{color:var(--muted);font-size:12.5px;margin-top:10px;}
+.src{color:var(--muted);font-size:12px;margin-top:8px;}
+.absence-copy{color:var(--muted);font-size:13.5px;margin:0;}
+.data-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
+.data-table th,.data-table td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+.data-table th{color:var(--muted);font-weight:600;}
+.data-table td.num{text-align:right;font-variant-numeric:tabular-nums;}
+td.uncosted{color:var(--absent);font-style:italic;}
+.detail{font-size:12px;}
+.sig{display:block;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+font-size:11px;margin-top:3px;word-break:break-all;}
+.kv{list-style:none;padding:0;margin:10px 0 0;font-size:13px;color:var(--muted);}
+.kv li{margin:3px 0;}
+code{background:#0d1117;border:1px solid var(--line);border-radius:5px;padding:1px 5px;
+font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;}
+a{color:var(--accent);}
+</style></head><body><header><h1>Telemetry &amp; Oversight — your AI use at a glance</h1><div class="gen">Generated fixture: all-absent</div></header><main><div class="tile tile--absent" data-state="absent"><div class="tile__icon" aria-hidden="true">○</div><h3>Cost &amp; Coverage</h3><p class="absence-copy">No cost data yet. The cost analyzer has not run for this database. Run <code>scripts/telemetry/analyze_cost.py</code> to populate this panel.</p></div><div class="tile tile--absent" data-state="absent"><div class="tile__icon" aria-hidden="true">○</div><h3>Failure &amp; Waste</h3><p class="absence-copy">No failure data yet. The failure analyzer has not run for this database. Run <code>scripts/telemetry/analyze_failures.py</code> to populate this panel.</p></div><div class="tile tile--data tile--wide" data-state="data"><h3>Value vs Subscription</h3><div class="tile tile--absent" data-state="absent"><div class="tile__icon" aria-hidden="true">○</div><h3>List-price-equivalent multiple</h3><p class="absence-copy">Not shown. The cost analyzer has not run, so there is no measured spend to compare. Run <code>scripts/telemetry/analyze_cost.py</code> first, then set a fee.</p></div><div class="tile tile--absent" data-state="absent"><div class="tile__icon" aria-hidden="true">○</div><h3>Attribution cross-check</h3><p class="absence-copy">Not available. no independent estimate available</p></div><div class="tile tile--absent" data-state="absent"><div class="tile__icon" aria-hidden="true">○</div><h3>Pricing cross-check (OpenTelemetry)</h3><p class="absence-copy">Not yet active. Turn on Claude Code&#x27;s OpenTelemetry export to enable this independent pricing cross-check. <a href="https://code.claude.com/docs/en/monitoring-usage" target="_blank" rel="noopener">enable OTel</a></p></div></div></main></body></html>

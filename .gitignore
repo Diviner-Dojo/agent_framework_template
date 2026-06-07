@@ -32,3 +32,9 @@ docs/handoff/
 # committed. The OTel export is local runtime data.
 config/subscription.yaml
 data/otel_export.jsonl
+
+# Telemetry Layer B (ADR-0020): the dashboard is generated to the OS temp dir,
+# never the repo tree. This defensive entry only matters if a future flag ever
+# redirects the conventional filename into the working tree — it must not be
+# committed (it carries personal cost/fee figures).
+telemetry_dashboard.html

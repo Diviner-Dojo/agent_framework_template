@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Telemetry Dashboard</title><style>
+:root{--bg:#0f1419;--card:#1a2029;--ink:#e6edf3;--muted:#8b949e;--accent:#58a6ff;
+--ok:#3fb950;--absent:#6e7681;--line:#30363d;}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--ink);
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+line-height:1.5;}
+header{padding:28px 32px 8px;}
+header h1{margin:0;font-size:22px;}
+header .gen{color:var(--muted);font-size:13px;margin-top:4px;}
+main{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;padding:18px 32px 40px;}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;}
+.tile--wide{grid-column:1 / -1;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;
+align-items:start;}
+.tile--wide>h3{grid-column:1 / -1;margin:0 0 4px;}
+.tile h3{margin:0 0 10px;font-size:16px;}
+.tile h4{margin:0 0 8px;font-size:14px;}
+.tile--absent{border-style:dashed;border-color:var(--absent);background:repeating-linear-gradient(
+45deg,#161b22,#161b22 10px,#1a2029 10px,#1a2029 20px);}
+.tile__icon{font-size:22px;color:var(--absent);line-height:1;margin-bottom:6px;}
+.subtile{background:#161b22;border:1px solid var(--line);border-radius:10px;padding:14px;}
+.subtile.tile--absent,.tile--absent .subtile{border-style:dashed;}
+.headline{font-size:30px;font-weight:700;letter-spacing:-.5px;margin:6px 0;}
+.headline--ok{color:var(--ok);font-size:22px;}
+.legend{color:var(--muted);font-size:12.5px;margin:0 0 10px;}
+.sub{color:var(--muted);font-size:13px;margin:2px 0;}
+.note{color:var(--muted);font-size:12.5px;margin-top:10px;}
+.src{color:var(--muted);font-size:12px;margin-top:8px;}
+.absence-copy{color:var(--muted);font-size:13.5px;margin:0;}
+.data-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
+.data-table th,.data-table td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+.data-table th{color:var(--muted);font-weight:600;}
+.data-table td.num{text-align:right;font-variant-numeric:tabular-nums;}
+td.uncosted{color:var(--absent);font-style:italic;}
+.detail{font-size:12px;}
+.sig{display:block;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+font-size:11px;margin-top:3px;word-break:break-all;}
+.kv{list-style:none;padding:0;margin:10px 0 0;font-size:13px;color:var(--muted);}
+.kv li{margin:3px 0;}
+code{background:#0d1117;border:1px solid var(--line);border-radius:5px;padding:1px 5px;
+font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;}
+a{color:var(--accent);}
+</style></head><body><header><h1>Telemetry &amp; Oversight — your AI use at a glance</h1><div class="gen">Generated fixture: populated</div></header><main><div class="tile tile--data" data-state="data"><h3>Cost &amp; Coverage</h3><p class="legend">These figures show what the same tokens would cost at API pay-per-use prices — not what you paid on your subscription.</p><div class="headline">$30.00</div><p class="sub">known API-equivalent cost &middot; 70.6% of billable tokens priced</p><table class="data-table"><thead><tr><th>Tier</th><th>Tokens</th><th>API-equivalent</th></tr></thead><tbody><tr><td>opus</td><td class="num">1,200,000</td><td class="num">$30.0000</td></tr><tr><td>unknown</td><td class="num">500,000</td><td class="num" class="uncosted">uncosted</td></tr></tbody></table><p class="note">29.4% of tokens are an unknown tier and are shown <strong>uncosted</strong> (excluded from the total, not zero-rated).</p></div><div class="tile tile--data" data-state="data"><h3>Failure &amp; Waste</h3><div class="headline">1 signal(s) detected</div><p class="sub">Ranked by wasted API-equivalent cost (most wasteful first).</p><table class="data-table"><thead><tr><th>Type</th><th>Cost</th><th>Wasted tok</th><th>Tier</th><th>Detail</th></tr></thead><tbody><tr><td>orphaned_subagent</td><td class="num">$0.1200</td><td class="num">150,000</td><td>haiku</td><td class="detail">subagent &#x27;qa-specialist&#x27; dispatched but no result returned<span class="sig">toolu_01abcXYZ</span></td></tr></tbody></table></div><div class="tile tile--data tile--wide" data-state="data"><h3>Value vs Subscription</h3><div class="subtile" data-state="data"><h4>List-price-equivalent multiple</h4><p class="legend">How many times your flat monthly subscription fee the same usage would cost at API list prices. Leads with the per-month figure because that is the apples-to-apples comparison against a monthly fee; the cumulative multiple (which grows with the time window) is shown second as context.</p><div class="headline">2.50x/mo</div><p class="sub">over ~2.0 months</p><ul class="kv"><li>cumulative over the window: <strong>5.00x</strong></li><li>API-equivalent compute: <strong>$100.00</strong> (coverage 100.0%)</li><li>subscription fee: <strong>$20.00</strong>/monthly</li></ul></div><div class="subtile" data-state="data"><h4>Attribution cross-check</h4><p class="legend">What share of your total measured AI cost was logged inside a named discussion session.</p><p class="sub">$50.00 of measured spend is attributed to captured discussions, out of $100.00 total.</p><div class="headline">50.0% covered</div><p class="note">Captured discussions cover this share of measured AI spend; the rest is activity outside any discussion window, not an error.</p><p class="src">source: attribution-baseline</p></div><div class="tile tile--absent" data-state="absent"><div class="tile__icon" aria-hidden="true">○</div><h3>Pricing cross-check (OpenTelemetry)</h3><p class="absence-copy">Not yet active. Turn on Claude Code&#x27;s OpenTelemetry export to enable this independent pricing cross-check. <a href="https://code.claude.com/docs/en/monitoring-usage" target="_blank" rel="noopener">enable OTel</a></p></div></div></main></body></html>

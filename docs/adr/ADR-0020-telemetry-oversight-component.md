@@ -192,6 +192,54 @@ metrics that feed the north-star Layer B dashboard. Four decisions:
   reused — not promoted (that is the deferred A-ARCH1 public-surface decision). A3's
   own new exports in `src/telemetry/__init__.py` are public-clean.
 
+## Implementation note — Layer B (the north-star dashboard), 2026-06-07
+
+Layer B is the **render-only** surface the data foundation was always in service
+of: a single self-contained static HTML infographic, generated locally at
+read-time, that makes the A1/A2/A3 outputs **visible**. Steward-approved form
+factor (DISC-20260607-063709, 0.88): static HTML mirroring the `/status`
+precedent — categorically lighter than the deferred FastAPI/web-app server
+(Principle #8). Build = **render, not new measurement.** Key decisions:
+
+- **Read-side functions only, no forked computation (spec R7/C1).** The dashboard
+  reads the stored Layer-A outputs through the read-side path — `load_cost_rows` →
+  `build_cost_report` (A1), `load_failure_signals` → `rank_failures` (A2, the full
+  stored corpus), and a new **shared read-only A3 assembler** `assemble_value_inputs`
+  that both the A3 CLI (`analyze_value`) and the dashboard call. It **never** calls
+  `analyze_cost()` / `analyze_failures()` / `init_db()` (they mutate the DB); the DB
+  is opened `file:...?mode=ro` and a missing telemetry table is caught and mapped to
+  the analyzer-not-yet-run absence state. The A3 extract-method resolves rather than
+  worsens the deferred A-ARCH1 private-cross-module smell (one read-only path).
+- **Layering (corrects the spec's component note).** The coverage-counted pure
+  layer `src/telemetry/dashboard.py` holds `DashboardData`, the `html.escape`
+  helpers, the inline HTML template, `render_dashboard_html`, and the ASCII
+  `render_console_summary`. The transport `scripts/telemetry/dashboard.py` holds
+  `assemble_dashboard_data` (DB/transcript IO) + `main`. `src/` does not import
+  `scripts/` (the package `__init__` declares I/O orchestration lives in
+  `scripts/telemetry/`).
+- **Escaping is a deliberate divergence from `/status` (spec C6).** `git_visualize.py`
+  interpolates raw git-plumbing output into `innerHTML` (safe — controlled); the
+  dashboard renders **server-side** with `html.escape()` in Python on every dynamic
+  string (failure signature/detail/tier, divergence reason/source_label, fee labels)
+  because Layer-A strings are transcript-shaped. The injection guard targets the
+  transcript tool-name feeding `FailureSignal.signature`.
+- **Honest absence is a first-class visual state (spec R3a / Steward C4).** Not-yet-
+  run / not-configured / unavailable render in a **distinct dashed-border + icon**
+  container (distinction by shape/icon, not color alone — WCAG 1.4.1) with a plain-
+  language `[what]. [why]. [action]` sentence; a **true zero** (analyzer ran, found
+  nothing) uses the normal **data** tile ("No failure signals detected"); OTel
+  absence renders a live "enable OTel" `<a>` link. The build attaches per-state
+  screenshots so `/review` can probe this axis visually.
+- **Plain-language for the manager-gatekeeper (spec R2a).** The A1 panel carries the
+  pay-per-use legend ("what the same tokens would cost at API pay-per-use — not what
+  you paid"); the A3 multiple is labelled **"List-price-equivalent multiple"** with
+  a legend. The console summary is ASCII-only (cp1252 — the 4th guard of that class).
+- **Privacy / no standing process (spec R6/C9).** One-shot generate → write to the OS
+  temp dir (never the repo tree) → open browser → ASCII summary. No daemon, no
+  refresh. A defensive `.gitignore` entry covers the conventional filename. Live on
+  real data: A1 $666.26 / 100%, 1 failure signal, fee-not-configured + OTel-not-yet-
+  active honest-absence states.
+
 ## Linked Discussions
 - Spec review: discussions/2026-06-06/DISC-20260606-041937-telemetry-oversight-spec-review/
 - Steward gate: (framework-evolution review, APPROVE 0.86, 5 conditions)
@@ -200,3 +248,7 @@ metrics that feed the north-star Layer B dashboard. Four decisions:
 - Spec review (A3): discussions/2026-06-06/DISC-20260606-211551-telemetry-value-crosscheck-a3-spec-review/ (arch/security/qa, approve-with-changes, 0 blocking)
 - Steward gate (A3): discussions/2026-06-06/DISC-20260606-220705-telemetry-a3-steward-gate/ (APPROVE 0.88)
 - Build (A3): discussions/2026-06-06/DISC-20260606-221119-build-telemetry-value-crosscheck-a3/
+- Spec (Layer B): docs/sprints/SPEC-20260607-064958-telemetry-layer-b-dashboard.md (approve, 5 blocking findings folded)
+- Steward form-factor gate (Layer B): DISC-20260607-063709 (APPROVE 0.88, static HTML)
+- Spec review (Layer B): DISC-20260607-065118 (arch/security/qa/ux, all approve-with-changes, 5 blocking folded)
+- Build (Layer B): discussions/2026-06-07/DISC-20260607-072951-build-telemetry-layer-b-dashboard/

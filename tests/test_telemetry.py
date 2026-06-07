@@ -20,9 +20,18 @@ from scripts.init_db import init_db
 from scripts.telemetry import analyze_cost as ac
 from scripts.telemetry import analyze_failures as af
 from scripts.telemetry import analyze_value as av
+from scripts.telemetry import dashboard as dash
 from src.telemetry.cost import CostReport, ModelTokenRow, build_cost_report
+from src.telemetry.dashboard import (
+    STATE_DATA,
+    STATE_NOT_RUN,
+    DashboardData,
+    render_console_summary,
+    render_dashboard_html,
+)
 from src.telemetry.failures import (
     FailureSignal,
+    RankedFailure,
     SubagentDispatch,
     SubagentRun,
     ToolCall,
@@ -39,7 +48,9 @@ from src.telemetry.pricing import (
 from src.telemetry.value import (
     FLAW_ATTRIBUTION,
     FLAW_PRICING,
+    DivergenceResult,
     IndependentEstimate,
+    LeverageResult,
     SubscriptionFee,
     cross_check,
     leverage,
@@ -1813,3 +1824,660 @@ def test_analyze_value_since_skips_attribution_crosscheck(env, pricing, tmp_path
     attr = result["attribution"]
     assert attr.available is False  # not a fabricated divergence
     assert "since" in (attr.source_label or "").lower()
+
+
+# --------------------------------------------------------------------------- #
+# Layer B — dashboard (render-only over the A1/A2/A3 read-side outputs)
+# --------------------------------------------------------------------------- #
+
+
+def _populate_dashboard_db(env, pricing: PricingTable, tmp_path: Path) -> tuple[Path, Path]:
+    """Populate the DB with A1 cost + A2 failures via the WRITE-side analyzers.
+
+    Setup-only use of the write-side analyzers (the dashboard itself never calls
+    them). Writes a session with a 3x Bash retry loop + an orphaned Agent
+    dispatch within d1's window so both cost rows and failure rows exist.
+    Returns ``(subscription_path, otel_path)`` — the otel path is absent.
+    """
+    _insert_discussion(env.db_path, "d1", "2026-01-01T00:00:00Z", "2026-01-01T02:00:00Z")
+    main = [
+        _assistant_line(
+            "m1",
+            "2026-01-01T00:00:01Z",
+            "claude-opus-4-7",
+            [("t1", "Bash", {"c": "ls"})],
+            output_tokens=1000,
+        ),
+        _result_line("2026-01-01T00:00:02Z", "t1"),
+        _assistant_line(
+            "m2",
+            "2026-01-01T00:00:03Z",
+            "claude-opus-4-7",
+            [("t2", "Bash", {"c": "ls"})],
+            output_tokens=1000,
+        ),
+        _result_line("2026-01-01T00:00:04Z", "t2"),
+        _assistant_line(
+            "m3",
+            "2026-01-01T00:00:05Z",
+            "claude-opus-4-7",
+            [("t3", "Bash", {"c": "ls"})],
+            output_tokens=1000,
+        ),
+        _result_line("2026-01-01T00:00:06Z", "t3"),
+        _assistant_line(
+            "m4",
+            "2026-01-01T01:00:00Z",
+            "claude-opus-4-7",
+            [("t4", "Agent", {"subagent_type": "qa"})],
+        ),
+    ]
+    _write_session(env.projects_root, env.project_root, "sess1", main)
+    ac.analyze_cost(
+        db_path=env.db_path, project_root=env.project_root, full_rescan=True, pricing=pricing
+    )
+    af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
+    fee_file = tmp_path / "sub.yaml"
+    fee_file.write_text("monthly_fee_usd: 20.0\nplan_label: Test Plan\n", encoding="utf-8")
+    return fee_file, tmp_path / "no_otel.jsonl"
+
+
+def _schema_snapshot(db_path: Path) -> list[str]:
+    """Snapshot every object's DDL from sqlite_master (proves no schema change)."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        return sorted(
+            r[0] for r in conn.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL")
+        )
+    finally:
+        conn.close()
+
+
+# --- DashboardData builders for pure render tests -------------------------- #
+
+
+def _lev_configured() -> LeverageResult:
+    return leverage(_report(100.0), SubscriptionFee(monthly_fee_usd=20.0), window_months=2.0)
+
+
+def _lev_absent() -> LeverageResult:
+    return leverage(_report(100.0), None)
+
+
+def _div_attribution_available() -> DivergenceResult:
+    indep = IndependentEstimate(
+        present=True,
+        cost_usd=100.0,
+        token_basis=1000,
+        source_label="attribution-baseline",
+        scope_coverage_pct=100.0,
+        flaw_class=FLAW_ATTRIBUTION,
+    )
+    return cross_check(_report(50.0), indep)
+
+
+def _div_otel_absent() -> DivergenceResult:
+    indep = IndependentEstimate(
+        present=False,
+        cost_usd=None,
+        token_basis=0,
+        source_label="otel",
+        scope_coverage_pct=0.0,
+        flaw_class=FLAW_PRICING,
+    )
+    return cross_check(_report(50.0), indep)
+
+
+def _div_otel_available() -> DivergenceResult:
+    indep = IndependentEstimate(
+        present=True,
+        cost_usd=40.0,
+        token_basis=1000,
+        source_label="otel (claude_code.cost.usage)",
+        scope_coverage_pct=100.0,
+        flaw_class=FLAW_PRICING,
+    )
+    return cross_check(_report(50.0), indep)
+
+
+def _data(
+    *,
+    cost_report: CostReport | None = None,
+    cost_state: str = STATE_DATA,
+    failures: list[RankedFailure] | None = None,
+    failures_state: str = STATE_DATA,
+    leverage_result: LeverageResult | None = None,
+    attribution: DivergenceResult | None = None,
+    pricing_check: DivergenceResult | None = None,
+) -> DashboardData:
+    return DashboardData(
+        cost_report=cost_report if cost_report is not None else _report(10.0),
+        cost_state=cost_state,
+        failures=failures if failures is not None else [],
+        failures_state=failures_state,
+        leverage=leverage_result if leverage_result is not None else _lev_configured(),
+        attribution=attribution if attribution is not None else _div_attribution_available(),
+        pricing_check=pricing_check if pricing_check is not None else _div_otel_absent(),
+        generated_label="2026-06-07 07:30 UTC",
+    )
+
+
+# --- assembly seam: fidelity + read-side-only + no-persistence ------------- #
+
+
+def test_assemble_dashboard_data_matches_read_side(env, pricing, tmp_path) -> None:
+    # Transport-fidelity: assemble_dashboard_data must equal build_cost_report /
+    # rank_failures / analyze_value field-for-field on the same fixture.
+    fee, otel = _populate_dashboard_db(env, pricing, tmp_path)
+    data = dash.assemble_dashboard_data(
+        env.db_path,
+        pricing=pricing,
+        subscription_path=fee,
+        otel_path=otel,
+        project_root=env.project_root,
+    )
+    # Reference uses the SAME read-side path on a read-only connection (qa A8):
+    # assemble_value_inputs, not analyze_value (which calls init_db — a write-side
+    # asymmetry that would compare a freshly-initialized DB against the ro view).
+    conn = sqlite3.connect(f"file:{env.db_path.as_posix()}?mode=ro", uri=True)
+    try:
+        ref_cost = build_cost_report(ac.load_cost_rows(conn), pricing)
+        ref_ranked = rank_failures(af.load_failure_signals(conn), pricing)
+        ref_value = av.assemble_value_inputs(
+            conn,
+            pricing=pricing,
+            project_root=env.project_root,
+            since=None,
+            subscription_path=fee,
+            otel_path=otel,
+        )
+    finally:
+        conn.close()
+    # A1 — total, coverage, full-cover flag, and every by_tier cost.
+    assert data.cost_report.total_cost_usd == ref_cost.total_cost_usd
+    assert data.cost_report.coverage_pct == ref_cost.coverage_pct
+    assert data.cost_report.is_fully_covered == ref_cost.is_fully_covered
+    assert {t: tc.cost_usd for t, tc in data.cost_report.by_tier.items()} == {
+        t: tc.cost_usd for t, tc in ref_cost.by_tier.items()
+    }
+    # A2 — same ranked signatures + costs.
+    assert [(r.signal.signature, r.cost_usd) for r in data.failures] == [
+        (r.signal.signature, r.cost_usd) for r in ref_ranked
+    ]
+    assert data.failures  # the fixture produced at least one signal
+    # A3 — leverage + both divergences.
+    assert data.leverage.configured == ref_value["leverage"].configured
+    assert data.leverage.leverage_cumulative == ref_value["leverage"].leverage_cumulative
+    assert data.leverage.leverage_per_month == ref_value["leverage"].leverage_per_month
+    assert data.attribution.available == ref_value["attribution"].available
+    assert data.attribution.divergence_pct == ref_value["attribution"].divergence_pct
+    assert data.attribution.direction == ref_value["attribution"].direction
+    assert data.pricing_check.available == ref_value["pricing"].available
+    assert data.pricing_check.divergence_pct == ref_value["pricing"].divergence_pct  # qa A5
+    assert data.pricing_check.direction == ref_value["pricing"].direction  # qa A5
+
+
+@pytest.mark.regression
+def test_dashboard_never_calls_writeside_or_init_db(env, pricing, tmp_path, monkeypatch) -> None:
+    # Read-side-only: the dashboard path must never invoke analyze_cost /
+    # analyze_failures / init_db (all of which mutate the DB).
+    fee, otel = _populate_dashboard_db(env, pricing, tmp_path)
+    calls: list[str] = []
+    monkeypatch.setattr(ac, "analyze_cost", lambda *a, **k: calls.append("analyze_cost"))
+    monkeypatch.setattr(af, "analyze_failures", lambda *a, **k: calls.append("analyze_failures"))
+    monkeypatch.setattr(av, "init_db", lambda *a, **k: calls.append("init_db"))
+    dash.assemble_dashboard_data(
+        env.db_path,
+        pricing=pricing,
+        subscription_path=fee,
+        otel_path=otel,
+        project_root=env.project_root,
+    )
+    assert calls == []
+    # And the transport module never even imported the mutating entry points.
+    assert not hasattr(dash, "analyze_cost")
+    assert not hasattr(dash, "analyze_failures")
+    assert not hasattr(dash, "init_db")
+
+
+@pytest.mark.regression
+def test_dashboard_persists_nothing(env, pricing, tmp_path) -> None:
+    # Strong no-persistence: schema (sqlite_master) AND row counts unchanged.
+    fee, otel = _populate_dashboard_db(env, pricing, tmp_path)
+    before_counts = _table_row_counts(env.db_path)
+    before_schema = _schema_snapshot(env.db_path)
+    dash.assemble_dashboard_data(
+        env.db_path,
+        pricing=pricing,
+        subscription_path=fee,
+        otel_path=otel,
+        project_root=env.project_root,
+    )
+    assert _table_row_counts(env.db_path) == before_counts
+    assert _schema_snapshot(env.db_path) == before_schema
+
+
+@pytest.mark.regression
+def test_dashboard_connection_is_readonly(env) -> None:
+    # The DB is opened file:...?mode=ro — a write must be refused at the driver.
+    conn = dash._connect_readonly(env.db_path)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            conn.execute("CREATE TABLE _should_fail (x)")
+    finally:
+        conn.close()
+
+
+# --- honest-absence states (one test per state) ---------------------------- #
+
+
+@pytest.mark.regression
+def test_absence_fee_not_configured_renders_distinct_tile(pricing) -> None:
+    html = render_dashboard_html(_data(leverage_result=_lev_absent()))
+    assert 'data-state="absent"' in html
+    assert "tile--absent" in html
+    assert "List-price-equivalent multiple" in html  # labelled, not a 0 multiple
+    assert "subscription fee not configured" in html  # the honest reason
+    assert "0.00x" not in html.split("Value vs Subscription")[1].split("Attribution")[0]
+
+
+@pytest.mark.regression
+def test_absence_otel_not_active_renders_live_link(pricing) -> None:
+    html = render_dashboard_html(_data(pricing_check=_div_otel_absent()))
+    assert 'href="https://code.claude.com/docs/en/monitoring-usage"' in html
+    assert 'target="_blank"' in html
+    assert "enable OTel" in html
+
+
+def test_absence_attribution_unavailable_renders_absence_not_zero(pricing) -> None:
+    dv = DivergenceResult(
+        available=False,
+        our_cost_usd=50.0,
+        independent_cost_usd=None,
+        delta_usd=None,
+        divergence_pct=None,
+        direction=None,
+        flaw_class=None,
+        scope_coverage_pct=None,
+        source_label="attribution baseline skipped: --since filters the live baseline",
+        reason="no independent estimate available",
+    )
+    html = render_dashboard_html(_data(attribution=dv))
+    # Distinct absence container + honest copy, never a fabricated 0%.
+    assert html.count('data-state="absent"') >= 1
+    assert "no independent estimate available" in html
+
+
+@pytest.mark.regression
+def test_failures_not_run_distinct_from_true_zero(pricing) -> None:
+    not_run = render_dashboard_html(_data(failures=[], failures_state=STATE_NOT_RUN))
+    true_zero = render_dashboard_html(_data(failures=[], failures_state=STATE_DATA))
+    # not-run: a distinct absence tile pointing at the analyzer.
+    assert "analyze_failures.py" in not_run
+    assert 'data-state="absent"' in not_run
+    # true-zero: a normal DATA tile with explicit copy, NOT the absence style.
+    assert "No failure signals detected" in true_zero
+    assert "No failure signals detected" not in not_run
+    assert "analyze_failures.py" not in true_zero
+
+
+@pytest.mark.regression
+def test_unknown_tier_rendered_uncosted_not_zero(pricing) -> None:
+    rows = [
+        ModelTokenRow("d", "claude-opus-4-7", "opus", tokens_in=1_000),
+        ModelTokenRow("d", "some-other-llm", UNKNOWN_TIER, tokens_in=1_000),
+    ]
+    report = build_cost_report(rows, pricing)
+    html = render_dashboard_html(_data(cost_report=report, cost_state=STATE_DATA))
+    assert "uncosted" in html  # the unknown tier is uncosted, never $0
+    assert 'class="uncosted"' in html
+
+
+def test_empty_db_renders_every_panel_in_absence(env, pricing) -> None:
+    # First-run / empty DB: every panel renders its absence state, no crash.
+    data = dash.assemble_dashboard_data(
+        env.db_path, pricing=pricing, project_root=env.project_root
+    )
+    assert data.cost_state == STATE_NOT_RUN
+    assert data.failures_state == STATE_NOT_RUN
+    assert data.leverage.configured is False  # no fee
+    assert data.attribution.available is False  # no transcripts
+    assert data.pricing_check.available is False  # no otel
+    html = render_dashboard_html(data)
+    assert "<!DOCTYPE html>" in html
+    assert html.count('data-state="absent"') >= 4  # cost, failures, leverage, otel(+attribution)
+
+
+def test_true_zero_vs_not_run_state_classification(env, pricing) -> None:
+    # Empty telemetry_failures + a failures watermark => true zero (data tile);
+    # empty + no watermark => analyzer-not-yet-run (absence).
+    conn = sqlite3.connect(str(env.db_path))
+    try:
+        conn.execute(
+            "INSERT INTO telemetry_run_state (key, value, updated_at) "
+            "VALUES ('failures_last_analyzed_mtime', '123.0', '2026-01-01T00:00:00Z')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    data = dash.assemble_dashboard_data(
+        env.db_path, pricing=pricing, project_root=env.project_root
+    )
+    assert data.failures == [] and data.failures_state == STATE_DATA  # true zero
+
+
+# --- escaping (C6) --------------------------------------------------------- #
+
+_XSS = "<script>alert('telemetry-xss')</script>"
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("field", ["signature", "detail"])
+def test_failure_string_fields_are_escaped(field) -> None:
+    # The transcript tool-name feeds FailureSignal.signature; both it and detail
+    # are transcript-shaped and must be escaped, never live markup.
+    sig = FailureSignal(
+        failure_type="retry_loop",
+        signature=_XSS if field == "signature" else "Bash:abc",
+        occurrence_count=3,
+        tier="opus",
+        detail=_XSS if field == "detail" else "Bash called 3x identically",
+    )
+    html = render_dashboard_html(_data(failures=[RankedFailure(signal=sig, cost_usd=1.0)]))
+    assert _XSS not in html
+    assert "&lt;script&gt;" in html
+    assert "innerHTML" not in html  # rendered as escaped text, never raw innerHTML
+
+
+@pytest.mark.regression
+def test_divergence_reason_is_escaped() -> None:
+    dv = DivergenceResult(
+        available=False,
+        our_cost_usd=50.0,
+        independent_cost_usd=None,
+        delta_usd=None,
+        divergence_pct=None,
+        direction=None,
+        flaw_class=None,
+        scope_coverage_pct=None,
+        source_label="x",
+        reason=_XSS,
+    )
+    html = render_dashboard_html(_data(attribution=dv))
+    assert _XSS not in html
+    assert "&lt;script&gt;" in html
+
+
+@pytest.mark.regression
+def test_divergence_source_label_is_escaped() -> None:
+    dv = DivergenceResult(
+        available=True,
+        our_cost_usd=50.0,
+        independent_cost_usd=100.0,
+        delta_usd=-50.0,
+        divergence_pct=-50.0,
+        direction="ours_lower",
+        flaw_class=FLAW_ATTRIBUTION,
+        scope_coverage_pct=100.0,
+        source_label=_XSS,
+        reason="",
+    )
+    html = render_dashboard_html(_data(attribution=dv))
+    assert _XSS not in html
+    assert "&lt;script&gt;" in html
+
+
+# --- no-slug (C2) ---------------------------------------------------------- #
+
+
+@pytest.mark.regression
+def test_no_slug_or_env_leak_on_no_db_path(tmp_path, monkeypatch, capsys) -> None:
+    # Behavioral: inject a fake NTFY_TOPIC, force the no-DB path, assert the slug
+    # never appears in stdout/stderr. The generator imports no notify module.
+    monkeypatch.setenv("NTFY_TOPIC", "secret-slug-do-not-print")
+    monkeypatch.setattr(dash, "DB_PATH", tmp_path / "absent.db")
+    monkeypatch.setattr(dash.sys, "argv", ["dashboard.py", "--no-open"])
+    dash.main()
+    captured = capsys.readouterr()
+    assert "secret-slug-do-not-print" not in captured.out
+    assert "secret-slug-do-not-print" not in captured.err
+    assert not hasattr(dash, "notify")
+
+
+@pytest.mark.regression
+def test_assemble_on_missing_db_raises_without_leaking_slug(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("NTFY_TOPIC", "secret-slug-do-not-print")
+    with pytest.raises(sqlite3.OperationalError):
+        dash.assemble_dashboard_data(tmp_path / "absent.db", pricing=parse_pricing(PRICING_DATA))
+    captured = capsys.readouterr()
+    assert "secret-slug-do-not-print" not in (captured.out + captured.err)
+
+
+# --- ASCII console summary (C7) -------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: _data(),  # all present
+        lambda: _data(leverage_result=_lev_absent()),  # fee not configured
+        lambda: _data(failures=[], failures_state=STATE_DATA),  # no failures
+        lambda: _data(cost_state=STATE_NOT_RUN, failures_state=STATE_NOT_RUN),  # not run
+    ],
+)
+@pytest.mark.regression
+def test_console_summary_is_ascii_across_states(factory) -> None:
+    lines = render_console_summary(factory(), output_path="C:/tmp/telemetry_dashboard.html")
+    text = "\n".join(lines)
+    text.encode("ascii")  # must not raise
+    text.encode("cp1252")  # must not raise (the cp1252 regression-ledger class)
+    assert 5 <= len(lines) <= 6
+
+
+# --- plain-language framing (R2a) ------------------------------------------ #
+
+
+def test_plain_language_legends_present(pricing) -> None:
+    report = build_cost_report(
+        [ModelTokenRow("d", "claude-opus-4-7", "opus", tokens_in=1_000)], pricing
+    )
+    html = render_dashboard_html(
+        _data(cost_report=report, cost_state=STATE_DATA, leverage_result=_lev_configured())
+    )
+    assert "pay-per-use" in html  # A1 legend
+    assert "List-price-equivalent multiple" in html  # A3 primary label
+    assert "monthly subscription fee" in html  # A3 legend gloss
+
+
+# --- main() generate + --no-open (R1/R4/R6) -------------------------------- #
+
+
+def test_main_no_open_writes_file_without_opening(
+    env, pricing, tmp_path, monkeypatch, capsys
+) -> None:
+    fee, otel = _populate_dashboard_db(env, pricing, tmp_path)
+    monkeypatch.setattr(dash, "DB_PATH", env.db_path)
+    monkeypatch.setattr(dash.tempfile, "gettempdir", lambda: str(tmp_path))
+    opened: list[str] = []
+    monkeypatch.setattr(dash.webbrowser, "open", lambda u: opened.append(u))
+    monkeypatch.setattr(dash.sys, "argv", ["dashboard.py", "--no-open"])
+    dash.main()
+    out_file = tmp_path / dash.DASHBOARD_FILENAME
+    assert out_file.exists()
+    assert "<!DOCTYPE html>" in out_file.read_text(encoding="utf-8")
+    assert opened == []  # --no-open suppressed the browser
+    assert "Dashboard:" in capsys.readouterr().out
+
+
+def test_main_opens_browser_without_no_open(env, pricing, tmp_path, monkeypatch) -> None:
+    _populate_dashboard_db(env, pricing, tmp_path)
+    monkeypatch.setattr(dash, "DB_PATH", env.db_path)
+    monkeypatch.setattr(dash.tempfile, "gettempdir", lambda: str(tmp_path))
+    opened: list[str] = []
+    monkeypatch.setattr(dash.webbrowser, "open", lambda u: opened.append(u))
+    monkeypatch.setattr(dash.sys, "argv", ["dashboard.py"])
+    dash.main()
+    assert len(opened) == 1  # browser opened exactly once
+
+
+def test_pricing_cross_check_available_renders_divergence() -> None:
+    html = render_dashboard_html(_data(pricing_check=_div_otel_available()))
+    # our 50 vs independent 40 -> ours higher; the divergence sentence + source.
+    assert "higher than" in html
+    assert "claude_code.cost.usage" in html
+
+
+def test_leverage_configured_window_unknown_shows_cumulative() -> None:
+    lev = leverage(_report(100.0), SubscriptionFee(monthly_fee_usd=20.0))  # no window
+    html = render_dashboard_html(_data(leverage_result=lev))
+    assert "5.00x" in html  # cumulative 100/20, shown as the primary
+    assert "cost window unknown" in html
+
+
+def test_console_summary_cumulative_only_and_not_run_lines() -> None:
+    lev = leverage(_report(100.0), SubscriptionFee(monthly_fee_usd=20.0))  # no per-month
+    cum = render_console_summary(
+        _data(leverage_result=lev), output_path="C:/tmp/telemetry_dashboard.html"
+    )
+    assert any("cumulative" in line for line in cum)
+    not_run = render_console_summary(
+        _data(cost_state=STATE_NOT_RUN, failures_state=STATE_NOT_RUN),
+        output_path="C:/tmp/telemetry_dashboard.html",
+    )
+    assert any("Cost: analyzer not yet run" in line for line in not_run)
+    assert any("Failures: analyzer not yet run" in line for line in not_run)
+
+
+# --- review B1: leverage must not fabricate a 0.00x when cost is not measured -- #
+
+
+@pytest.mark.regression
+def test_leverage_absent_when_cost_not_run_even_if_fee_configured() -> None:
+    # Review BLOCKING B1 (independent-perspective): a configured fee on a DB whose
+    # cost analyzer has not run must NOT render an authoritative 0.00x leverage —
+    # the numerator was never measured. Before the fix this rendered a 0.00x data
+    # subtile; after, it renders the cost-not-measured absence tile.
+    lev = leverage(_report(0.0, total_tokens=0), SubscriptionFee(monthly_fee_usd=20.0))
+    html = render_dashboard_html(_data(leverage_result=lev, cost_state=STATE_NOT_RUN))
+    value_panel = html.split("Value vs Subscription")[1]
+    assert "0.00x" not in value_panel  # no fabricated multiple
+    assert "List-price-equivalent multiple" in value_panel
+    assert "analyze_cost.py" in value_panel  # honest action
+    assert 'data-state="absent"' in value_panel
+
+
+@pytest.mark.regression
+def test_console_leverage_not_fabricated_when_cost_not_run() -> None:
+    lev = leverage(_report(0.0, total_tokens=0), SubscriptionFee(monthly_fee_usd=20.0))
+    lines = render_console_summary(
+        _data(leverage_result=lev, cost_state=STATE_NOT_RUN),
+        output_path="C:/tmp/telemetry_dashboard.html",
+    )
+    text = "\n".join(lines)
+    assert "0.00x" not in text
+    assert "cost not yet measured" in text
+
+
+@pytest.mark.regression
+def test_cost_panel_not_run_renders_absence_not_zero() -> None:
+    # qa A4: the A1 cost-panel STATE_NOT_RUN render path must be a distinct absence
+    # tile pointing at the analyzer, never a fabricated $0.00.
+    html = render_dashboard_html(
+        _data(cost_report=_report(0.0, total_tokens=0), cost_state=STATE_NOT_RUN)
+    )
+    cost_panel = html.split("Failure")[0]  # everything before the failures panel
+    assert 'data-state="absent"' in cost_panel
+    assert "analyze_cost.py" in cost_panel
+    assert "$0.00" not in cost_panel
+
+
+def test_leverage_under_coverage_note_when_partial() -> None:
+    # Review A3 (independent Scenario 2): a partial-coverage leverage carries a
+    # prominent "computed on X%" note, not just the kv-list coverage figure.
+    rep = CostReport(by_tier={}, total_cost_usd=100.0, known_tokens=700, total_tokens=1000)
+    lev = leverage(rep, SubscriptionFee(monthly_fee_usd=20.0), window_months=2.0)
+    html = render_dashboard_html(_data(cost_report=rep, leverage_result=lev))
+    assert "Computed on 70.0% of billable tokens" in html
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("field", ["note", "reason"])
+def test_leverage_string_fields_escaped(field) -> None:
+    # qa A6 / C6: LeverageResult.reason (+ .note via basis) are escape targets.
+    if field == "reason":
+        lev = LeverageResult(
+            configured=False,
+            total_cost_usd=0.0,
+            coverage_pct=0.0,
+            monthly_fee_usd=None,
+            window_months=None,
+            fee_period="monthly",
+            leverage_cumulative=None,
+            leverage_per_month=None,
+            reason=_XSS,
+        )
+    else:  # note flows into `basis` in the window-unknown branch
+        lev = LeverageResult(
+            configured=True,
+            total_cost_usd=100.0,
+            coverage_pct=100.0,
+            monthly_fee_usd=20.0,
+            window_months=None,
+            fee_period="monthly",
+            leverage_cumulative=5.0,
+            leverage_per_month=None,
+            note=_XSS,
+        )
+    html = render_dashboard_html(_data(leverage_result=lev, cost_state=STATE_DATA))
+    assert _XSS not in html
+    assert "&lt;script&gt;" in html
+
+
+@pytest.mark.regression
+def test_cost_tier_name_key_is_escaped(pricing) -> None:
+    # qa A6 / C6: tier-name keys are escaped (a model id could resolve to an odd
+    # string). Build a report whose by_tier carries a script-shaped tier key.
+    rep = build_cost_report([ModelTokenRow("d", "m", _XSS, tokens_in=1000)], parse_pricing({}))
+    html = render_dashboard_html(_data(cost_report=rep, cost_state=STATE_DATA))
+    assert _XSS not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_pricing_cross_check_generic_absent_branch(pricing) -> None:
+    # qa A7: a non-OTel unavailable pricing source renders a plain absence tile,
+    # NOT the OTel enable link.
+    dv = DivergenceResult(
+        available=False,
+        our_cost_usd=50.0,
+        independent_cost_usd=None,
+        delta_usd=None,
+        divergence_pct=None,
+        direction=None,
+        flaw_class=None,
+        scope_coverage_pct=None,
+        source_label="future-source",
+        reason="not configured",
+    )
+    html = render_dashboard_html(_data(pricing_check=dv))
+    assert 'data-state="absent"' in html
+    assert "monitoring-usage" not in html  # no OTel link for a non-otel source
+
+
+def test_attribution_zero_denominator_renders_absence(pricing) -> None:
+    # Review A2 (ux): defense-in-depth render guard — available=True but a falsy
+    # independent cost must render absence, never "0.0% covered".
+    dv = DivergenceResult(
+        available=True,
+        our_cost_usd=50.0,
+        independent_cost_usd=0.0,
+        delta_usd=50.0,
+        divergence_pct=None,
+        direction=None,
+        flaw_class=FLAW_ATTRIBUTION,
+        scope_coverage_pct=100.0,
+        source_label="attribution-baseline",
+        reason="",
+    )
+    html = render_dashboard_html(_data(attribution=dv))
+    assert "0.0% covered" not in html
+    assert 'data-state="absent"' in html
