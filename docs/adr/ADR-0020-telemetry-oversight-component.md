@@ -161,8 +161,42 @@ during the build, grounded on real transcripts (NOT the spec's assumptions):
   the same-timestamp silent-skip the A1 review caught. The cost path
   (`ingest_token_usage`) retrofit remains a carried advisory.
 
+## Implementation note — Layer A3 (value-vs-subscription + estimate cross-check), 2026-06-06
+
+A3 turns A1's bottom-up dollar cost into two **local, credential-free** honesty
+metrics that feed the north-star Layer B dashboard. Four decisions:
+
+- **The programmatic Cost API is superseded as a data source.** The developer
+  runs on a flat Claude Code **subscription** under an **individual account**, so
+  the Cost/Usage/Claude-Code-Analytics APIs are all unavailable (each needs an
+  Admin key + a real multi-member org) and would read ≈$0 against these tokens
+  anyway. A3's source is therefore local: A1's stored cost, an un-windowed
+  attribution baseline, the OpenTelemetry export, and the subscription fee as a
+  config input. (Recorded as a known-broken approach in `memory/projects/_self.md`,
+  not the regression ledger — the ledger parser treats every pipe row as a
+  fixed-bug entry.)
+- **Compute-don't-store is reaffirmed and A3 adds no table.** Leverage is a pure
+  read over a `CostReport` parameter + the fee; the cross-check is pure divergence
+  logic. Nothing dollar- or ratio-shaped is persisted (a `@pytest.mark.regression`
+  guard asserts no new A3 table and no stored dollar/ratio).
+- **Two pinned independent sources, no registry** (`IndependentEstimate` dataclass):
+  an always-available **attribution baseline** (un-windowed per-model aggregation,
+  same `PricingTable` — divergence measures the un-attributed share of total spend,
+  `flaw_class="attribution"`) and the **OTel export** (`claude_code.cost.usage`,
+  independent pricing, `flaw_class="pricing"`) which reports honest absence when
+  the export file is missing — the common case. Live A3 on real data: A1 $666.26
+  / 100% coverage; attribution baseline $2,244.53 ⇒ framework discussions account
+  for ~30% of total project AI spend; OTel cross-check honestly unavailable.
+- **A3 is a third consumer of the `ingest_token_usage._` private helpers**
+  (`_collect_messages`, `discover_session_dirs`, `_parse_since`, `_is_inside_projects_root`),
+  reused — not promoted (that is the deferred A-ARCH1 public-surface decision). A3's
+  own new exports in `src/telemetry/__init__.py` are public-clean.
+
 ## Linked Discussions
 - Spec review: discussions/2026-06-06/DISC-20260606-041937-telemetry-oversight-spec-review/
 - Steward gate: (framework-evolution review, APPROVE 0.86, 5 conditions)
 - Build (A1): discussions/2026-06-06/DISC-20260606-063822-build-telemetry-cost-a1/
 - Review (A2): discussions/2026-06-06/DISC-20260606-085949-review-telemetry-failures-a2/ (REV-20260606-085949, approve-with-changes, 2 blocking fixed)
+- Spec review (A3): discussions/2026-06-06/DISC-20260606-211551-telemetry-value-crosscheck-a3-spec-review/ (arch/security/qa, approve-with-changes, 0 blocking)
+- Steward gate (A3): discussions/2026-06-06/DISC-20260606-220705-telemetry-a3-steward-gate/ (APPROVE 0.88)
+- Build (A3): discussions/2026-06-06/DISC-20260606-221119-build-telemetry-value-crosscheck-a3/

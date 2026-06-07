@@ -1,0 +1,25 @@
+# Subscription fee — config input for telemetry Layer A3 (ADR-0020).
+#
+# COPY this file to `config/subscription.yaml` (which is gitignored) and set
+# your real flat monthly subscription fee locally. The real file is NEVER
+# committed — the fee is personal financial metadata. A missing file is the
+# normal fresh-clone state: A3's leverage metric then reports an honest
+# "subscription fee not configured" rather than fabricating a denominator.
+#
+# Per ADR-0013 compute-don't-store: this fee is a config INPUT only. It is never
+# written to the database; the value-vs-subscription leverage ratio is derived
+# at read time from this fee and A1's per-tier cost.
+
+# Your flat monthly subscription fee. Leave at 0.00 here (placeholder); set the
+# real value only in the local, gitignored config/subscription.yaml. A zero,
+# negative, or non-numeric value is treated as "not configured".
+monthly_fee_usd: 0.00
+
+# Informational only (no currency conversion is performed).
+currency: USD
+
+# Human label for the plan, e.g. "Claude Max" / "Claude Pro".
+plan_label: ""
+
+# ISO date the fee took effect (informational).
+effective_date: ""

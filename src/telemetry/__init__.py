@@ -7,3 +7,27 @@ I/O orchestration (transcript scanning, SQLite writes) lives in
 
 See docs/sprints/SPEC-20260605-211756-telemetry-oversight.md and ADR-0013.
 """
+
+from src.telemetry.value import (
+    FLAW_ATTRIBUTION,
+    FLAW_PRICING,
+    DivergenceResult,
+    IndependentEstimate,
+    LeverageResult,
+    SubscriptionFee,
+    cross_check,
+    leverage,
+    load_subscription_fee,
+)
+
+__all__ = [
+    "FLAW_ATTRIBUTION",
+    "FLAW_PRICING",
+    "DivergenceResult",
+    "IndependentEstimate",
+    "LeverageResult",
+    "SubscriptionFee",
+    "cross_check",
+    "leverage",
+    "load_subscription_fee",
+]

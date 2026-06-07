@@ -19,7 +19,8 @@ from scripts import ingest_token_usage as itu
 from scripts.init_db import init_db
 from scripts.telemetry import analyze_cost as ac
 from scripts.telemetry import analyze_failures as af
-from src.telemetry.cost import ModelTokenRow, build_cost_report
+from scripts.telemetry import analyze_value as av
+from src.telemetry.cost import CostReport, ModelTokenRow, build_cost_report
 from src.telemetry.failures import (
     FailureSignal,
     SubagentDispatch,
@@ -34,6 +35,16 @@ from src.telemetry.pricing import (
     PricingTable,
     load_pricing,
     parse_pricing,
+)
+from src.telemetry.value import (
+    FLAW_ATTRIBUTION,
+    FLAW_PRICING,
+    IndependentEstimate,
+    SubscriptionFee,
+    cross_check,
+    leverage,
+    load_subscription_fee,
+    parse_subscription_fee,
 )
 
 # --------------------------------------------------------------------------- #
@@ -1215,3 +1226,590 @@ def test_session_mtime_skips_entry_outside_projects_root(
     os.utime(sub / "agent-escape.jsonl", (1500.0, 1500.0))
     monkeypatch.setattr(itu, "_is_inside_projects_root", lambda p: False)
     assert af._session_mtime({"subagents": sub}) == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# value.py (A3) — pure leverage + cross-check
+# --------------------------------------------------------------------------- #
+
+
+def _report(total_cost: float, total_tokens: int = 1000, known: int | None = None) -> CostReport:
+    """A minimal CostReport for pure A3 tests (coverage = known/total)."""
+    known = total_tokens if known is None else known
+    return CostReport(
+        by_tier={}, total_cost_usd=total_cost, known_tokens=known, total_tokens=total_tokens
+    )
+
+
+def _table_row_counts(db_path: Path) -> dict[str, int]:
+    """Snapshot every table's row count — used to prove A3 persists nothing."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        names = [
+            r[0]
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        ]
+        return {n: conn.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0] for n in names}
+    finally:
+        conn.close()
+
+
+def test_leverage_not_configured() -> None:
+    res = leverage(_report(666.0), None)
+    assert res.configured is False
+    assert res.leverage_cumulative is None
+    assert "not configured" in res.reason
+
+
+def test_leverage_configured_with_window() -> None:
+    res = leverage(_report(100.0), SubscriptionFee(monthly_fee_usd=20.0), window_months=2.0)
+    assert res.configured is True
+    assert res.leverage_cumulative == pytest.approx(5.0)  # 100 / 20
+    assert res.leverage_per_month == pytest.approx(2.5)  # (100/2) / 20
+    assert res.note == "" and res.reason == ""
+
+
+def test_leverage_configured_no_window_sets_note_not_reason() -> None:
+    res = leverage(_report(100.0), SubscriptionFee(monthly_fee_usd=20.0))
+    assert res.configured is True
+    assert res.leverage_per_month is None
+    assert res.reason == ""  # reason is reserved for the not-configured case
+    assert res.note  # the per-month advisory lives here
+
+
+def test_leverage_nonfinite_total_is_honest_absence() -> None:
+    res = leverage(_report(float("inf")), SubscriptionFee(monthly_fee_usd=20.0))
+    assert res.configured is False
+    assert "finite" in res.reason
+
+
+def test_leverage_epsilon_fee_does_not_crash() -> None:
+    import math
+
+    res = leverage(_report(100.0), SubscriptionFee(monthly_fee_usd=1e-9), window_months=1.0)
+    assert res.configured is True
+    assert math.isfinite(res.leverage_cumulative)
+
+
+@pytest.mark.parametrize("raw", [0, 0.0, -5, "free", None, True])
+def test_parse_subscription_fee_invalid_is_none(raw) -> None:
+    assert parse_subscription_fee({"monthly_fee_usd": raw}) is None
+
+
+def test_parse_subscription_fee_valid() -> None:
+    fee = parse_subscription_fee(
+        {"monthly_fee_usd": 20, "currency": "USD", "plan_label": "Max", "effective_date": "2026"}
+    )
+    assert fee is not None
+    assert fee.monthly_fee_usd == 20.0
+    assert fee.plan_label == "Max"
+
+
+def test_parse_subscription_fee_non_dict_is_none() -> None:
+    assert parse_subscription_fee([1, 2]) is None
+
+
+def test_load_subscription_fee_missing_file_is_none(tmp_path: Path) -> None:
+    assert load_subscription_fee(tmp_path / "nope.yaml") is None
+
+
+def test_load_subscription_fee_bad_yaml_is_none(tmp_path: Path) -> None:
+    p = tmp_path / "bad.yaml"
+    p.write_text("::: not : yaml :::", encoding="utf-8")
+    assert load_subscription_fee(p) is None
+
+
+def test_load_subscription_fee_valid(tmp_path: Path) -> None:
+    p = tmp_path / "sub.yaml"
+    p.write_text("monthly_fee_usd: 30.0\nplan_label: Pro\n", encoding="utf-8")
+    fee = load_subscription_fee(p)
+    assert fee is not None and fee.monthly_fee_usd == 30.0
+
+
+def test_cross_check_absent_none_is_typed() -> None:
+    res = cross_check(_report(666.0), None)
+    assert res.available is False
+    assert res.divergence_pct is None
+    assert "no independent estimate" in res.reason
+
+
+def test_cross_check_not_present_is_absent() -> None:
+    ind = IndependentEstimate(
+        present=False,
+        cost_usd=None,
+        token_basis=0,
+        source_label="otel",
+        scope_coverage_pct=0.0,
+        flaw_class=FLAW_PRICING,
+    )
+    assert cross_check(_report(666.0), ind).available is False
+
+
+def test_cross_check_uncosted_is_absent() -> None:
+    ind = IndependentEstimate(
+        present=True,
+        cost_usd=None,
+        token_basis=5,
+        source_label="otel",
+        scope_coverage_pct=10.0,
+        flaw_class=FLAW_PRICING,
+    )
+    res = cross_check(_report(666.0), ind)
+    assert res.available is False
+    assert "could not be costed" in res.reason
+
+
+def test_cross_check_zero_denominator_is_absent_not_zero() -> None:
+    ind = IndependentEstimate(
+        present=True,
+        cost_usd=0.0,
+        token_basis=0,
+        source_label="base",
+        scope_coverage_pct=0.0,
+        flaw_class=FLAW_ATTRIBUTION,
+    )
+    res = cross_check(_report(666.0), ind)
+    assert res.available is False  # never available=True with a None divergence
+    assert res.divergence_pct is None  # and never a misleading 0.0
+    assert res.independent_cost_usd == 0.0  # the source is still surfaced
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1.0])
+def test_cross_check_unusable_independent_is_absent(bad) -> None:
+    ind = IndependentEstimate(
+        present=True,
+        cost_usd=bad,
+        token_basis=1,
+        source_label="base",
+        scope_coverage_pct=1.0,
+        flaw_class=FLAW_ATTRIBUTION,
+    )
+    res = cross_check(_report(666.0), ind)
+    assert res.available is False
+    assert res.divergence_pct is None  # never a misleading 0.0 for "no data"
+
+
+def test_leverage_zero_window_sets_note_not_reason() -> None:
+    # window_months == 0 must yield configured=True with per-month absent (note,
+    # not reason) — the contract boundary the None-window test does not cover.
+    res = leverage(_report(100.0), SubscriptionFee(monthly_fee_usd=20.0), window_months=0.0)
+    assert res.configured is True
+    assert res.leverage_per_month is None
+    assert res.reason == ""
+    assert res.note
+
+
+def test_cross_check_nonfinite_our_cost_is_absent() -> None:
+    ind = IndependentEstimate(
+        present=True,
+        cost_usd=10.0,
+        token_basis=1,
+        source_label="base",
+        scope_coverage_pct=100.0,
+        flaw_class=FLAW_ATTRIBUTION,
+    )
+    assert cross_check(_report(float("nan")), ind).available is False
+
+
+def test_cross_check_identical_is_zero_not_absent() -> None:
+    ind = IndependentEstimate(
+        present=True,
+        cost_usd=666.0,
+        token_basis=10,
+        source_label="base",
+        scope_coverage_pct=100.0,
+        flaw_class=FLAW_PRICING,
+    )
+    res = cross_check(_report(666.0), ind)
+    assert res.available is True
+    assert res.divergence_pct == 0.0
+    assert res.direction is None  # exact match
+
+
+def test_cross_check_ours_higher() -> None:
+    ind = IndependentEstimate(
+        present=True,
+        cost_usd=500.0,
+        token_basis=10,
+        source_label="base",
+        scope_coverage_pct=100.0,
+        flaw_class=FLAW_PRICING,
+    )
+    res = cross_check(_report(666.0), ind)
+    assert res.direction == "ours_higher"
+    assert res.divergence_pct == pytest.approx(33.2)  # (666-500)/500*100
+    assert res.flaw_class == "pricing"
+
+
+def test_cross_check_ours_lower_attribution() -> None:
+    ind = IndependentEstimate(
+        present=True,
+        cost_usd=2244.53,
+        token_basis=10,
+        source_label="base",
+        scope_coverage_pct=100.0,
+        flaw_class=FLAW_ATTRIBUTION,
+    )
+    res = cross_check(_report(666.26), ind)
+    assert res.direction == "ours_lower"
+    assert res.divergence_pct < 0
+    assert res.flaw_class == "attribution"
+
+
+def test_telemetry_package_exports_importable() -> None:
+    # Circular-import guard at collection time: A1's cost.py is an A3 dependency,
+    # so a circular import would only surface on package-root import.
+    import src.telemetry as t
+
+    for name in (
+        "leverage",
+        "cross_check",
+        "load_subscription_fee",
+        "LeverageResult",
+        "DivergenceResult",
+        "IndependentEstimate",
+        "SubscriptionFee",
+    ):
+        assert hasattr(t, name)
+
+
+# --------------------------------------------------------------------------- #
+# analyze_value.py (A3) — transport: window, OTel ingest, integration
+# --------------------------------------------------------------------------- #
+
+
+def _msg_record(ts, *, model: str = "claude-opus-4-7", tokens: int = 1) -> itu.MessageRecord:
+    return itu.MessageRecord(
+        message_id="x",
+        timestamp=ts,
+        model=model,
+        input_tokens=tokens,
+        output_tokens=0,
+        cache_read_tokens=0,
+        cache_create_tokens=0,
+        source_file=Path("x"),
+    )
+
+
+def test_window_months_spans_two_timestamps() -> None:
+    from datetime import UTC, datetime
+
+    msgs = {
+        "a": _msg_record(datetime(2026, 1, 1, tzinfo=UTC)),
+        "b": _msg_record(datetime(2026, 2, 1, tzinfo=UTC)),
+    }
+    months = av._window_months(msgs)
+    assert months is not None
+    assert 0.9 < months < 1.2  # ~31 days / 30.44
+
+
+def test_window_months_too_few_is_none() -> None:
+    from datetime import UTC, datetime
+
+    assert av._window_months({}) is None
+    assert av._window_months({"a": _msg_record(datetime(2026, 1, 1, tzinfo=UTC))}) is None
+
+
+def _otel_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    monkeypatch.setattr(av, "DATA_DIR", data_dir)
+    return data_dir
+
+
+def test_otel_estimate_present(tmp_path, monkeypatch) -> None:
+    data_dir = _otel_env(tmp_path, monkeypatch)
+    f = data_dir / "otel_export.jsonl"
+    f.write_text(
+        "\n".join(
+            [
+                json.dumps({"metric": "claude_code.cost.usage", "value": 1.5}),
+                json.dumps({"metric": "claude_code.cost.usage", "value": 2.0}),
+                json.dumps(
+                    {
+                        "metric": "claude_code.token.usage",
+                        "value": 1000,
+                        "attributes": {"type": "input"},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    est = av._otel_estimate(f)
+    assert est.present is True
+    assert est.cost_usd == pytest.approx(3.5)
+    assert est.token_basis == 1000
+    assert est.flaw_class == "pricing"
+
+
+def test_otel_estimate_missing_file_is_absent(tmp_path, monkeypatch) -> None:
+    data_dir = _otel_env(tmp_path, monkeypatch)
+    assert av._otel_estimate(data_dir / "otel_export.jsonl").present is False
+
+
+def test_otel_estimate_rejects_path_outside_data_dir(tmp_path, monkeypatch) -> None:
+    _otel_env(tmp_path, monkeypatch)
+    outside = tmp_path / "outside.jsonl"  # exists, but not inside data/
+    outside.write_text(
+        json.dumps({"metric": "claude_code.cost.usage", "value": 9.9}), encoding="utf-8"
+    )
+    assert av._otel_estimate(outside).present is False
+
+
+def test_otel_estimate_size_cap(tmp_path, monkeypatch) -> None:
+    data_dir = _otel_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(av, "OTEL_MAX_BYTES", 5)
+    f = data_dir / "otel_export.jsonl"
+    f.write_text(json.dumps({"metric": "claude_code.cost.usage", "value": 1.0}), encoding="utf-8")
+    assert av._otel_estimate(f).present is False
+
+
+def test_otel_estimate_tolerant_of_bad_lines(tmp_path, monkeypatch) -> None:
+    data_dir = _otel_env(tmp_path, monkeypatch)
+    f = data_dir / "otel_export.jsonl"
+    f.write_text(
+        "\n".join(
+            [
+                "not json",
+                "{bad",
+                json.dumps({"metric": "claude_code.cost.usage", "value": 4.0}),
+                "[]",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    est = av._otel_estimate(f)
+    assert est.present is True
+    assert est.cost_usd == pytest.approx(4.0)
+
+
+def test_otel_estimate_tokens_only_is_absent(tmp_path, monkeypatch) -> None:
+    data_dir = _otel_env(tmp_path, monkeypatch)
+    f = data_dir / "otel_export.jsonl"
+    f.write_text(
+        json.dumps(
+            {"metric": "claude_code.token.usage", "value": 1000, "attributes": {"type": "input"}}
+        ),
+        encoding="utf-8",
+    )
+    assert av._otel_estimate(f).present is False  # saw_cost is False
+
+
+def test_analyze_value_attribution_divergence(env, pricing, tmp_path) -> None:
+    # m1 is inside d1's window (A1 attributes it); m2 is OUTSIDE every window
+    # (A1 drops it) but the un-windowed baseline counts it -> baseline > A1.
+    _insert_discussion(env.db_path, "d1", "2026-06-01T09:00:00Z", "2026-06-01T11:00:00Z")
+    _write_transcript(
+        env.projects_root,
+        env.project_root,
+        [
+            _msg_line("m1", "2026-06-01T10:00:00Z", "claude-opus-4-7", input_tokens=1000),
+            _msg_line("m2", "2026-06-01T14:00:00Z", "claude-opus-4-7", input_tokens=1000),
+        ],
+    )
+    ac.analyze_cost(db_path=env.db_path, project_root=env.project_root, pricing=pricing)
+    fee_file = tmp_path / "sub.yaml"
+    fee_file.write_text("monthly_fee_usd: 20.0\n", encoding="utf-8")
+    result = av.analyze_value(
+        db_path=env.db_path,
+        project_root=env.project_root,
+        subscription_path=fee_file,
+        otel_path=tmp_path / "none.jsonl",
+        pricing=pricing,
+    )
+    assert result["leverage"].configured is True
+    assert result["leverage"].leverage_cumulative is not None
+    attr = result["attribution"]
+    assert attr.available is True
+    assert attr.direction == "ours_lower"  # A1 attributed fewer tokens than exist
+    assert attr.flaw_class == "attribution"
+    assert result["pricing"].available is False  # no OTel file
+
+
+def test_analyze_value_leverage_unconfigured_without_fee(env, pricing, tmp_path) -> None:
+    _insert_discussion(env.db_path, "d1", "2026-06-01T09:00:00Z", "2026-06-01T11:00:00Z")
+    _write_transcript(
+        env.projects_root,
+        env.project_root,
+        [_msg_line("m1", "2026-06-01T10:00:00Z", "claude-opus-4-7", input_tokens=1000)],
+    )
+    ac.analyze_cost(db_path=env.db_path, project_root=env.project_root, pricing=pricing)
+    result = av.analyze_value(
+        db_path=env.db_path,
+        project_root=env.project_root,
+        subscription_path=tmp_path / "missing.yaml",
+        otel_path=tmp_path / "none.jsonl",
+        pricing=pricing,
+    )
+    assert result["leverage"].configured is False
+    assert "not configured" in result["leverage"].reason
+
+
+def test_analyze_value_missing_db_returns_empty(tmp_path, pricing) -> None:
+    result = av.analyze_value(
+        db_path=tmp_path / "nope.db",
+        subscription_path=tmp_path / "none.yaml",
+        otel_path=tmp_path / "none.jsonl",
+        pricing=pricing,
+    )
+    assert result["leverage"] is None
+
+
+@pytest.mark.regression
+def test_a3_persists_no_dollar_or_ratio(env, pricing, tmp_path) -> None:
+    # ADR-0013 compute-don't-store: A3 derives every dollar/ratio at read and
+    # persists NOTHING. Guard: analyze_value writes no row to any table and adds
+    # no A3-specific table. Would fail if a future change cached a leverage/
+    # divergence figure in the DB.
+    _insert_discussion(env.db_path, "d1", "2026-06-01T09:00:00Z", "2026-06-01T11:00:00Z")
+    _write_transcript(
+        env.projects_root,
+        env.project_root,
+        [_msg_line("m1", "2026-06-01T10:00:00Z", "claude-opus-4-7", input_tokens=1000)],
+    )
+    ac.analyze_cost(db_path=env.db_path, project_root=env.project_root, pricing=pricing)
+    before = _table_row_counts(env.db_path)
+    fee_file = tmp_path / "sub.yaml"
+    fee_file.write_text("monthly_fee_usd: 20.0\n", encoding="utf-8")
+    av.analyze_value(
+        db_path=env.db_path,
+        project_root=env.project_root,
+        subscription_path=fee_file,
+        otel_path=tmp_path / "none.jsonl",
+        pricing=pricing,
+    )
+    after = _table_row_counts(env.db_path)
+    assert before == after  # read-only: not one row written anywhere
+    assert not any(
+        ("value" in t or "leverage" in t or "subscription" in t) for t in after
+    )  # no A3-specific table was created
+
+
+def test_window_months_zero_span_is_none() -> None:
+    from datetime import UTC, datetime
+
+    ts = datetime(2026, 1, 1, tzinfo=UTC)
+    assert av._window_months({"a": _msg_record(ts), "b": _msg_record(ts)}) is None
+
+
+def test_analyze_value_prints_labelled_report(env, pricing, tmp_path, capsys) -> None:
+    # The AC: the leverage line must carry coverage% AND a labelled time basis.
+    _insert_discussion(env.db_path, "d1", "2026-06-01T09:00:00Z", "2026-06-01T15:00:00Z")
+    _write_transcript(
+        env.projects_root,
+        env.project_root,
+        [
+            _msg_line("m1", "2026-06-01T10:00:00Z", "claude-opus-4-7", input_tokens=1000),
+            _msg_line("m2", "2026-06-01T14:00:00Z", "claude-sonnet-4-6", output_tokens=500),
+        ],
+    )
+    ac.analyze_cost(db_path=env.db_path, project_root=env.project_root, pricing=pricing)
+    fee_file = tmp_path / "sub.yaml"
+    fee_file.write_text("monthly_fee_usd: 20.0\n", encoding="utf-8")
+    av.analyze_value(
+        db_path=env.db_path,
+        project_root=env.project_root,
+        subscription_path=fee_file,
+        otel_path=tmp_path / "none.jsonl",
+        pricing=pricing,
+    )
+    out = capsys.readouterr().out
+    assert "List-price-equivalent vs subscription" in out
+    assert "coverage" in out  # coverage% carried
+    assert "/monthly" in out  # fee period labelled
+    assert "per-month multiple" in out  # the apples-to-apples figure leads
+    assert "cumulative over the window" in out  # time basis labelled
+    assert "Estimate cross-check - attribution" in out
+    assert "Estimate cross-check - pricing (OpenTelemetry)" in out
+    assert "not yet active" in out  # OTel absent -> enable-affordance, not a dead row
+
+
+def test_print_divergence_surfaces_independent_cost_when_unavailable(capsys) -> None:
+    # Zero-denominator: unavailable, but the independent source's reported cost
+    # is still surfaced (the "(independent source reported $0.00)" line).
+    ind = IndependentEstimate(
+        present=True,
+        cost_usd=0.0,
+        token_basis=0,
+        source_label="base",
+        scope_coverage_pct=0.0,
+        flaw_class=FLAW_ATTRIBUTION,
+    )
+    result = cross_check(_report(666.0), ind)
+    av._print_divergence("Estimate cross-check - attribution", result)
+    out = capsys.readouterr().out
+    assert "unavailable" in out
+    assert "independent source reported $0.00" in out
+
+
+def test_analyze_value_unconfigured_leverage_prints_absence(
+    env, pricing, tmp_path, capsys
+) -> None:
+    _insert_discussion(env.db_path, "d1", "2026-06-01T09:00:00Z", "2026-06-01T11:00:00Z")
+    _write_transcript(
+        env.projects_root,
+        env.project_root,
+        [_msg_line("m1", "2026-06-01T10:00:00Z", "claude-opus-4-7", input_tokens=1000)],
+    )
+    ac.analyze_cost(db_path=env.db_path, project_root=env.project_root, pricing=pricing)
+    av.analyze_value(
+        db_path=env.db_path,
+        project_root=env.project_root,
+        subscription_path=tmp_path / "missing.yaml",
+        otel_path=tmp_path / "none.jsonl",
+        pricing=pricing,
+    )
+    out = capsys.readouterr().out
+    assert "list-price-equivalent multiple: n/a - subscription fee not configured" in out
+    assert "A1 cost so far" in out
+
+
+def test_baseline_estimate_empty_messages_is_absent(pricing) -> None:
+    est = av._baseline_estimate({}, pricing)
+    assert est.present is False
+    assert est.cost_usd is None
+    assert cross_check(_report(666.0), est).available is False
+
+
+def test_otel_estimate_negative_cost_flows_to_absent(tmp_path, monkeypatch) -> None:
+    # A negative reported cost is present-but-unusable: the source ran, but the
+    # divergence is absent (zero/negative denominator), never a fabricated number.
+    data_dir = _otel_env(tmp_path, monkeypatch)
+    f = data_dir / "otel_export.jsonl"
+    f.write_text(json.dumps({"metric": "claude_code.cost.usage", "value": -5.0}), encoding="utf-8")
+    est = av._otel_estimate(f)
+    assert est.present is True
+    assert est.cost_usd == pytest.approx(-5.0)
+    res = cross_check(_report(10.0), est)
+    assert res.available is False
+    assert res.divergence_pct is None
+    assert "zero or negative" in res.reason
+
+
+@pytest.mark.regression
+def test_analyze_value_since_skips_attribution_crosscheck(env, pricing, tmp_path) -> None:
+    # Review BLOCKING (independent-perspective): A1 is loaded all-time from the
+    # stored breakdown, but the live baseline honours --since. Comparing them
+    # would divide two different token populations and print a false divergence.
+    # With since set, the attribution cross-check must report typed absence.
+    from datetime import UTC, datetime
+
+    _insert_discussion(env.db_path, "d1", "2026-06-01T09:00:00Z", "2026-06-01T11:00:00Z")
+    _write_transcript(
+        env.projects_root,
+        env.project_root,
+        [_msg_line("m1", "2026-06-01T10:00:00Z", "claude-opus-4-7", input_tokens=1000)],
+    )
+    ac.analyze_cost(db_path=env.db_path, project_root=env.project_root, pricing=pricing)
+    result = av.analyze_value(
+        db_path=env.db_path,
+        project_root=env.project_root,
+        since=datetime(2026, 6, 1, tzinfo=UTC),
+        subscription_path=tmp_path / "none.yaml",
+        otel_path=tmp_path / "none.jsonl",
+        pricing=pricing,
+    )
+    attr = result["attribution"]
+    assert attr.available is False  # not a fabricated divergence
+    assert "since" in (attr.source_label or "").lower()

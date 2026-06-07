@@ -409,6 +409,49 @@ def check_build_status_freshness() -> bool:
     return True
 
 
+def check_subscription_fee_not_staged() -> bool:
+    """Advisory: warn if config/subscription.yaml is staged with a real fee.
+
+    The subscription fee (telemetry A3) is personal financial metadata and the
+    real file is gitignored — only ``config/subscription.yaml.example`` (a
+    ``0.00`` placeholder) is committed. The PreToolUse secret scanner does not
+    recognise a numeric YAML field, so this advisory backstop warns if the real
+    file is ever force-staged with a positive fee. Warns only; never blocks.
+    Always returns True.
+    """
+    target = "config/subscription.yaml"
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return True
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return True
+    if target not in {line.strip() for line in result.stdout.splitlines()}:
+        return True
+
+    fee_path = PROJECT_ROOT / target
+    try:
+        import yaml
+
+        data = yaml.safe_load(fee_path.read_text(encoding="utf-8")) or {}
+        fee = float(data.get("monthly_fee_usd", 0) or 0) if isinstance(data, dict) else 0.0
+    except (OSError, ValueError, TypeError, yaml.YAMLError):
+        fee = 0.0
+    if fee > 0.0:
+        _warn(
+            f"{target} is staged with a real fee (monthly_fee_usd={fee}) — this is "
+            "personal financial metadata; the file should stay gitignored "
+            "(commit only subscription.yaml.example)"
+        )
+    return True
+
+
 _CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
 # The argparse ``--skip-*`` flag attribute for each check, in _CHECK_NAMES order.
 # Derived from _CHECK_NAMES so a new check is added in exactly one place.
@@ -667,6 +710,10 @@ def main() -> int:
     # Check 8 (advisory): BUILD_STATUS.md freshness
     # This check always passes — it only warns. Not counted in pass/fail totals.
     check_build_status_freshness()
+
+    # Advisory: warn if a real subscription fee (telemetry A3) is staged.
+    # Always passes — only warns. Not counted in pass/fail totals.
+    check_subscription_fee_not_staged()
 
     # Summary
     passed = sum(results)

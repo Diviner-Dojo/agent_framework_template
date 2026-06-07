@@ -38,6 +38,20 @@ tags: []
 
 The regression test is a structural canary, not just a fix verifier: tests/test_close_discussion_promotion_pipeline.py contains two source-inspection canaries (one per defect) plus INSERT and UPDATE branch coverage. Defect 2's canary reads close_discussion.py and asserts the imported name actually exists in compute_agent_effectiveness.py — a pure import-symbol-exists test would not catch close_discussion.py being reverted to the wrong name.
 
+### [telemetry/cost-attribution] — Local value/cross-check instead of the Anthropic billing APIs (KNOWN-BROKEN: billing API on an individual subscription)
+
+**Problem**: Telemetry A3 needed a way to (a) express A1's bottom-up dollar cost as understand-your-AI-use value and (b) cross-check that estimate against an independent source. The captured A3 plan assumed the data source would be Anthropic's programmatic **Cost API** (a billing-reconciliation framing).
+
+**Tried**:
+- *Programmatic Cost API / Usage report / Claude Code Analytics API.* **KNOWN-BROKEN for this deployment.** All three require an **Admin key (`sk-ant-admin…`) + a real multi-member organization**. The developer runs on a flat Claude Code **subscription** under an **individual account** ("Members: 1"), so none are available. Worse, on a subscription the Cost API would read **≈$0** against these tokens — there is no per-token "actual" to reconcile against, so even with access the billing-match framing is vacuous. Do not reintroduce a billing-API data source on an individual/subscription account (see `memory/project_billing_topology.md`).
+- *Re-cost A1's own tokens with our own pricing as the "independent" estimate.* Rejected — not independent (same pricing table + same attribution ⇒ always 0% divergence, a vacuous cross-check).
+
+**Chosen**: Two **local, credential-free** metrics. (1) **Leverage** = A1's API-equivalent cost ÷ the flat subscription fee (a config input), with a labelled time basis. (2) **Estimate cross-check** against two genuinely-independent local sources via one `IndependentEstimate` seam: an **attribution baseline** (un-windowed per-model aggregation, *same* pricing, differs only in attribution → measures un-attributed spend share) and the **OpenTelemetry export** (Claude Code's own `claude_code.cost.usage`, independent *pricing*; honest-absence when the export file is missing). Compute-don't-store holds: the fee is a config input, A3 adds no table.
+
+**Evidence**: `src/telemetry/value.py`, `scripts/telemetry/analyze_value.py`, `config/subscription.yaml.example`, ADR-0020 "Implementation note — Layer A3". Live: A1 $666.26/100%; attribution baseline $2,244.53 (~30% of total spend is discussion-attributed); OTel honestly unavailable.
+
+**Tags**: [telemetry/cost-attribution]
+
 **Evidence**:
 - `scripts/surface_candidates.py:20-94` (signature + dual SELECT branches; the comment at lines 51-53 names the counting-vs-emission invariant)
 - `scripts/close_discussion.py:144,150-153` (corrected call sites)

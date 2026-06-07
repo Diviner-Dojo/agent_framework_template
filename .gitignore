@@ -26,3 +26,9 @@ BUILD_STATUS.md
 # must never be committed.
 .claude/hooks/.state/
 docs/handoff/
+
+# Telemetry A3 (ADR-0020): the real subscription fee is personal financial
+# metadata — only config/subscription.yaml.example (a 0.00 placeholder) is
+# committed. The OTel export is local runtime data.
+config/subscription.yaml
+data/otel_export.jsonl
