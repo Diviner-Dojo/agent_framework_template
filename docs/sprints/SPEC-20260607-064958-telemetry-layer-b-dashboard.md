@@ -2,13 +2,13 @@
 spec_id: SPEC-20260607-064958
 title: "Telemetry Layer B — local static HTML dashboard (render the honest Layer-A outputs)"
 type: spec
-status: approved
+status: complete
 risk_level: medium
 reviewed_by: [architecture-consultant, security-specialist, qa-specialist, ux-evaluator]
 discussion_id: DISC-20260607-065118-telemetry-layer-b-dashboard-spec-review
 intake_ids: []
-completed_at:
-completed_commit:
+completed_at: 2026-06-07
+completed_commit: f1bc2a5
 ---
 
 ## Goal
