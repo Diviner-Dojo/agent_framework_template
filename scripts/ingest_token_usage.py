@@ -91,13 +91,16 @@ def _project_slug(project_root: Path) -> str:
     return re.sub(r"[^A-Za-z0-9-]+", "-", abs_path)
 
 
-def _is_inside_projects_root(path: Path) -> bool:
+def is_inside_projects_root(path: Path) -> bool:
     """Return True iff the resolved path lives inside CLAUDE_PROJECTS_ROOT.
 
     Guards against symlink traversal — a symlinked entry inside the projects
     directory that points elsewhere on the filesystem is silently skipped.
     REVIEW.md rule 18 (file path operations must use Path.resolve() and
     validate against a whitelist of allowed directories).
+
+    Promoted to public in the A-ARCH1 promotion (SPEC-20260607-183136 R16/AC15);
+    the dashboard daemon is the 4th cross-module consumer.
     """
     try:
         return path.resolve().is_relative_to(CLAUDE_PROJECTS_ROOT.resolve())
@@ -114,7 +117,7 @@ def discover_session_dirs(project_root: Path) -> list[Path]:
     to ``parse_session_dir``.
 
     Symlinked entries that resolve outside ``CLAUDE_PROJECTS_ROOT`` are
-    skipped (see ``_is_inside_projects_root``).
+    skipped (see ``is_inside_projects_root``).
     """
     if not CLAUDE_PROJECTS_ROOT.exists():
         return []
@@ -131,11 +134,11 @@ def discover_session_dirs(project_root: Path) -> list[Path]:
         if match is None:
             return []
         project_dir = match
-    if not _is_inside_projects_root(project_dir):
+    if not is_inside_projects_root(project_dir):
         return []
     paths: list[Path] = []
     for entry in project_dir.iterdir():
-        if not _is_inside_projects_root(entry):
+        if not is_inside_projects_root(entry):
             continue
         if entry.is_file() and entry.suffix == ".jsonl":
             paths.append(entry)
@@ -214,7 +217,7 @@ def _iter_jsonl_files(path: Path) -> Iterator[Path]:
     non-JSONL files are ignored. Entries that resolve outside
     ``CLAUDE_PROJECTS_ROOT`` (symlink escape) are skipped.
     """
-    if not _is_inside_projects_root(path):
+    if not is_inside_projects_root(path):
         return
     if path.is_file() and path.suffix == ".jsonl":
         yield path
@@ -222,14 +225,14 @@ def _iter_jsonl_files(path: Path) -> Iterator[Path]:
     if not path.is_dir():
         return
     subagents = path / "subagents"
-    if subagents.is_dir() and _is_inside_projects_root(subagents):
+    if subagents.is_dir() and is_inside_projects_root(subagents):
         for entry in subagents.iterdir():
-            if entry.is_file() and entry.suffix == ".jsonl" and _is_inside_projects_root(entry):
+            if entry.is_file() and entry.suffix == ".jsonl" and is_inside_projects_root(entry):
                 yield entry
     # Some session dirs may also contain a top-level <sessionId>.jsonl —
     # scan for any .jsonl directly under the dir as well.
     for entry in path.iterdir():
-        if entry.is_file() and entry.suffix == ".jsonl" and _is_inside_projects_root(entry):
+        if entry.is_file() and entry.suffix == ".jsonl" and is_inside_projects_root(entry):
             yield entry
 
 
@@ -478,13 +481,16 @@ def _update_tagged_turns(conn: sqlite3.Connection, messages: dict[str, MessageRe
 # ---------------------------------------------------------------------------
 
 
-def _collect_messages(
+def collect_messages(
     session_paths: list[Path], since: datetime | None
 ) -> dict[str, MessageRecord]:
     """Walk every session path and return a dedup'd message_id → record map.
 
     A message that appears in both a main session JSONL and a subagent JSONL
     is counted exactly once (first occurrence wins).
+
+    Promoted to public in the A-ARCH1 promotion (SPEC-20260607-183136 R16/AC15);
+    the dashboard daemon is the 4th cross-module consumer.
     """
     deduped: dict[str, MessageRecord] = {}
     for path in session_paths:
@@ -548,7 +554,7 @@ def ingest_token_usage(
             "total_cache_tokens": 0,
         }
 
-    messages = _collect_messages(session_paths, since)
+    messages = collect_messages(session_paths, since)
 
     if not DB_PATH.exists():
         print(f"SQLite database not found at {DB_PATH}. Run scripts/init_db.py first.")
@@ -594,8 +600,12 @@ def ingest_token_usage(
     }
 
 
-def _parse_since(value: str | None) -> datetime | None:
-    """Parse a ``--since YYYY-MM-DD`` argument to a UTC datetime."""
+def parse_since(value: str | None) -> datetime | None:
+    """Parse a ``--since YYYY-MM-DD`` argument to a UTC datetime.
+
+    Promoted to public in the A-ARCH1 promotion (SPEC-20260607-183136 R16/AC15);
+    the dashboard daemon is the 4th cross-module consumer.
+    """
     if not value:
         return None
     try:
@@ -628,7 +638,7 @@ def main() -> None:
 
     summary = ingest_token_usage(
         dry_run=args.dry_run,
-        since=_parse_since(args.since),
+        since=parse_since(args.since),
         discussion_filter=args.discussion,
     )
 

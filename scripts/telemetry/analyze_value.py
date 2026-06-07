@@ -288,7 +288,7 @@ def assemble_value_inputs(
     if itu.CLAUDE_PROJECTS_ROOT.exists():
         session_paths = itu.discover_session_dirs(project_root)
         if session_paths:
-            messages = itu._collect_messages(session_paths, since)
+            messages = itu.collect_messages(session_paths, since)
 
     report = a1_report if a1_report is not None else _load_a1_report(conn, pricing)
 
@@ -489,7 +489,7 @@ def main() -> None:
     args = parser.parse_args()
 
     analyze_value(
-        since=itu._parse_since(args.since),
+        since=itu.parse_since(args.since),
         subscription_path=Path(args.subscription) if args.subscription else None,
         otel_path=Path(args.otel) if args.otel else OTEL_EXPORT_PATH,
     )

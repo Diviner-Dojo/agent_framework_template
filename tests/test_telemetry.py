@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,22 @@ from src.telemetry.failures import (
     detect_orphaned_subagents,
     detect_retry_loops,
     rank_failures,
+)
+from src.telemetry.live import (
+    LANE_ACTIVE,
+    LANE_COMPLETE,
+    LANE_ORPHANED,
+    RECENT_EVENTS_CAP,
+    RUNWAY_AMBER,
+    RUNWAY_AMBER_DEFAULT,
+    RUNWAY_OK,
+    RUNWAY_RED,
+    RUNWAY_RED_DEFAULT,
+    LiveEvent,
+    apply_event,
+    empty_state,
+    fold_events,
+    mark_orphans,
 )
 from src.telemetry.pricing import (
     UNKNOWN_TIER,
@@ -1129,7 +1146,7 @@ def test_subagent_file_outside_projects_root_is_skipped(
     env, pricing: PricingTable, monkeypatch
 ) -> None:
     # Regression (security B2): _detect_for_session must consult
-    # _is_inside_projects_root before opening subagent files (symlink-escape
+    # is_inside_projects_root before opening subagent files (symlink-escape
     # guard). Before the fix the guard was absent here, so an escaping agent file
     # would be read and flagged. Forcing the guard to reject agent-* paths must
     # now suppress the orphan (old code would still report 1).
@@ -1152,9 +1169,9 @@ def test_subagent_file_outside_projects_root_is_skipped(
         )
     ]
     _write_session(env.projects_root, env.project_root, "s", main, {"hung": hung})
-    real = itu._is_inside_projects_root
+    real = itu.is_inside_projects_root
     monkeypatch.setattr(
-        itu, "_is_inside_projects_root", lambda p: False if "agent-" in str(p) else real(p)
+        itu, "is_inside_projects_root", lambda p: False if "agent-" in str(p) else real(p)
     )
     summary = af.analyze_failures(db_path=env.db_path, full_rescan=True, pricing=pricing)
     assert summary["orphaned_subagents"] == 0
@@ -1206,7 +1223,7 @@ def test_session_mtime_returns_newest_and_handles_scandir_error(
 ) -> None:
     # _session_mtime computes the incremental watermark; verify it returns the
     # newest subagent mtime and degrades to 0.0 if the directory scan fails.
-    monkeypatch.setattr(itu, "_is_inside_projects_root", lambda p: True)
+    monkeypatch.setattr(itu, "is_inside_projects_root", lambda p: True)
     sub = tmp_path / "subagents"
     sub.mkdir()
     (sub / "agent-a.jsonl").write_text("{}", encoding="utf-8")
@@ -1228,14 +1245,14 @@ def test_session_mtime_skips_entry_outside_projects_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Regression (security advisory): _session_mtime must consult
-    # _is_inside_projects_root before stat'ing each subagent entry, matching the
+    # is_inside_projects_root before stat'ing each subagent entry, matching the
     # symlink-escape guard _detect_for_session applies before opening files.
     # Rejecting the only entry must yield 0.0 (excluded, never stat'd).
     sub = tmp_path / "subagents"
     sub.mkdir()
     (sub / "agent-escape.jsonl").write_text("{}", encoding="utf-8")
     os.utime(sub / "agent-escape.jsonl", (1500.0, 1500.0))
-    monkeypatch.setattr(itu, "_is_inside_projects_root", lambda p: False)
+    monkeypatch.setattr(itu, "is_inside_projects_root", lambda p: False)
     assert af._session_mtime({"subagents": sub}) == 0.0
 
 
@@ -2481,3 +2498,388 @@ def test_attribution_zero_denominator_renders_absence(pricing) -> None:
     html = render_dashboard_html(_data(attribution=dv))
     assert "0.0% covered" not in html
     assert 'data-state="absent"' in html
+
+
+# --------------------------------------------------------------------------- #
+# live.py — pure event-fold (SPEC-20260607-183136 R14/AC14)
+# --------------------------------------------------------------------------- #
+
+
+def _ts(seconds: int) -> datetime:
+    """Build a deterministic UTC timestamp ``seconds`` past 2026-06-07 12:00.
+
+    Accepts any non-negative integer (incl. ``seconds > 59``) — overflow is
+    distributed across minutes so cap-boundary tests can use ``range(101)``
+    without hand-rolling minute math.
+    """
+    base = datetime(2026, 6, 7, 12, 0, 0, tzinfo=UTC)
+    return base + timedelta(seconds=seconds)
+
+
+def _msg_event(
+    seconds: int,
+    lane: str,
+    model: str | None,
+    *,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read: int = 0,
+    cache_create: int = 0,
+    agent_type: str | None = None,
+) -> LiveEvent:
+    return LiveEvent(
+        kind="message",
+        timestamp=_ts(seconds),
+        lane_id=lane,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read,
+        cache_create_tokens=cache_create,
+        agent_type=agent_type,
+    )
+
+
+def _dispatch_event(seconds: int, lane: str, agent_type: str | None = None) -> LiveEvent:
+    return LiveEvent(
+        kind="dispatch",
+        timestamp=_ts(seconds),
+        lane_id=lane,
+        agent_type=agent_type,
+        tool_name="Agent",
+    )
+
+
+def _result_event(seconds: int, ref_id: str, *, lane: str = "main") -> LiveEvent:
+    return LiveEvent(kind="result", timestamp=_ts(seconds), lane_id=lane, ref_id=ref_id)
+
+
+def _context_event(seconds: int, current: int, window: int) -> LiveEvent:
+    return LiveEvent(
+        kind="context",
+        timestamp=_ts(seconds),
+        lane_id="main",
+        context_tokens=current,
+        context_window=window,
+    )
+
+
+# qa F2 — empty inputs.
+def test_fold_events_empty_returns_clean_state(pricing: PricingTable) -> None:
+    state = fold_events([], pricing)
+    assert state.main is None
+    assert state.agents == ()
+    assert state.total_cost_usd == 0.0
+    assert state.recent_events == ()
+    assert state.main_turns_seen == 0
+    assert state.uncosted_turns == 0
+    assert state.runway.est_turns_remaining is None
+    assert state.runway.status == RUNWAY_OK
+
+
+def test_fold_basic_main_lane_costs_match_pricing(pricing: PricingTable) -> None:
+    # opus rate: 15 $/Mtok in, 75 $/Mtok out -> 1000 in + 500 out = 0.015 + 0.0375 = 0.0525.
+    state = fold_events(
+        [_msg_event(0, "main", "claude-opus-4-7", input_tokens=1000, output_tokens=500)],
+        pricing,
+    )
+    assert state.main is not None
+    assert state.main.status == LANE_ACTIVE
+    assert state.main.input_tokens == 1000
+    assert state.main.output_tokens == 500
+    assert state.main.cost_usd == pytest.approx(0.0525)
+    assert state.total_cost_usd == pytest.approx(0.0525)
+    assert state.main_turns_seen == 1
+    assert state.main_turn_output_tokens == 500
+    assert state.uncosted_turns == 0
+
+
+# qa F3 — model=None / unknown tier: tokens accrue, cost held back.
+def test_message_with_none_model_accrues_tokens_but_zero_cost(pricing: PricingTable) -> None:
+    state = fold_events(
+        [_msg_event(0, "main", None, input_tokens=1000, output_tokens=500)],
+        pricing,
+    )
+    assert state.main is not None
+    assert state.main.input_tokens == 1000
+    assert state.main.output_tokens == 500
+    assert state.main.cost_usd == 0.0
+    assert state.total_cost_usd == 0.0
+    assert state.uncosted_turns == 1
+    # Output tokens are observable regardless of pricing — so the runway estimate
+    # IS available even for an uncosted main turn (this isolates the cost-zero
+    # honesty from the runway-estimate signal). 100K remaining / 500 out = 200.
+    state2 = apply_event(state, _context_event(1, 100_000, 200_000), pricing)
+    assert state2.runway.est_turns_remaining == 200
+
+
+def test_subagent_lane_with_unknown_tier_model_is_uncosted(pricing: PricingTable) -> None:
+    # qa F3 (subagent variant): the uncosted-turn path must also fire on the
+    # non-main branch — a future model family that lands before pricing.yaml is
+    # updated could arrive on a subagent before it ever shows up on the main lane.
+    state = fold_events(
+        [
+            _dispatch_event(0, "tool_x", "qa-specialist"),
+            _msg_event(1, "tool_x", "claude-mystery-9", input_tokens=500, output_tokens=200),
+        ],
+        pricing,
+    )
+    assert state.uncosted_turns == 1
+    assert state.total_cost_usd == 0.0
+    assert state.agents[0].input_tokens == 500
+    assert state.agents[0].cost_usd == 0.0
+
+
+def test_message_with_unknown_tier_model_is_uncosted(pricing: PricingTable) -> None:
+    # The pricing fixture only knows opus + sonnet — "claude-mystery-9" misses
+    # both the model map and the family substring match -> UNKNOWN_TIER.
+    state = fold_events(
+        [_msg_event(0, "main", "claude-mystery-9", input_tokens=500, output_tokens=200)],
+        pricing,
+    )
+    assert state.uncosted_turns == 1
+    assert state.total_cost_usd == 0.0
+    assert state.main is not None
+    assert state.main.input_tokens == 500  # tokens still accumulate
+
+
+# qa F5 — duplicate dispatch idempotence.
+def test_duplicate_dispatch_is_idempotent(pricing: PricingTable) -> None:
+    state = fold_events(
+        [
+            _msg_event(0, "main", "claude-opus-4-7", input_tokens=100, output_tokens=50),
+            _dispatch_event(1, "tool_x", "qa-specialist"),
+            _dispatch_event(2, "tool_x", "qa-specialist"),  # duplicate
+        ],
+        pricing,
+    )
+    assert len(state.agents) == 1
+    assert state.main is not None
+    assert state.main.tool_count == 1  # NOT 2
+
+
+def test_dispatch_increments_main_tool_count(pricing: PricingTable) -> None:
+    state = fold_events(
+        [
+            _msg_event(0, "main", "claude-opus-4-7", input_tokens=100, output_tokens=50),
+            _dispatch_event(1, "tool_a", "qa"),
+            _dispatch_event(2, "tool_b", "security"),
+        ],
+        pricing,
+    )
+    assert len(state.agents) == 2
+    assert state.main is not None
+    assert state.main.tool_count == 2
+
+
+# qa F6 — result no-ops.
+def test_result_with_unknown_ref_id_is_noop(pricing: PricingTable) -> None:
+    state = fold_events(
+        [
+            _msg_event(0, "main", "claude-opus-4-7", input_tokens=100, output_tokens=50),
+            _dispatch_event(1, "tool_real", "qa"),
+            _result_event(2, "tool_does_not_exist"),
+        ],
+        pricing,
+    )
+    assert state.agents[0].lane_id == "tool_real"
+    assert state.agents[0].status == LANE_ACTIVE
+
+
+def test_duplicate_result_is_idempotent(pricing: PricingTable) -> None:
+    state = fold_events(
+        [
+            _dispatch_event(0, "tool_x", "qa"),
+            _result_event(1, "tool_x"),
+            _result_event(2, "tool_x"),  # duplicate
+        ],
+        pricing,
+    )
+    assert len(state.agents) == 1
+    assert state.agents[0].status == LANE_COMPLETE
+
+
+def test_result_transitions_subagent_lane_to_complete(pricing: PricingTable) -> None:
+    state = fold_events(
+        [
+            _dispatch_event(0, "tool_x", "qa"),
+            _msg_event(1, "tool_x", "claude-sonnet-4-6", input_tokens=2000, output_tokens=800),
+            _result_event(2, "tool_x"),
+        ],
+        pricing,
+    )
+    assert state.agents[0].status == LANE_COMPLETE
+    assert state.agents[0].input_tokens == 2000
+
+
+# qa F7 — runway boundary values.
+@pytest.mark.parametrize(
+    ("fill_pct", "expected"),
+    [
+        (54.9, RUNWAY_OK),
+        (55.0, RUNWAY_AMBER),  # inclusive boundary
+        (69.9, RUNWAY_AMBER),
+        (70.0, RUNWAY_RED),  # inclusive boundary
+        (100.0, RUNWAY_RED),
+        (0.0, RUNWAY_OK),
+    ],
+)
+def test_runway_status_inclusive_boundaries(fill_pct: float, expected: str) -> None:
+    # Imported in-body so the ruff formatter does not strip the underscore-prefixed
+    # private (its top-level F401 hint flags `_name` imports as unused).
+    from src.telemetry import live as live_mod
+
+    assert live_mod._runway_status(fill_pct, RUNWAY_AMBER_DEFAULT, RUNWAY_RED_DEFAULT) == expected
+
+
+def test_context_event_with_zero_window_is_safe(pricing: PricingTable) -> None:
+    state = fold_events([_context_event(0, current=42, window=0)], pricing)
+    assert state.runway.fill_pct == 0.0
+    assert state.runway.status == RUNWAY_OK
+    assert state.runway.est_turns_remaining is None
+
+
+# qa F4 — est_turns_remaining honest absence on cold start + zero-avg case.
+def test_est_turns_remaining_none_on_cold_start(pricing: PricingTable) -> None:
+    state = fold_events([_context_event(0, current=100_000, window=200_000)], pricing)
+    assert state.runway.est_turns_remaining is None
+
+
+def test_est_turns_remaining_none_when_all_zero_output(pricing: PricingTable) -> None:
+    state = fold_events(
+        [
+            _msg_event(0, "main", "claude-opus-4-7", input_tokens=500, output_tokens=0),
+            _msg_event(1, "main", "claude-opus-4-7", input_tokens=500, output_tokens=0),
+            _context_event(2, current=100_000, window=200_000),
+        ],
+        pricing,
+    )
+    assert state.runway.est_turns_remaining is None
+
+
+def test_est_turns_remaining_uses_main_lane_only(pricing: PricingTable) -> None:
+    # Arch F2: a fast Haiku-style subagent rate must NOT skew the main runway.
+    # Use sonnet as a proxy for "second model on a subagent" (the pricing fixture
+    # doesn't carry haiku). Main outputs avg 500 tok/turn; subagent outputs 50.
+    # If the avg were session-wide it would be (500+50)/2 = 275 -> overstate
+    # turns remaining; using main only gives 500 -> 200 turns.
+    state = fold_events(
+        [
+            _msg_event(0, "main", "claude-opus-4-7", input_tokens=1000, output_tokens=500),
+            _dispatch_event(1, "tool_x", "qa"),
+            _msg_event(2, "tool_x", "claude-sonnet-4-6", input_tokens=1000, output_tokens=50),
+            _context_event(3, current=0, window=100_000),
+        ],
+        pricing,
+    )
+    assert state.runway.est_turns_remaining == 200  # 100_000 / 500
+
+
+# qa F8 — RECENT_EVENTS_CAP boundary.
+def test_recent_events_capped(pricing: PricingTable) -> None:
+    events = [
+        _msg_event(i, "main", "claude-opus-4-7", input_tokens=1, output_tokens=1)
+        for i in range(RECENT_EVENTS_CAP + 1)
+    ]
+    state = fold_events(events, pricing)
+    assert len(state.recent_events) == RECENT_EVENTS_CAP
+    # The oldest one (seconds=0) is evicted; the most recent (seconds=CAP) remains.
+    assert all(ev.timestamp != _ts(0) for ev in state.recent_events)
+    assert state.recent_events[-1].timestamp == _ts(RECENT_EVENTS_CAP)
+
+
+# qa F9 — unknown kind no-op (forward-compat).
+def test_unknown_event_kind_is_noop(pricing: PricingTable) -> None:
+    weird = LiveEvent(kind="future_kind", timestamp=_ts(0), lane_id="main")
+    state = apply_event(empty_state(), weird, pricing)
+    assert state == empty_state()
+
+
+# qa F10 — mark_orphans triplet.
+def test_mark_orphans_noop_when_no_agents() -> None:
+    state = empty_state()
+    assert mark_orphans(state) is state  # identity, not just equality
+
+
+def test_mark_orphans_noop_when_all_complete(pricing: PricingTable) -> None:
+    state = fold_events(
+        [_dispatch_event(0, "tool_x", "qa"), _result_event(1, "tool_x")],
+        pricing,
+    )
+    out = mark_orphans(state)
+    assert out is state  # the no-change fast path returns the same object
+
+
+def test_mark_orphans_only_active_lanes_transition(pricing: PricingTable) -> None:
+    state = fold_events(
+        [
+            _dispatch_event(0, "tool_done", "qa"),
+            _result_event(1, "tool_done"),
+            _dispatch_event(2, "tool_hung", "security"),  # never resulted -> still active
+        ],
+        pricing,
+    )
+    out = mark_orphans(state)
+    by_id = {a.lane_id: a for a in out.agents}
+    assert by_id["tool_done"].status == LANE_COMPLETE
+    assert by_id["tool_hung"].status == LANE_ORPHANED
+
+
+# qa F11 — ordering: message-before-dispatch creates the lane.
+def test_message_before_dispatch_then_dispatch_is_idempotent(pricing: PricingTable) -> None:
+    state = fold_events(
+        [
+            _msg_event(0, "tool_x", "claude-sonnet-4-6", input_tokens=100, output_tokens=50),
+            _dispatch_event(1, "tool_x", "qa"),  # late dispatch
+        ],
+        pricing,
+    )
+    assert len(state.agents) == 1
+    # Tokens accumulated on the implicitly-created lane stay intact.
+    assert state.agents[0].input_tokens == 100
+    assert state.agents[0].output_tokens == 50
+
+
+def test_subagent_message_creates_lane_with_carried_agent_type(pricing: PricingTable) -> None:
+    # If the dispatch carried an agent_type and a later message did not,
+    # the type carried on the lane is preserved.
+    state = fold_events(
+        [
+            _dispatch_event(0, "tool_x", "security-specialist"),
+            _msg_event(1, "tool_x", "claude-sonnet-4-6", input_tokens=100, output_tokens=50),
+        ],
+        pricing,
+    )
+    assert state.agents[0].agent_type == "security-specialist"
+
+
+# qa F12 — purity seam (AC14): no scripts.* or transcript IO in live.py's import graph.
+@pytest.mark.regression
+def test_live_module_import_graph_is_pure() -> None:
+    # Regression (R14/AC14): src/telemetry/live.py must import nothing from
+    # scripts.* and nothing that pulls a transcript-IO module. The transport
+    # layer (scripts/telemetry/dashboard_server.py) is the seam — the live
+    # fold model is pure and unit-testable in isolation. A future edit that
+    # accidentally imports `scripts.ingest_token_usage` for "convenience" must
+    # fail this guard.
+    import importlib
+    import sys
+
+    # Force a clean re-import so we count exactly what live.py itself drags in.
+    for name in list(sys.modules):
+        if name == "src.telemetry.live":
+            del sys.modules[name]
+    before = set(sys.modules)
+    importlib.import_module("src.telemetry.live")
+    pulled = set(sys.modules) - before
+    forbidden_prefixes = ("scripts",)
+    forbidden_names = {"transcript", "transcript_io", "ingest_token_usage"}
+    offenders = [
+        name
+        for name in pulled
+        if any(name.startswith(p + ".") or name == p for p in forbidden_prefixes)
+        or name in forbidden_names
+    ]
+    assert offenders == [], (
+        f"live.py import graph leaked transport / transcript-IO modules: {offenders}"
+    )

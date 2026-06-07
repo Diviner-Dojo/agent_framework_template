@@ -23,10 +23,10 @@ from scripts.ingest_token_usage import (
     MessageRecord,
     _aggregate_by_discussion,
     _attribute,
-    _collect_messages,
     _parse_message_line,
     _project_slug,
     coerce_int,
+    collect_messages,
     ingest_token_usage,
     load_discussion_windows,
     parse_timestamp,
@@ -258,7 +258,7 @@ class TestAttribute:
 
 
 # ---------------------------------------------------------------------------
-# _collect_messages — first-wins dedup contract.
+# collect_messages — first-wins dedup contract.
 # ---------------------------------------------------------------------------
 
 
@@ -274,7 +274,7 @@ class TestCollectMessages:
         same ``msg_*`` id can appear in both the main session JSONL and a
         subagent JSONL, and we must not double-count tokens.
 
-        Establishes ``tmp_path`` as the trust root for ``_is_inside_projects_root``
+        Establishes ``tmp_path`` as the trust root for ``is_inside_projects_root``
         so the symlink-traversal guard doesn't reject the test fixtures.
         """
         monkeypatch.setattr("scripts.ingest_token_usage.CLAUDE_PROJECTS_ROOT", tmp_path)
@@ -296,7 +296,7 @@ class TestCollectMessages:
             encoding="utf-8",
         )
 
-        result = _collect_messages([path1, path2], since=None)
+        result = collect_messages([path1, path2], since=None)
         assert len(result) == 1
         assert "msg_dup" in result
         # path1 was iterated first, so its output_tokens (111) wins.

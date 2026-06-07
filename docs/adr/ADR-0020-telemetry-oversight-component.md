@@ -240,6 +240,78 @@ precedent — categorically lighter than the deferred FastAPI/web-app server
   real data: A1 $666.26 / 100%, 1 failure signal, fee-not-configured + OTel-not-yet-
   active honest-absence states.
 
+## Implementation note — Layer B form-factor amendment (Phase 1 live daemon), 2026-06-07
+
+The shipped static HTML Layer B (commit `f1bc2a5`) categorically cannot show
+live agent lanes, context runway, per-turn cost, or in-flight orphan detection
+— that is a *form-factor* gap, not a polish gap (see
+`docs/reviews/ANALYSIS-20260607-rh-oversight-deepdive.md`). The Steward
+*form-factor* gate (separate from the original 5 build conditions) ran on
+2026-06-07 and reached **APPROVE 0.86**, overturning the no-standing-process
+constraint of DISC-20260607-063709 with 9 binding conditions. The user-launched
+localhost-only daemon is the new Layer B shape; the prior static dashboard is
+not deleted but folds into the same code path as a future `--render-static`
+export mode (spec R4 / R15).
+
+**Phase 1 (live core) — landed in this commit:**
+
+* NEW `scripts/telemetry/dashboard_server.py` — FastAPI app, hardcoded
+  ``127.0.0.1`` bind, no ``--host`` flag, no ``HOST`` env read, runtime guard
+  before ``uvicorn.run()``, ``HostHeaderGuard`` + same-origin CORS (R8a),
+  htmx-polled live fragment + retrospective fragment that reuses the existing
+  ``assemble_dashboard_data`` + ``render_dashboard_html`` path (R15 single
+  render path), vendored static mount, read-only DB (``mode=ro``), generic
+  error bodies (no DB path / no exception class), lifespan-reset live state.
+* NEW `src/telemetry/live.py` — pure events→LiveState fold (R14/AC14): no
+  ``scripts.*`` imports, no transcript IO, frozen dataclasses, per-request
+  idempotent fold. Live cost mirrors the A1 read-side via
+  ``PricingTable.cost_usd`` so live and stored figures cannot diverge.
+* Extended `src/telemetry/dashboard.py` with live-panel render helpers
+  (agent lanes, runway gauge with amber/red, live cost/failure stream) — same
+  ``_esc`` / ``_fmt_*`` / ``_absence_tile`` helpers as the static doc; honest
+  absence preserved (cold-start runway shows "not enough data yet", never a
+  fabricated ``0`` estimate).
+* NEW `src/telemetry/static/` — vendored htmx 1.9.12 (SHA384 recorded in the
+  README) served from the FastAPI static mount; eliminates the only outbound
+  load-time dependency (R11a / AC6). Chart.js will be vendored when Phase 2
+  first uses it.
+* **A-ARCH1 promotion landed** (R16/AC15, Phase 1 prerequisite): the four
+  cross-module-consumed transcript helpers
+  (``collect_messages``, ``discover_session_dirs``, ``parse_since``,
+  ``is_inside_projects_root``) are public on
+  ``scripts.ingest_token_usage``; the dashboard daemon is the 4th consumer.
+  The three prior call sites (``analyze_cost``, ``analyze_failures``,
+  ``analyze_value``) + two test files are updated. A contract test in
+  ``tests/test_dashboard_server.py`` locks the public surface.
+
+**Re-affirmation (Ross Beveridge, MIT):** the rh-claude-framework reference
+that inspired the form-factor decision is attributed in
+``docs/reviews/ANALYSIS-20260607-rh-oversight-deepdive.md``; no JS or fixture
+JSON from that repo is lifted (analysis §5 contamination guard). Error-class
+vocabulary may be reused as domain terms.
+
+**Phase 1 acceptance carried:** AC1-AC10 (all 9 Steward conditions), AC14
+(live.py purity seam), AC15 (A-ARCH1 promotion), AC16 (port-in-use clear
+message), AC17 (quality gate). Deferred to later phases: AC11 (authored
+fixture-transcript inventory — lands with Phase 2 once a background watcher
+replaces lazy-per-request folding), AC12 (``--render-static`` parity — Phase 5),
+AC13 (cost from tokens × pricing — already enforced structurally by reusing
+the A1 read side; no separate test added).
+
+**Two checkpoints fired during the build, both APPROVE on Round 1 / 2:**
+architecture-consultant + qa-specialist on ``live.py`` (architecture 0.88
+APPROVE; qa 0.92 REVISE → 0.90 APPROVE Round 2 — 28 unit tests written + 1
+arch-F1 fix (uncosted-turns accounting separated from priced-cost total) +
+1 arch-F2 fix (runway rolling avg scoped to main-lane-only so a Haiku
+subagent cannot skew the main-Opus estimate)); security-specialist +
+architecture-consultant on ``dashboard_server.py`` (security 0.91 APPROVE
+— two-layer bind guard + Host-header middleware + read-only URI + generic
+errors; architecture 0.86 APPROVE — pure/transport boundary held, R15 single
+render path verified, A-ARCH1 helpers consumed; one Low arch finding folded
+in-checkpoint: removed an inverted ``mark_orphans`` call from the lazy
+per-request fold — orphan transition needs a session-end signal that lazy
+folding does not have).
+
 ## Linked Discussions
 - Spec review: discussions/2026-06-06/DISC-20260606-041937-telemetry-oversight-spec-review/
 - Steward gate: (framework-evolution review, APPROVE 0.86, 5 conditions)
@@ -251,4 +323,8 @@ precedent — categorically lighter than the deferred FastAPI/web-app server
 - Spec (Layer B): docs/sprints/SPEC-20260607-064958-telemetry-layer-b-dashboard.md (approve, 5 blocking findings folded)
 - Steward form-factor gate (Layer B): DISC-20260607-063709 (APPROVE 0.88, static HTML)
 - Spec review (Layer B): DISC-20260607-065118 (arch/security/qa/ux, all approve-with-changes, 5 blocking folded)
-- Build (Layer B): discussions/2026-06-07/DISC-20260607-072951-build-telemetry-layer-b-dashboard/
+- Build (Layer B static): discussions/2026-06-07/DISC-20260607-072951-build-telemetry-layer-b-dashboard/
+- Spec (Layer B live daemon): docs/sprints/SPEC-20260607-183136-telemetry-layer-b-live-dashboard-daemon.md (reviewed + approved)
+- Steward form-factor gate (Layer B live): discussions/2026-06-07/DISC-20260607-163709-telemetry-layer-b-form-factor-gate/ (APPROVE 0.86, 9 conditions = AC1-AC9)
+- Spec review (Layer B live): discussions/2026-06-07/DISC-20260607-183247-telemetry-layer-b-live-dashboard-daemon-spec-review/ (security/arch/qa, 7 blocking folded into spec AC1-AC9)
+- Build Phase 1 (Layer B live core): discussions/2026-06-07/DISC-20260607-193135-build-telemetry-layer-b-dashboard-server-phase1/

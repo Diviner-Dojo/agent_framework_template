@@ -282,7 +282,7 @@ def analyze_cost(
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute("PRAGMA foreign_keys=ON")
-        messages = itu._collect_messages(session_paths, since)
+        messages = itu.collect_messages(session_paths, since)
         windows = itu.load_discussion_windows(conn, discussion_filter)
         watermark = None if full_rescan else _read_watermark(conn)
         analyzed = _analyzed_discussion_ids(conn)
@@ -350,7 +350,7 @@ def main() -> None:
     args = parser.parse_args()
 
     summary = analyze_cost(
-        since=itu._parse_since(args.since),
+        since=itu.parse_since(args.since),
         discussion_filter=args.discussion,
         full_rescan=args.full_rescan,
         dry_run=args.dry_run,

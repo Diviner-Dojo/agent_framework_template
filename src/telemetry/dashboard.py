@@ -30,6 +30,18 @@ from dataclasses import dataclass
 
 from src.telemetry.cost import CostReport
 from src.telemetry.failures import RankedFailure
+from src.telemetry.live import (
+    LANE_ACTIVE,
+    LANE_COMPLETE,
+    LANE_ORPHANED,
+    RUNWAY_AMBER,
+    RUNWAY_OK,
+    RUNWAY_RED,
+    AgentLane,
+    LiveCostEvent,
+    LiveState,
+    RunwayGauge,
+)
 from src.telemetry.value import DivergenceResult, LeverageResult
 
 #: Panel data-state markers (also used as testable copy tokens).
@@ -604,3 +616,262 @@ def _count_absences(data: DashboardData) -> int:
     if not data.pricing_check.available:
         count += 1
     return count
+
+
+# --------------------------------------------------------------------------- #
+# Live-panel renderers (R15 — same panel helpers as the static doc).
+# --------------------------------------------------------------------------- #
+#
+# These compose the live section that ``scripts/telemetry/dashboard_server.py``
+# polls into the page via htmx. They reuse the existing ``_esc`` / ``_fmt_*`` /
+# ``_absence_tile`` helpers above so the static and live paths share one
+# escaping seam (spec C6) and one absence vocabulary (spec R3a). Each helper is
+# pure: it accepts a :class:`LiveState` (or one of its fields) and returns an
+# escaped HTML fragment. No IO; no global state.
+#
+# The runway gauge's amber/red colors live in the inline CSS at the top of this
+# module so the live HTML fragment never needs to ship a second stylesheet.
+
+#: Human-facing label for each lane status (also used as a CSS modifier suffix).
+_LANE_STATUS_LABEL = {
+    LANE_ACTIVE: "active",
+    LANE_COMPLETE: "complete",
+    LANE_ORPHANED: "orphaned",
+}
+
+#: Plain-language status copy for the runway gauge.
+_RUNWAY_STATUS_COPY = {
+    RUNWAY_OK: "Plenty of headroom",
+    RUNWAY_AMBER: "Approaching wrap-up window — consider checkpointing soon",
+    RUNWAY_RED: "Inside the wrap-up window — handoff recommended",
+}
+
+#: Manager-facing label for each runway status (qa F2 + ux FRICTION-3). The
+#: runway statuses are NOT lane statuses — using ``_LANE_STATUS_LABEL`` for
+#: them would leak the raw constant name (``amber`` / ``red``) into the
+#: gatekeeper's reading; this map carries the human-readable label and is
+#: the only renderer-side translation of the constants.
+_RUNWAY_LABEL = {
+    RUNWAY_OK: "OK",
+    RUNWAY_AMBER: "warning",
+    RUNWAY_RED: "critical",
+}
+
+
+def render_live_fragment(state: LiveState) -> str:
+    """Render the htmx live fragment (agent lanes + runway + cost/failure stream).
+
+    Returned as ONE root ``<section>`` so an htmx ``hx-swap="outerHTML"`` swap
+    replaces the previous fragment cleanly. The server polls this endpoint on
+    a server-specified interval (spec R2 — htmx polling, not SSE in Phase 1).
+    """
+    return (
+        '<section id="live-section" class="live-section" data-state="live">'
+        f"{_render_runway_panel(state.runway)}"
+        f"{_render_agent_lanes_panel(state)}"
+        f"{_render_live_stream_panel(state.recent_events)}"
+        "</section>"
+    )
+
+
+def _render_runway_panel(runway: RunwayGauge) -> str:
+    """Render the context-window runway gauge (spec R2: fill %, amber/red, est turns).
+
+    Honest absence (spec R3a / ADR-0020): when the model's context-window size
+    is zero (no ``context`` event has landed yet), render the not-yet-available
+    absence tile, never a fabricated ``0%`` bar. Once snapshots arrive, the
+    estimated-turns-remaining stays ``None`` until at least one main turn has
+    landed — :func:`_render_runway_estimate` keeps that honest in copy.
+    """
+    if runway.context_window <= 0:
+        return _absence_tile(
+            "Context runway",
+            "No live context snapshot yet.",
+            "The dashboard has not received a context-occupancy event from the active session.",
+        )
+    # The CSS class suffix uses the raw status constant (``amber`` / ``red``
+    # match the existing ``runway--amber`` / ``runway--red`` rules in _LIVE_CSS);
+    # the gatekeeper-facing sub-line uses the human-readable _RUNWAY_LABEL.
+    status_class = f"runway--{runway.status}"
+    status_copy = _RUNWAY_STATUS_COPY.get(runway.status, "")
+    status_label = _RUNWAY_LABEL.get(runway.status, runway.status)
+    bar_width = max(0.0, min(100.0, runway.fill_pct))
+    return (
+        f'<div class="tile tile--data runway {status_class}" data-state="data">'
+        "<h3>Context runway</h3>"
+        f'<div class="runway__bar" role="progressbar" aria-valuenow="{_esc(runway.fill_pct)}" '
+        'aria-valuemin="0" aria-valuemax="100">'
+        f'<div class="runway__fill" style="width:{_esc(bar_width)}%"></div>'
+        "</div>"
+        f'<div class="headline">{_esc(runway.fill_pct)}%</div>'
+        f'<p class="sub">{_esc(_fmt_int(runway.current_tokens))} of '
+        f"{_esc(_fmt_int(runway.context_window))} tokens used &middot; "
+        f"{_esc(status_label)}</p>"
+        f'<p class="note">{_esc(status_copy)}</p>'
+        f"{_render_runway_estimate(runway)}"
+        "</div>"
+    )
+
+
+def _render_runway_estimate(runway: RunwayGauge) -> str:
+    """Render the est-turns-remaining line, honoring the cold-start ``None``.
+
+    A ``None`` estimate means no main turn has landed yet — we render an honest
+    "not enough data yet" sentence, NOT ``0`` or ``unknown turns``. This mirrors
+    the C4 honest-absence pattern (ADR-0020).
+    """
+    if runway.est_turns_remaining is None:
+        return (
+            '<p class="src">Estimated turns remaining: not enough data yet '
+            "(needs at least one main-lane turn).</p>"
+        )
+    return (
+        f'<p class="src">Estimated turns remaining: '
+        f"<strong>{_esc(_fmt_int(runway.est_turns_remaining))}</strong> "
+        "(rolling avg of main-lane output tokens per turn).</p>"
+    )
+
+
+def _render_agent_lanes_panel(state: LiveState) -> str:
+    """Render the agent-lane panel (R2: active/completed/orphaned).
+
+    The main lane renders first, then dispatched subagent lanes in dispatch
+    order. When no session is active yet (no main lane), the panel renders the
+    honest absence tile rather than an empty data tile.
+    """
+    if state.main is None and not state.agents:
+        return _absence_tile(
+            "Agent lanes",
+            "No active session yet.",
+            "The dashboard has not seen a live session. Launch a Claude Code session "
+            "(or run the analyzers) to populate this panel.",
+        )
+    rows = []
+    if state.main is not None:
+        rows.append(_render_agent_lane_row(state.main))
+    for lane in state.agents:
+        rows.append(_render_agent_lane_row(lane))
+    return (
+        '<div class="tile tile--data tile--wide" data-state="data">'
+        "<h3>Agent lanes</h3>"
+        '<p class="legend">One row per lane (main + each dispatched subagent). '
+        "Status is computed from in-flight transcript events.</p>"
+        '<table class="data-table">'
+        "<thead><tr><th>Lane</th><th>Agent</th><th>Model</th><th>Status</th>"
+        '<th class="num">Tokens</th><th class="num">Cost</th>'
+        '<th class="num">Tools</th><th class="num">Failures</th></tr></thead>'
+        f"<tbody>{''.join(rows)}</tbody></table>"
+        "</div>"
+    )
+
+
+def _render_agent_lane_row(lane: AgentLane) -> str:
+    """Render one row of the agent-lanes table — fully escaped."""
+    total_tokens = lane.input_tokens + lane.output_tokens + lane.cache_read_tokens
+    status_label = _LANE_STATUS_LABEL.get(lane.status, lane.status)
+    lane_class = f"lane--{status_label}"
+    agent = lane.agent_type or ("main" if lane.kind == "main" else "—")
+    model = lane.model or "—"
+    return (
+        f'<tr class="{lane_class}">'
+        f"<td>{_esc(lane.lane_id)}</td>"
+        f"<td>{_esc(agent)}</td>"
+        f"<td>{_esc(model)}</td>"
+        f'<td><span class="lane-badge">{_esc(status_label)}</span></td>'
+        f'<td class="num">{_fmt_int(total_tokens)}</td>'
+        f'<td class="num">{_esc(_fmt_usd(lane.cost_usd, places=4))}</td>'
+        f'<td class="num">{_fmt_int(lane.tool_count)}</td>'
+        f'<td class="num">{_fmt_int(lane.failure_count)}</td>'
+        "</tr>"
+    )
+
+
+def _render_live_stream_panel(events: tuple[LiveCostEvent, ...]) -> str:
+    """Render the rolling live cost/failure stream (R2).
+
+    Empty stream renders an honest "no live events yet" absence tile. Otherwise
+    we render the most-recent-first list of events; each row is fully escaped.
+    """
+    if not events:
+        return _absence_tile(
+            "Live stream",
+            "No live events yet.",
+            "Per-turn costs and failure events will appear here as the active session emits them.",
+        )
+    rows = []
+    for ev in reversed(events):
+        rows.append(
+            "<tr>"
+            f"<td>{_esc(ev.timestamp.isoformat())}</td>"
+            f"<td>{_esc(ev.lane_id)}</td>"
+            f"<td>{_esc(ev.kind)}</td>"
+            f'<td class="num">{_esc(_fmt_usd(ev.cost_usd, places=4))}</td>'
+            f'<td class="num">{_fmt_int(ev.tokens)}</td>'
+            "</tr>"
+        )
+    return (
+        '<div class="tile tile--data tile--wide" data-state="data">'
+        "<h3>Live stream</h3>"
+        '<p class="legend">Most recent first; capped at the latest 100 events.</p>'
+        '<table class="data-table">'
+        "<thead><tr><th>Time</th><th>Lane</th><th>Kind</th>"
+        '<th class="num">Cost</th><th class="num">Tokens</th></tr></thead>'
+        f"<tbody>{''.join(rows)}</tbody></table>"
+        "</div>"
+    )
+
+
+def render_live_shell_html(*, generated_label: str = "") -> str:
+    """Render the htmx shell page that polls the live fragment.
+
+    The shell embeds htmx (loaded from the local static mount, NOT a CDN — spec
+    R11a / AC6) and one ``<section>`` placeholder that htmx swaps via a server-
+    specified polling interval. The retrospective panels live above this shell
+    and continue to render server-side from :func:`render_dashboard_html`'s
+    helpers — the same panel renderers, no duplication (spec R15).
+
+    Args:
+        generated_label: A human-readable timestamp for when the page was first
+            served (transport owns the clock).
+    """
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        "<title>Telemetry Dashboard (live)</title>"
+        '<script src="/static/htmx.min.js" defer></script>'
+        f"<style>{_CSS}{_LIVE_CSS}</style></head><body>"
+        "<header><h1>Telemetry &amp; Oversight — live</h1>"
+        f'<div class="gen">{_esc(generated_label)}</div></header>'
+        "<main>"
+        # hx-swap-error="outerHTML" so non-2xx (e.g. the 500 honest-error fragment)
+        # still swaps the body — htmx's default is to drop the swap, which would
+        # leave a stale fragment indefinitely after a transient failure
+        # (independent-perspective Pre-Mortem 2).
+        '<section id="live-section" class="live-section" data-state="loading"'
+        ' hx-get="/fragments/live" hx-trigger="load, every 3s"'
+        ' hx-swap="outerHTML" hx-swap-error="outerHTML">'
+        '<div class="tile tile--absent" data-state="loading"><h3>Live state</h3>'
+        '<p class="absence-copy">Loading live state…</p></div>'
+        "</section>"
+        "</main></body></html>"
+    )
+
+
+#: Live-panel CSS extension (appended after the shared ``_CSS``).
+_LIVE_CSS = """
+.live-section{grid-column:1 / -1;display:grid;grid-template-columns:repeat(2,1fr);gap:18px;}
+.live-section>.tile--wide{grid-column:1 / -1;}
+.runway__bar{height:10px;background:#0d1117;border:1px solid var(--line);border-radius:6px;
+overflow:hidden;margin:8px 0;}
+.runway__fill{height:100%;background:var(--accent);transition:width .25s ease;}
+.runway--amber .runway__fill{background:#d29922;}
+.runway--red .runway__fill{background:#f85149;}
+.runway--amber .headline{color:#d29922;}
+.runway--red .headline{color:#f85149;}
+.lane-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;
+border:1px solid var(--line);color:var(--muted);}
+tr.lane--active .lane-badge{color:var(--ok);border-color:var(--ok);}
+tr.lane--orphaned .lane-badge{color:#f85149;border-color:#f85149;}
+tr.lane--complete .lane-badge{color:var(--muted);}
+"""

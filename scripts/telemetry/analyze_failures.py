@@ -291,7 +291,7 @@ def _session_mtime(group: dict[str, object]) -> float:
     comes from the directory read itself — ``DirEntry.stat()`` and ``is_file()``
     are syscall-free for normal files (a reparse point / symlink still issues a
     real ``stat()``), avoiding a separate ``stat()`` per file (review advisory,
-    perf). Each entry is bounds-checked with ``itu._is_inside_projects_root``
+    perf). Each entry is bounds-checked with ``itu.is_inside_projects_root``
     before it is stat'd, mirroring the symlink-escape guard ``_detect_for_session``
     applies before opening files (review advisory, security — stat parity).
     """
@@ -309,7 +309,7 @@ def _session_mtime(group: dict[str, object]) -> float:
                 for entry in entries:
                     if not (entry.name.endswith(".jsonl") and entry.is_file()):
                         continue
-                    if not itu._is_inside_projects_root(Path(entry.path)):
+                    if not itu.is_inside_projects_root(Path(entry.path)):
                         continue
                     try:
                         mtimes.append(entry.stat().st_mtime)
@@ -362,7 +362,7 @@ def _detect_for_session(
 ) -> list[FailureSignal]:
     """Run both detectors over one grouped session and return its signals.
 
-    Every file is re-checked with ``itu._is_inside_projects_root`` before it is
+    Every file is re-checked with ``itu.is_inside_projects_root`` before it is
     opened — the same symlink-traversal guard ``itu._iter_jsonl_files`` applies —
     so a symlink planted under ``subagents/`` that escapes the projects root is
     skipped rather than read (defense in depth even though discovery also guards).
@@ -371,7 +371,7 @@ def _detect_for_session(
     main = group.get("main")
     dispatches: list[SubagentDispatch] = []
     result_ids: set[str] = set()
-    if isinstance(main, Path) and itu._is_inside_projects_root(main):
+    if isinstance(main, Path) and itu.is_inside_projects_root(main):
         tool_calls, dispatches, result_ids = parse_main_session(main, pricing)
         signals.extend(detect_retry_loops(tool_calls, threshold=retry_threshold))
     runs: list[SubagentRun] = []
@@ -382,7 +382,7 @@ def _detect_for_session(
                 entry.is_file()
                 and entry.suffix == ".jsonl"
                 and entry.name.startswith("agent-")
-                and itu._is_inside_projects_root(entry)
+                and itu.is_inside_projects_root(entry)
             ):
                 runs.append(parse_subagent_run(entry, pricing))
     signals.extend(detect_orphaned_subagents(dispatches, result_ids, runs))
