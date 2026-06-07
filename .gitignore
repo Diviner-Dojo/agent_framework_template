@@ -18,6 +18,10 @@ build/
 .coverage
 BUILD_STATUS.md
 
+# ntfy collab-loop single-poller coordination lockfile (ADR-0019); runtime-only
+.collab_loop.lock
+.collab_loop.lock.tmp
+
 # Session-local worktrees — see spawn_project's EXCLUDE_PATTERNS for the propagation guard
 .claude/worktrees/
 

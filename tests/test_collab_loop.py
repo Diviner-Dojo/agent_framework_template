@@ -9,12 +9,26 @@ patching urlopen / _http_get / send_notification, mirroring tests/test_ask_devel
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 from unittest.mock import patch
 
 import pytest
 
 from scripts import collab_loop
+
+
+@pytest.fixture(autouse=True)
+def _isolated_lock(tmp_path: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the single-poller coordination lockfile at a per-test tmp path.
+
+    Keeps the lockfile out of the repo root and isolates each test (the poll/ask
+    paths now read+write LOCK_PATH). The lock helpers resolve LOCK_PATH at CALL
+    time (path=None -> LOCK_PATH), so this monkeypatch sticks — do NOT change them
+    to a `path=LOCK_PATH` default arg (that would freeze the value at import and
+    break this isolation).
+    """
+    monkeypatch.setattr(collab_loop, "LOCK_PATH", tmp_path / ".collab_loop.lock")
 
 
 # --------------------------------------------------------------------------- #
@@ -544,3 +558,132 @@ class TestMain:
         assert rc == 0
         assert mock_poll.called
         assert mock_poll.call_args.kwargs["choices"] == ["Approve", "Reject"]
+
+
+# --------------------------------------------------------------------------- #
+# Single-poller coordination lockfile (ADR-0019 reliability fix)
+# Prevents the reply-misfiling bug: two concurrent pollers with different
+# allow-lists, where a stale poller validates a reply against the wrong choices.
+# --------------------------------------------------------------------------- #
+class TestSinglePollerLock:
+    def test_read_lock_missing_returns_none(self) -> None:
+        assert collab_loop.read_lock() is None
+
+    def test_read_lock_corrupt_returns_none(self) -> None:
+        collab_loop.LOCK_PATH.write_text("{not json", encoding="utf-8")
+        assert collab_loop.read_lock() is None
+
+    def test_write_then_read_roundtrip(self) -> None:
+        collab_loop.write_lock(1234, ["Approve", "Hold"])
+        data = collab_loop.read_lock()
+        assert data is not None
+        assert data["pid"] == 1234
+        assert data["choices"] == ["Approve", "Hold"]
+
+    def test_update_choices_preserves_pid(self) -> None:
+        collab_loop.write_lock(4321, ["Old"])
+        collab_loop.update_lock_choices(["New", "Other"])
+        data = collab_loop.read_lock()
+        assert data is not None
+        assert data["pid"] == 4321  # owning poller untouched
+        assert data["choices"] == ["New", "Other"]
+
+    def test_claim_sets_current_pid_and_owns(self) -> None:
+        collab_loop.claim_poll_lock(["A"])
+        assert collab_loop.read_lock()["pid"] == os.getpid()  # type: ignore[index]
+        assert collab_loop.owns_poll_lock() is True
+
+    def test_owns_false_when_foreign_pid(self) -> None:
+        collab_loop.write_lock(os.getpid() + 1, ["A"])
+        assert collab_loop.owns_poll_lock() is False
+
+    def test_owns_false_when_no_lock(self) -> None:
+        assert collab_loop.owns_poll_lock() is False
+
+    def test_lock_choices_returns_current_else_default(self) -> None:
+        assert collab_loop.lock_choices(["fallback"]) == ["fallback"]  # no lock yet
+        collab_loop.write_lock(os.getpid(), ["Live"])
+        assert collab_loop.lock_choices(["fallback"]) == ["Live"]
+
+    def test_lock_choices_empty_falls_back(self) -> None:
+        collab_loop.write_lock(os.getpid(), [])  # open free-text question
+        assert collab_loop.lock_choices(None) is None
+
+    def test_lock_choices_non_list_value_falls_back(self) -> None:
+        # A corrupt / manually-edited lockfile with a non-list `choices` must not
+        # be adopted as an allow-list (qa F2): the isinstance guard falls back.
+        collab_loop.LOCK_PATH.write_text(
+            json.dumps({"pid": os.getpid(), "choices": "Approve", "ts": 0}),
+            encoding="utf-8",
+        )
+        assert collab_loop.lock_choices(["fallback"]) == ["fallback"]
+
+    def test_write_lock_oserror_does_not_raise(self, tmp_path: object) -> None:
+        # write_lock is best-effort fail-open (qa F3): a write failure must never
+        # raise (it would crash the loop) — the lock is simply absent afterwards.
+        bad_path = tmp_path / "missing_dir" / ".collab_loop.lock"  # type: ignore[operator]
+        collab_loop.write_lock(1234, ["A"], path=bad_path)  # must not raise
+        assert collab_loop.read_lock(path=bad_path) is None
+
+    @pytest.mark.regression
+    def test_poll_self_exits_when_superseded(self, capsys: pytest.CaptureFixture[str]) -> None:
+        # Regression: a stale poller must NOT keep running (and misfiling replies)
+        # after a newer poller claims the topic. It self-exits within one cycle.
+        emit_labels: list[object] = []
+
+        def fake_emit(*_a: object, **kw: object) -> None:
+            emit_labels.append(kw.get("label"))
+
+        def newer_poller_takes_over(_s: float) -> None:
+            collab_loop.write_lock(os.getpid() + 99, ["X"])  # someone else claims it
+
+        collab_loop.poll(
+            "s",
+            "t",
+            "t-reply",
+            None,
+            choices=["A"],
+            sleep=newer_poller_takes_over,
+            max_iterations=10,
+            emit_fn=fake_emit,
+        )
+        out = capsys.readouterr().out
+        assert "superseded" in out
+        # Only iteration 1 (reply+main = 2 emits) ran before the supersede check fired.
+        assert len(emit_labels) == 2
+
+    @pytest.mark.regression
+    def test_running_poller_adopts_retargeted_choices(self) -> None:
+        # Regression: a live poller validates against the CURRENT question's choices.
+        # An `ask` retargets the lockfile mid-run; the poller picks up the new set.
+        seen: list[object] = []
+
+        def fake_emit(*_a: object, **kw: object) -> None:
+            seen.append(kw.get("choices"))
+
+        def retarget_to_b(_s: float) -> None:
+            collab_loop.update_lock_choices(["B"])
+
+        collab_loop.poll(
+            "s",
+            "t",
+            "t-reply",
+            None,
+            choices=["A"],
+            sleep=retarget_to_b,
+            max_iterations=2,
+            emit_fn=fake_emit,
+        )
+        # iter1 emits with ["A"] x2 sources, sleep retargets to B, iter2 emits ["B"] x2.
+        assert seen == [["A"], ["A"], ["B"], ["B"]]
+
+    @pytest.mark.regression
+    def test_ask_retargets_lock_choices(self) -> None:
+        # Regression: publishing a new question updates the active allow-list so a
+        # running poller can never validate the reply against a stale answer-set.
+        with patch.object(collab_loop, "_post_json"):
+            ok = collab_loop.ask(
+                "https://s", "t", "t-reply", None, "Approve?", ["Approve build", "Hold"]
+            )
+        assert ok is True
+        assert collab_loop.lock_choices(None) == ["Approve build", "Hold"]
