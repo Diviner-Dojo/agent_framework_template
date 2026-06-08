@@ -8,10 +8,11 @@ dependency and the SRI/CDN-compromise surface. The FastAPI app in
 
 ## Pins
 
-| Asset                | Version  | License (companion file)                                      | Source                                                              | Bytes  | Integrity (SHA384, base64)                                              |
-| -------------------- | -------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- |
-| `htmx.min.js`        | 1.9.12   | BSD-2-Clause (header comment in file)                         | https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js                  | 48101  | `sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2` |
-| `chart.umd.min.js`   | 4.4.7    | MIT (see [`LICENSE-chart.js.txt`](./LICENSE-chart.js.txt))    | https://unpkg.com/chart.js@4.4.7/dist/chart.umd.js                  | 205615 | `sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM` |
+| Asset                  | Version  | License (companion file)                                      | Source                                                              | Bytes  | Integrity (SHA384, base64)                                              |
+| ---------------------- | -------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- |
+| `htmx.min.js`          | 1.9.12   | BSD-2-Clause (header comment in file)                         | https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js                  | 48101  | `sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2` |
+| `chart.umd.min.js`     | 4.4.7    | MIT (see [`LICENSE-chart.js.txt`](./LICENSE-chart.js.txt))    | https://unpkg.com/chart.js@4.4.7/dist/chart.umd.js                  | 205615 | `sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM` |
+| `dashboard-chart.js`   | 1.0.0    | first-party (this repository)                                 | in-tree (this repository)                                           | 12895  | `sha384-TijWmc6daXMgcyjeViDAtsN/2Wzhrr7KpGjY6FfM1Ht2kAZvteerwGa9AWW7aEvc` |
 
 ### What the SHA-384 pin actually defends against
 
@@ -40,14 +41,18 @@ The **independent** provenance pointer is the upstream GitHub release tag:
 — hosted separately from npm, with a different trust root. A re-vendoring
 audit should cross-reference that tag's commit + release notes.
 
-### What this slice does NOT do
+### First-party `dashboard-chart.js` integrity
 
-Phase 2's first slice vendors Chart.js but does NOT yet wire it into a chart —
-the actual `<script>` tag and chart markup land with the per-turn cost chart in
-the next slice, so the asset is not loaded as dead weight while still being
-under integrity-pin discipline from day one. The existing CSP (`script-src
-'self'`) will cover the future `<script src="/static/chart.umd.min.js">` tag
-without modification — same-origin scripts are already permitted.
+`dashboard-chart.js` is a first-party file authored in this repository —
+NOT a vendored third-party library. It is pinned in the same SHA-384 table
+so byte-stability is machine-enforced: any future edit (intentional or
+otherwise) must update the pin in lockstep, which keeps the file's
+provenance auditable from the in-tree artifacts alone. The integrity
+discipline here is the same as the vendored libraries above; the
+"supply chain" is just the local commit history. A second-degree benefit:
+the regression test that asserts the byte digest cannot drift forces
+every modification through code review (failing CI on any silent byte
+change).
 
 ## Updating an asset
 

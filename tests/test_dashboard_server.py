@@ -803,6 +803,196 @@ def test_vendored_chartjs_sha384_matches_readme_pin() -> None:
     )
 
 
+#: The first-party ``dashboard-chart.js`` SHA-384 (base64). This file is NOT a
+#: vendored third-party library — it is authored in this repository — but it is
+#: pinned in the same SHA-384 table because byte-stability discipline applies
+#: equally to first-party files at this trust boundary. The "supply chain" for
+#: a first-party file is git history; the pin ensures every intentional edit
+#: must update both the README pin table AND this constant in the same commit,
+#: making silent byte changes impossible. A re-vendor on a third-party file is
+#: a vendoring event; a re-pin on this file is a code-review event.
+_DASHBOARD_CHART_JS_SHA384_PIN = "TijWmc6daXMgcyjeViDAtsN/2Wzhrr7KpGjY6FfM1Ht2kAZvteerwGa9AWW7aEvc"
+
+
+def test_static_dashboard_chart_asset_is_served() -> None:
+    """The first-party ``dashboard-chart.js`` is served from the static mount.
+
+    Mirrors the htmx + Chart.js static-mount tests verbatim — the same shape,
+    the next file. The init script lives at ``/static/dashboard-chart.js`` and
+    the shell head loads it as a ``<script src="...">`` tag (see
+    test_render_live_shell_html_includes_dashboard_chart_init_script_tag in
+    test_telemetry.py). A static-mount regression would break the chart's
+    visual layer silently — the page would render the loading state forever
+    with no actionable browser-console message — so a direct served-by-the-app
+    check is the cleanest guard.
+    """
+    app = create_app(port=8765)
+    client = TestClient(app)
+    r = client.get("/static/dashboard-chart.js", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+    # Pin the recognisable banner phrase — a "served some random JS at this
+    # path" regression reads obvious in the failure output. The SHA-384 guard
+    # below catches a backdoored swap-in with a faked banner.
+    assert "dashboard-chart.js" in r.text[:512].lower()
+    # MIME contract: same browser-execution requirement as for htmx/Chart.js
+    # (REV-20260608-022723 qa F2 fold) — a ``text/plain`` regression would
+    # pass the banner check but break the ``<script src=...>`` load.
+    assert "javascript" in r.headers.get("content-type", "").lower(), (
+        f"static dashboard-chart asset served with non-JavaScript content-type: "
+        f"{r.headers.get('content-type')!r}"
+    )
+
+
+@pytest.mark.regression
+def test_vendored_dashboard_chart_sha384_matches_readme_pin() -> None:
+    """Regression (Phase 2 step 4): the first-party init script's integrity is machine-verified.
+
+    Mirrors :func:`test_vendored_chartjs_sha384_matches_readme_pin` for the
+    first-party ``dashboard-chart.js`` file. A silent byte change (intentional
+    or otherwise) that does not also update the README pin AND
+    :data:`_DASHBOARD_CHART_JS_SHA384_PIN` fails this immediately.
+
+    Unlike the third-party assets, every intentional edit on this file SHOULD
+    trigger a pin update — that is the discipline (every code change is a
+    review event by definition). A drift between the README pin and the
+    module-level constant is the regression this guard catches.
+    """
+    import base64
+    import hashlib
+
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    js_path = STATIC_DIR / "dashboard-chart.js"
+    assert js_path.is_file(), f"first-party init script missing at {js_path}"
+    digest = hashlib.sha384(js_path.read_bytes()).digest()
+    computed = base64.b64encode(digest).decode("ascii")
+    assert computed == _DASHBOARD_CHART_JS_SHA384_PIN, (
+        "dashboard-chart.js SHA-384 does not match the pin in "
+        "src/telemetry/static/README.md — every intentional edit must "
+        "re-pin BOTH the README table AND _DASHBOARD_CHART_JS_SHA384_PIN "
+        "in the same commit"
+    )
+    readme_pin = _read_sha384_pin_from_readme("dashboard-chart.js")
+    assert _DASHBOARD_CHART_JS_SHA384_PIN == readme_pin, (
+        "test constant _DASHBOARD_CHART_JS_SHA384_PIN diverged from "
+        "README pin table — update both in lockstep on every edit"
+    )
+
+
+#: The four hex literals duplicated between src/telemetry/dashboard.py's
+#: ``_CSS`` ``:root`` variables and src/telemetry/static/dashboard-chart.js's
+#: ``COLOR_*`` constants. The Python side renders the static tile chrome;
+#: the JS side renders the Chart.js graphics — keeping them visually
+#: identical requires the same palette on both sides. Arch F1 fold from
+#: REV-20260608-042729 closes the silent-drift door without forcing a
+#: build-step abstraction.
+_SHARED_PALETTE_HEX_LITERALS = (
+    "#58a6ff",  # --accent  / COLOR_ACCENT — priced line, headlines, links
+    "#8b949e",  # --muted   / COLOR_MUTED  — sub copy, uncosted markers
+    "#e6edf3",  # --ink     / COLOR_INK    — primary text, legend labels
+    "#30363d",  # --line    / COLOR_LINE   — borders, axis grid
+)
+
+
+@pytest.mark.regression
+def test_dashboard_chart_palette_literals_are_synchronised_with_python_css() -> None:
+    """Regression (arch F1 from REV-20260608-042729): palette hex literals appear
+    in BOTH src/telemetry/dashboard.py and src/telemetry/static/dashboard-chart.js.
+
+    The Python ``_CSS`` ``:root`` block and the JS ``COLOR_*`` constants
+    today carry the same four hex literals (the JS comment says "kept in
+    sync by code review"). A future palette refresh that touches only one
+    file leaves the chart graphics visually divergent from the surrounding
+    tile chrome — a silent failure mode that may persist for many sessions
+    before anyone notices. This regression guard makes any one-sided edit
+    fail CI: if you change the palette, you change BOTH files.
+
+    The longer-term fix (architecture-consultant F1 recommendation b) is
+    to have the JS read computed CSS custom-property values via
+    ``getComputedStyle(documentElement).getPropertyValue('--accent')`` so
+    Python ``_CSS`` is the single source of truth. Until that refactor
+    lands, this byte-level pin is the door-closing intervention.
+    """
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    py_path = Path("src/telemetry/dashboard.py")
+    js_path = STATIC_DIR / "dashboard-chart.js"
+    py_text = py_path.read_text(encoding="utf-8")
+    js_text = js_path.read_text(encoding="utf-8")
+
+    for hex_literal in _SHARED_PALETTE_HEX_LITERALS:
+        assert hex_literal in py_text, (
+            f"palette literal {hex_literal!r} missing from "
+            f"src/telemetry/dashboard.py — the JS chart and the Python "
+            f"static tiles must share the same palette; this is the door "
+            f"closing on silent palette drift between the two render layers"
+        )
+        assert hex_literal in js_text, (
+            f"palette literal {hex_literal!r} missing from "
+            f"src/telemetry/static/dashboard-chart.js — the JS chart and "
+            f"the Python static tiles must share the same palette; if "
+            f"this is intentional, replace the byte-level pin with a "
+            f"getComputedStyle('--accent') call so the Python _CSS is the "
+            f"single source of truth (arch F1 recommendation b)"
+        )
+
+
+@pytest.mark.regression
+def test_dashboard_chart_init_script_carries_load_bearing_integration_points() -> None:
+    """Regression (Phase 2 step 4): the init script's integration seams are pinned.
+
+    The init script is JS, not Python, so it does not run inside the Python
+    test suite — but the load-bearing strings that bind it to the renderer
+    (canvas id, data-block id, render-target class) and the htmx swap seam
+    must survive accidental removal. These strings are the API between the
+    Python renderer in src/telemetry/dashboard.py and this JS file; a silent
+    drift would break the chart without breaking any single-side test.
+
+    The four anchors checked here all have a single source of truth on the
+    Python side:
+      - ``per-turn-cost-chart`` — _PER_TURN_COST_CANVAS_ID
+      - ``per-turn-cost-data`` — _PER_TURN_COST_DATA_ELEMENT_ID
+      - ``chart-rendering-target`` — _PER_TURN_COST_RENDER_TARGET_CLASS
+      - ``htmx:afterSwap`` — the htmx polling re-render seam
+      - ``Chart`` — the Chart.js global (the IIFE early-returns if undefined)
+
+    A silent edit that drops any of these breaks the chart visual layer
+    while the Python-side tests continue to pass.
+    """
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    js_path = STATIC_DIR / "dashboard-chart.js"
+    js_text = js_path.read_text(encoding="utf-8")
+
+    # Canvas + data-block + wrapper integration points (3 of 3 must survive).
+    assert "per-turn-cost-chart" in js_text, (
+        "init script lost the canvas id — it must match "
+        "_PER_TURN_COST_CANVAS_ID in src/telemetry/dashboard.py"
+    )
+    assert "per-turn-cost-data" in js_text, (
+        "init script lost the data-block id — it must match "
+        "_PER_TURN_COST_DATA_ELEMENT_ID in src/telemetry/dashboard.py"
+    )
+    assert "chart-rendering-target" in js_text, (
+        "init script lost the render-target wrapper class — it must match "
+        "_PER_TURN_COST_RENDER_TARGET_CLASS in src/telemetry/dashboard.py"
+    )
+    # htmx re-render seam — the live fragment is outerHTML-swapped every ~3s,
+    # destroying the previous canvas; the script must re-init on each swap.
+    assert "htmx:afterSwap" in js_text, (
+        "init script lost the htmx swap event listener — the chart will "
+        "not survive the 3-second poll-and-replace cycle without it"
+    )
+    # Chart.js global is the runtime dependency.
+    assert "Chart" in js_text
+    # IIFE wrapper — pin the load-bearing 'no global pollution' contract.
+    # A future refactor that drops the IIFE and leaks `chartInstance` onto
+    # the window would silently change the security posture of the script.
+    assert "(function ()" in js_text or "(function()" in js_text, (
+        "init script lost its IIFE wrapper — it must not leak globals"
+    )
+
+
 @pytest.mark.regression
 def test_chartjs_license_companion_file_present() -> None:
     """Regression (security F1 fold): MIT license-text companion is shipped alongside the asset.

@@ -3749,14 +3749,19 @@ def test_render_live_fragment_composes_runway_then_lanes_then_stream_then_chart(
     assert runway_idx < lanes_idx < stream_idx < chart_idx
     # All four panels are populated — no absence tiles for this case.
     assert 'data-state="absent"' not in html
-    # Three DATA panels (runway / lanes / stream) + ONE LOADING panel (chart
-    # — ux F1 interim state until the Phase 2 init script lands and flips it).
-    # When step 4 ships, this becomes ``count('data-state="data"') == 4`` and
-    # the loading count drops to zero. Pinning the asymmetric split here keeps
-    # the interim contract honest: if a future regression accidentally
-    # promoted the chart back to data-state without the init script, the
-    # blank-canvas defect (ux F1) would recur, and this assertion would
-    # fail BEFORE the visual regression hit a user.
+    # Three DATA panels (runway / lanes / stream) + ONE LOADING panel (chart).
+    # **This is permanent at the Python render layer** — the per-turn cost
+    # chart's ``data-state="loading"`` is the wire format the renderer emits;
+    # the init script at ``/static/dashboard-chart.js`` flips it to
+    # ``"data"`` at RUNTIME on first successful draw (not testable from
+    # Python — runtime DOM mutation). Do NOT change to ``== 4`` without
+    # also changing the renderer to emit ``tile--data`` directly; that
+    # change is blocked by the regression-ledger entry from
+    # REV-20260608-025749 ("Do not promote the chart back to
+    # ``data-state='data'`` without ALSO removing the hidden attribute on
+    # the render-target wrapper and shipping the init script in the same
+    # commit"). Step 4 shipped the init script in the same commit; the
+    # ledger invariant remains in force.
     assert html.count('data-state="data"') == 3
     assert html.count('data-state="loading"') == 1
 
@@ -3852,10 +3857,14 @@ def test_render_per_turn_cost_chart_panel_emits_canvas_and_data_block_when_popul
         LiveCostEvent(timestamp=base, lane_id="main", kind="turn", cost_usd=0.0123, tokens=400),
     )
     panel = _render_per_turn_cost_chart_panel(events)
-    # ux F1 interim state (REV-20260608-025749 fold): tile--loading +
-    # data-state="loading" until the Phase 2 init script lands and flips the
-    # tile. Guards the gatekeeper from a blank canvas reading as a broken
-    # component during the interim window between this slice and step 4.
+    # ux F1 (REV-20260608-025749 fold): tile--loading + data-state="loading"
+    # is the wire format the Python renderer emits PERMANENTLY — the init
+    # script at /static/dashboard-chart.js flips it to ``"data"`` at runtime
+    # on first successful draw (the runtime mutation is not testable from
+    # Python; the load-order regression test in test_telemetry.py pins the
+    # init-script tag is wired into the shell head). Guards the gatekeeper
+    # from a blank canvas during the brief window before the first
+    # ``htmx:afterSwap`` event fires.
     assert 'data-state="loading"' in panel
     assert "tile--loading" in panel
     assert 'data-state="data"' not in panel
@@ -4153,6 +4162,44 @@ def test_render_live_shell_html_includes_chartjs_script_tag() -> None:
     chart_idx = shell.index("/static/chart.umd.min.js")
     style_idx = shell.index("<style>")
     assert chart_idx < style_idx
+
+
+@pytest.mark.regression
+def test_render_live_shell_html_includes_dashboard_chart_init_script_tag() -> None:
+    """Phase 2 step 4 (CSP fork option a — VENDORED-INIT): the shell wires the
+    first-party ``dashboard-chart.js`` init script after the Chart.js library.
+
+    Load-order contract (load-bearing): with ``defer``, browsers execute scripts
+    in document order, so the Chart global is guaranteed defined when the init
+    script's IIFE runs. A future regression that reorders these tags (or drops
+    ``defer``) breaks that guarantee silently — Chart-undefined at IIFE time
+    causes the init script's early return, the chart stays in the loading
+    state forever, and the static fragment tests still pass.
+
+    CSP contract (load-bearing): the script lives under the existing
+    ``script-src 'self'`` policy as a same-origin asset; this test pinning the
+    ``src="/static/dashboard-chart.js"`` path is part of how we keep the CSP
+    decision (option a) honoured — a future move to inline init code would
+    fail this assertion AND would require a CSP relaxation review (option b).
+    """
+    shell = render_live_shell_html(generated_label="2026-06-08 12:00 UTC")
+    # Pinned to the load form so a future change to defer/async/non-defer or
+    # a path drift fails the test.
+    assert '<script src="/static/dashboard-chart.js" defer></script>' in shell
+    # Load order: htmx → Chart.js → dashboard-chart.js (the init depends on
+    # both Chart.js and the htmx event seam).
+    htmx_idx = shell.index("/static/htmx.min.js")
+    chart_idx = shell.index("/static/chart.umd.min.js")
+    init_idx = shell.index("/static/dashboard-chart.js")
+    assert htmx_idx < chart_idx < init_idx, (
+        "shell script tag order must be htmx → chart.umd → dashboard-chart "
+        "so 'defer' guarantees Chart and htmx are both defined when the "
+        "init script's IIFE runs"
+    )
+    # The trio sits in the <head>, before the inline <style> block — the
+    # render order matches the existing chartjs shell guard above.
+    style_idx = shell.index("<style>")
+    assert init_idx < style_idx
 
 
 @pytest.mark.regression

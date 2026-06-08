@@ -859,20 +859,24 @@ def _render_live_stream_panel(events: tuple[LiveCostEvent, ...]) -> str:
 
 #: Data-block element id for the per-turn cost chart's JSON payload.
 #:
-#: The Chart.js init script (Phase 2 next slice, pending the CSP fork) will look
-#: up this id with ``document.getElementById`` and parse its ``textContent`` as
-#: JSON. Pulling the id out as a module constant keeps the renderer + the future
-#: init script + the regression tests pointing at one source of truth.
+#: The Phase 2 init script at ``/static/dashboard-chart.js`` looks this id up
+#: with ``document.getElementById`` and parses its ``textContent`` as JSON.
+#: Pulling the id out as a module constant keeps the renderer + the init
+#: script + the regression tests pointing at one source of truth (the
+#: integration-points regression test in tests/test_dashboard_server.py
+#: asserts the literal string appears in the JS file).
 _PER_TURN_COST_DATA_ELEMENT_ID = "per-turn-cost-data"
 
 #: Canvas element id for the per-turn cost chart.
 _PER_TURN_COST_CANVAS_ID = "per-turn-cost-chart"
 
-#: Wrapper element class for the canvas + data block. The Phase 2 init script
-#: removes the ``hidden`` attribute on this wrapper + flips the parent tile's
-#: ``data-state`` from ``"loading"`` to ``"data"`` (and removes the
-#: ``tile--loading`` class) once the chart is drawn. Until then the wrapper
-#: is HTML5-``hidden`` so the user sees the loading copy, not a blank canvas.
+#: Wrapper element class for the canvas + data block. The init script at
+#: ``/static/dashboard-chart.js`` removes the ``hidden`` attribute on this
+#: wrapper + flips the parent tile's ``data-state`` from ``"loading"`` to
+#: ``"data"`` (and removes the ``tile--loading`` class) on first successful
+#: draw. Until then the wrapper is HTML5-``hidden`` so the user sees the
+#: loading copy, not a blank canvas — the brief visible window for this
+#: state is between page load and the first ``htmx:afterSwap`` event.
 _PER_TURN_COST_RENDER_TARGET_CLASS = "chart-rendering-target"
 
 
@@ -889,19 +893,23 @@ class _ChartPoint(TypedDict):
     * ``uncosted`` — ``True`` iff the originating turn's model tier was unknown
       or unpriced; ``cost`` is then ``0.0`` because the tier is unpriced, NOT
       because the turn was free (arch F1 fold from REV-20260608-025749). The
-      Phase 2 init script consumes this to mark uncosted turns distinctly
-      (e.g. dashed line / different marker) so the chart preserves the
+      init script at ``/static/dashboard-chart.js`` routes priced and uncosted
+      turns into two Chart.js datasets so uncosted turns appear as distinct
+      cross markers at the y=0 baseline (no connecting line), preserving the
       "uncosted ≠ \\$0" honesty discipline of the static cost report
-      (ADR-0020). Always ``False`` for ``"failure"`` events, which the
-      renderer filters out before the payload is built.
+      (ADR-0020) — uncosted points are MARKED, not HIDDEN. Always ``False``
+      for ``"failure"`` events, which the renderer filters out before the
+      payload is built.
 
     **Schema evolution rule:** adding a field is non-breaking IFF the init script
     treats unknown fields as opaque. Removing or renaming an existing field is
     a breaking change that requires updating the init script in the same commit.
-    (The Phase 2 init script that consumes this payload MUST treat unknown
-    fields as opaque so the IFF condition is satisfied — this is a forward
-    obligation on the init script slice, currently CSP-blocked. Until that
-    slice lands the rule is vacuously satisfied because no JS consumer exists.)
+    The init script at ``/static/dashboard-chart.js`` honors this contract:
+    it reads only ``t``, ``cost``, and ``uncosted`` (``lane_id`` is part of
+    the payload but the JS consumer ignores it — it stays in the JSON because
+    the live-stream panel surfaces it elsewhere and consistency of the payload
+    shape across panels matters more than minimising JS-side use). A future
+    5th field is therefore non-breaking.
     """
 
     t: str
@@ -920,15 +928,21 @@ def _render_per_turn_cost_chart_panel(events: tuple[LiveCostEvent, ...]) -> str:
     travels inline with the fragment. The Chart.js init that consumes this
     payload lands in a separate slice (the CSP design fork).
 
-    **Interim visual state** (ux F1 from REV-20260608-025749 fold): until the
-    Phase 2 init script ships, the data-present path renders as ``tile--loading``
-    with the canvas + data block in an HTML5-``hidden`` wrapper — NOT as a
-    bare ``tile--data`` panel with a visible-but-blank canvas, which would read
-    as a broken component. The hidden wrapper preserves the integration surface
-    for the future init script (``document.getElementById`` still finds the
-    canvas + data block); the init script removes the ``hidden`` attribute +
-    flips the tile's ``data-state`` to ``"data"`` + drops the ``tile--loading``
-    class when it draws the chart.
+    **Interim visual state** (ux F1 from REV-20260608-025749): the Python
+    renderer emits the data-present path as ``tile--loading`` with the canvas
+    + data block in an HTML5-``hidden`` wrapper. The first-party init script
+    at ``/static/dashboard-chart.js`` (Phase 2 step 4 — landed in the same
+    cohort) is what removes the ``hidden`` attribute + flips the tile's
+    ``data-state`` to ``"data"`` + drops the ``tile--loading`` class on first
+    successful draw. The wrapper-hidden + loading-pulse state is therefore
+    only visible during the brief window before the first ``htmx:afterSwap``
+    has fired (and again on any rare frame where the JS bails — Chart global
+    unavailable, no payload, JSON parse failure — in which case the loading
+    copy is the honest fallback). Server-side tests still assert the
+    ``tile--loading`` emission because the Python renderer is what writes
+    that markup; the JS-side reveal is exercised by the integration tests
+    that pin the init script's `<script src=...>` tag is wired into the
+    shell head AFTER the Chart.js library tag (load order matters).
 
     Honesty contract (spec R3/R3a / C4): empty turn-events render the distinct
     honest-absence tile, NEVER an empty chart with fabricated axes. The
@@ -976,7 +990,21 @@ def _render_per_turn_cost_chart_panel(events: tuple[LiveCostEvent, ...]) -> str:
         }
         for ev in turn_events
     ]
-    payload = json.dumps(points, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
+    # security F1 fold (REV-20260608-042729): the ``</`` -> ``<\/`` escape
+    # closes the ``</script>`` close-tag injection vector; the ``<!--`` /
+    # ``-->`` escapes close the HTML5 raw-text-mode comment vector (an HTML
+    # parser handling a ``<!--...-->`` sequence inside a ``<script>`` body
+    # can swallow the intervening bytes, breaking ``JSON.parse``). All three
+    # escaped sequences are valid JSON per RFC 8259 §7 and round-trip through
+    # ``JSON.parse`` unchanged. The Rule-of-Three pin still stands: when a
+    # second consumer of this pattern lands, extract a ``_json_in_script``
+    # helper carrying all three replacements.
+    payload = (
+        json.dumps(points, separators=(",", ":"), allow_nan=False)
+        .replace("</", "<\\/")
+        .replace("<!--", "<\\!--")
+        .replace("-->", "--\\>")
+    )
     aria_label = (
         "Per-turn cost over time — line chart of API-equivalent USD per "
         "priced assistant turn in the recent event window."
@@ -1026,6 +1054,16 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
     a JSON literal (see :func:`_render_per_turn_cost_chart_panel`), so the shell
     itself carries no chart-specific markup beyond the script-tag load.
 
+    The first-party ``dashboard-chart.js`` init script is loaded ``defer``
+    AFTER the Chart.js library tag: with ``defer``, the browser executes the
+    two scripts in document order so the ``Chart`` global is guaranteed
+    available when the init script's IIFE runs (CSP fork DECIDED 2026-06-07,
+    option (a) VENDORED-INIT — same-origin under the existing
+    ``script-src 'self'`` policy, NO ``'unsafe-inline'`` relaxation). The
+    script listens for ``htmx:afterSwap`` on ``#live-section`` so it
+    re-initialises the chart on every 3-second poll (the swap destroys the
+    previous canvas DOM node).
+
     **CSP scope note** (security F2 from REV-20260608-025749 fold): the shell's
     ``Content-Security-Policy`` header (set by ``ContentSecurityPolicyMiddleware``
     in ``scripts/telemetry/dashboard_server.py``) is the OPERATIVE policy for all
@@ -1058,6 +1096,7 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
         "<title>Telemetry Dashboard (live)</title>"
         '<script src="/static/htmx.min.js" defer></script>'
         '<script src="/static/chart.umd.min.js" defer></script>'
+        '<script src="/static/dashboard-chart.js" defer></script>'
         f"<style>{_CSS}{_LIVE_CSS}</style></head><body>"
         "<header><h1>Telemetry &amp; Oversight — live</h1>"
         f'<div class="gen">{_esc(generated_label)}</div>'
