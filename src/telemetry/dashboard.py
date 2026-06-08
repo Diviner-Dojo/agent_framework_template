@@ -181,8 +181,13 @@ def _code(text: str) -> str:
     return f"<code>{_esc(text)}</code>"
 
 
-def _otel_link(label: str = "enable OTel") -> str:
-    """Render the OTel docs URL as a live new-tab hyperlink (spec R3a/ADVISORY 1)."""
+def _otel_link(label: str = "enable OpenTelemetry (opens in new tab)") -> str:
+    """Render the OTel docs URL as a live new-tab hyperlink (spec R3a/ADVISORY 1).
+
+    The default label spells out "OpenTelemetry" and announces the new-tab
+    behavior so the gatekeeper knows the context shift before clicking
+    (ux FRICTION-6 fold from REV-20260607-200447).
+    """
     return f'<a href="{_esc(OTEL_DOCS_URL)}" target="_blank" rel="noopener">{_esc(label)}</a>'
 
 
@@ -830,7 +835,10 @@ def _render_live_stream_panel(events: tuple[LiveCostEvent, ...]) -> str:
     return (
         '<div class="tile tile--data tile--wide" data-state="data">'
         "<h3>Live stream</h3>"
-        '<p class="legend">Most recent first; capped at the latest 100 events.</p>'
+        '<p class="legend">Most recent first; capped at the latest 100 events. '
+        "<strong>Kind:</strong> <code>turn</code> = assistant turn "
+        "(cost shown when the model tier is priced; 0.0000 when uncosted); "
+        "<code>failure</code> = error or non-2xx event.</p>"
         '<table class="data-table">'
         "<thead><tr><th>Time</th><th>Lane</th><th>Kind</th>"
         '<th class="num">Cost</th><th class="num">Tokens</th></tr></thead>'

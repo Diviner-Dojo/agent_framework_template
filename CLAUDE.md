@@ -111,3 +111,4 @@ Agent/rule/philosophy changes follow: facilitator observation → proposal → *
 - **Error handling** (AppError hierarchy) → `python-project-patterns` skill
 - **External project analysis** → `/analyze-project`, `/discover-projects`; 5-dimension rubric (≥20/25); Rule of Three in `memory/lessons/adoption-log.md`
 - **Push notifications setup** → `.env.example` (`NTFY_TOPIC`); `notifying-the-developer` skill
+- **Telemetry & Oversight** (ADR-0020) → cost (A1), failure signals (A2), value-vs-subscription (A3); Layer B live dashboard daemon → `scripts/telemetry/dashboard_server.py`; pure model + renderers → `src/telemetry/`

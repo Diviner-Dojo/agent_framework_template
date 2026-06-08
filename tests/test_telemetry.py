@@ -2105,7 +2105,10 @@ def test_absence_otel_not_active_renders_live_link(pricing) -> None:
     html = render_dashboard_html(_data(pricing_check=_div_otel_absent()))
     assert 'href="https://code.claude.com/docs/en/monitoring-usage"' in html
     assert 'target="_blank"' in html
-    assert "enable OTel" in html
+    # ux FRICTION-6 fold (REV-20260607-200447): the default OTel link label
+    # spells out "OpenTelemetry" and announces the new-tab behaviour so the
+    # gatekeeper knows the context shift before clicking.
+    assert "enable OpenTelemetry (opens in new tab)" in html
 
 
 def test_absence_attribution_unavailable_renders_absence_not_zero(pricing) -> None:
@@ -3010,3 +3013,48 @@ def test_live_css_carries_reduced_motion_guard() -> None:
     html = render_live_shell_html()
     assert "@keyframes tile-loading-pulse" in html
     assert "prefers-reduced-motion: reduce" in html
+
+
+@pytest.mark.regression
+def test_live_stream_panel_carries_kind_legend(pricing: PricingTable) -> None:
+    """ux FRICTION-5 fold (REV-20260607-200447 → session 10e): the Live stream
+    panel explains its raw ``Kind`` column values inline so the gatekeeper does
+    not have to infer what ``turn`` / ``failure`` mean from context.
+
+    Surface-level guard. The assertions pin:
+    - the "Kind:" label is visible (intent over markup — a future restyle from
+      ``<strong>`` to ``<span class="legend-label">`` is fine);
+    - each enum token is wrapped in ``<code>`` (load-bearing for the visual
+      distinction between enum value and gloss prose);
+    - each gloss carries the load-bearing nuance: ``turn`` notes the
+      uncosted-tier case (so the legend never claims every ``turn`` row is
+      priced — the fold renderer appends uncosted turns to ``recent_events``
+      too, with ``cost_usd=0.0``); ``failure`` cites the error class.
+    A regression that removed the legend, renamed the tokens, dropped the
+    uncosted-nuance phrasing, or stripped the ``<code>`` spans would fail.
+
+    We route through ``render_live_fragment`` (not the private
+    ``_render_live_stream_panel``) so the test also catches a transport-layer
+    swap that bypassed the renderer entirely.
+    """
+    # Emit a real priced turn so the live-stream panel is in the DATA state
+    # (an empty stream would render the absence tile instead of the legend).
+    state = fold_events(
+        [_msg_event(0, "main", "claude-opus-4-7", input_tokens=200, output_tokens=400)],
+        pricing,
+    )
+    html = render_live_fragment(state)
+    # Intent over markup: "Kind:" must appear, but the specific element is not
+    # part of the contract (qa F1 fold from this review).
+    assert "Kind:" in html
+    # Enum tokens must render as inline code so the table-row "Kind" cell
+    # values are visually distinct from the surrounding gloss prose.
+    assert "<code>turn</code>" in html
+    assert "<code>failure</code>" in html
+    # Glosses must carry the load-bearing nuance.
+    assert "assistant turn" in html
+    # The uncosted-tier note is what makes the gloss honest for $0.0000 rows
+    # (ux F1 fold from this review — without this clause the legend would
+    # claim every "turn" row is priced, which is not what the fold model emits).
+    assert "uncosted" in html
+    assert "error or non-2xx event" in html
