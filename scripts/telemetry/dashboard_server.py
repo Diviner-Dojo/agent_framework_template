@@ -88,6 +88,28 @@ DEFAULT_PORT = 8765
 #: F5 — a client-controlled interval would let a tab burn CPU on the daemon).
 LIVE_POLL_INTERVAL_S = 3.0
 
+#: Defense-in-depth Content-Security-Policy applied to every response (security
+#: F2 / REV-20260607-200447). The dashboard is loopback-only and routes are
+#: read-only, so this is genuinely defense-in-depth — a future contributor who
+#: inlines a CDN ``<script>`` or stores a transcript-shaped string into an
+#: ``onclick`` attribute is denied by the browser even if a ``_esc`` regression
+#: lands. Inline ``<style>`` blocks + the ``style="width:..."`` runway bar need
+#: ``'unsafe-inline'`` for style-src; scripts are vendored at ``/static/`` so
+#: ``script-src 'self'`` suffices and inline scripts are intentionally banned.
+#:
+#: **Scope of the ``style-src 'unsafe-inline'`` permission** (security F3 note,
+#: REV at session 10g): the inline-style attribute surface is currently bounded
+#: to ONE site — ``src/telemetry/dashboard.py`` line ~709's runway-bar
+#: ``style="width:{_esc(bar_width)}%"`` — and the value is ``max(0.0, min(100.0,
+#: runway.fill_pct))``, a Python float numerically clamped to ``[0, 100]``
+#: BEFORE ``_esc``. That means the inline-style permission cannot carry a
+#: CSS-injection vector today (no string content, no ``}`` / ``;`` escape).
+#: A future ``style=...`` attribute whose value is a STRING field (lane id,
+#: agent name, model name, etc.) MUST go through a CSS-aware sanitizer, not
+#: just ``_esc`` — ``html.escape`` does not neutralise CSS-context injection.
+#: Adding such a field without that review is a regression.
+CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'"
+
 #: Default "look back this far" window for the live fold (independent-perspective
 #: Phase 1 advisory). Without this, each poll walks every session JSONL Claude
 #: Code ever wrote for the project — on this repo's own ~94 MB transcript root
@@ -130,6 +152,32 @@ class HostHeaderGuard(BaseHTTPMiddleware):
         if host_header not in self._allowed:
             return PlainTextResponse("Bad host", status_code=400)
         return await call_next(request)
+
+
+class ContentSecurityPolicyMiddleware(BaseHTTPMiddleware):
+    """Stamp a defense-in-depth ``Content-Security-Policy`` header on every response.
+
+    Registered LAST in :func:`create_app` so it is the outermost middleware
+    (Starlette runs added middleware in LIFO order on the response path), which
+    means it ALSO stamps the header on the 400 :class:`HostHeaderGuard`
+    rejection and on every error fragment — a future regression that drops
+    inline-script protection on an error page is caught.
+
+    The policy is read from :data:`CONTENT_SECURITY_POLICY` so test code can
+    pin the exact string in one place. The header is set unconditionally
+    (overwrites any upstream value) — there is no scenario in which a route
+    handler should override the policy, so the simpler write-always semantics
+    are correct here.
+    """
+
+    def __init__(self, app: Any, *, policy: str) -> None:
+        super().__init__(app)
+        self._policy = policy
+
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = self._policy
+        return response
 
 
 def _allowed_hosts(port: int) -> set[str]:
@@ -350,6 +398,14 @@ def create_app(
     )
     # Host-header guard — blunts DNS-rebinding / localhost-CSRF (R8a / AC2 plus).
     app.add_middleware(HostHeaderGuard, allowed_hosts=_allowed_hosts(port))
+    # Defense-in-depth CSP header (security F2 / REV-20260607-200447). Added
+    # LAST so it is the OUTERMOST middleware in Starlette's LIFO request stack
+    # — meaning it stamps the header on EVERY response, including the 400 the
+    # HostHeaderGuard returns on a bad Host and the 500/503 error fragments.
+    app.add_middleware(
+        ContentSecurityPolicyMiddleware,
+        policy=CONTENT_SECURITY_POLICY,
+    )
 
     # Vendored frontend assets (R11a / AC6). Mounted only if present so the
     # app is still constructable in a test environment without the directory.

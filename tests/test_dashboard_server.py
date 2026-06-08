@@ -54,7 +54,9 @@ from scripts import ingest_token_usage as itu
 from scripts.init_db import init_db
 from scripts.telemetry import dashboard_server
 from scripts.telemetry.dashboard_server import (
+    CONTENT_SECURITY_POLICY,
     HARDCODED_HOST,
+    ContentSecurityPolicyMiddleware,
     HostHeaderGuard,
     NonLoopbackBindError,
     create_app,
@@ -787,6 +789,141 @@ def test_host_header_guard_is_middleware_layer() -> None:
     assert "HostHeaderGuard" in names, f"HostHeaderGuard missing from middleware: {names}"
     # Smoke check that the class is the one we exported.
     assert HostHeaderGuard.__name__ == "HostHeaderGuard"
+
+
+# --------------------------------------------------------------------------- #
+# security F2 (REV-20260607-200447) — Content-Security-Policy defense-in-depth
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.regression
+def test_csp_policy_string_pins_documented_policy() -> None:
+    """Regression (security F2 / REV-20260607-200447): the policy string equals
+    the documented advisory value, exactly.
+
+    The advisory specified the policy literal; pinning it in one place keeps
+    every reviewer working from the same value. A future relaxation (e.g.
+    adding ``'unsafe-inline'`` to ``script-src`` to enable a CDN, or dropping
+    ``script-src`` entirely so it falls back to ``default-src``) is a code-
+    review event — this test fails on any drift.
+    """
+    assert (
+        CONTENT_SECURITY_POLICY
+        == "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'"
+    )
+
+
+@pytest.mark.regression
+def test_csp_header_present_on_shell_response(tmp_path: Path) -> None:
+    """Regression (security F2): the shell HTML response carries a CSP header.
+
+    The 200 path is the one a developer's browser actually renders, so it is
+    the primary user-facing surface for the policy. A future ``response_class
+    = HTMLResponse`` route that bypasses middleware (e.g. via a direct
+    ``Response`` return that overwrites headers) would fail this guard.
+    """
+    db = _empty_db(tmp_path)
+    app = create_app(db_path=db, project_root=tmp_path, port=8765)
+    client = TestClient(app)
+    r = client.get("/", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+    assert r.headers.get("content-security-policy") == CONTENT_SECURITY_POLICY
+
+
+@pytest.mark.regression
+def test_csp_header_present_on_host_header_400_rejection() -> None:
+    """Regression (security F2): CSP is stamped on the ``HostHeaderGuard`` 400.
+
+    The 400 is the error path most likely to leak a target's HTML if a future
+    edit echoed the bad ``Host`` value (which ``test_host_header_guard_rejects_
+    evil_host`` independently bans) — so the defense-in-depth policy MUST
+    apply there too. Asserts the LIFO order ``CSP > HostHeaderGuard > CORS``
+    is preserved (CSP added last in ``create_app`` => outermost on response).
+    """
+    app = create_app(port=8765)
+    client = TestClient(app)
+    r = client.get("/", headers={"host": "evil.example.com"})
+    assert r.status_code == 400
+    assert r.headers.get("content-security-policy") == CONTENT_SECURITY_POLICY
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "route,raiser,expected_status",
+    [
+        # Live fragment 500 path — RuntimeError out of fold_events hits the bare
+        # ``except Exception`` branch.
+        ("/fragments/live", "fold_events", 500),
+        # Retrospective 503 path — sqlite3.OperationalError hits the explicit
+        # OperationalError branch (DB-not-ready). qa F2 (REV at session 10g):
+        # paired with the live 500 path, this parametrize covers BOTH htmx
+        # swap-target error fragments so a future refactor that extracts either
+        # route into a sub-app would fail CSP coverage on the extracted half.
+        ("/fragments/retrospective", "assemble_dashboard_data", 503),
+    ],
+)
+def test_csp_header_present_on_fragment_error_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    raiser: str,
+    expected_status: int,
+) -> None:
+    """Regression (security F2 / qa F2 follow-on): CSP is stamped on every error fragment.
+
+    Both ``/fragments/live`` (500) and ``/fragments/retrospective`` (503) are
+    HTML fragments htmx swaps into the DOM (the shell sets
+    ``hx-swap-error="outerHTML"``), so an injected transcript-shaped failure
+    path must remain CSP-bounded even on the error branch. The 503 case
+    exercises the explicit ``sqlite3.OperationalError`` branch; the 500 case
+    exercises the bare ``except Exception`` branch. Both must carry CSP.
+    """
+    db = _empty_db(tmp_path)
+
+    if expected_status == 503:
+
+        def _boom(*_a, **_kw):
+            raise sqlite3.OperationalError("simulated DB-not-ready")
+    else:
+
+        def _boom(*_a, **_kw):
+            raise RuntimeError("simulated fold/render failure")
+
+    monkeypatch.setattr(dashboard_server, raiser, _boom)
+
+    app = create_app(db_path=db, project_root=tmp_path, port=8765)
+    client = TestClient(app)
+    r = client.get(route, headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == expected_status
+    assert r.headers.get("content-security-policy") == CONTENT_SECURITY_POLICY
+
+
+@pytest.mark.regression
+def test_csp_middleware_is_outermost_in_user_middleware() -> None:
+    """The CSP middleware is the LAST added (= OUTERMOST on response).
+
+    Starlette runs ``user_middleware`` in LIFO order on the request and
+    reverse on the response, so the last-added middleware is the one that
+    stamps the final header. A future re-order that moved CSP earlier could
+    silently lose the header on a 400/500 path the CSP middleware no longer
+    wraps; this guard pins the relative position by class name AND object
+    identity (qa F1 fold: the bare ``__name__`` tautology was replaced with
+    ``cls is ContentSecurityPolicyMiddleware`` so a future move that, e.g.,
+    wrapped the class behind a decorator that preserves ``__name__`` but
+    changes identity is also caught).
+    """
+    app = create_app(port=8765)
+    middleware_specs = list(app.user_middleware)
+    names = [
+        (getattr(m, "cls", None).__name__ if hasattr(m, "cls") else "") for m in middleware_specs
+    ]
+    # Last-added middleware sits at index 0 (Starlette prepends adds).
+    assert names[0] == "ContentSecurityPolicyMiddleware", (
+        f"CSP must be the outermost user middleware; current order: {names}"
+    )
+    # Object-identity guard — catches a future move that swaps the import for
+    # a same-named shim. Tautology removed (qa F1 / REV at session 10g).
+    assert middleware_specs[0].cls is ContentSecurityPolicyMiddleware
 
 
 # --------------------------------------------------------------------------- #
