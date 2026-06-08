@@ -371,14 +371,20 @@ def test_lifespan_teardown_writes_no_files_in_tmp(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_dynamic_lane_fields_are_html_escaped(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_dynamic_lane_fields_are_html_escaped(tmp_path: Path) -> None:
     """A transcript-shaped value reaching the live fragment is HTML-escaped (AC6).
 
-    We monkeypatch ``_extract_live_events`` to inject a lane_id and agent_type
-    carrying ``<script>alert(1)</script>``; the rendered fragment must NOT
+    Injects an event whose ``lane_id`` / ``model`` / ``agent_type`` carry a
+    ``<script>alert(1)</script>`` payload via the arch F2 ``event_source``
+    constructor seam (REV-20260607-200447). The rendered fragment must NOT
     contain a literal ``<script>``.
+
+    Drives the seam directly (rather than monkeypatching
+    ``_extract_live_events``, which is how this test was written pre arch F2
+    fold) so the AC6 escape guard does not silently degrade if a future
+    refactor changes how ``_default_event_source`` resolves the disk-walk —
+    the explicit ``event_source=`` argument bypasses the default-seam path
+    entirely (qa F1 in-session fold of REV-20260608-020046).
     """
 
     from src.telemetry.live import LiveEvent
@@ -386,7 +392,7 @@ def test_dynamic_lane_fields_are_html_escaped(
     db = _empty_db(tmp_path)
     payload = "<script>alert(1)</script>"
 
-    def fake_events(*_args, **_kwargs):
+    def fake_events() -> list[LiveEvent]:
         return [
             LiveEvent(
                 kind="message",
@@ -399,9 +405,12 @@ def test_dynamic_lane_fields_are_html_escaped(
             )
         ]
 
-    monkeypatch.setattr(dashboard_server, "_extract_live_events", fake_events)
-
-    app = create_app(db_path=db, project_root=tmp_path, port=8765)
+    app = create_app(
+        db_path=db,
+        project_root=tmp_path,
+        port=8765,
+        event_source=fake_events,
+    )
     client = TestClient(app)
     r = client.get("/fragments/live", headers={"host": "127.0.0.1:8765"})
     assert r.status_code == 200
@@ -1450,4 +1459,134 @@ def test_parse_subagent_since_boundary_uses_strict_less_than(tmp_path: Path) -> 
     assert len(events) == 2, (
         "expected the equal-to-since and after-since events; the strict ``<`` "
         "contract excludes only the pre-since line"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# arch F2 (REV-20260607-200447) — event_source seam direct tests
+#
+# ``create_app`` accepts an ``event_source: Callable[[], list[LiveEvent]] | None``
+# constructor argument that the ``/fragments/live`` route consumes through
+# ``app.state.event_source()``. Phase 1's default — :func:`_default_event_source`
+# — re-walks recent transcripts each call; Phase 2's background watcher swaps
+# in via this constructor arg with no route-handler change. The tests below
+# pin the seam contract directly: (1) a custom ``event_source`` IS consumed by
+# the route (a regression that ignored the parameter would be invisible to the
+# existing transcript-wired tests), AND (2) the default falls back to the
+# lazy disk-walk through :func:`_extract_live_events` (paired guard so a
+# future refactor that dropped the default-binding silently degrades to a
+# no-op fold).
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.regression
+def test_create_app_uses_custom_event_source_when_provided(tmp_path: Path) -> None:
+    """Regression (arch F2 / REV-20260607-200447): a custom ``event_source``
+    callable passed to ``create_app`` IS what ``/fragments/live`` consumes,
+    not the default ``_extract_live_events`` disk-walk.
+
+    Phase 2's background watcher relies on this seam to swap in as one
+    constructor argument. A regression that ignored the parameter (e.g. a
+    route handler that reverted to calling ``_extract_live_events`` directly)
+    would be invisible to the existing transcript-wired tests — those still
+    pass because the disk-walk path also returns no events on an empty
+    fixture root. This guard pins the route handler to ``app.state.event_source()``.
+    """
+    from src.telemetry.live import LiveEvent
+
+    db = _empty_db(tmp_path)
+    sentinel_lane = "custom-event-source-arch-f2-sentinel"
+    call_count = {"n": 0}
+
+    def custom_source() -> list[LiveEvent]:
+        call_count["n"] += 1
+        return [
+            LiveEvent(
+                kind="message",
+                timestamp=datetime(2026, 6, 7, 12, 0, 0, tzinfo=UTC),
+                lane_id=sentinel_lane,
+                model="claude-opus-4-7",
+                input_tokens=100,
+                output_tokens=50,
+            )
+        ]
+
+    app = create_app(
+        db_path=db,
+        project_root=tmp_path,
+        port=8765,
+        event_source=custom_source,
+    )
+    # The seam is stored on app.state for the route handler to consume.
+    assert app.state.event_source is custom_source
+
+    client = TestClient(app)
+    r = client.get("/fragments/live", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+    # The custom source's data MUST appear in the rendered fragment — the
+    # sentinel lane is escaped HTML-safe but its literal characters survive,
+    # so a positive substring match proves the fold consumed our events.
+    assert sentinel_lane in r.text, (
+        "custom event_source was not consumed by /fragments/live; the route "
+        "handler is reading from somewhere other than app.state.event_source()"
+    )
+    assert call_count["n"] >= 1, (
+        "custom event_source was never invoked; the constructor arg is being "
+        "ignored or app.state.event_source was overwritten before the request"
+    )
+
+
+@pytest.mark.regression
+def test_create_app_default_event_source_falls_back_to_extract_live_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression (arch F2 / REV-20260607-200447): when ``event_source`` is
+    omitted, ``create_app`` binds the default to :func:`_default_event_source`,
+    which in turn calls :func:`_extract_live_events`. This is the paired guard
+    to the custom-source test above — a future refactor that drops the default
+    binding (leaving ``app.state.event_source`` as ``None`` or a no-op lambda)
+    would silently render an empty live fragment even when transcripts exist.
+
+    Drives the contract by monkeypatching ``_extract_live_events`` and
+    asserting it is invoked through the seam during a live-fragment request.
+    """
+    db = _empty_db(tmp_path)
+    call_count = {"n": 0}
+
+    real_extract = dashboard_server._extract_live_events
+
+    def counting_extract(*args, **kwargs):
+        call_count["n"] += 1
+        return real_extract(*args, **kwargs)
+
+    monkeypatch.setattr(dashboard_server, "_extract_live_events", counting_extract)
+
+    # No event_source passed -> default seam binds to _default_event_source ->
+    # which calls _extract_live_events. The seam is what the contract names.
+    app = create_app(db_path=db, project_root=tmp_path, port=8765)
+    # qa F5 in-session fold (REV-20260608-020046): pin the default seam
+    # IS the ``partial(_default_event_source, ...)`` wrapper. A future
+    # refactor that bound ``partial(_extract_live_events, proj_root, since=...)``
+    # directly (skipping ``_default_event_source``) would still satisfy the
+    # call-count assertion below, weakening this test to "some path calls
+    # _extract_live_events." The isinstance pin keeps "default seam = the
+    # named module-level helper" as the load-bearing contract.
+    from functools import partial as _partial
+
+    assert isinstance(app.state.event_source, _partial), (
+        "default event_source is not a functools.partial wrapper around "
+        "_default_event_source; a refactor that bypassed the named helper "
+        "would silently weaken this test's claim about the default seam shape"
+    )
+    assert app.state.event_source.func is dashboard_server._default_event_source, (
+        "default event_source partial does not wrap _default_event_source; "
+        "the seam's named-helper contract is broken"
+    )
+    client = TestClient(app)
+    r = client.get("/fragments/live", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+    assert call_count["n"] >= 1, (
+        "default event_source did not delegate to _extract_live_events; the "
+        "Phase 1 lazy-fold default is broken — a future Phase 2 watcher swap "
+        "would silently land on top of an already-degraded default path"
     )

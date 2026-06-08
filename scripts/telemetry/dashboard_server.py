@@ -45,12 +45,14 @@ import json
 import sqlite3
 import sys
 import webbrowser
+from collections.abc import Callable
 from contextlib import asynccontextmanager
-from datetime import (  # noqa: F401 — timedelta used in route handler closure
+from datetime import (
     UTC,
     datetime,
     timedelta,
 )
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -405,6 +407,25 @@ def _parse_subagent(path: Path, since: datetime | None) -> list[LiveEvent]:
     return out
 
 
+def _default_event_source(project_root: Path) -> list[LiveEvent]:
+    """Phase 1 default seam: lazy-walk recent transcripts each call.
+
+    Used as the default ``event_source`` when :func:`create_app` is not given
+    one. Re-reads session JSONL files whose mtime is within
+    :data:`LIVE_FOLD_LOOKBACK_MINUTES` of "now" via :func:`_extract_live_events`,
+    so the per-poll cost stays bounded even when the project has years of
+    sealed history on disk.
+
+    Phase 2's background watcher replaces this with a snapshot callable that
+    returns the watcher's currently-folded events without touching disk; the
+    swap is one constructor arg (``event_source=watcher.snapshot``) — the
+    seam this helper defines is what lets the route handler stay unchanged
+    across that swap (arch F2 fold, REV-20260607-200447).
+    """
+    since = datetime.now(UTC) - timedelta(minutes=LIVE_FOLD_LOOKBACK_MINUTES)
+    return _extract_live_events(project_root, since=since)
+
+
 def create_app(
     *,
     db_path: Path = DB_PATH,
@@ -412,6 +433,7 @@ def create_app(
     pricing: PricingTable | None = None,
     static_dir: Path = STATIC_DIR,
     port: int = DEFAULT_PORT,
+    event_source: Callable[[], list[LiveEvent]] | None = None,
 ) -> FastAPI:
     """Build the FastAPI app.
 
@@ -427,16 +449,40 @@ def create_app(
         static_dir: The vendored frontend asset directory.
         port: Port number, ONLY used to validate the ``Host`` header — the
             actual binding happens in :func:`run_server`.
+        event_source: Optional zero-argument callable that returns the current
+            list of :class:`LiveEvent` to fold into the live state. When
+            ``None`` (default), each ``/fragments/live`` request re-walks
+            recent transcripts via :func:`_default_event_source` (the Phase 1
+            lazy fold within :data:`LIVE_FOLD_LOOKBACK_MINUTES`). Phase 2's
+            background watcher swaps in by passing ``watcher.snapshot`` here;
+            the route handler does not change. This is the seam called out by
+            REV-20260607-200447 arch F2.
 
     Returns:
         A configured :class:`FastAPI` app.
     """
     pricing = pricing or load_pricing()
     proj_root = project_root or _REPO_ROOT
+    # Resolve the event-source seam once at construction time. The default is
+    # a partial bound to ``proj_root`` so the route handler simply calls
+    # ``app.state.event_source()`` with no awareness of whether it is the
+    # lazy disk-walk or a Phase 2 watcher snapshot — that ignorance is the
+    # arch F2 guarantee (route handler stable across Phase 1 → Phase 2 swap).
+    resolved_event_source: Callable[[], list[LiveEvent]] = event_source or partial(
+        _default_event_source, proj_root
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):  # noqa: ARG001 - FastAPI signature
-        """Server lifespan: nothing to open at startup; reset live state at exit."""
+        """Server lifespan: nothing to open at startup; reset live state at exit.
+
+        Phase 2 attaches ``watcher.start()`` here BEFORE ``yield`` and
+        ``watcher.stop()`` AFTER it (in teardown), paired with the
+        ``event_source=watcher.snapshot`` constructor argument of arch F2.
+        The watcher's lifecycle belongs on this surface — NOT on the seam
+        itself — so the seam stays a pure ``Callable`` and the dashboard
+        owns ``start/stop`` ordering relative to request handling.
+        """
         app.state.live_state = empty_state()
         yield
         # Teardown (AC7): release in-memory live state so it does not linger
@@ -470,9 +516,15 @@ def create_app(
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.state.db_path = db_path
-    app.state.project_root = proj_root
+    # ``proj_root`` is intentionally NOT mirrored onto ``app.state`` post arch F2
+    # fold (REV-20260607-200447): the live-event seam captures it into the default
+    # ``partial(_default_event_source, proj_root)`` at construction, so no route
+    # handler needs to re-read it. Mirroring it would create a second source of
+    # truth that could diverge from the seam (e.g. a Phase 2 watcher bound to a
+    # different root via its own constructor) — keep the seam authoritative.
     app.state.pricing = pricing
     app.state.poll_interval_s = LIVE_POLL_INTERVAL_S
+    app.state.event_source = resolved_event_source
 
     _register_routes(app)
     return app
@@ -491,15 +543,15 @@ def _register_routes(app: FastAPI) -> None:
     async def live_fragment() -> HTMLResponse:
         """Compute the current LiveState and return its HTML fragment.
 
-        Phase 1 keeps this lazy: each poll re-reads recent session transcript
-        events (within the :data:`LIVE_FOLD_LOOKBACK_MINUTES` window) and folds
-        them. The lookback keeps the cost-per-poll bounded to genuinely active
-        sessions rather than the whole project's history. Phase 2 replaces the
-        lazy poll with a background watcher.
+        Reads events through the ``app.state.event_source`` seam (arch F2 fold,
+        REV-20260607-200447). The Phase 1 default — :func:`_default_event_source`
+        — re-walks recent transcripts within :data:`LIVE_FOLD_LOOKBACK_MINUTES`
+        each call, keeping per-poll cost bounded to genuinely active sessions.
+        Phase 2's background watcher swaps in via the ``event_source``
+        constructor argument; this route handler does not change.
         """
         try:
-            since = datetime.now(UTC) - timedelta(minutes=LIVE_FOLD_LOOKBACK_MINUTES)
-            events = _extract_live_events(app.state.project_root, since=since)
+            events = app.state.event_source()
             state = fold_events(events, app.state.pricing)
             # NOT calling mark_orphans on a lazy per-request fold: orphan
             # transition needs a "session ended" signal (file-mtime quiet
