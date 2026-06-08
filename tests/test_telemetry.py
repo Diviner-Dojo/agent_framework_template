@@ -27,6 +27,11 @@ from src.telemetry.dashboard import (
     STATE_DATA,
     STATE_NOT_RUN,
     DashboardData,
+    _render_agent_lane_row,
+    _render_agent_lanes_panel,
+    _render_live_stream_panel,
+    _render_runway_estimate,
+    _render_runway_panel,
     render_console_summary,
     render_dashboard_html,
     render_live_fragment,
@@ -52,7 +57,11 @@ from src.telemetry.live import (
     RUNWAY_OK,
     RUNWAY_RED,
     RUNWAY_RED_DEFAULT,
+    AgentLane,
+    LiveCostEvent,
     LiveEvent,
+    LiveState,
+    RunwayGauge,
     apply_event,
     empty_state,
     fold_events,
@@ -3058,3 +3067,580 @@ def test_live_stream_panel_carries_kind_legend(pricing: PricingTable) -> None:
     # claim every "turn" row is priced, which is not what the fold model emits).
     assert "uncosted" in html
     assert "error or non-2xx event" in html
+
+
+# --------------------------------------------------------------------------- #
+# Live-render DIRECT unit tests (REV-20260607-200447 qa F1 fold → session 10i)
+# --------------------------------------------------------------------------- #
+#
+# Phase 1's live-panel renderers were exercised only through ``render_live_fragment``
+# composition (and the integration path via ``scripts/telemetry/dashboard_server.py``).
+# qa F1 in the Phase 1 review called out that each sub-renderer needed direct,
+# parameterized coverage of its own branches: a future edit could regress one
+# sub-renderer's contract while the surrounding composition still produced
+# plausible-looking HTML.
+#
+# These tests construct ``LiveState`` / ``RunwayGauge`` / ``AgentLane`` /
+# ``LiveCostEvent`` synthetically (no ``fold_events``) so the renderer's
+# behaviour is asserted independently of the fold's behaviour — a divergence
+# between the two layers becomes a test failure rather than a silent mismatch.
+# The complementary fold-driven tests above continue to guard the integration
+# contract; these guards cover the renderer-as-pure-function contract.
+#
+# Surface-choice tradeoff (arch F1 from REV-20260608-013849 — session 10i):
+# this section imports the FIVE private ``_render_*`` helpers across the
+# tests/→src/telemetry boundary. The FRICTION-5 / FRICTION-2 tests above
+# deliberately route through public ``render_live_fragment`` to catch a
+# transport-layer swap that bypassed the renderer entirely; the qa F1 tests
+# here deliberately route AROUND the public seam to catch per-sub-renderer
+# regressions the composition wouldn't surface. Both choices are correct for
+# the question they answer. The cost: a future refactor that re-homes a
+# private renderer breaks these tests — Rule-of-Three keeps the symbols
+# private (one caller file each, so they stay private until a second consumer
+# emerges).
+
+
+def _lane(
+    lane_id: str,
+    kind: str,
+    status: str,
+    *,
+    agent_type: str | None = None,
+    model: str | None = "claude-opus-4-7",
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cost_usd: float = 0.0,
+    tool_count: int = 0,
+    failure_count: int = 0,
+) -> AgentLane:
+    """Build an :class:`AgentLane` for a renderer-only test (no fold)."""
+    return AgentLane(
+        lane_id=lane_id,
+        kind=kind,
+        agent_type=agent_type,
+        model=model,
+        status=status,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cost_usd=cost_usd,
+        tool_count=tool_count,
+        failure_count=failure_count,
+    )
+
+
+# --- _render_runway_panel -------------------------------------------------- #
+
+
+@pytest.mark.regression
+def test_render_runway_panel_empty_context_window_renders_absence_tile() -> None:
+    """qa F1: a zero ``context_window`` renders the honest-absence tile (spec R3a).
+
+    The cold-start path: the dashboard has not yet seen a ``context`` event, so
+    the gauge has no occupancy to render. Asserts the absence vocabulary is
+    used (NOT a fabricated 0% bar — the C4 anti-pattern).
+    """
+    panel = _render_runway_panel(RunwayGauge())
+    assert 'data-state="absent"' in panel
+    assert "tile--absent" in panel
+    assert "No live context snapshot yet." in panel
+    # A fabricated 0% bar would be the C4 anti-pattern — pin it absent.
+    assert "runway__fill" not in panel
+    assert "runway__bar" not in panel
+    assert 'data-state="data"' not in panel
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("status", "css_class", "label", "copy_fragment"),
+    [
+        (RUNWAY_OK, "runway--ok", "OK", "Plenty of headroom"),
+        (RUNWAY_AMBER, "runway--amber", "warning", "Approaching wrap-up window"),
+        (RUNWAY_RED, "runway--red", "critical", "Inside the wrap-up window"),
+    ],
+)
+def test_render_runway_panel_status_emits_class_label_and_copy(
+    status: str, css_class: str, label: str, copy_fragment: str
+) -> None:
+    """qa F1: each runway status emits the correct CSS modifier + manager label + copy.
+
+    Spec R2 (runway gauge) requires distinct visual + textual signalling for the
+    three states. The CSS class is the load-bearing decorative channel; the
+    human-readable label + plain-language copy are the WCAG-1.4.1 textual
+    channel a colour-deficient gatekeeper relies on. A regression that dropped
+    the textual channel would silently break the colour-independent reading.
+    """
+    panel = _render_runway_panel(
+        RunwayGauge(
+            current_tokens=10_000,
+            context_window=20_000,
+            fill_pct=50.0,
+            status=status,
+            est_turns_remaining=12,
+        )
+    )
+    assert css_class in panel
+    assert f"&middot; {label}" in panel
+    assert copy_fragment in panel
+    # The data-tile container shape is intentionally the same across statuses —
+    # only the modifier and the copy distinguish them (visual consistency).
+    assert 'data-state="data"' in panel
+    # The raw constant must NOT leak as the human-facing label (e.g. "amber"
+    # would re-introduce the qa F2 / ux FRICTION-3 regression that the
+    # _RUNWAY_LABEL translation map was added to prevent).
+    if status != RUNWAY_OK:
+        assert f"&middot; {status}<" not in panel
+
+
+@pytest.mark.regression
+def test_render_runway_panel_clamps_fill_pct_into_bar_width() -> None:
+    """qa F1: ``runway.fill_pct`` outside [0, 100] is clamped before becoming a CSS width.
+
+    A future bug that fed ``fill_pct`` directly to the ``style="width:..."``
+    attribute could let a value like ``120`` overflow the bar container or a
+    negative value invert the gauge. The renderer pins ``max(0.0, min(100.0,
+    fill_pct))`` for the visual width while keeping the raw value in the
+    headline (the data-honesty contract — the gatekeeper sees the true number,
+    the bar stays inside its container).
+    """
+    over_panel = _render_runway_panel(
+        RunwayGauge(
+            current_tokens=24_000,
+            context_window=20_000,
+            fill_pct=120.0,
+            status=RUNWAY_RED,
+            est_turns_remaining=0,
+        )
+    )
+    assert 'style="width:100.0%"' in over_panel
+    # The raw value (not the clamped one) is the honest figure shown to the
+    # gatekeeper — pinning it ensures the clamp does not silently rewrite the
+    # data-honesty channel.
+    assert ">120.0%</div>" in over_panel
+
+    under_panel = _render_runway_panel(
+        RunwayGauge(
+            current_tokens=0,
+            context_window=20_000,
+            fill_pct=-5.0,
+            status=RUNWAY_OK,
+            est_turns_remaining=100,
+        )
+    )
+    assert 'style="width:0.0%"' in under_panel
+
+
+# --- _render_runway_estimate ---------------------------------------------- #
+
+
+@pytest.mark.regression
+def test_render_runway_estimate_cold_start_renders_honest_absence() -> None:
+    """qa F1: ``est_turns_remaining=None`` renders the honest "not enough data" sentence.
+
+    Cold-start cycle: no main-lane turn folded yet, so the rolling-average
+    denominator is zero and the estimate is honestly ``None``. A regression
+    that fabricated ``0`` or ``"unknown"`` would re-introduce the C4 anti-pattern
+    the renderer was built to prevent.
+    """
+    est = _render_runway_estimate(RunwayGauge(est_turns_remaining=None))
+    assert "not enough data yet" in est
+    assert "needs at least one main-lane turn" in est
+    # A fabricated "0 turns" or "unknown turns" headline would be the regression.
+    assert "<strong>" not in est
+    assert "uncosted" not in est
+
+
+@pytest.mark.regression
+def test_render_runway_estimate_with_value_renders_strong_int_and_method_note() -> None:
+    """qa F1: a present ``est_turns_remaining`` renders as the bolded headline + method note.
+
+    Pins both the typographic emphasis (a future restyle from ``<strong>`` to
+    a CSS-only weight class would break this — and rightly so, the method note
+    is the only way the gatekeeper sees the figure is a rolling average rather
+    than a precise countdown) and the method note's substantive content.
+    """
+    est = _render_runway_estimate(RunwayGauge(est_turns_remaining=42))
+    assert "<strong>42</strong>" in est
+    assert "rolling avg of main-lane output tokens per turn" in est
+
+
+# --- _render_agent_lanes_panel -------------------------------------------- #
+
+
+@pytest.mark.regression
+def test_render_agent_lanes_panel_no_main_and_no_agents_renders_absence_tile() -> None:
+    """qa F1: an empty lane set renders the honest-absence tile (no data table).
+
+    Pre-session state: nothing has been folded yet. The panel must NOT render
+    an empty ``<table>`` (a regression that did so would leave the gatekeeper
+    staring at headers with no rows — readable as "the dashboard is broken"
+    rather than "no session yet").
+    """
+    panel = _render_agent_lanes_panel(LiveState())
+    assert 'data-state="absent"' in panel
+    assert "No active session yet." in panel
+    # A regressed renderer might still emit the data-table shell; pin its
+    # absence so a partial render doesn't slip through.
+    assert "<table" not in panel
+    assert "<tbody>" not in panel
+
+
+@pytest.mark.regression
+def test_render_agent_lanes_panel_with_main_only_renders_one_data_row() -> None:
+    """qa F1: a main-lane-only state renders a single data row + table header.
+
+    The boundary between "no session" (absence tile) and "main session active"
+    (data tile) is load-bearing — a regression that kept rendering the absence
+    tile until a subagent joined would hide the live main-session lane.
+    """
+    main = _lane("main", "main", LANE_ACTIVE, agent_type=None, output_tokens=500)
+    panel = _render_agent_lanes_panel(LiveState(main=main))
+    assert 'data-state="data"' in panel
+    assert "<table" in panel
+    # One row in the body — count <tr> entries between <tbody> and </tbody>.
+    body = panel.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    assert body.count("<tr") == 1
+    # The main lane carries the primary badge + class (see _render_agent_lane_row).
+    assert "lane--primary" in panel
+
+
+@pytest.mark.regression
+def test_render_agent_lanes_panel_orders_main_first_then_subagents_in_dispatch_order() -> None:
+    """qa F1: main lane renders first, then subagent lanes in dispatch order.
+
+    The ordering contract: gatekeepers read top-down to assess "is the main
+    session healthy?" first. A regression that sorted by lane_id or by status
+    would scramble that read.
+    """
+    main = _lane("main", "main", LANE_ACTIVE)
+    first = _lane("sub-A", "agent", LANE_ACTIVE, agent_type="qa-specialist")
+    second = _lane("sub-B", "agent", LANE_COMPLETE, agent_type="security-specialist")
+    panel = _render_agent_lanes_panel(LiveState(main=main, agents=(first, second)))
+    assert (
+        panel.index("<td>main</td>")
+        < panel.index("<td>sub-A</td>")
+        < panel.index("<td>sub-B</td>")
+    )
+
+
+# --- _render_agent_lane_row ----------------------------------------------- #
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("status", "expected_label_class", "expected_badge_text"),
+    [
+        (LANE_ACTIVE, "lane--active", "active"),
+        (LANE_COMPLETE, "lane--complete", "complete"),
+        (LANE_ORPHANED, "lane--orphaned", "orphaned"),
+    ],
+)
+def test_render_agent_lane_row_emits_status_class_and_badge_label(
+    status: str, expected_label_class: str, expected_badge_text: str
+) -> None:
+    """qa F1: each lane status emits the right CSS modifier + visible badge label.
+
+    The badge text is the load-bearing channel (WCAG 1.4.1 — the row's tint is
+    decorative reinforcement). The orphaned status in particular MUST surface
+    as visible text because a colour-coded-only "orphaned" indicator would be
+    invisible to a colour-deficient reader.
+
+    qa F1 fold (REV-20260608-013905 — session 10i): the expected badge text is
+    a literal string in the parametrize table — NOT ``f"...{status}..."``. The
+    ``_LANE_STATUS_LABEL`` map exists precisely so the raw constant + the
+    human-facing label can diverge; if the constant ``LANE_ORPHANED`` were
+    ever renamed to ``"orphan"`` while the map kept ``"orphaned"`` as the
+    label, an f-string-interpolated assertion would silently flip its
+    expectation. Pinning the literal label catches that.
+    """
+    lane = _lane("sub-test", "agent", status, agent_type="qa-specialist")
+    row = _render_agent_lane_row(lane)
+    assert expected_label_class in row
+    assert f'<span class="lane-badge">{expected_badge_text}</span>' in row
+
+
+@pytest.mark.regression
+def test_render_agent_lane_row_unknown_status_falls_back_to_raw_constant() -> None:
+    """qa F2 fold (REV-20260608-013905 — session 10i): an out-of-map lane status
+    falls back to the raw constant for both the CSS modifier and the badge text.
+
+    ``_render_agent_lane_row`` uses ``_LANE_STATUS_LABEL.get(lane.status,
+    lane.status)`` — the fallback. If a future ``live.py`` extension adds a
+    new status (e.g. ``"pending"``) before the dashboard's translation map is
+    updated, the row must render it visibly (raw constant), not silently drop
+    it. A regression that switched to ``_LANE_STATUS_LABEL[lane.status]``
+    would raise ``KeyError`` on the new status and crash the renderer; this
+    test guards the documented forward-compat path.
+    """
+    lane = _lane("sub-test", "agent", "pending", agent_type="qa-specialist")
+    row = _render_agent_lane_row(lane)
+    assert "lane--pending" in row
+    assert '<span class="lane-badge">pending</span>' in row
+
+
+@pytest.mark.regression
+def test_render_agent_lane_row_main_lane_carries_primary_class_and_badge() -> None:
+    """qa F1: a ``kind="main"`` lane carries ``lane--primary`` + a ``primary`` text badge.
+
+    Differentiates the main session from dispatched subagents — same contract
+    as the existing FRICTION-2 integration test, but exercised on the renderer
+    directly (the FRICTION-2 test routes through ``render_live_fragment``).
+    """
+    lane = _lane("main", "main", LANE_ACTIVE, agent_type=None)
+    row = _render_agent_lane_row(lane)
+    assert "lane--primary" in row
+    assert 'class="lane-badge lane-badge--primary">primary</span>' in row
+    # When agent_type is None on the main lane, the rendered agent cell shows
+    # "main" — not "—" (the em-dash absence marker used for subagents) and not
+    # the empty string (which would silently disappear from the table).
+    assert "<td>main" in row
+
+
+@pytest.mark.regression
+def test_render_agent_lane_row_subagent_with_missing_agent_type_renders_emdash() -> None:
+    """qa F1: a subagent lane with ``agent_type=None`` renders ``—`` (not empty / not "main").
+
+    A renderer that defaulted to ``"main"`` on missing agent_type would falsely
+    promote a subagent to primary; one that defaulted to empty string would
+    silently elide the cell. The em-dash is the honest absence marker.
+    """
+    lane = _lane("sub-anon", "agent", LANE_ACTIVE, agent_type=None, model=None)
+    row = _render_agent_lane_row(lane)
+    assert "<td>—</td>" in row
+    # Model also defaults to em-dash when missing — same absence vocabulary.
+    assert row.count("<td>—</td>") >= 2
+    # And the lane must NOT carry the primary marker.
+    assert "lane--primary" not in row
+    assert "lane-badge--primary" not in row
+
+
+@pytest.mark.regression
+def test_render_agent_lane_row_escapes_dynamic_string_fields() -> None:
+    """qa F1: every dynamic string field passes through ``_esc`` (spec C6).
+
+    The lane_id / agent_type / model are transcript-shaped (the dispatch
+    tool_id, the developer-supplied subagent type, the model ID from the API).
+    A regression that interpolated any of them raw would be stored-XSS in the
+    rendered fragment. Mirrors the existing failure/divergence injection
+    guards above, applied to the lane-row surface qa F1 specifically called out.
+    """
+    payload = "<script>alert(1)</script>"
+    lane = _lane(payload, "agent", LANE_ACTIVE, agent_type=payload, model=payload)
+    row = _render_agent_lane_row(lane)
+    # Raw payload must NOT appear; escaped form must appear in each of the
+    # three dynamic-string cells.
+    assert "<script>" not in row
+    assert row.count("&lt;script&gt;alert(1)&lt;/script&gt;") == 3
+
+
+@pytest.mark.regression
+def test_render_agent_lane_row_total_tokens_sums_input_output_and_cache_read() -> None:
+    """qa F1: the rendered token total = input + output + cache_read (NOT cache_create).
+
+    The cache_create tokens are excluded from the lane's headline token
+    figure because they are a one-time write-side cost the fold already prices
+    separately. A regression that added cache_create here would silently
+    inflate every lane's token figure.
+    """
+    lane = _lane(
+        "main",
+        "main",
+        LANE_ACTIVE,
+        input_tokens=200,
+        output_tokens=400,
+        cache_read_tokens=1_000,
+        cost_usd=0.0625,
+        tool_count=3,
+        failure_count=1,
+    )
+    row = _render_agent_lane_row(lane)
+    # 200 + 400 + 1000 = 1,600 — pinned with the thousands separator.
+    assert '<td class="num">1,600</td>' in row
+    # Cost rendered at 4 decimal places via _fmt_usd.
+    assert '<td class="num">$0.0625</td>' in row
+    # Tool and failure counts render via _fmt_int (always present, never None).
+    assert '<td class="num">3</td>' in row
+    assert '<td class="num">1</td>' in row
+
+
+# --- _render_live_stream_panel -------------------------------------------- #
+
+
+@pytest.mark.regression
+def test_render_live_stream_panel_empty_renders_absence_tile() -> None:
+    """qa F1: an empty event stream renders the honest-absence tile, not an empty table.
+
+    A regression that always rendered the table shell would leave the panel
+    with headers but no body — a "broken dashboard" signal rather than the
+    honest "no live events yet" cold-start state.
+    """
+    panel = _render_live_stream_panel(())
+    assert 'data-state="absent"' in panel
+    assert "No live events yet." in panel
+    assert "<table" not in panel
+    assert "<tbody>" not in panel
+
+
+@pytest.mark.regression
+def test_render_live_stream_panel_emits_rows_most_recent_first() -> None:
+    """qa F1: rendered rows appear MOST-RECENT FIRST (reverse of the fold order).
+
+    The fold appends to ``recent_events`` in chronological order (oldest first
+    → newest last); the renderer reverses to put the most-recent at the top so
+    the gatekeeper's eye lands on the latest event without scrolling. A
+    regression that dropped the ``reversed()`` would silently show the oldest
+    event at the top of every panel.
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    events = (
+        LiveCostEvent(timestamp=base, lane_id="main", kind="turn", cost_usd=0.10, tokens=1_000),
+        LiveCostEvent(
+            timestamp=base + timedelta(seconds=30),
+            lane_id="sub-A",
+            kind="turn",
+            cost_usd=0.05,
+            tokens=500,
+        ),
+        LiveCostEvent(
+            timestamp=base + timedelta(minutes=1),
+            lane_id="main",
+            kind="failure",
+            cost_usd=0.0,
+            tokens=0,
+        ),
+    )
+    panel = _render_live_stream_panel(events)
+    assert 'data-state="data"' in panel
+    body = panel.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    # The failure event's ISO timestamp must precede the first turn's in the body.
+    failure_idx = body.index("2026-06-08T01:01:00")
+    middle_idx = body.index("2026-06-08T01:00:30")
+    oldest_idx = body.index("2026-06-08T01:00:00")
+    assert failure_idx < middle_idx < oldest_idx
+
+
+@pytest.mark.regression
+def test_render_live_stream_panel_renders_uncosted_turn_as_zero_dollars_at_4_places() -> None:
+    """qa F1: an uncosted turn renders cost at 4 decimals (``$0.0000``), not "uncosted".
+
+    The live stream's per-row cost is a concrete ``float`` (the fold ALWAYS
+    bumps ``cost_usd`` on ``LiveCostEvent`` — uncosted means 0.0, not None);
+    the panel's per-row cell uses ``_fmt_usd(..., places=4)``. The "uncosted"
+    nuance lives in the ``recent_events`` aggregate accounting (where uncosted
+    turns are counted separately) and in the kind-legend gloss the FRICTION-5
+    fold pinned above. A regression that switched the per-row cell to "uncosted"
+    would lie about a row that genuinely accrued zero cost (e.g. a failure).
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    panel = _render_live_stream_panel(
+        (
+            LiveCostEvent(
+                timestamp=base,
+                lane_id="main",
+                kind="turn",
+                cost_usd=0.0,
+                tokens=1_200,
+            ),
+        )
+    )
+    body = panel.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    assert '<td class="num">$0.0000</td>' in body
+    assert "uncosted" not in body
+    # The token count renders with thousands separator via _fmt_int.
+    assert '<td class="num">1,200</td>' in body
+
+
+@pytest.mark.regression
+def test_render_live_stream_panel_escapes_dynamic_string_fields() -> None:
+    """qa F1: lane_id + kind in a row pass through ``_esc`` (spec C6).
+
+    A failure event's ``kind`` is the constant ``"failure"`` today, but
+    ``lane_id`` is the dispatch tool_id (transcript-shaped). The escape seam
+    must be uniform across both fields so a regression that swapped a single
+    interpolation back to an f-string is caught.
+    """
+    payload = "<img src=x onerror=alert(1)>"
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    panel = _render_live_stream_panel(
+        (
+            LiveCostEvent(
+                timestamp=base,
+                lane_id=payload,
+                kind=payload,
+                cost_usd=0.01,
+                tokens=10,
+            ),
+        )
+    )
+    assert "<img src=x" not in panel
+    # Escaped form must appear twice — once in the lane_id cell, once in the kind cell.
+    escaped = "&lt;img src=x onerror=alert(1)&gt;"
+    assert panel.count(escaped) == 2
+
+
+# --- render_live_fragment composition ------------------------------------ #
+
+
+@pytest.mark.regression
+def test_render_live_fragment_empty_state_emits_three_absence_tiles() -> None:
+    """qa F1 composition: an empty :class:`LiveState` produces exactly three absence tiles.
+
+    The first-paint guarantee: when no fold has happened yet, the live section
+    must show three distinct honest-absence tiles (runway / agent lanes / live
+    stream), not a half-rendered data table or a single combined tile. The
+    fragment must still be ONE root ``<section>`` for the htmx outerHTML swap.
+    """
+    html = render_live_fragment(LiveState())
+    # One <section> root (htmx swap target shape).
+    assert html.startswith('<section id="live-section"')
+    assert html.endswith("</section>")
+    assert html.count('<section id="live-section"') == 1
+    # Three absence tiles — one per panel.
+    assert html.count('data-state="absent"') == 3
+    # None of the data-tile vocabulary appears in the empty composition.
+    assert 'data-state="data"' not in html
+    # The three absence copies are each present, so the gatekeeper can tell
+    # which panel is absent at a glance.
+    assert "No live context snapshot yet." in html
+    assert "No active session yet." in html
+    assert "No live events yet." in html
+
+
+@pytest.mark.regression
+def test_render_live_fragment_composes_runway_then_lanes_then_stream() -> None:
+    """qa F1 composition: the three panels render in runway -> lanes -> stream order.
+
+    The visual hierarchy is load-bearing — the runway is the highest-stakes
+    signal (gatekeeper decides when to hand off), the agent lanes are the
+    operational state, the live stream is the per-event trail. A regression
+    that reordered the composition would silently change the reading flow.
+    """
+    main = _lane("main", "main", LANE_ACTIVE, output_tokens=400)
+    runway = RunwayGauge(
+        current_tokens=10_000,
+        context_window=20_000,
+        fill_pct=50.0,
+        status=RUNWAY_AMBER,
+        est_turns_remaining=10,
+    )
+    events = (
+        LiveCostEvent(
+            timestamp=datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC),
+            lane_id="main",
+            kind="turn",
+            cost_usd=0.05,
+            tokens=400,
+        ),
+    )
+    state = LiveState(main=main, runway=runway, recent_events=events)
+    html = render_live_fragment(state)
+    # Runway panel heading appears before the agent-lanes heading, which
+    # appears before the live-stream heading.
+    runway_idx = html.index("<h3>Context runway</h3>")
+    lanes_idx = html.index("<h3>Agent lanes</h3>")
+    stream_idx = html.index("<h3>Live stream</h3>")
+    assert runway_idx < lanes_idx < stream_idx
+    # All three panels are in the DATA state (no absence tiles for this case).
+    assert 'data-state="absent"' not in html
+    assert html.count('data-state="data"') == 3
