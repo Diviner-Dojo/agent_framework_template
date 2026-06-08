@@ -43,7 +43,9 @@ import re
 import shutil
 import sqlite3
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 import uvicorn
@@ -367,7 +369,6 @@ def test_dynamic_lane_fields_are_html_escaped(
     carrying ``<script>alert(1)</script>``; the rendered fragment must NOT
     contain a literal ``<script>``.
     """
-    from datetime import UTC, datetime
 
     from src.telemetry.live import LiveEvent
 
@@ -789,3 +790,303 @@ def test_extract_live_events_skips_malformed_lines(
     assert len(events) == 1
     assert events[0].kind == "message"
     assert events[0].input_tokens == 100
+
+
+# --------------------------------------------------------------------------- #
+# qa F3 (REV-20260607-200447) — direct parse-layer dispatch tests
+#
+# The integration tests above ("malformed lines", "no projects root") exercise
+# ``_extract_live_events`` end-to-end through a real on-disk file. The advisory
+# called out that the per-block dispatch logic inside ``_parse_main_session``
+# (assistant message-with-usage / tool_use Agent / tool_result) and the
+# subagent path inside ``_parse_subagent`` each have their own branch logic
+# that the single integration test did not cover individually. These tests
+# exercise the parsers directly with hand-crafted JSONL so a future edit that
+# regresses one dispatch path fails immediately rather than only when a real
+# transcript happens to carry that block.
+# --------------------------------------------------------------------------- #
+
+
+def _ts(seconds: int = 0) -> str:
+    """Produce an ISO-Z timestamp at ``2026-06-07T12:00:<ss>Z`` for fixtures."""
+    return f"2026-06-07T12:00:{seconds:02d}Z"
+
+
+def _write_main_jsonl(path: Path, records: list[dict[str, Any]]) -> Path:
+    """Serialise ``records`` as JSONL into ``path`` and return ``path``."""
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+    return path
+
+
+@pytest.mark.regression
+def test_parse_main_session_emits_dispatch_event_for_tool_use_agent_block(
+    tmp_path: Path,
+) -> None:
+    """Regression (qa F3 / REV-20260607-200447): a ``tool_use`` block named
+    ``Agent`` becomes a ``dispatch`` event whose ``lane_id`` is the tool ``id``
+    and whose ``agent_type`` is the ``subagent_type`` input.
+
+    Before this guard, a refactor that renamed the dispatch tool (e.g. back to
+    ``Task``) or that dropped the ``input.subagent_type`` extraction would have
+    silently produced empty agent lanes in the live dashboard.
+    """
+    path = _write_main_jsonl(
+        tmp_path / "session.jsonl",
+        [
+            {
+                "timestamp": _ts(0),
+                "message": {
+                    "id": "msg_1",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Agent",
+                            "id": "tool_abc",
+                            "input": {"subagent_type": "qa-specialist"},
+                        }
+                    ],
+                },
+            }
+        ],
+    )
+    events = dashboard_server._parse_main_session(path, since=None)
+    dispatches = [e for e in events if e.kind == "dispatch"]
+    assert len(dispatches) == 1
+    assert dispatches[0].lane_id == "tool_abc"
+    assert dispatches[0].agent_type == "qa-specialist"
+    assert dispatches[0].tool_name == "Agent"
+
+
+@pytest.mark.regression
+def test_parse_main_session_emits_result_event_for_tool_result_block(
+    tmp_path: Path,
+) -> None:
+    """Regression (qa F3 / REV-20260607-200447): a ``tool_result`` block becomes
+    a ``result`` event on the ``main`` lane whose ``ref_id`` matches the
+    dispatch ``tool_use_id`` it answers.
+
+    The fold uses ``ref_id`` to mark a dispatched lane ``complete``; if this
+    extraction breaks, every subagent stays ``active`` forever.
+    """
+    path = _write_main_jsonl(
+        tmp_path / "session.jsonl",
+        [
+            {
+                "timestamp": _ts(0),
+                "message": {
+                    "id": "msg_2",
+                    "content": [{"type": "tool_result", "tool_use_id": "tool_abc"}],
+                },
+            }
+        ],
+    )
+    events = dashboard_server._parse_main_session(path, since=None)
+    results = [e for e in events if e.kind == "result"]
+    assert len(results) == 1
+    assert results[0].lane_id == "main"
+    assert results[0].ref_id == "tool_abc"
+
+
+@pytest.mark.regression
+def test_parse_main_session_ignores_non_dict_content_items(tmp_path: Path) -> None:
+    """Regression (qa F3 / REV-20260607-200447): a ``content`` list with non-dict
+    entries (strings, ``None``, ints) is iterated safely — only dict blocks are
+    inspected.
+
+    Pins the ``isinstance(block, dict)`` defensive guard in
+    ``_parse_main_session``. Without this test the guard could be removed under
+    the assumption it's dead code, then crash on real-world stray content.
+    Also asserts the empty-``input`` branch — when ``input.subagent_type`` is
+    absent, ``agent_type`` must be ``None`` (not an empty string), so a future
+    change that flipped the ``or None`` default would not slip through (qa F2
+    advisory fold, REV at DISC-20260607-235100).
+    """
+    path = _write_main_jsonl(
+        tmp_path / "session.jsonl",
+        [
+            {
+                "timestamp": _ts(0),
+                "message": {
+                    "id": "msg_3",
+                    "content": [
+                        "stray-string-block",
+                        None,
+                        42,
+                        {"type": "tool_use", "name": "Agent", "id": "tool_z", "input": {}},
+                    ],
+                },
+            }
+        ],
+    )
+    events = dashboard_server._parse_main_session(path, since=None)
+    # Only the one well-formed dispatch survives — the stray entries crashed
+    # nothing and produced no events.
+    dispatches = [e for e in events if e.kind == "dispatch"]
+    assert len(dispatches) == 1
+    assert dispatches[0].lane_id == "tool_z"
+    # qa F2-QA fold: empty ``input`` dict -> ``agent_type`` must be ``None``,
+    # never an empty string (preserves the absence semantic upstream renderers
+    # rely on).
+    assert dispatches[0].agent_type is None
+
+
+@pytest.mark.regression
+def test_parse_main_session_returns_empty_on_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable file produces ``[]`` without raising (qa F3)."""
+    path = tmp_path / "session.jsonl"
+    path.write_text('{"timestamp":"2026-06-07T12:00:00Z","message":{}}', encoding="utf-8")
+    original = Path.read_text
+
+    def _boom(self: Path, *args: Any, **kwargs: Any) -> str:
+        if self == path:
+            raise OSError("simulated read failure")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _boom)
+    assert dashboard_server._parse_main_session(path, since=None) == []
+
+
+@pytest.mark.regression
+def test_parse_subagent_produces_message_event_on_agent_lane(tmp_path: Path) -> None:
+    """A subagent JSONL produces a ``message`` event whose ``lane_id`` is the
+    file stem (e.g. ``agent-abc123``) — qa F3 subagent-path coverage.
+    """
+    path = tmp_path / "agent-abc123.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "timestamp": _ts(0),
+                "message": {
+                    "id": "submsg_1",
+                    "model": "claude-sonnet-4-6",
+                    "usage": {"input_tokens": 200, "output_tokens": 75},
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    events = dashboard_server._parse_subagent(path, since=None)
+    assert len(events) == 1
+    e = events[0]
+    assert e.kind == "message"
+    assert e.lane_id == "agent-abc123"
+    assert e.model == "claude-sonnet-4-6"
+    assert e.input_tokens == 200
+    assert e.output_tokens == 75
+
+
+@pytest.mark.regression
+def test_parse_subagent_returns_empty_on_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable subagent file produces ``[]`` without raising (qa F3)."""
+    path = tmp_path / "agent-xyz.jsonl"
+    path.write_text("{}", encoding="utf-8")
+    original = Path.read_text
+
+    def _boom(self: Path, *args: Any, **kwargs: Any) -> str:
+        if self == path:
+            raise OSError("simulated read failure")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _boom)
+    assert dashboard_server._parse_subagent(path, since=None) == []
+
+
+# --------------------------------------------------------------------------- #
+# qa F6 (REV-20260607-200447) — per-line ``since`` boundary semantics
+#
+# The route uses ``since = now - LIVE_FOLD_LOOKBACK_MINUTES`` and passes it
+# through to the per-line filter ``ts < since``. The advisory called out that
+# the strict ``<`` (vs ``<=``) is now load-bearing: an event whose timestamp
+# equals ``since`` MUST be included, since the upstream file-mtime filter is
+# already ``>=``. A future edit that flips to ``<=`` would silently drop the
+# leading edge of every poll window.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("event_offset_s", "expected_included"),
+    [
+        (-1, False),  # t-1 < t -> excluded
+        (0, True),  # t == since -> included (strict ``<`` is the contract)
+        (+1, True),  # t+1 > t -> included
+    ],
+)
+def test_parse_main_session_since_boundary_uses_strict_less_than(
+    tmp_path: Path, event_offset_s: int, expected_included: bool
+) -> None:
+    """Regression (qa F6 / REV-20260607-200447): ``ts < since`` (strict), not ``<=``.
+
+    Drives the per-line filter in ``_parse_main_session`` directly with three
+    boundary cases. A future flip to ``<=`` would drop the ``t == since`` line
+    and silently lose the leading edge of every poll window.
+    """
+
+    base = datetime(2026, 6, 7, 12, 0, 0, tzinfo=UTC)
+    event_dt = base + timedelta(seconds=event_offset_s)
+    record_ts = event_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    path = _write_main_jsonl(
+        tmp_path / "session.jsonl",
+        [
+            {
+                "timestamp": record_ts,
+                "message": {
+                    "id": "msg_boundary",
+                    "model": "claude-opus-4-7",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                },
+            }
+        ],
+    )
+    events = dashboard_server._parse_main_session(path, since=base)
+    if expected_included:
+        assert len(events) == 1, (
+            f"event at offset {event_offset_s}s should be included with since=t (strict <)"
+        )
+    else:
+        assert events == [], (
+            f"event at offset {event_offset_s}s should be excluded with since=t (strict <)"
+        )
+
+
+@pytest.mark.regression
+def test_parse_subagent_since_boundary_uses_strict_less_than(tmp_path: Path) -> None:
+    """Regression (qa F6 / REV-20260607-200447): the subagent parser shares
+    the per-line ``ts < since`` semantics with the main parser. Asserting both
+    keeps them locked together — a future divergence (one strict, one
+    inclusive) would be invisible without this paired guard.
+    """
+
+    base = datetime(2026, 6, 7, 12, 0, 0, tzinfo=UTC)
+    path = tmp_path / "agent-boundary.jsonl"
+    path.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "timestamp": ts,
+                    "message": {
+                        "id": f"msg_{ts}",
+                        "model": "claude-sonnet-4-6",
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                }
+            )
+            for ts in (
+                "2026-06-07T11:59:59Z",  # excluded
+                "2026-06-07T12:00:00Z",  # included (equal)
+                "2026-06-07T12:00:01Z",  # included
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    events = dashboard_server._parse_subagent(path, since=base)
+    assert len(events) == 2, (
+        "expected the equal-to-since and after-since events; the strict ``<`` "
+        "contract excludes only the pre-since line"
+    )
