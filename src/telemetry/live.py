@@ -164,7 +164,26 @@ class RunwayGauge:
 
 @dataclass(frozen=True)
 class LiveCostEvent:
-    """One entry in the rolling live cost/failure stream (R2)."""
+    """One entry in the rolling live cost/failure stream (R2).
+
+    Attributes:
+        timestamp: When this event was recorded (UTC).
+        lane_id: The lane this event belongs to.
+        kind: One of ``"turn"`` or ``"failure"``.
+        cost_usd: API-equivalent USD; ``0.0`` for ``"failure"`` events and
+            for uncosted turns (see ``uncosted`` below).
+        tokens: Total input + output tokens for a ``"turn"``; ``0`` for a
+            ``"failure"``.
+        detail: Free-text detail (e.g. a failure reason). Empty by default.
+        uncosted: ``True`` iff this is a ``"turn"`` whose model tier is unknown
+            or has no pricing entry — ``cost_usd`` is then ``0.0`` because the
+            tier is unpriced, NOT because the turn was free. Per-event
+            propagation (arch F1 fold from REV-20260608-025749) so the chart
+            renderer can distinguish a priced cheap turn from an uncosted one;
+            until this field landed, the per-event uncosted signal was only
+            available at the ``LiveState.uncosted_turns`` aggregate level.
+            ``False`` for ``"failure"`` events (failure ≠ uncosted).
+    """
 
     timestamp: datetime
     lane_id: str
@@ -172,6 +191,7 @@ class LiveCostEvent:
     cost_usd: float
     tokens: int
     detail: str = ""
+    uncosted: bool = False
 
 
 @dataclass(frozen=True)
@@ -203,7 +223,14 @@ class LiveState:
             developer sees activity), but cost is NOT added to
             ``total_cost_usd`` — the dashboard can render "partial coverage"
             (arch F1, matching ``CostReport.is_fully_covered``'s honesty:
-            "uncosted ≠ \$0").
+            "uncosted ≠ \$0"). This is the **session-cumulative** count, while
+            ``recent_events`` is the **rolling window** capped at
+            :data:`RECENT_EVENTS_CAP`. The invariant
+            ``sum(ev.uncosted for ev in recent_events if ev.kind == "turn") ==
+            uncosted_turns`` therefore holds ONLY before the cap is exceeded;
+            after that, a per-event reconstruction from ``recent_events`` is a
+            windowed view, NOT equivalent to ``uncosted_turns`` (arch F1
+            fold-on-fold note from REV-20260608-034041).
     """
 
     main: AgentLane | None = None
@@ -374,6 +401,7 @@ def _apply_message(state: LiveState, event: LiveEvent, pricing: PricingTable) ->
         kind="turn",
         cost_usd=cost,
         tokens=tokens_in + tokens_out,
+        uncosted=uncosted,
     )
     return _bump_totals(
         new_state,

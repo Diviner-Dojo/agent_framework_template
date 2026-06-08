@@ -886,24 +886,28 @@ class _ChartPoint(TypedDict):
     * ``cost`` — API-equivalent USD as a finite float (NaN/Inf rejected at
       ``json.dumps`` time — see ``allow_nan=False`` below)
     * ``lane_id`` — string identifier of the originating lane
-
-    **Known limitation (arch F1 from REV-20260608-025749, deferred-as-advisory):**
-    ``cost == 0.0`` cannot today distinguish a priced cheap turn from an uncosted
-    turn — ``LiveCostEvent`` carries no ``uncosted`` flag (the flag is tracked at
-    ``LiveState.uncosted_turns`` aggregate level). The chart panel inherits that
-    collision. A future fold-model change should propagate ``uncosted`` per-event
-    so the chart can mark uncosted turns distinctly (dashed line, different
-    marker, or filtered with an "(N uncosted excluded)" caption). The next slice
-    (chart init + visual rendering) should land that change in the same cohort.
+    * ``uncosted`` — ``True`` iff the originating turn's model tier was unknown
+      or unpriced; ``cost`` is then ``0.0`` because the tier is unpriced, NOT
+      because the turn was free (arch F1 fold from REV-20260608-025749). The
+      Phase 2 init script consumes this to mark uncosted turns distinctly
+      (e.g. dashed line / different marker) so the chart preserves the
+      "uncosted ≠ \\$0" honesty discipline of the static cost report
+      (ADR-0020). Always ``False`` for ``"failure"`` events, which the
+      renderer filters out before the payload is built.
 
     **Schema evolution rule:** adding a field is non-breaking IFF the init script
     treats unknown fields as opaque. Removing or renaming an existing field is
     a breaking change that requires updating the init script in the same commit.
+    (The Phase 2 init script that consumes this payload MUST treat unknown
+    fields as opaque so the IFF condition is satisfied — this is a forward
+    obligation on the init script slice, currently CSP-blocked. Until that
+    slice lands the rule is vacuously satisfied because no JS consumer exists.)
     """
 
     t: str
     cost: float
     lane_id: str
+    uncosted: bool
 
 
 def _render_per_turn_cost_chart_panel(events: tuple[LiveCostEvent, ...]) -> str:
@@ -968,6 +972,7 @@ def _render_per_turn_cost_chart_panel(events: tuple[LiveCostEvent, ...]) -> str:
             "t": ev.timestamp.isoformat(),
             "cost": ev.cost_usd,
             "lane_id": ev.lane_id,
+            "uncosted": ev.uncosted,
         }
         for ev in turn_events
     ]

@@ -2628,10 +2628,20 @@ def test_message_with_none_model_accrues_tokens_but_zero_cost(pricing: PricingTa
     assert state2.runway.est_turns_remaining == 200
 
 
+@pytest.mark.regression
 def test_subagent_lane_with_unknown_tier_model_is_uncosted(pricing: PricingTable) -> None:
     # qa F3 (subagent variant): the uncosted-turn path must also fire on the
     # non-main branch — a future model family that lands before pricing.yaml is
     # updated could arrive on a subagent before it ever shows up on the main lane.
+    #
+    # qa F1 fold from REV-20260608-034041 (arch F1 fold review): also assert the
+    # PER-EVENT `uncosted` flag on `recent_events` for the non-main branch.
+    # `_apply_message` forks on `lane_id == "main"` vs the else branch; both reach
+    # the same unified `LiveCostEvent(...)` constructor call today (so per-event
+    # propagation is symmetric), but a future refactor that split the constructor
+    # call into the two branches could break the subagent path without triggering
+    # the main-lane-only tests in the arch F1 regression cohort. This guard mirrors
+    # the main-lane assertion in `test_apply_message_per_event_uncosted_flag_priced_vs_uncosted`.
     state = fold_events(
         [
             _dispatch_event(0, "tool_x", "qa-specialist"),
@@ -2643,6 +2653,10 @@ def test_subagent_lane_with_unknown_tier_model_is_uncosted(pricing: PricingTable
     assert state.total_cost_usd == 0.0
     assert state.agents[0].input_tokens == 500
     assert state.agents[0].cost_usd == 0.0
+    # qa F1 fold (REV-20260608-034041): per-event uncosted flag on the non-main branch.
+    assert len(state.recent_events) == 1
+    assert state.recent_events[-1].lane_id == "tool_x"
+    assert state.recent_events[-1].uncosted is True
 
 
 def test_message_with_unknown_tier_model_is_uncosted(pricing: PricingTable) -> None:
@@ -2656,6 +2670,64 @@ def test_message_with_unknown_tier_model_is_uncosted(pricing: PricingTable) -> N
     assert state.total_cost_usd == 0.0
     assert state.main is not None
     assert state.main.input_tokens == 500  # tokens still accumulate
+
+
+# arch F1 fold (REV-20260608-025749) — per-event uncosted flag on LiveCostEvent.
+@pytest.mark.regression
+def test_apply_message_per_event_uncosted_flag_priced_vs_uncosted(
+    pricing: PricingTable,
+) -> None:
+    """``LiveCostEvent.uncosted`` distinguishes a priced cheap turn from an unpriced tier.
+
+    Arch F1 from REV-20260608-025749: before this fold the chart payload
+    collapsed a priced $0 (a turn with truly tiny token counts) with an
+    uncosted turn (an unknown-tier turn forced to ``cost_usd=0.0``). At the
+    ``LiveState.uncosted_turns`` aggregate level the distinction was always
+    there, but per-event consumers (the chart panel's data block) had no
+    way to read it back. The fold now threads the ``uncosted`` flag through
+    ``_apply_message`` onto each emitted ``LiveCostEvent``.
+
+    A regression that dropped the propagation would re-collapse the two
+    cases on the chart — the per-event flag is the single source of truth
+    for the visual distinction.
+    """
+    state = fold_events(
+        [
+            # Priced opus turn → cost > 0, uncosted=False.
+            _msg_event(0, "main", "claude-opus-4-7", input_tokens=1000, output_tokens=500),
+            # Unknown tier → cost = 0.0, uncosted=True.
+            _msg_event(10, "main", "claude-mystery-9", input_tokens=500, output_tokens=200),
+        ],
+        pricing,
+    )
+    assert len(state.recent_events) == 2
+    priced, uncosted = state.recent_events
+    assert priced.cost_usd == pytest.approx(0.0525)
+    assert priced.uncosted is False
+    assert uncosted.cost_usd == 0.0
+    assert uncosted.uncosted is True
+    # Sanity: aggregate state agrees with the per-event flag.
+    assert state.uncosted_turns == 1
+    assert state.total_cost_usd == pytest.approx(0.0525)
+
+
+@pytest.mark.regression
+def test_live_cost_event_uncosted_defaults_to_false() -> None:
+    """``LiveCostEvent`` constructed without the ``uncosted`` kwarg defaults to ``False``.
+
+    A field with a default keeps every existing synthetic construction site
+    (the chart panel tests, the live stream panel tests, ad-hoc fixtures)
+    valid without modification — a future change that made the field
+    required would silently break them.
+    """
+    ev = LiveCostEvent(
+        timestamp=_ts(0),
+        lane_id="main",
+        kind="turn",
+        cost_usd=0.01,
+        tokens=100,
+    )
+    assert ev.uncosted is False
 
 
 # qa F5 — duplicate dispatch idempotence.
@@ -3810,13 +3882,18 @@ def test_render_per_turn_cost_chart_panel_emits_canvas_and_data_block_when_popul
 
 @pytest.mark.regression
 def test_render_per_turn_cost_chart_panel_json_payload_carries_t_cost_lane_id() -> None:
-    """The JSON payload carries ``t`` (iso) + ``cost`` (float) + ``lane_id`` (str).
+    """JSON payload shape: ``t`` iso, ``cost`` float, ``lane_id`` str, ``uncosted`` bool.
 
     Pin the data contract the Phase 2 init script will consume. Order is
     chronological (oldest first) so the X-axis line chart reads left-to-right
     as time progresses. The renderer applies ``</`` → ``<\\/`` to the JSON
     body, so the assertion uses ``json.loads`` after re-substituting ``</``
     back in (the round-trip JSON value, not the on-the-wire bytes).
+
+    The ``uncosted`` field (arch F1 fold) is part of the contract: a priced
+    cheap turn carries ``uncosted: false`` and an unpriced-tier turn carries
+    ``uncosted: true``, so the init script can render them distinctly. See
+    the dedicated arch-F1 regression test below for the per-event semantics.
     """
     base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
     events = (
@@ -3851,12 +3928,13 @@ def test_render_per_turn_cost_chart_panel_json_payload_carries_t_cost_lane_id() 
     # Chronological order (oldest first — X-axis reads left-to-right).
     assert points[0]["t"] == base.isoformat()
     assert points[2]["t"] == (base + timedelta(seconds=60)).isoformat()
-    # Field shape pinned: t / cost / lane_id on every entry.
+    # Field shape pinned: t / cost / lane_id / uncosted on every entry.
     for entry in points:
-        assert set(entry) == {"t", "cost", "lane_id"}
+        assert set(entry) == {"t", "cost", "lane_id", "uncosted"}
         assert isinstance(entry["t"], str)
         assert isinstance(entry["cost"], (int, float))
         assert isinstance(entry["lane_id"], str)
+        assert isinstance(entry["uncosted"], bool)
     # Specific values pinned (catches a future re-key that mapped cost to
     # tokens or vice versa).
     assert points[0]["lane_id"] == "main"
@@ -3864,6 +3942,10 @@ def test_render_per_turn_cost_chart_panel_json_payload_carries_t_cost_lane_id() 
     assert points[1]["lane_id"] == "agent-qa"
     assert points[1]["cost"] == 0.0
     assert points[2]["cost"] == 0.075
+    # Default ``uncosted=False`` on synthetic events — the dedicated arch-F1
+    # test exercises the True branch end-to-end through ``fold_events``.
+    for entry in points:
+        assert entry["uncosted"] is False
 
 
 @pytest.mark.regression
@@ -4071,3 +4153,44 @@ def test_render_live_shell_html_includes_chartjs_script_tag() -> None:
     chart_idx = shell.index("/static/chart.umd.min.js")
     style_idx = shell.index("<style>")
     assert chart_idx < style_idx
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_payload_carries_per_event_uncosted_flag(
+    pricing: PricingTable,
+) -> None:
+    """Arch F1 fold (REV-20260608-025749) — payload distinguishes priced \\$0 from uncosted.
+
+    Before this fold the chart payload's ``cost: 0.0`` collapsed two distinct
+    states: a priced cheap turn (the model was on a known tier and the cost
+    happened to be 0.0) and an uncosted turn (the model tier was unknown so
+    the renderer held the cost back from totals). The collision made it
+    impossible for the Phase 2 init script to mark uncosted turns distinctly
+    without re-deriving the state from somewhere else. The fold threads
+    ``LiveCostEvent.uncosted`` through ``_apply_message`` and onto every
+    payload point as a per-entry boolean.
+
+    The end-to-end pin: fold a priced opus turn + an unknown-tier turn, then
+    parse the chart payload and assert each entry carries the right flag.
+    """
+    state = fold_events(
+        [
+            _msg_event(0, "main", "claude-opus-4-7", input_tokens=1000, output_tokens=500),
+            _msg_event(30, "main", "claude-mystery-9", input_tokens=500, output_tokens=200),
+        ],
+        pricing,
+    )
+    panel = _render_per_turn_cost_chart_panel(state.recent_events)
+    start_marker = 'id="per-turn-cost-data" type="application/json">'
+    start = panel.index(start_marker) + len(start_marker)
+    end = panel.index("</script>", start)
+    points = json.loads(panel[start:end].replace("<\\/", "</"))
+    assert len(points) == 2
+    # Priced turn: cost > 0, uncosted=False.
+    assert points[0]["cost"] == pytest.approx(0.0525)
+    assert points[0]["uncosted"] is False
+    # Unknown-tier turn: cost = 0.0, uncosted=True. The chart can now render
+    # this distinctly (dashed line / different marker) — pre-fold it would
+    # have looked indistinguishable from a priced 0.0.
+    assert points[1]["cost"] == 0.0
+    assert points[1]["uncosted"] is True
