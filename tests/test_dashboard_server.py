@@ -424,27 +424,35 @@ def test_script_block_payload_uses_json_escape_not_html_escape() -> None:
     must be serialised with ``json.dumps`` + a ``</script>`` guard, NOT
     interpolated through ``html.escape``.
 
-    The shell HTML inlines no chart payload in Phase 1, but the principle
-    must be defended at the seam: when a future phase serializes chart
-    data into a ``<script type=\"application/json\">`` block, an attempted
-    ``</script><script>...`` injection must not be able to close the block.
+    The shell HTML inlines no chart payload (the chart data lives in the
+    FRAGMENT, baked by ``_render_per_turn_cost_chart_panel`` in Phase 2's
+    wire-the-chart slice) — only ``<script src="..." defer></script>`` tags
+    (htmx + Chart.js, both bodyless). This test pins the shell's NEGATIVE
+    surface so a future render hook that accidentally inlined chart data into
+    the shell would fail here AND would lose the ``</`` guard the dedicated
+    renderer enforces.
+
+    The complementary fragment-level injection guard lives at
+    ``tests/test_telemetry.py::test_render_per_turn_cost_chart_panel_resists_script_close_injection_in_lane_id``,
+    which is now the load-bearing test for the ``</`` → ``<\\/`` seam itself
+    (a `</script><script>` in a transcript-shaped ``lane_id`` cannot close
+    the data block).
     """
-    # The Phase 1 shell does NOT yet embed chart data; assert the negative
-    # surface (no raw transcript-shaped string is interpolated into any
-    # <script>...</script> block in the shell) so the regression test is
-    # meaningful when Phase 2 adds the chart data path.
     from src.telemetry.dashboard import render_live_shell_html
 
     shell = render_live_shell_html(generated_label="2026-06-07 12:00 UTC")
     # Find every <script> block in the shell and confirm none of them contain
     # a literal `</` substring that would let an attacker close out.
-    # (The htmx <script src=...> tag has no body, so this is vacuously true,
-    # but the assertion is the documentation contract.)
+    # (Both <script src=...> tags have empty bodies, so this is vacuously true
+    # today — the assertion is the load-bearing documentation contract: chart
+    # data must NEVER be inlined into the shell, only the fragment.)
     script_blocks = re.findall(r"<script[^>]*>(.*?)</script>", shell, flags=re.DOTALL)
     for body in script_blocks:
         assert "</" not in body, (
-            "a <script> block body contains a closing `</` — Phase 2 must add "
-            "json.dumps + </script>-guard before serializing chart data here"
+            "a <script> block body in the SHELL contains a closing `</` — "
+            "chart data must live in the FRAGMENT (per_turn_cost_chart_panel), "
+            "and any newly-inlined shell script body must apply json.dumps + "
+            "</script>-guard before serializing transcript-shaped data here"
         )
 
 
@@ -553,6 +561,36 @@ def test_root_serves_htmx_shell() -> None:
     body = r.text
     assert "/static/htmx.min.js" in body
     assert 'hx-get="/fragments/live"' in body
+
+
+@pytest.mark.regression
+def test_root_shell_loads_vendored_chartjs_script(tmp_path: Path) -> None:
+    """Phase 2 wire-the-chart: the shell embeds the vendored Chart.js script tag.
+
+    Transport-layer pin complementary to the
+    ``test_render_live_shell_html_includes_chartjs_script_tag`` unit test in
+    ``tests/test_telemetry.py``: a future server-side render hook that
+    re-templated the shell or stripped the script tag during a string
+    transformation would silently break the chart's runtime, and the
+    composition-time unit test would not catch a transport-layer regression.
+    The pair is the same belt-and-suspenders pattern session 10e used for the
+    retrospective link + loading-tile placeholder (FRICTION-1 / FRICTION-4).
+    The CSP ``script-src 'self'`` already covers same-origin script loads
+    (recorded in regression ledger 2026-06-08, REV-20260608-022723), so this
+    is purely the markup-presence guard.
+    """
+    db = _empty_db(tmp_path)
+    app = create_app(db_path=db, project_root=tmp_path, port=8765)
+    client = TestClient(app)
+    r = client.get("/", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+    body = r.text
+    # Pinned to the exact load form — `src="/static/chart.umd.min.js"` is the
+    # contract (the vendored asset path, not a CDN); `defer` is the load-order
+    # guarantee so htmx swaps in the first fragment after Chart is in scope.
+    assert '<script src="/static/chart.umd.min.js" defer></script>' in body
+    # htmx is still loaded too — neither replaces the other.
+    assert '<script src="/static/htmx.min.js" defer></script>' in body
 
 
 @pytest.mark.regression

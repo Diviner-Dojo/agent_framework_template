@@ -26,7 +26,9 @@ Two honesty disciplines are enforced here at the presentation boundary:
 from __future__ import annotations
 
 import html
+import json
 from dataclasses import dataclass
+from typing import TypedDict
 
 from src.telemetry.cost import CostReport
 from src.telemetry.failures import RankedFailure
@@ -664,17 +666,25 @@ _RUNWAY_LABEL = {
 
 
 def render_live_fragment(state: LiveState) -> str:
-    """Render the htmx live fragment (agent lanes + runway + cost/failure stream).
+    """Render the htmx live fragment (agent lanes + runway + cost/failure stream + chart).
 
     Returned as ONE root ``<section>`` so an htmx ``hx-swap="outerHTML"`` swap
     replaces the previous fragment cleanly. The server polls this endpoint on
     a server-specified interval (spec R2 — htmx polling, not SSE in Phase 1).
+
+    Composition order is the visual-hierarchy contract: runway (highest-stakes
+    "how much headroom do I have?") → lanes (operational state) → stream (per-event
+    trail) → per-turn cost chart (the trend visualisation that sits on top of the
+    stream's raw events). The chart appears LAST because it is a derived view of
+    the stream data above it; a reader who has not yet scanned the stream can
+    still read the chart, but the stream is the source of truth.
     """
     return (
         '<section id="live-section" class="live-section" data-state="live">'
         f"{_render_runway_panel(state.runway)}"
         f"{_render_agent_lanes_panel(state)}"
         f"{_render_live_stream_panel(state.recent_events)}"
+        f"{_render_per_turn_cost_chart_panel(state.recent_events)}"
         "</section>"
     )
 
@@ -847,14 +857,179 @@ def _render_live_stream_panel(events: tuple[LiveCostEvent, ...]) -> str:
     )
 
 
+#: Data-block element id for the per-turn cost chart's JSON payload.
+#:
+#: The Chart.js init script (Phase 2 next slice, pending the CSP fork) will look
+#: up this id with ``document.getElementById`` and parse its ``textContent`` as
+#: JSON. Pulling the id out as a module constant keeps the renderer + the future
+#: init script + the regression tests pointing at one source of truth.
+_PER_TURN_COST_DATA_ELEMENT_ID = "per-turn-cost-data"
+
+#: Canvas element id for the per-turn cost chart.
+_PER_TURN_COST_CANVAS_ID = "per-turn-cost-chart"
+
+#: Wrapper element class for the canvas + data block. The Phase 2 init script
+#: removes the ``hidden`` attribute on this wrapper + flips the parent tile's
+#: ``data-state`` from ``"loading"`` to ``"data"`` (and removes the
+#: ``tile--loading`` class) once the chart is drawn. Until then the wrapper
+#: is HTML5-``hidden`` so the user sees the loading copy, not a blank canvas.
+_PER_TURN_COST_RENDER_TARGET_CLASS = "chart-rendering-target"
+
+
+class _ChartPoint(TypedDict):
+    """The chart-data contract baked into the per-turn cost panel's JSON block.
+
+    This is the API between the Python renderer (this slice) and the Phase 2
+    init script (next slice, JS). The shape is intentionally minimal:
+
+    * ``t`` — ISO-8601 UTC timestamp string (``LiveCostEvent.timestamp.isoformat()``)
+    * ``cost`` — API-equivalent USD as a finite float (NaN/Inf rejected at
+      ``json.dumps`` time — see ``allow_nan=False`` below)
+    * ``lane_id`` — string identifier of the originating lane
+
+    **Known limitation (arch F1 from REV-20260608-025749, deferred-as-advisory):**
+    ``cost == 0.0`` cannot today distinguish a priced cheap turn from an uncosted
+    turn — ``LiveCostEvent`` carries no ``uncosted`` flag (the flag is tracked at
+    ``LiveState.uncosted_turns`` aggregate level). The chart panel inherits that
+    collision. A future fold-model change should propagate ``uncosted`` per-event
+    so the chart can mark uncosted turns distinctly (dashed line, different
+    marker, or filtered with an "(N uncosted excluded)" caption). The next slice
+    (chart init + visual rendering) should land that change in the same cohort.
+
+    **Schema evolution rule:** adding a field is non-breaking IFF the init script
+    treats unknown fields as opaque. Removing or renaming an existing field is
+    a breaking change that requires updating the init script in the same commit.
+    """
+
+    t: str
+    cost: float
+    lane_id: str
+
+
+def _render_per_turn_cost_chart_panel(events: tuple[LiveCostEvent, ...]) -> str:
+    """Render the per-turn cost chart panel (spec R2/R11/R11a — chart data baked).
+
+    Filters ``events`` to ``kind == "turn"`` only (failure-kind events carry no
+    per-turn cost dimension to chart) and bakes the resulting time series as a
+    single JSON literal in a ``<script type="application/json">`` block — per
+    spec R11a, the page never opens an outbound JSON endpoint, all chart data
+    travels inline with the fragment. The Chart.js init that consumes this
+    payload lands in a separate slice (the CSP design fork).
+
+    **Interim visual state** (ux F1 from REV-20260608-025749 fold): until the
+    Phase 2 init script ships, the data-present path renders as ``tile--loading``
+    with the canvas + data block in an HTML5-``hidden`` wrapper — NOT as a
+    bare ``tile--data`` panel with a visible-but-blank canvas, which would read
+    as a broken component. The hidden wrapper preserves the integration surface
+    for the future init script (``document.getElementById`` still finds the
+    canvas + data block); the init script removes the ``hidden`` attribute +
+    flips the tile's ``data-state`` to ``"data"`` + drops the ``tile--loading``
+    class when it draws the chart.
+
+    Honesty contract (spec R3/R3a / C4): empty turn-events render the distinct
+    honest-absence tile, NEVER an empty chart with fabricated axes. The
+    distinction-by-shape vocabulary is shared with the runway/lanes/stream
+    panels above.
+
+    Security contract (spec R11 / C6 / security F2): ``html.escape`` is
+    intentionally NOT applied to the JSON body — it would corrupt the JSON and
+    break ``JSON.parse``. The correct seam is ``json.dumps`` followed by a
+    ``</`` → ``<\\/`` replacement so a transcript-shaped string field carrying
+    ``</script><script>`` cannot close the data block (HTML5 parses ``<script>``
+    bodies in raw-text mode and ends the block on the literal byte sequence
+    ``</`` followed by a name match — the escaped ``\\/`` form is valid JSON
+    per RFC 8259 §7 and round-trips through ``JSON.parse`` unchanged).
+
+    ``allow_nan=False`` (security F1 / qa F3 fold from REV-20260608-025749):
+    converts a non-finite ``cost_usd`` (NaN/Infinity) from a silent
+    ``"NaN"``/``"Infinity"`` token in the data block (invalid per RFC 8259 §3,
+    crashes ``JSON.parse`` in every browser) into a loud ``ValueError`` at
+    render time, which the FastAPI error middleware catches and serves as a
+    generic 500. ``LiveCostEvent.cost_usd`` admits non-finite values today (no
+    field validator on the frozen dataclass), so this is defense-in-depth.
+
+    **Rule-of-Three pin** (arch F3 from REV-20260608-025749): the JSON-in-script
+    escape (``json.dumps`` + ``</`` → ``<\\/``) is inline here as the SOLE
+    consumer in this codebase. When a second consumer lands (e.g., a runway
+    history chart, an A2 failure-trends panel), THAT is the moment to extract
+    a ``_json_in_script(payload: object) -> str`` helper so all consumers unify
+    under one escape — not before.
+    """
+    turn_events = tuple(ev for ev in events if ev.kind == "turn")
+    if not turn_events:
+        return _absence_tile(
+            "Per-turn cost over time",
+            "No priced turns yet.",
+            "The per-turn cost chart will appear here once the active session "
+            "emits a priced assistant turn.",
+        )
+    points: list[_ChartPoint] = [
+        {
+            "t": ev.timestamp.isoformat(),
+            "cost": ev.cost_usd,
+            "lane_id": ev.lane_id,
+        }
+        for ev in turn_events
+    ]
+    payload = json.dumps(points, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
+    aria_label = (
+        "Per-turn cost over time — line chart of API-equivalent USD per "
+        "priced assistant turn in the recent event window."
+    )
+    return (
+        '<div class="tile tile--loading tile--wide" data-state="loading">'
+        "<h3>Per-turn cost over time</h3>"
+        '<p class="legend">Cost per priced assistant turn over the recent event '
+        "window. Y-axis is API-equivalent USD per turn; X-axis is wall-clock "
+        "time. Data is baked into the fragment (no separate JSON endpoint, "
+        "spec R11a). Turns from model tiers without a known price appear at "
+        "<code>0.0000</code> (uncosted — excluded from totals, not "
+        "zero-rated).</p>"
+        '<p class="loading-copy">Chart visualization layer initializing &mdash; '
+        "the line chart will draw once the rendering layer is ready. Turn "
+        "data is also listed in the Live stream panel above.</p>"
+        # Hidden wrapper preserves the integration surface for the Phase 2 init
+        # script (canvas + data block ids unchanged); init script removes
+        # ``hidden`` + flips the tile to data-state="data" on first draw.
+        f'<div class="{_PER_TURN_COST_RENDER_TARGET_CLASS}" hidden>'
+        f'<canvas id="{_PER_TURN_COST_CANVAS_ID}" width="800" height="240"'
+        f' role="img" aria-label="{_esc(aria_label)}">'
+        "<p>Per-turn cost chart (data available; chart rendering requires "
+        "a visual display).</p>"
+        "</canvas>"
+        f'<script id="{_PER_TURN_COST_DATA_ELEMENT_ID}" type="application/json">'
+        f"{payload}"
+        "</script>"
+        "</div>"
+        "</div>"
+    )
+
+
 def render_live_shell_html(*, generated_label: str = "") -> str:
     """Render the htmx shell page that polls the live fragment.
 
-    The shell embeds htmx (loaded from the local static mount, NOT a CDN — spec
-    R11a / AC6) and one ``<section>`` placeholder that htmx swaps via a server-
-    specified polling interval. The retrospective panels live above this shell
-    and continue to render server-side from :func:`render_dashboard_html`'s
-    helpers — the same panel renderers, no duplication (spec R15).
+    The shell embeds htmx + Chart.js (both loaded from the local static mount,
+    NOT a CDN — spec R11a / AC6) and one ``<section>`` placeholder that htmx
+    swaps via a server-specified polling interval. The retrospective panels
+    live above this shell and continue to render server-side from
+    :func:`render_dashboard_html`'s helpers — the same panel renderers, no
+    duplication (spec R15).
+
+    Chart.js is loaded ``defer`` so it is ready in the global ``Chart`` symbol
+    by the time the first ``/fragments/live`` swap lands, but never blocks the
+    initial paint. The chart's data payload is baked INTO the live fragment as
+    a JSON literal (see :func:`_render_per_turn_cost_chart_panel`), so the shell
+    itself carries no chart-specific markup beyond the script-tag load.
+
+    **CSP scope note** (security F2 from REV-20260608-025749 fold): the shell's
+    ``Content-Security-Policy`` header (set by ``ContentSecurityPolicyMiddleware``
+    in ``scripts/telemetry/dashboard_server.py``) is the OPERATIVE policy for all
+    htmx-swapped fragment content. The fragment's own response header is consumed
+    by the htmx XHR path, NOT the document parser. Relaxing the shell's
+    ``script-src 'self'`` to ``'unsafe-inline'`` for the Phase 2 init script would
+    REMOVE the XSS backstop for the chart data block — even with the
+    ``</`` → ``<\\/`` guard in place. Any such relaxation must come with a
+    reviewer ADR and matching tests on the trust boundary.
 
     The header carries a "retrospective view" link to ``/fragments/retrospective``
     (ux FRICTION-4): that route returns a full HTML document (not an htmx
@@ -877,6 +1052,7 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>Telemetry Dashboard (live)</title>"
         '<script src="/static/htmx.min.js" defer></script>'
+        '<script src="/static/chart.umd.min.js" defer></script>'
         f"<style>{_CSS}{_LIVE_CSS}</style></head><body>"
         "<header><h1>Telemetry &amp; Oversight — live</h1>"
         f'<div class="gen">{_esc(generated_label)}</div>'
@@ -921,6 +1097,7 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
 _LIVE_CSS = """
 .live-section{grid-column:1 / -1;display:grid;grid-template-columns:repeat(2,1fr);gap:18px;}
 .live-section>.tile--wide{grid-column:1 / -1;}
+canvas{max-width:100%;height:auto;}
 .runway__bar{height:10px;background:#0d1117;border:1px solid var(--line);border-radius:6px;
 overflow:hidden;margin:8px 0;}
 .runway__fill{height:100%;background:var(--accent);transition:width .25s ease;}

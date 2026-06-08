@@ -30,6 +30,7 @@ from src.telemetry.dashboard import (
     _render_agent_lane_row,
     _render_agent_lanes_panel,
     _render_live_stream_panel,
+    _render_per_turn_cost_chart_panel,
     _render_runway_estimate,
     _render_runway_panel,
     render_console_summary,
@@ -3583,38 +3584,69 @@ def test_render_live_stream_panel_escapes_dynamic_string_fields() -> None:
 
 
 @pytest.mark.regression
-def test_render_live_fragment_empty_state_emits_three_absence_tiles() -> None:
-    """qa F1 composition: an empty :class:`LiveState` produces exactly three absence tiles.
+def test_render_live_fragment_empty_state_emits_four_absence_tiles() -> None:
+    """qa F1 composition: an empty :class:`LiveState` produces exactly four absence tiles.
 
     The first-paint guarantee: when no fold has happened yet, the live section
-    must show three distinct honest-absence tiles (runway / agent lanes / live
-    stream), not a half-rendered data table or a single combined tile. The
-    fragment must still be ONE root ``<section>`` for the htmx outerHTML swap.
+    must show four distinct honest-absence tiles (runway / agent lanes / live
+    stream / per-turn cost chart), not a half-rendered data table or a single
+    combined tile. The fragment must still be ONE root ``<section>`` for the
+    htmx outerHTML swap.
+
+    Phase 2 NEXT slice (wire-the-chart) added the per-turn cost chart panel —
+    on first paint it renders the same honest-absence vocabulary as the other
+    three panels, never a fabricated empty chart with phantom axes (the C4
+    anti-pattern). Bumping ``count == 3`` to ``count == 4`` here is the
+    contract-strengthening side of that addition: a future regression that
+    dropped the chart panel's absence tile would fail this count alongside
+    the missing "No priced turns yet." copy assertion.
     """
     html = render_live_fragment(LiveState())
     # One <section> root (htmx swap target shape).
     assert html.startswith('<section id="live-section"')
     assert html.endswith("</section>")
     assert html.count('<section id="live-section"') == 1
-    # Three absence tiles — one per panel.
-    assert html.count('data-state="absent"') == 3
-    # None of the data-tile vocabulary appears in the empty composition.
+    # Four absence tiles — one per panel (runway / lanes / stream / chart).
+    assert html.count('data-state="absent"') == 4
+    # None of the data-tile or loading-tile vocabulary appears in the empty
+    # composition. The chart panel is in ``tile--absent`` state (not
+    # ``tile--loading``) because the absence vs interim-loading distinction is
+    # genuine: absent = no data exists yet; loading = data exists, chart
+    # rendering layer not yet active.
     assert 'data-state="data"' not in html
-    # The three absence copies are each present, so the gatekeeper can tell
+    assert 'data-state="loading"' not in html
+    # The four absence copies are each present, so the gatekeeper can tell
     # which panel is absent at a glance.
     assert "No live context snapshot yet." in html
     assert "No active session yet." in html
     assert "No live events yet." in html
+    assert "No priced turns yet." in html
+    # And specifically: NO <canvas> on first paint (the chart panel is in
+    # absence mode, not a fabricated empty chart).
+    assert "<canvas" not in html
+    # NO <script type="application/json"> data block either — the empty-state
+    # path must not bake a `[]` payload that the init script would still try
+    # to render (a phantom empty chart is the C4 anti-pattern).
+    assert 'type="application/json"' not in html
 
 
 @pytest.mark.regression
-def test_render_live_fragment_composes_runway_then_lanes_then_stream() -> None:
-    """qa F1 composition: the three panels render in runway -> lanes -> stream order.
+def test_render_live_fragment_composes_runway_then_lanes_then_stream_then_chart() -> None:
+    """qa F1 composition: panels render in runway -> lanes -> stream -> chart order.
 
     The visual hierarchy is load-bearing — the runway is the highest-stakes
     signal (gatekeeper decides when to hand off), the agent lanes are the
-    operational state, the live stream is the per-event trail. A regression
-    that reordered the composition would silently change the reading flow.
+    operational state, the live stream is the per-event trail, and the per-turn
+    cost chart is the trend visualisation derived FROM the stream above it
+    (the chart sits last because a reader who has not yet scanned the stream
+    can still read the chart, but the stream remains the source of truth for
+    the chart's bars/points). A regression that reordered the composition
+    would silently change the reading flow.
+
+    Phase 2 NEXT slice (wire-the-chart) extended this from 3 to 4 panels — the
+    composition test now pins the full hierarchy chain so a future drop of the
+    chart panel (or a re-order that placed the chart above the stream) fails
+    here at the index-ordering step, not only at the count step.
     """
     main = _lane("main", "main", LANE_ACTIVE, output_tokens=400)
     runway = RunwayGauge(
@@ -3636,11 +3668,406 @@ def test_render_live_fragment_composes_runway_then_lanes_then_stream() -> None:
     state = LiveState(main=main, runway=runway, recent_events=events)
     html = render_live_fragment(state)
     # Runway panel heading appears before the agent-lanes heading, which
-    # appears before the live-stream heading.
+    # appears before the live-stream heading, which appears before the
+    # per-turn cost chart heading.
     runway_idx = html.index("<h3>Context runway</h3>")
     lanes_idx = html.index("<h3>Agent lanes</h3>")
     stream_idx = html.index("<h3>Live stream</h3>")
-    assert runway_idx < lanes_idx < stream_idx
-    # All three panels are in the DATA state (no absence tiles for this case).
+    chart_idx = html.index("<h3>Per-turn cost over time</h3>")
+    assert runway_idx < lanes_idx < stream_idx < chart_idx
+    # All four panels are populated — no absence tiles for this case.
     assert 'data-state="absent"' not in html
+    # Three DATA panels (runway / lanes / stream) + ONE LOADING panel (chart
+    # — ux F1 interim state until the Phase 2 init script lands and flips it).
+    # When step 4 ships, this becomes ``count('data-state="data"') == 4`` and
+    # the loading count drops to zero. Pinning the asymmetric split here keeps
+    # the interim contract honest: if a future regression accidentally
+    # promoted the chart back to data-state without the init script, the
+    # blank-canvas defect (ux F1) would recur, and this assertion would
+    # fail BEFORE the visual regression hit a user.
     assert html.count('data-state="data"') == 3
+    assert html.count('data-state="loading"') == 1
+
+
+# --------------------------------------------------------------------------- #
+# Per-turn cost chart panel — DIRECT unit tests (Phase 2 wire-the-chart slice)
+# --------------------------------------------------------------------------- #
+#
+# The new ``_render_per_turn_cost_chart_panel`` reuses the session 10i pattern:
+# synthetic ``LiveCostEvent`` tuples (no ``fold_events``) so each branch of the
+# renderer's contract is asserted independent of the fold's behaviour. The
+# composition tests above route through ``render_live_fragment`` and catch a
+# panel that was dropped from the section; these tests route AROUND the public
+# seam to catch a regression INSIDE the new panel that the surrounding
+# composition would silently mask.
+#
+# Phase 2 next-step note: the Chart.js init script that consumes this JSON
+# payload lands in a separate slice — see HANDOFF-supervisor-rolling.md step 4
+# (the CSP design fork). These tests pin the data block's id + canvas id + JSON
+# shape so the init script lands with one known-good integration surface.
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_empty_events_renders_absence_tile() -> None:
+    """Empty events tuple renders the honest-absence tile (spec R3a / C4).
+
+    First-paint: no events folded yet, so no priced turns exist to chart. The
+    panel renders the same dashed-border absence vocabulary as the runway /
+    lanes / stream panels above it — NOT a fabricated empty chart with phantom
+    axes (the C4 anti-pattern the Phase 2 build must not regress).
+    """
+    panel = _render_per_turn_cost_chart_panel(())
+    assert 'data-state="absent"' in panel
+    assert "tile--absent" in panel
+    assert "No priced turns yet." in panel
+    # Heading carries the time-dimension framing (ux F4 fold from
+    # REV-20260608-025749) so the gatekeeper reads the panel as a TREND view,
+    # not a scalar.
+    assert "Per-turn cost over time" in panel
+    # No data-tile or loading-tile vocabulary, no canvas, no JSON data block.
+    assert 'data-state="data"' not in panel
+    assert 'data-state="loading"' not in panel
+    assert "<canvas" not in panel
+    assert 'type="application/json"' not in panel
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_only_failure_events_renders_absence_tile() -> None:
+    """A stream of only ``kind="failure"`` events renders the absence tile.
+
+    The chart's domain is per-turn cost — a failure-kind event has no per-turn
+    cost dimension to chart. The renderer filters ``kind == "turn"`` BEFORE the
+    absence decision; an all-failure stream is therefore equivalent to an
+    empty turn stream and renders the absence tile (NOT a chart with zero
+    data points).
+
+    Defensive guard: today ``_bump_totals`` only appends ``kind="turn"`` events
+    (see src/telemetry/live.py:371 + the LiveCostEvent docstring), but the model
+    allows ``kind="failure"`` (live.py:171 "turn" | "failure"). A future
+    failure-emitting fold landing on this renderer without the filter would
+    otherwise produce a chart of zero-cost failure points.
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    events = (
+        LiveCostEvent(timestamp=base, lane_id="main", kind="failure", cost_usd=0.0, tokens=0),
+        LiveCostEvent(
+            timestamp=base + timedelta(seconds=1),
+            lane_id="agent-1",
+            kind="failure",
+            cost_usd=0.0,
+            tokens=0,
+        ),
+    )
+    panel = _render_per_turn_cost_chart_panel(events)
+    assert 'data-state="absent"' in panel
+    assert "No priced turns yet." in panel
+    assert "<canvas" not in panel
+    assert 'type="application/json"' not in panel
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_emits_canvas_and_data_block_when_populated() -> None:
+    """Populated turn events render a canvas + JSON data block with pinned ids.
+
+    The two ids ``per-turn-cost-chart`` (canvas) and ``per-turn-cost-data``
+    (script block) are the integration surface the Phase 2 Chart.js init slice
+    will look up via ``document.getElementById``. A regression that renamed
+    either id would silently break the init script — pin them both here so
+    the rename is caught before the integration lands.
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    events = (
+        LiveCostEvent(timestamp=base, lane_id="main", kind="turn", cost_usd=0.0123, tokens=400),
+    )
+    panel = _render_per_turn_cost_chart_panel(events)
+    # ux F1 interim state (REV-20260608-025749 fold): tile--loading +
+    # data-state="loading" until the Phase 2 init script lands and flips the
+    # tile. Guards the gatekeeper from a blank canvas reading as a broken
+    # component during the interim window between this slice and step 4.
+    assert 'data-state="loading"' in panel
+    assert "tile--loading" in panel
+    assert 'data-state="data"' not in panel
+    # Canvas id is pinned (init script lookup surface).
+    assert 'id="per-turn-cost-chart"' in panel
+    assert "<canvas" in panel
+    # ux F2 fold: WCAG SC 1.1.1/4.1.2 — accessible name + role + fallback text.
+    assert 'role="img"' in panel
+    assert 'aria-label="' in panel
+    # JSON data block id + media type are pinned (init script lookup surface).
+    assert 'id="per-turn-cost-data"' in panel
+    assert 'type="application/json"' in panel
+    # The canvas + data block are inside the hidden render-target wrapper so
+    # the user does not see a blank canvas before step 4 ships. The Phase 2
+    # init script removes the ``hidden`` attribute on first draw.
+    assert 'class="chart-rendering-target" hidden' in panel
+    # Loading-copy explains what the user is seeing.
+    assert "Chart visualization layer initializing" in panel
+    # No absence vocabulary leaks into the data path.
+    assert 'data-state="absent"' not in panel
+    # Heading carries the time-dimension framing (ux F4 fold).
+    assert "<h3>Per-turn cost over time</h3>" in panel
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_json_payload_carries_t_cost_lane_id() -> None:
+    """The JSON payload carries ``t`` (iso) + ``cost`` (float) + ``lane_id`` (str).
+
+    Pin the data contract the Phase 2 init script will consume. Order is
+    chronological (oldest first) so the X-axis line chart reads left-to-right
+    as time progresses. The renderer applies ``</`` → ``<\\/`` to the JSON
+    body, so the assertion uses ``json.loads`` after re-substituting ``</``
+    back in (the round-trip JSON value, not the on-the-wire bytes).
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    events = (
+        LiveCostEvent(timestamp=base, lane_id="main", kind="turn", cost_usd=0.05, tokens=400),
+        LiveCostEvent(
+            timestamp=base + timedelta(seconds=30),
+            lane_id="agent-qa",
+            kind="turn",
+            cost_usd=0.0,
+            tokens=50,
+        ),
+        LiveCostEvent(
+            timestamp=base + timedelta(seconds=60),
+            lane_id="main",
+            kind="turn",
+            cost_usd=0.075,
+            tokens=600,
+        ),
+    )
+    panel = _render_per_turn_cost_chart_panel(events)
+    # Extract the JSON payload between the data-block script tags.
+    start_marker = 'id="per-turn-cost-data" type="application/json">'
+    start = panel.index(start_marker) + len(start_marker)
+    end = panel.index("</script>", start)
+    payload_bytes = panel[start:end]
+    # The on-the-wire payload must NOT contain a literal `</` (the </script>
+    # injection guard); the JSON-round-trip path re-substitutes for parsing.
+    # See the dedicated injection test below for the strict guard assertion.
+    points = json.loads(payload_bytes.replace("<\\/", "</"))
+    assert isinstance(points, list)
+    assert len(points) == 3
+    # Chronological order (oldest first — X-axis reads left-to-right).
+    assert points[0]["t"] == base.isoformat()
+    assert points[2]["t"] == (base + timedelta(seconds=60)).isoformat()
+    # Field shape pinned: t / cost / lane_id on every entry.
+    for entry in points:
+        assert set(entry) == {"t", "cost", "lane_id"}
+        assert isinstance(entry["t"], str)
+        assert isinstance(entry["cost"], (int, float))
+        assert isinstance(entry["lane_id"], str)
+    # Specific values pinned (catches a future re-key that mapped cost to
+    # tokens or vice versa).
+    assert points[0]["lane_id"] == "main"
+    assert points[0]["cost"] == 0.05
+    assert points[1]["lane_id"] == "agent-qa"
+    assert points[1]["cost"] == 0.0
+    assert points[2]["cost"] == 0.075
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_filters_failure_events_out_of_payload() -> None:
+    """A mixed stream of turn + failure events bakes ONLY the turn events.
+
+    The chart's domain is per-turn cost; failure-kind events have no cost
+    dimension to chart and would otherwise appear as phantom zero-cost data
+    points. A future regression that dropped the ``kind == "turn"`` filter
+    would silently introduce failure events into the chart — pinning the
+    filter at the data-shape boundary catches that before the init script
+    has a chance to render the wrong series.
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    events = (
+        LiveCostEvent(timestamp=base, lane_id="main", kind="turn", cost_usd=0.05, tokens=400),
+        LiveCostEvent(
+            timestamp=base + timedelta(seconds=10),
+            lane_id="main",
+            kind="failure",
+            cost_usd=0.0,
+            tokens=0,
+            detail="HTTP 500",
+        ),
+        LiveCostEvent(
+            timestamp=base + timedelta(seconds=20),
+            lane_id="agent-1",
+            kind="turn",
+            cost_usd=0.01,
+            tokens=80,
+        ),
+    )
+    panel = _render_per_turn_cost_chart_panel(events)
+    start_marker = 'id="per-turn-cost-data" type="application/json">'
+    start = panel.index(start_marker) + len(start_marker)
+    end = panel.index("</script>", start)
+    points = json.loads(panel[start:end].replace("<\\/", "</"))
+    # Two turn events; the one failure event is filtered out.
+    assert len(points) == 2
+    assert points[0]["lane_id"] == "main"
+    assert points[0]["cost"] == 0.05
+    assert points[1]["lane_id"] == "agent-1"
+    assert points[1]["cost"] == 0.01
+    # The failure event's detail string ("HTTP 500") must not appear in the
+    # baked payload — defense in depth against a future filter regression
+    # that included the kind/detail fields.
+    assert "HTTP 500" not in panel
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_resists_script_close_injection_in_lane_id() -> None:
+    """Spec R11 / security F2: ``</script><script>`` in ``lane_id`` cannot close the block.
+
+    The chart data block uses ``<script type="application/json">`` — non-executable
+    per the type attribute, but HTML5 still parses the body in raw-text mode and
+    ends the block on the literal byte sequence ``</`` followed by a name match.
+    A transcript-shaped ``lane_id`` carrying ``</script><script>alert(1)</script>``
+    must NOT close the data block, OR an attacker would land an active inline
+    ``<script>`` AFTER it — the CSP ``script-src 'self'`` (no ``'unsafe-inline'``)
+    would still block execution, but the rule is defense-in-depth: the escape
+    guard is the first line, CSP is the second.
+
+    The fix (spec R11): ``json.dumps`` followed by replacing every ``</`` with
+    ``<\\/``. The escaped ``\\/`` form is valid JSON per RFC 8259 §7 and
+    round-trips through ``JSON.parse`` unchanged, so the chart still receives
+    the original string — only the raw HTML byte sequence is broken.
+    """
+    payload = '</script><script>alert("xss")</script>'
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    events = (
+        LiveCostEvent(timestamp=base, lane_id=payload, kind="turn", cost_usd=0.01, tokens=10),
+    )
+    panel = _render_per_turn_cost_chart_panel(events)
+    # The on-the-wire panel HTML must contain EXACTLY ONE </script> — the one
+    # that closes the data block itself. The injected payload's two </script>
+    # tokens must have been neutralised to <\/script>.
+    assert panel.count("</script>") == 1
+    # The neutralised form appears twice in the data block body (once per
+    # injected </script> token) — pin it explicitly so a future regression
+    # that swapped the escape for `html.escape` (which would emit `&lt;/`
+    # instead) fails here.
+    assert panel.count("<\\/script>") == 2
+    # JSON.parse round-trip: re-substituting `<\/` back to `</` and parsing
+    # must yield the original payload string unchanged.
+    start_marker = 'id="per-turn-cost-data" type="application/json">'
+    start = panel.index(start_marker) + len(start_marker)
+    end = panel.index("</script>", start)
+    points = json.loads(panel[start:end].replace("<\\/", "</"))
+    assert len(points) == 1
+    assert points[0]["lane_id"] == payload
+    # No literal `<script>` appears AFTER the closing </script> of the data
+    # block — would indicate a successful injection.
+    after_data_block = panel[end + len("</script>") :]
+    assert "<script>" not in after_data_block
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_rejects_non_finite_cost_usd() -> None:
+    """Spec R11 + RFC 8259 §3 (qa F3 + security F1 fold from REV-20260608-025749).
+
+    Python's ``json.dumps`` with the default ``allow_nan=True`` silently emits
+    bare ``NaN`` / ``Infinity`` tokens for non-finite floats — these are NOT
+    valid RFC 8259, and ``JSON.parse`` throws ``SyntaxError`` in every browser.
+    ``LiveCostEvent.cost_usd`` is a plain ``float`` (no field validator on the
+    frozen dataclass), so a non-finite value reaching the renderer is possible
+    even though the fold path constrains it. Defense-in-depth: ``allow_nan=False``
+    converts silent corruption into a loud ``ValueError`` at render time, which
+    the FastAPI error middleware catches as a generic 500.
+
+    Two specialists (qa-specialist + security-specialist) independently raised
+    this finding from orthogonal directions — qa on data-integrity, security on
+    the injection surface (a bare ``NaN`` token in a parser-data context). The
+    test pins both ``float("nan")`` and ``float("inf")`` so a future regression
+    that dropped ``allow_nan=False`` fails on either path.
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    for bad_cost in (float("nan"), float("inf"), float("-inf")):
+        ev = LiveCostEvent(
+            timestamp=base, lane_id="main", kind="turn", cost_usd=bad_cost, tokens=10
+        )
+        with pytest.raises(ValueError):
+            _render_per_turn_cost_chart_panel((ev,))
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_canvas_carries_accessible_name_and_role() -> None:
+    """WCAG SC 1.1.1 (Non-text content) + 4.1.2 (Name+Role) — ux F2 fold.
+
+    A ``<canvas>`` element with no ``aria-label``, no ``role="img"``, and no
+    fallback content is invisible to screen readers. The surrounding ``<p>``
+    legend is a sibling, NOT a label association — assistive tech does not
+    connect them. This test pins the WCAG AA accessibility contract:
+    ``role="img"`` + a descriptive ``aria-label`` that says WHAT the chart
+    plots (per-turn cost over time), plus a fallback ``<p>`` inside the
+    canvas for legacy / canvas-disabled clients. A regression that dropped
+    any of these three channels would silently re-introduce the WCAG defect.
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    events = (
+        LiveCostEvent(timestamp=base, lane_id="main", kind="turn", cost_usd=0.01, tokens=10),
+    )
+    panel = _render_per_turn_cost_chart_panel(events)
+    # role="img" is the assistive-tech role assignment for canvas-shaped content.
+    assert 'role="img"' in panel
+    # aria-label carries the descriptive content the screen reader announces.
+    # The label must MEANINGFULLY describe the chart, not just repeat the title.
+    assert 'aria-label="' in panel
+    assert "per-turn cost" in panel.lower()
+    assert "line chart" in panel.lower()
+    # Fallback content INSIDE the canvas (browsers without canvas support,
+    # screen readers that expose inner content).
+    canvas_start = panel.index("<canvas")
+    canvas_end = panel.index("</canvas>")
+    canvas_body = panel[canvas_start:canvas_end]
+    assert "<p>" in canvas_body
+    assert "data available" in canvas_body.lower()
+
+
+@pytest.mark.regression
+def test_render_per_turn_cost_chart_panel_legend_does_not_cross_reference_other_panels() -> None:
+    """ux F3 fold from REV-20260608-025749 — panel legend is self-contained.
+
+    The original legend ended with "(the per-event uncosted-vs-priced nuance
+    lives in the live-stream panel's legend above)" — a cross-panel reference
+    that used internal-vocabulary ("nuance") and had no visual anchor. Per the
+    teach-don't-dump feedback memory, gatekeeper-facing copy must define terms
+    inline. Folded: the legend now explains uncosted directly ("Turns from
+    model tiers without a known price appear at 0.0000 — uncosted, excluded
+    from totals, not zero-rated"). This regression test pins the negative
+    surface so a future revert to the cross-reference form fails here.
+    """
+    base = datetime(2026, 6, 8, 1, 0, 0, tzinfo=UTC)
+    events = (LiveCostEvent(timestamp=base, lane_id="main", kind="turn", cost_usd=0.0, tokens=10),)
+    panel = _render_per_turn_cost_chart_panel(events)
+    # The "nuance" vocabulary must be absent (internal-jargon → gatekeeper UX).
+    assert "nuance" not in panel.lower()
+    # The cross-panel reference must be absent (no scroll-up-to-another-panel
+    # instruction in the chart legend).
+    assert "live-stream panel" not in panel.lower()
+    # The inline definition of uncosted must be present, complete with the
+    # load-bearing clause "excluded from totals, not zero-rated" mirroring
+    # the cost panel's accounting honesty.
+    assert "excluded from totals" in panel.lower()
+    assert "zero-rated" in panel.lower()
+
+
+@pytest.mark.regression
+def test_render_live_shell_html_includes_chartjs_script_tag() -> None:
+    """Spec R11a: the shell embeds the vendored Chart.js script tag, ``defer`` loaded.
+
+    The chart's runtime loads from the local static mount — NEVER a CDN — paired
+    with htmx in the same shell <head>. ``defer`` so it does not block initial
+    paint; ``Chart`` is in scope by the time htmx swaps in the first
+    ``/fragments/live`` fragment. The shell carries no chart-specific markup
+    beyond this script-tag load — all chart data is baked INTO the fragment as
+    a JSON literal (see _render_per_turn_cost_chart_panel).
+    """
+    shell = render_live_shell_html(generated_label="2026-06-08 12:00 UTC")
+    # Pinned to the load form — `src="/static/chart.umd.min.js"` is the
+    # contract; the `defer` attribute is the load-order guarantee.
+    assert '<script src="/static/chart.umd.min.js" defer></script>' in shell
+    # htmx is still there (sibling-load — neither replaces the other).
+    assert '<script src="/static/htmx.min.js" defer></script>' in shell
+    # The pair sits in the <head>, before the inline <style> block.
+    chart_idx = shell.index("/static/chart.umd.min.js")
+    style_idx = shell.index("<style>")
+    assert chart_idx < style_idx
