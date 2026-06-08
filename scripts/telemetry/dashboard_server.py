@@ -68,8 +68,12 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from scripts import ingest_token_usage as itu  # noqa: E402
-from scripts.telemetry.dashboard import assemble_dashboard_data  # noqa: E402
+from scripts.telemetry.dashboard import (  # noqa: E402
+    assemble_dashboard_data,
+    load_weekly_trends,
+)
 from src.telemetry.dashboard import (  # noqa: E402
+    render_weekly_trends_chart_panel,
     render_dashboard_html,
     render_live_fragment,
     render_live_shell_html,
@@ -562,7 +566,14 @@ def _register_routes(app: FastAPI) -> None:
             # ``orphaned``. mark_orphans returns to use in Phase 2 once the
             # background watcher signals session end.
             app.state.live_state = state
-            return HTMLResponse(render_live_fragment(state))
+            # Weekly trends panel: persisted-corpus derived view, computed
+            # at the transport layer (DB IO) and passed in as pre-rendered
+            # HTML. Keeps live.py and dashboard.py pure (AC14 + render-layer
+            # purity). Per-poll DB-read decision rationale + caching
+            # triggers live in :func:`load_weekly_trends`'s docstring.
+            trends = load_weekly_trends(app.state.db_path, app.state.pricing)
+            weekly_panel = render_weekly_trends_chart_panel(trends)
+            return HTMLResponse(render_live_fragment(state, weekly_panel_html=weekly_panel))
         except Exception:
             # Generic error (AC6): no exception class, no DB path, no stack.
             return HTMLResponse(

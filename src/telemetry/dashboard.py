@@ -45,6 +45,7 @@ from src.telemetry.live import (
     RunwayGauge,
 )
 from src.telemetry.value import DivergenceResult, LeverageResult
+from src.telemetry.weekly import WeeklyTotal, WeeklyTrends
 
 #: Panel data-state markers (also used as testable copy tokens).
 STATE_DATA = "data"
@@ -665,19 +666,37 @@ _RUNWAY_LABEL = {
 }
 
 
-def render_live_fragment(state: LiveState) -> str:
-    """Render the htmx live fragment (agent lanes + runway + cost/failure stream + chart).
+def render_live_fragment(state: LiveState, weekly_panel_html: str = "") -> str:
+    """Render the htmx live fragment (agent lanes + runway + cost/failure stream + charts).
 
     Returned as ONE root ``<section>`` so an htmx ``hx-swap="outerHTML"`` swap
     replaces the previous fragment cleanly. The server polls this endpoint on
     a server-specified interval (spec R2 — htmx polling, not SSE in Phase 1).
 
     Composition order is the visual-hierarchy contract: runway (highest-stakes
-    "how much headroom do I have?") → lanes (operational state) → stream (per-event
-    trail) → per-turn cost chart (the trend visualisation that sits on top of the
-    stream's raw events). The chart appears LAST because it is a derived view of
-    the stream data above it; a reader who has not yet scanned the stream can
-    still read the chart, but the stream is the source of truth.
+    "how much headroom do I have?") → lanes (operational state) → stream
+    (per-event trail) → per-turn cost chart (recent-window derived view) →
+    weekly trends chart (broader-window derived view). The two charts appear
+    LAST because they are derived views of the stream data above them; among
+    the two, the broader-window weekly chart comes after the narrower
+    rolling-window per-turn chart so the reader's eye travels from "what just
+    happened" to "what's the longer arc". A future third chart slotting in
+    must respect this broader-after-narrower hierarchy.
+
+    Args:
+        state: The pure live model snapshot. Untouched by the weekly chart
+            seam — the weekly trends panel takes its data from the persisted
+            ``discussion_model_tokens`` table, not the in-memory live state,
+            so it is rendered by the transport layer (which owns the DB IO)
+            and passed in as pre-rendered HTML.
+        weekly_panel_html: Optional pre-rendered ``<div>`` for the weekly
+            trends chart panel. The empty-string default preserves backward
+            compatibility for tests and callers that drive the function
+            without a transport layer in scope. The transport layer at
+            ``scripts/telemetry/dashboard_server.py`` builds the panel via
+            :func:`render_weekly_trends_chart_panel` and passes the HTML
+            here; the live model (``src/telemetry/live.py``) stays pure
+            (AC14) — it does NOT learn about the weekly aggregator.
     """
     return (
         '<section id="live-section" class="live-section" data-state="live">'
@@ -685,6 +704,7 @@ def render_live_fragment(state: LiveState) -> str:
         f"{_render_agent_lanes_panel(state)}"
         f"{_render_live_stream_panel(state.recent_events)}"
         f"{_render_per_turn_cost_chart_panel(state.recent_events)}"
+        f"{weekly_panel_html}"
         "</section>"
     )
 
@@ -857,6 +877,63 @@ def _render_live_stream_panel(events: tuple[LiveCostEvent, ...]) -> str:
     )
 
 
+def _json_in_script(payload: object) -> str:
+    """Serialise ``payload`` to JSON safe to bake inside a ``<script>`` block.
+
+    Rule-of-Three extraction (REV-20260608-053032): when the per-turn cost
+    chart shipped (REV-20260608-025749), the inline escape chain was pinned
+    with an explicit "extract when a second consumer lands" docstring promise.
+    The weekly trends chart (Phase 2 second consumer) is that moment, so the
+    chain is now a single function call site.
+
+    The four-step contract (each step is load-bearing — silently dropping any
+    one of them re-opens a different injection surface):
+
+    * ``json.dumps(..., separators=(",", ":"), allow_nan=False)`` — compact
+      separators keep the payload small; ``allow_nan=False`` converts a
+      non-finite numeric (``NaN`` / ``Infinity``) from a silent invalid token
+      (per RFC 8259 §3) into a loud :class:`ValueError` at render time
+      (security F1 + qa F3 from REV-20260608-025749). Without this flag, the
+      browser's ``JSON.parse`` crashes on the rendered fragment.
+    * ``"</"`` → ``"<\\/"`` — HTML5 parses ``<script>`` bodies in raw-text
+      mode and ends the block on the byte sequence ``</`` followed by a name
+      match. A transcript-shaped string carrying ``"</script><script>"`` in a
+      payload field could otherwise close the data block and inject arbitrary
+      script. The escaped form is valid JSON per RFC 8259 §7 and round-trips
+      through ``JSON.parse`` unchanged.
+    * ``"<!--"`` → ``"<\\!--"`` and ``"-->"`` → ``"--\\>"`` (security F1 fold
+      from REV-20260608-042729) — HTML5 raw-text-mode also recognises HTML
+      comment delimiters inside a ``<script>`` body and can swallow the
+      intervening bytes, breaking ``JSON.parse``. Both escaped forms are
+      valid JSON per RFC 8259 §7.
+
+    The helper does **not** know which consumer is calling — it is the single
+    chokepoint for *every* ``<script type="application/json">`` data block
+    in this codebase. A future third consumer (e.g. a runway-history chart)
+    must route through this function, not re-inline the chain.
+
+    Args:
+        payload: Any JSON-serialisable Python value (typically a list of
+            ``TypedDict`` rows). Non-finite ``float`` values raise
+            :class:`ValueError` per ``allow_nan=False``.
+
+    Returns:
+        The serialised JSON string with the three HTML5-defensive escapes
+        applied.
+
+    Raises:
+        ValueError: If ``payload`` contains a non-finite ``float``.
+        TypeError: If ``payload`` contains a non-serialisable value (standard
+            ``json.dumps`` semantics).
+    """
+    return (
+        json.dumps(payload, separators=(",", ":"), allow_nan=False)
+        .replace("</", "<\\/")
+        .replace("<!--", "<\\!--")
+        .replace("-->", "--\\>")
+    )
+
+
 #: Data-block element id for the per-turn cost chart's JSON payload.
 #:
 #: The Phase 2 init script at ``/static/dashboard-chart.js`` looks this id up
@@ -966,12 +1043,12 @@ def _render_per_turn_cost_chart_panel(events: tuple[LiveCostEvent, ...]) -> str:
     generic 500. ``LiveCostEvent.cost_usd`` admits non-finite values today (no
     field validator on the frozen dataclass), so this is defense-in-depth.
 
-    **Rule-of-Three pin** (arch F3 from REV-20260608-025749): the JSON-in-script
-    escape (``json.dumps`` + ``</`` → ``<\\/``) is inline here as the SOLE
-    consumer in this codebase. When a second consumer lands (e.g., a runway
-    history chart, an A2 failure-trends panel), THAT is the moment to extract
-    a ``_json_in_script(payload: object) -> str`` helper so all consumers unify
-    under one escape — not before.
+    **Rule-of-Three pin** (arch F3 from REV-20260608-025749 — RESOLVED at
+    REV-20260608-053032): the JSON-in-script escape was inlined here as the
+    sole consumer until the weekly trends chart shipped (Phase 2 second
+    consumer). The chain is now consolidated in :func:`_json_in_script`; this
+    panel and the weekly trends panel both route through it, and any future
+    third consumer must call the helper rather than re-inlining the chain.
     """
     turn_events = tuple(ev for ev in events if ev.kind == "turn")
     if not turn_events:
@@ -990,21 +1067,7 @@ def _render_per_turn_cost_chart_panel(events: tuple[LiveCostEvent, ...]) -> str:
         }
         for ev in turn_events
     ]
-    # security F1 fold (REV-20260608-042729): the ``</`` -> ``<\/`` escape
-    # closes the ``</script>`` close-tag injection vector; the ``<!--`` /
-    # ``-->`` escapes close the HTML5 raw-text-mode comment vector (an HTML
-    # parser handling a ``<!--...-->`` sequence inside a ``<script>`` body
-    # can swallow the intervening bytes, breaking ``JSON.parse``). All three
-    # escaped sequences are valid JSON per RFC 8259 §7 and round-trip through
-    # ``JSON.parse`` unchanged. The Rule-of-Three pin still stands: when a
-    # second consumer of this pattern lands, extract a ``_json_in_script``
-    # helper carrying all three replacements.
-    payload = (
-        json.dumps(points, separators=(",", ":"), allow_nan=False)
-        .replace("</", "<\\/")
-        .replace("<!--", "<\\!--")
-        .replace("-->", "--\\>")
-    )
+    payload = _json_in_script(points)
     aria_label = (
         "Per-turn cost over time — line chart of API-equivalent USD per "
         "priced assistant turn in the recent event window."
@@ -1034,6 +1097,203 @@ def _render_per_turn_cost_chart_panel(events: tuple[LiveCostEvent, ...]) -> str:
         f"{payload}"
         "</script>"
         "</div>"
+        "</div>"
+    )
+
+
+#: Data-block element id for the weekly trends chart's JSON payload (mirror of
+#: ``_PER_TURN_COST_DATA_ELEMENT_ID``). The integration-points regression test
+#: in ``tests/test_dashboard_server.py`` pins this literal in the Python
+#: source AND the JS init script AND at least one test file (the id-string
+#: pin extended at REV-20260608-053032 when the chart became the second
+#: consumer in the codebase).
+_WEEKLY_TRENDS_DATA_ELEMENT_ID = "weekly-trends-data"
+
+#: Canvas element id for the weekly trends chart.
+_WEEKLY_TRENDS_CANVAS_ID = "weekly-trends-chart"
+
+#: The two chart panels share the same render-target class — the JS init
+#: script's reveal logic (``.chart-rendering-target`` + ``hidden`` removal +
+#: ``tile--loading`` → ``tile--data`` flip) is parameterless on the wrapper
+#: class, so both charts use one class. Each chart still has its own canvas
+#: + data-block ids, which is what the per-chart init function discriminates
+#: on.
+
+
+class _WeeklyChartTier(TypedDict):
+    """One stack slice (per tier) inside one week's bar in the weekly chart.
+
+    Schema:
+      * ``tier`` — tier key (``"opus"`` / ``"sonnet"`` / ``"haiku"`` / ``"unknown"``).
+      * ``tokens`` — total tokens this tier contributed this week.
+      * ``cost_usd`` — API-equivalent USD for the tier this week, or ``None``
+        when the tier is uncosted (the ``unknown`` tier or a known model
+        absent from ``config/model_pricing.yaml``). The JS init script keys
+        on the ``null`` value to route the slice into the uncosted stack
+        treatment (``COLOR_MUTED`` + the "(model tier unpriced)" legend).
+    """
+
+    tier: str
+    tokens: int
+    cost_usd: float | None
+
+
+class _WeeklyChartPoint(TypedDict):
+    """One week's entry in the weekly trends chart payload.
+
+    Schema:
+      * ``week_start`` — ISO calendar date (``YYYY-MM-DD``) of the Monday of
+        the ISO week.
+      * ``priced_cost_usd`` — sum of every priced tier's cost for the week.
+        Carried in the payload for tooltip / future use; the bar height is
+        the sum of ``by_tier[*].tokens`` (token units, not USD).
+      * ``total_tokens`` — sum of every tier's tokens (priced + uncosted).
+      * ``uncosted_tokens`` — subset of ``total_tokens`` that was uncosted.
+      * ``by_tier`` — chronologically deterministic list of per-tier
+        stack slices.
+
+    **Schema evolution rule** (mirrors :class:`_ChartPoint`): adding a field
+    is non-breaking iff the JS init script treats unknown fields as opaque;
+    removing or renaming an existing field requires updating the init script
+    in the same commit.
+    """
+
+    week_start: str
+    priced_cost_usd: float
+    total_tokens: int
+    uncosted_tokens: int
+    by_tier: list[_WeeklyChartTier]
+
+
+def _render_weekly_delta_caption(weeks: tuple[WeeklyTotal, ...]) -> str:
+    """Render the prior-window delta caption shown under the weekly chart.
+
+    Compares the most recent week's ``priced_cost_usd`` against the
+    immediately previous week's. The caption is **omitted** (returned as the
+    empty string) when:
+
+    * Fewer than two weeks of data exist — no delta can be computed; or
+    * The prior week's ``priced_cost_usd`` is exactly ``0.0`` — a percentage
+      change against a zero denominator is undefined, and a fabricated
+      "+∞%" / "+N/A" caption would violate the ADR-0020 honest-absence
+      discipline. The chart bars still show the change visually; the
+      caption is just suppressed for that one week.
+
+    The caption is server-rendered HTML (escaped via :func:`_esc`) so the
+    JS layer carries no copy-formatting logic. R6 in
+    SPEC-20260607-183136 calls for prior-window deltas as part of the
+    weekly trends surface; this is the surface.
+    """
+    if len(weeks) < 2:
+        return ""
+    current = weeks[-1]
+    prior = weeks[-2]
+    if prior.priced_cost_usd == 0.0:
+        return ""
+    delta_pct = (current.priced_cost_usd - prior.priced_cost_usd) / prior.priced_cost_usd * 100.0
+    sign = "+" if delta_pct >= 0 else ""
+    rounded = _esc(round(delta_pct, 1))
+    return (
+        '<p class="src weekly-delta">'
+        f"Most recent week vs prior week: <strong>{_esc(sign)}{rounded}%</strong> "
+        f"in API-equivalent USD ({_esc(_fmt_usd(current.priced_cost_usd, places=2))} vs "
+        f"{_esc(_fmt_usd(prior.priced_cost_usd, places=2))})."
+        "</p>"
+    )
+
+
+def render_weekly_trends_chart_panel(trends: WeeklyTrends) -> str:
+    """Render the weekly trends chart panel (spec R6 weekly trends + prior-window deltas).
+
+    Second chart consumer in the codebase, slotted **after** the per-turn
+    cost chart in :func:`render_live_fragment`. The visual-hierarchy contract
+    is "broader window after broader window" — the per-turn chart shows the
+    rolling event window (capped at :data:`~src.telemetry.live.RECENT_EVENTS_CAP`),
+    the weekly chart shows the stored corpus aggregated by ISO calendar week.
+    A reader who has scanned the upstream panels (runway → lanes → stream →
+    per-turn chart) reaches the weekly chart with the recent context already
+    loaded, and the weekly chart contextualises that recent activity against
+    the longer arc. Pinning this placement in the docstring closes the door
+    on a future third chart silently inverting the hierarchy.
+
+    **Honesty contract** (ADR-0020 / spec R3/R3a): the visual unit is
+    *tokens*, not USD, because the uncosted slice has no USD figure to
+    plot — choosing tokens lets the uncosted slice stack into the same bar
+    as the priced tiers without a fabricated zero. Cost-per-tier is carried
+    in the payload for the JS tooltip ("Cost: $1.23" for priced tiers;
+    "Uncosted (no list price)" for the unknown slice). The "uncosted ≠ $0"
+    discipline is preserved: uncosted tokens are MARKED (their own stack
+    slice with a distinctive color + named label), NOT hidden.
+
+    **Interim visual state** (mirror of the per-turn chart's ux F1 fold):
+    the data-present path emits ``tile--loading`` with the canvas + data
+    block in an HTML5-``hidden`` wrapper, the same way the per-turn chart
+    does. The JS init script's ``renderWeeklyChart()`` removes ``hidden`` +
+    flips the tile to ``data-state="data"`` on first successful draw.
+
+    **Security contract** (REV-20260608-053032 _json_in_script extraction):
+    the payload routes through :func:`_json_in_script` — the same helper
+    the per-turn chart now uses. Both consumers share one auditable escape
+    chain (``json.dumps + allow_nan=False`` + the three HTML5-defensive
+    replacements). Any third consumer must route through the helper too,
+    not re-inline the chain.
+
+    Honest absence: an empty :class:`~src.telemetry.weekly.WeeklyTrends`
+    renders the visually-distinct absence tile, never an empty chart with
+    fabricated axes. The "no stored rows yet" message matches the
+    cost-report absence tile's vocabulary (the weekly chart is a longer-arc
+    derived view of the same stored corpus).
+    """
+    if not trends.weeks:
+        return _absence_tile(
+            "Weekly cost trends",
+            "No stored cost rows yet.",
+            "The weekly trends chart aggregates the stored cost rows by ISO "
+            "calendar week. Run scripts/telemetry/analyze_cost.py against the "
+            "captured discussions to populate this panel.",
+        )
+    points: list[_WeeklyChartPoint] = [
+        {
+            "week_start": week.week_start.isoformat(),
+            "priced_cost_usd": week.priced_cost_usd,
+            "total_tokens": week.total_tokens,
+            "uncosted_tokens": week.uncosted_tokens,
+            "by_tier": [
+                {"tier": t.tier, "tokens": t.total_tokens, "cost_usd": t.cost_usd}
+                for t in week.by_tier
+            ],
+        }
+        for week in trends.weeks
+    ]
+    payload = _json_in_script(points)
+    aria_label = (
+        "Weekly cost trends — stacked bar chart of token volume per ISO "
+        "week, broken down by model tier; uncosted tiers are marked as a "
+        "distinct stack slice so the priced-vs-uncosted split is visible."
+    )
+    delta_caption = _render_weekly_delta_caption(trends.weeks)
+    return (
+        '<div class="tile tile--loading tile--wide" data-state="loading">'
+        "<h3>Weekly cost trends</h3>"
+        '<p class="legend">Token volume per ISO calendar week, stacked by '
+        "model tier. Y-axis is total tokens (input + output + cache); X-axis "
+        "is ISO week start (Monday). Hover a stack for cost in API-equivalent "
+        "USD. The <em>uncosted</em> slice is tokens from model tiers without "
+        "a known price — marked, never collapsed to $0 (per ADR-0020).</p>"
+        '<p class="loading-copy">Chart visualization layer initializing &mdash; '
+        "the stacked-bar chart will draw once the rendering layer is ready. "
+        "Per-tier figures are also shown in the retrospective cost panel.</p>"
+        f'<div class="{_PER_TURN_COST_RENDER_TARGET_CLASS}" hidden>'
+        f'<canvas id="{_WEEKLY_TRENDS_CANVAS_ID}" width="800" height="260"'
+        f' role="img" aria-label="{_esc(aria_label)}">'
+        "<p>Weekly cost trends chart (data available; chart rendering "
+        "requires a visual display).</p>"
+        "</canvas>"
+        f'<script id="{_WEEKLY_TRENDS_DATA_ELEMENT_ID}" type="application/json">'
+        f"{payload}"
+        "</script>"
+        "</div>"
+        f"{delta_caption}"
         "</div>"
     )
 

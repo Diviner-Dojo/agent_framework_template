@@ -12,7 +12,7 @@ dependency and the SRI/CDN-compromise surface. The FastAPI app in
 | ---------------------- | ----------------- | -------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- |
 | `htmx.min.js`          | third-party       | 1.9.12   | BSD-2-Clause (header comment in file)                         | https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js                  | 48101  | `sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2` |
 | `chart.umd.min.js`     | third-party       | 4.4.7    | MIT (see [`LICENSE-chart.js.txt`](./LICENSE-chart.js.txt))    | https://unpkg.com/chart.js@4.4.7/dist/chart.umd.js                  | 205615 | `sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM` |
-| `dashboard-chart.js`   | first-party       | 1.0.0    | first-party (this repository)                                 | in-tree (this repository)                                           | 14242  | `sha384-vA8QifhIA8IT53aPS8bi8qRF7WKKV3V4lKrxZ7OxnNaPeTpsxLbUibR/Qzr7sAIk` |
+| `dashboard-chart.js`   | first-party       | 1.0.0    | first-party (this repository)                                 | in-tree (this repository)                                           | 23513  | `sha384-uTPT7PNOVjojQmcUsQt8DvbaK+94T+046qdVX1dIUwTrBXYZgKcTpR5lzDmyZmLH` |
 
 ### What the SHA-384 pin actually defends against
 

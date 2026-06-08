@@ -59,6 +59,7 @@ from src.telemetry.dashboard import (  # noqa: E402
 )
 from src.telemetry.failures import rank_failures  # noqa: E402
 from src.telemetry.pricing import PricingTable, load_pricing  # noqa: E402
+from src.telemetry.weekly import WeeklyTrends, aggregate_by_week  # noqa: E402
 
 DB_PATH = _REPO_ROOT / "metrics" / "evaluation.db"
 #: Conventional dashboard filename (also the defensive .gitignore entry).
@@ -91,9 +92,95 @@ def _connect_readonly(db_path: Path) -> sqlite3.Connection:
     Read-only at the driver level (spec R8/C1): the dashboard never writes,
     migrates, or creates tables. ``mode=ro`` raises if the file does not exist —
     callers handle that as the "no database yet" path.
+
+    Consumed by two read-side surfaces in this module: :func:`assemble_dashboard_data`
+    (static dashboard) and :func:`load_weekly_trends` (the live dashboard's
+    weekly-trends chart panel). The helper stays module-private — external
+    callers route through one of the public loaders instead, which keeps the
+    read-only DB-open discipline localised here.
     """
     uri = f"file:{db_path.as_posix()}?mode=ro"
     return sqlite3.connect(uri, uri=True)
+
+
+def _parse_created_at(raw: str) -> datetime | None:
+    """Parse a ``discussions.created_at`` cell into an aware :class:`datetime`.
+
+    The DB carries two historical formats: ``"YYYY-MM-DD HH:MM:SS"`` (space
+    separator, no zone — seen in the earliest discussions) and ISO 8601
+    with a ``+00:00`` zone (current writer format). ``fromisoformat`` is
+    tolerant of both since Python 3.11; assume UTC when no zone is present
+    (the framework writes all timestamps in UTC). A malformed cell returns
+    ``None`` and the aggregator skips that discussion with a warning.
+    """
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def load_weekly_trends(db_path: Path, pricing: PricingTable) -> WeeklyTrends:
+    """Build a :class:`WeeklyTrends` from the stored cost rows.
+
+    Opens the DB read-only (``?mode=ro`` URI — the same C1 invariant as
+    :func:`assemble_dashboard_data`) and JOINs ``discussion_model_tokens``
+    with ``discussions.created_at`` to feed
+    :func:`~src.telemetry.weekly.aggregate_by_week`. A missing telemetry
+    table (fresh clone / analyzer never run) is mapped to an empty
+    :class:`WeeklyTrends`, which the renderer turns into the honest
+    not-yet-run absence tile.
+
+    Public read-side surface so the live dashboard's transport layer
+    (``scripts/telemetry/dashboard_server.py``) does NOT need to reach into
+    :func:`_connect_readonly` directly — the read-only DB-open discipline
+    stays localised in this module alongside :func:`assemble_dashboard_data`.
+    Adding a second consumer of ``_connect_readonly`` outside this module
+    would cross the dead-helper rule pinned by
+    ``test_server_uses_a_arch1_public_helpers_not_underscored`` (REV-20260607-200447
+    arch F3); routing through this public loader is the option (b) resolution
+    (least-complex per Principle #8) for that constraint.
+
+    **Per-poll DB-IO decision (arch H2 from REV-20260608-053032)**: this
+    function is called from the ``/fragments/live`` route handler, which
+    htmx polls every 3 s. The DB IO is bounded today (~73 rows aggregated
+    in well under one millisecond) and intentionally **not** cached — at
+    this row count, a cache adds latency-of-measurement and complexity
+    without benefit. **Caching trigger** to revisit: introduce a TTL or
+    move the loader behind an ``app.state.weekly_loader`` seam when EITHER
+    (a) the median row count exceeds ~1,000 (months of captured sessions),
+    OR (b) the median aggregation latency exceeds ~10 ms (measured at the
+    route handler). The seam itself is intentionally absent now per
+    Principle #8 (least-complex first); naming the triggers above is the
+    door so a future slice can add it without re-arguing the decision.
+    """
+    try:
+        conn = _connect_readonly(db_path)
+    except sqlite3.OperationalError:
+        return WeeklyTrends(weeks=())
+    try:
+        try:
+            cost_rows = load_cost_rows(conn)
+        except sqlite3.OperationalError:
+            return WeeklyTrends(weeks=())
+        try:
+            created_at_rows = conn.execute(
+                "SELECT discussion_id, created_at FROM discussions"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return WeeklyTrends(weeks=())
+        created_at_lookup: dict[str, datetime] = {}
+        for discussion_id, raw in created_at_rows:
+            if raw is None:
+                continue
+            parsed = _parse_created_at(raw)
+            if parsed is not None:
+                created_at_lookup[discussion_id] = parsed
+        return aggregate_by_week(cost_rows, created_at_lookup, pricing)
+    finally:
+        conn.close()
 
 
 def assemble_dashboard_data(

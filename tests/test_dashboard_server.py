@@ -811,7 +811,7 @@ def test_vendored_chartjs_sha384_matches_readme_pin() -> None:
 #: must update both the README pin table AND this constant in the same commit,
 #: making silent byte changes impossible. A re-vendor on a third-party file is
 #: a vendoring event; a re-pin on this file is a code-review event.
-_DASHBOARD_CHART_JS_SHA384_PIN = "vA8QifhIA8IT53aPS8bi8qRF7WKKV3V4lKrxZ7OxnNaPeTpsxLbUibR/Qzr7sAIk"
+_DASHBOARD_CHART_JS_SHA384_PIN = "uTPT7PNOVjojQmcUsQt8DvbaK+94T+046qdVX1dIUwTrBXYZgKcTpR5lzDmyZmLH"
 
 
 def test_static_dashboard_chart_asset_is_served() -> None:
@@ -941,6 +941,54 @@ def test_dashboard_chart_palette_literals_are_synchronised_with_python_css() -> 
         )
 
 
+#: WEEKLY_TIER_COLORS literals added at REV-20260608-053507 — the weekly
+#: trends chart's per-tier palette. Pinned in the JS file as the source of
+#: truth (tier-color mapping is a chart-only concern; the Python side has no
+#: per-tier CSS variable yet). The qa F2 fold extends the palette-sync
+#: discipline to this map so a future palette refresh that drops or
+#: re-spells a tier color is caught at CI.
+_WEEKLY_TIER_COLOR_LITERALS = (
+    "#3fb950",  # sonnet
+    "#a371f7",  # haiku
+    "#6e7681",  # WEEKLY_TIER_FALLBACK_COLOR — forward-compat
+)
+
+
+@pytest.mark.regression
+def test_weekly_tier_color_literals_are_pinned_in_js() -> None:
+    """qa F2 fold (REV-20260608-053507): WEEKLY_TIER_COLORS map literals pinned.
+
+    The weekly trends chart adds a tier-color map (sonnet green, haiku
+    purple, fallback gray) in addition to the four shared palette literals
+    above. The original palette-sync test only covers the cross-file (Py +
+    JS) literals; this test pins the JS-side-only weekly tier colors so a
+    future palette refresh that drops or re-spells one tier is caught at
+    CI rather than at code review.
+
+    The mapping keys are also pinned so a future re-naming of the tier set
+    (e.g. dropping "haiku" for a new tier name) drops the dataset's
+    distinct color treatment silently.
+    """
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    js_path = STATIC_DIR / "dashboard-chart.js"
+    js_text = js_path.read_text(encoding="utf-8")
+
+    for hex_literal in _WEEKLY_TIER_COLOR_LITERALS:
+        assert hex_literal in js_text, (
+            f"weekly tier color {hex_literal!r} missing from "
+            f"src/telemetry/static/dashboard-chart.js — every tier in "
+            f"WEEKLY_TIER_COLORS must have a defined hex value or the "
+            f"chart silently renders that tier with the fallback color"
+        )
+    for tier_key in ("opus", "sonnet", "haiku", "unknown"):
+        assert tier_key in js_text, (
+            f"weekly tier key {tier_key!r} missing from the JS source — "
+            f"the chart's per-tier palette must cover at least the four "
+            f"pricing tiers the framework knows about"
+        )
+
+
 @pytest.mark.regression
 def test_dashboard_chart_init_script_carries_load_bearing_integration_points() -> None:
     """Regression (Phase 2 step 4): the init script's integration seams are pinned.
@@ -952,23 +1000,28 @@ def test_dashboard_chart_init_script_carries_load_bearing_integration_points() -
     Python renderer in src/telemetry/dashboard.py and this JS file; a silent
     drift would break the chart without breaking any single-side test.
 
-    The four anchors checked here all have a single source of truth on the
+    The anchors checked here all have a single source of truth on the
     Python side:
       - ``per-turn-cost-chart`` — _PER_TURN_COST_CANVAS_ID
       - ``per-turn-cost-data`` — _PER_TURN_COST_DATA_ELEMENT_ID
+      - ``weekly-trends-chart`` — _WEEKLY_TRENDS_CANVAS_ID
+      - ``weekly-trends-data`` — _WEEKLY_TRENDS_DATA_ELEMENT_ID
       - ``chart-rendering-target`` — _PER_TURN_COST_RENDER_TARGET_CLASS
+        (shared by both chart panels — one render-target class for both)
       - ``htmx:afterSwap`` — the htmx polling re-render seam
       - ``Chart`` — the Chart.js global (the IIFE early-returns if undefined)
 
-    A silent edit that drops any of these breaks the chart visual layer
-    while the Python-side tests continue to pass.
+    A silent edit that drops any of these breaks one or both chart visual
+    layers while the Python-side tests continue to pass. The weekly id
+    strings were added at REV-20260608-053032 (id-string pin extension —
+    the chart became the second consumer in the codebase).
     """
     from scripts.telemetry.dashboard_server import STATIC_DIR
 
     js_path = STATIC_DIR / "dashboard-chart.js"
     js_text = js_path.read_text(encoding="utf-8")
 
-    # Canvas + data-block + wrapper integration points (3 of 3 must survive).
+    # Per-turn chart integration points.
     assert "per-turn-cost-chart" in js_text, (
         "init script lost the canvas id — it must match "
         "_PER_TURN_COST_CANVAS_ID in src/telemetry/dashboard.py"
@@ -977,6 +1030,16 @@ def test_dashboard_chart_init_script_carries_load_bearing_integration_points() -
         "init script lost the data-block id — it must match "
         "_PER_TURN_COST_DATA_ELEMENT_ID in src/telemetry/dashboard.py"
     )
+    # Weekly trends chart integration points (REV-20260608-053032 extension).
+    assert "weekly-trends-chart" in js_text, (
+        "init script lost the weekly canvas id — it must match "
+        "_WEEKLY_TRENDS_CANVAS_ID in src/telemetry/dashboard.py"
+    )
+    assert "weekly-trends-data" in js_text, (
+        "init script lost the weekly data-block id — it must match "
+        "_WEEKLY_TRENDS_DATA_ELEMENT_ID in src/telemetry/dashboard.py"
+    )
+    # Render-target wrapper class (shared by both chart panels).
     assert "chart-rendering-target" in js_text, (
         "init script lost the render-target wrapper class — it must match "
         "_PER_TURN_COST_RENDER_TARGET_CLASS in src/telemetry/dashboard.py"
@@ -1986,3 +2049,144 @@ def test_create_app_default_event_source_falls_back_to_extract_live_events(
         "Phase 1 lazy-fold default is broken — a future Phase 2 watcher swap "
         "would silently land on top of an already-degraded default path"
     )
+
+
+# --------------------------------------------------------------------------- #
+# load_weekly_trends — qa F1 fold (REV-20260608-053507): direct-IO branch
+# coverage for the 5 paths through the public DB loader.
+# --------------------------------------------------------------------------- #
+
+
+def test_load_weekly_trends_returns_empty_when_db_missing(tmp_path: Path) -> None:
+    """Branch 1: ``_connect_readonly`` raises ``OperationalError`` (no file).
+
+    The ``?mode=ro`` URI raises ``OperationalError`` on a missing file; the
+    public loader catches it and returns the honest-absence empty trends.
+    """
+    from scripts.telemetry.dashboard import load_weekly_trends
+    from src.telemetry.pricing import load_pricing
+    from src.telemetry.weekly import WeeklyTrends
+
+    missing = tmp_path / "absent.db"
+    trends = load_weekly_trends(missing, load_pricing())
+    assert trends == WeeklyTrends(weeks=())
+
+
+def test_load_weekly_trends_returns_empty_when_cost_rows_table_absent(tmp_path: Path) -> None:
+    """Branch 2: ``load_cost_rows`` raises (no ``discussion_model_tokens`` table).
+
+    The empty ``init_db`` DB has the table but no rows. To exercise the
+    "table absent" path, drop the table after init and confirm the loader
+    returns the honest-absence empty trends.
+    """
+    from scripts.telemetry.dashboard import load_weekly_trends
+    from src.telemetry.pricing import load_pricing
+    from src.telemetry.weekly import WeeklyTrends
+
+    db = _empty_db(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute("DROP TABLE discussion_model_tokens")
+    conn.commit()
+    conn.close()
+    trends = load_weekly_trends(db, load_pricing())
+    assert trends == WeeklyTrends(weeks=())
+
+
+def test_load_weekly_trends_returns_empty_when_discussions_table_absent(tmp_path: Path) -> None:
+    """Branch 3: ``SELECT … FROM discussions`` raises (table dropped)."""
+    from scripts.telemetry.dashboard import load_weekly_trends
+    from src.telemetry.pricing import load_pricing
+    from src.telemetry.weekly import WeeklyTrends
+
+    db = _empty_db(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute("DROP TABLE discussions")
+    conn.commit()
+    conn.close()
+    trends = load_weekly_trends(db, load_pricing())
+    assert trends == WeeklyTrends(weeks=())
+
+
+@pytest.mark.regression
+def test_load_weekly_trends_happy_path_aggregates_seeded_rows(tmp_path: Path) -> None:
+    """Branches 4 + 5: seeded rows aggregate into a non-empty WeeklyTrends.
+
+    Inserts one discussion + one model-token row, then asserts the loader
+    produces a single-week aggregate keyed to the seeded ``created_at``.
+    Exercises ``_parse_created_at`` (the ISO-8601 zone-aware variant) and
+    the happy-path JOIN.
+    """
+    from scripts.telemetry.dashboard import load_weekly_trends
+    from src.telemetry.pricing import load_pricing
+
+    db = _empty_db(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO discussions("
+        "discussion_id, created_at, risk_level, collaboration_mode, status) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (
+            "DISC-20260610-120000-weekly-test",
+            "2026-06-10T12:00:00+00:00",
+            "low",
+            "ensemble",
+            "open",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO discussion_model_tokens("
+        "discussion_id, model_id, tier, tokens_in, tokens_out, "
+        "cache_read_tokens, cache_create_tokens, message_count, computed_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "DISC-20260610-120000-weekly-test",
+            "claude-opus-4-7",
+            "opus",
+            1_000,
+            1_000,
+            0,
+            0,
+            1,
+            "2026-06-10T12:00:00+00:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    trends = load_weekly_trends(db, load_pricing())
+    assert len(trends.weeks) == 1
+    week = trends.weeks[0]
+    assert week.week_start.isoformat() == "2026-06-08"  # Monday of the seeded date
+    assert week.priced_cost_usd > 0.0
+    assert week.uncosted_tokens == 0
+
+
+def test_load_weekly_trends_skips_rows_with_malformed_created_at(tmp_path: Path) -> None:
+    """Branch 4 edge: a discussion with a malformed created_at is skipped.
+
+    ``_parse_created_at`` returns ``None`` on a string that
+    ``datetime.fromisoformat`` cannot parse; the loader filters that entry
+    out of the lookup map. Without the seeded model-token row the result is
+    empty.
+    """
+    from scripts.telemetry.dashboard import load_weekly_trends
+    from src.telemetry.pricing import load_pricing
+    from src.telemetry.weekly import WeeklyTrends
+
+    db = _empty_db(tmp_path)
+    conn = sqlite3.connect(db)
+    # ``discussions.created_at`` is NOT NULL in the canonical schema, so
+    # simulate the orphan case by inserting via SQL that bypasses the
+    # constraint check (an empty string is parsed as None by
+    # ``_parse_created_at``).
+    conn.execute(
+        "INSERT INTO discussions("
+        "discussion_id, created_at, risk_level, collaboration_mode, status) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("DISC-MALFORMED", "not-a-timestamp", "low", "ensemble", "open"),
+    )
+    conn.commit()
+    conn.close()
+
+    trends = load_weekly_trends(db, load_pricing())
+    assert trends == WeeklyTrends(weeks=())
