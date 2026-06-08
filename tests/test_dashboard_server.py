@@ -798,18 +798,55 @@ def test_host_header_guard_is_middleware_layer() -> None:
 
 @pytest.mark.regression
 def test_csp_policy_string_pins_documented_policy() -> None:
-    """Regression (security F2 / REV-20260607-200447): the policy string equals
-    the documented advisory value, exactly.
+    """Regression (security F2 / REV-20260607-200447; security F1 extension /
+    REV-20260608-010051): the policy string equals the documented advisory
+    value, exactly.
 
     The advisory specified the policy literal; pinning it in one place keeps
     every reviewer working from the same value. A future relaxation (e.g.
     adding ``'unsafe-inline'`` to ``script-src`` to enable a CDN, or dropping
-    ``script-src`` entirely so it falls back to ``default-src``) is a code-
-    review event — this test fails on any drift.
+    ``script-src`` entirely so it falls back to ``default-src``, or relaxing
+    ``frame-ancestors``/``object-src`` away from ``'none'``) is a code-review
+    event — this test fails on any drift.
     """
-    assert (
-        CONTENT_SECURITY_POLICY
-        == "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'"
+    assert CONTENT_SECURITY_POLICY == (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'unsafe-inline'; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'"
+    )
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "directive,expected_value",
+    [
+        ("default-src", "'self'"),
+        ("script-src", "'self'"),
+        ("style-src", "'unsafe-inline'"),
+        ("frame-ancestors", "'none'"),
+        ("object-src", "'none'"),
+    ],
+)
+def test_csp_policy_contains_each_load_bearing_directive(
+    directive: str, expected_value: str
+) -> None:
+    """Regression (security F1 / REV-20260608-010051): each directive's value is
+    present at exactly the documented strength.
+
+    The verbatim-string pin above catches *any* drift, but a future legitimate
+    re-ordering of directives (e.g. alphabetising) would force a churn-only
+    edit of that literal AND silently lose a directive if the editor was sloppy.
+    This per-directive assertion is order-independent and pins the value of
+    each load-bearing directive individually, so the verbatim and per-directive
+    guards together resist BOTH "directive dropped" and "directive weakened"
+    regressions even under a stylistic re-order.
+    """
+    needle = f"{directive} {expected_value}"
+    assert needle in CONTENT_SECURITY_POLICY, (
+        f"directive {directive!r} missing or weakened (looked for {needle!r} in "
+        f"{CONTENT_SECURITY_POLICY!r})"
     )
 
 
@@ -924,6 +961,75 @@ def test_csp_middleware_is_outermost_in_user_middleware() -> None:
     # Object-identity guard — catches a future move that swaps the import for
     # a same-named shim. Tautology removed (qa F1 / REV at session 10g).
     assert middleware_specs[0].cls is ContentSecurityPolicyMiddleware
+
+
+@pytest.mark.regression
+def test_csp_middleware_returns_generic_500_and_stamps_policy_when_call_next_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression (security F2 / REV-20260608-010051; qa F1/F2/F3 fold from
+    REV at session 10h): a catastrophic exception that escapes ``call_next``
+    is converted to a generic 500 HTML body that STILL carries the CSP header,
+    with no exception class / no traceback / no marker string leaked.
+
+    Today every route catches ``Exception`` and converts to ``HTMLResponse``
+    (the live/retrospective error branches), and Starlette's ``ExceptionMiddleware``
+    sits BELOW our user middleware stack and converts ``HTTPException`` to a
+    proper response BEFORE it could reach ``call_next`` here — so this
+    fail-closed branch is practically unreachable. But as the OUTERMOST
+    middleware :class:`ContentSecurityPolicyMiddleware` is the canonical place
+    to enforce the invariant "CSP on every byte the client receives," including
+    a future "framework blew up before any route handler ran" path (an upstream
+    middleware regression, an inner ASGI bug, or a route that legitimately
+    bypasses the existing ``except Exception``). This test simulates that path
+    by monkeypatching the inner ``HostHeaderGuard.dispatch`` to raise BEFORE
+    any response is built; the CSP middleware MUST swallow, return a generic
+    500 with an HTML body (so htmx swap targets render correctly — security F4
+    fold from session 10h), and still stamp the policy header.
+
+    The assertion set matches ``test_retrospective_error_general_exception_response_is_generic``
+    (the peer AC6 contract test): exception class absent, marker absent, the
+    word "Traceback" absent (qa F1 fold) — plus an exact-body pin so a future
+    edit that revealed the path or request method in the fallback body is
+    caught at the gate (qa F2 fold). Test name spells out both legs of the
+    contract (qa F3 fold): "returns generic 500 AND stamps policy."
+    """
+
+    class _BoomError(RuntimeError):
+        pass
+
+    async def _boom(self: Any, request: Any, call_next: Any) -> Any:  # noqa: ARG001
+        raise _BoomError("simulated catastrophic middleware failure")
+
+    # Force a layer INSIDE the CSP middleware to raise. The CSP middleware is
+    # outermost (asserted by the test above), so HostHeaderGuard.dispatch is
+    # the next layer in; making it raise reproduces the "exception escapes
+    # call_next" path without hand-rolling an ASGI raiser.
+    monkeypatch.setattr(dashboard_server.HostHeaderGuard, "dispatch", _boom, raising=True)
+
+    db = _empty_db(tmp_path)
+    app = create_app(db_path=db, project_root=tmp_path, port=8765)
+    client = TestClient(app, raise_server_exceptions=False)
+    r = client.get("/", headers={"host": "127.0.0.1:8765"})
+
+    # Generic 500 (AC6): no exception class, no path, no stack — just the
+    # boilerplate body the middleware constructs.
+    assert r.status_code == 500
+    body = r.text
+    assert "_BoomError" not in body
+    assert "simulated catastrophic" not in body
+    # qa F1 fold (REV at session 10h): match the peer AC6 contract test
+    # (`test_retrospective_error_general_exception_response_is_generic`) — the
+    # body must not carry a "Traceback" marker even under a future Starlette
+    # debug-mode regression that emitted one in the response stream.
+    assert "Traceback" not in body
+    # qa F2 fold (REV at session 10h): pin the exact expected body so a future
+    # edit that echoed the path / method / Origin header in the fallback is
+    # caught immediately (the negative-only assertions above would not catch
+    # an addition that did not happen to contain those specific markers).
+    assert body.strip() == "<p>Internal Server Error</p>"
+    # CSP still stamped — the load-bearing invariant for this branch.
+    assert r.headers.get("content-security-policy") == CONTENT_SECURITY_POLICY
 
 
 # --------------------------------------------------------------------------- #

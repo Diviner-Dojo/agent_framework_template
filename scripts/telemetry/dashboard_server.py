@@ -89,13 +89,35 @@ DEFAULT_PORT = 8765
 LIVE_POLL_INTERVAL_S = 3.0
 
 #: Defense-in-depth Content-Security-Policy applied to every response (security
-#: F2 / REV-20260607-200447). The dashboard is loopback-only and routes are
-#: read-only, so this is genuinely defense-in-depth — a future contributor who
-#: inlines a CDN ``<script>`` or stores a transcript-shaped string into an
-#: ``onclick`` attribute is denied by the browser even if a ``_esc`` regression
-#: lands. Inline ``<style>`` blocks + the ``style="width:..."`` runway bar need
-#: ``'unsafe-inline'`` for style-src; scripts are vendored at ``/static/`` so
-#: ``script-src 'self'`` suffices and inline scripts are intentionally banned.
+#: F2 / REV-20260607-200447, extended security F1 / REV-20260608-010051). The
+#: dashboard is loopback-only and routes are read-only, so this is genuinely
+#: defense-in-depth — a future contributor who inlines a CDN ``<script>`` or
+#: stores a transcript-shaped string into an ``onclick`` attribute is denied by
+#: the browser even if a ``_esc`` regression lands. Inline ``<style>`` blocks +
+#: the ``style="width:..."`` runway bar need ``'unsafe-inline'`` for style-src;
+#: scripts are vendored at ``/static/`` so ``script-src 'self'`` suffices and
+#: inline scripts are intentionally banned. ``frame-ancestors 'none'`` blocks
+#: any other page (even a localhost-rebinding one) from embedding this dashboard
+#: in an ``<iframe>`` / ``<frame>`` / ``<object>``, which is the modern clickjacking
+#: + DNS-rebinding hardening (replaces ``X-Frame-Options: DENY``). ``object-src
+#: 'none'`` shuts the legacy ``<object>`` / ``<embed>`` / ``<applet>`` surface —
+#: the dashboard never serves Flash / Java / arbitrary plugin payloads, and the
+#: default-src fallback alone is not authoritative for these elements in older
+#: browsers.
+#:
+#: **Directives evaluated and intentionally OMITTED** (security F2-INFO note,
+#: REV at session 10h): ``base-uri`` is omitted because the dashboard renders
+#: no ``<base>`` element and htmx does not require one — re-evaluate if a
+#: ``<base>`` tag is ever added (an injected ``<base href="...">`` would redirect
+#: every relative URL on the page regardless of ``default-src``, so adding
+#: ``base-uri 'self'`` then becomes load-bearing). ``connect-src`` /
+#: ``img-src`` / ``font-src`` / ``form-action`` are omitted because they all
+#: fall back to ``default-src 'self'`` and the dashboard makes no outbound
+#: fetch, loads no remote images, bundles no web fonts, and renders no
+#: ``<form>`` — adding them explicitly buys no attack-surface reduction over
+#: ``default-src 'self'`` while raising the maintenance cost of every future
+#: edit. Adding one of these surfaces (a chart endpoint, a CDN image, a form)
+#: MUST add the matching directive in the same change.
 #:
 #: **Scope of the ``style-src 'unsafe-inline'`` permission** (security F3 note,
 #: REV at session 10g): the inline-style attribute surface is currently bounded
@@ -108,7 +130,13 @@ LIVE_POLL_INTERVAL_S = 3.0
 #: agent name, model name, etc.) MUST go through a CSS-aware sanitizer, not
 #: just ``_esc`` — ``html.escape`` does not neutralise CSS-context injection.
 #: Adding such a field without that review is a regression.
-CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'"
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'unsafe-inline'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'"
+)
 
 #: Default "look back this far" window for the live fold (independent-perspective
 #: Phase 1 advisory). Without this, each poll walks every session JSONL Claude
@@ -168,6 +196,16 @@ class ContentSecurityPolicyMiddleware(BaseHTTPMiddleware):
     (overwrites any upstream value) — there is no scenario in which a route
     handler should override the policy, so the simpler write-always semantics
     are correct here.
+
+    A catastrophic exception escaping ``call_next`` (security F2 follow-on /
+    REV-20260608-010051) — e.g. a future middleware regression, an inner
+    framework bug, or a route that bypasses the existing route-level
+    ``except Exception`` and bubbles out — is caught here and converted to a
+    generic 500 that STILL carries the CSP header. Today every route catches
+    ``Exception`` and returns an ``HTMLResponse``, so this branch is
+    practically unreachable; but as the OUTERMOST middleware this is the
+    canonical place to ensure the policy is on every byte the client receives,
+    including a "framework blew up before any route ran" path.
     """
 
     def __init__(self, app: Any, *, policy: str) -> None:
@@ -175,7 +213,26 @@ class ContentSecurityPolicyMiddleware(BaseHTTPMiddleware):
         self._policy = policy
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # Fail-closed with CSP still stamped (AC6: generic body, no
+            # exception class, no path). Practically unreachable today —
+            # every route catches Exception, AND Starlette's
+            # ``ExceptionMiddleware`` is registered automatically BELOW the
+            # user middleware stack and converts ``HTTPException`` into a
+            # proper response BEFORE it could bubble up to this ``call_next``.
+            # So an exception arriving here is by definition catastrophic
+            # (inner-middleware regression, ASGI bug, or a route that
+            # bypassed the existing ``except Exception``). Catching
+            # ``Exception`` rather than narrowing to specific types is
+            # deliberate at this surface — there is no legitimate framework
+            # control-flow signal that should pass through the outermost
+            # response stamper (``BaseException`` subclasses like
+            # ``asyncio.CancelledError`` propagate by design, not blocked
+            # here). Body is HTMLResponse so htmx ``hx-swap`` targets handle
+            # it gracefully (security F4 fold, REV at session 10h).
+            response = HTMLResponse("<p>Internal Server Error</p>", status_code=500)
         response.headers["Content-Security-Policy"] = self._policy
         return response
 
