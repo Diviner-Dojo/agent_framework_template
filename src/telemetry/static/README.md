@@ -8,13 +8,46 @@ dependency and the SRI/CDN-compromise surface. The FastAPI app in
 
 ## Pins
 
-| Asset           | Version  | Source                                                          | Bytes  | Integrity (SHA384, base64)                                              |
-| --------------- | -------- | --------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- |
-| `htmx.min.js`   | 1.9.12   | https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js              | 48101  | `sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2` |
+| Asset                | Version  | License (companion file)                                      | Source                                                              | Bytes  | Integrity (SHA384, base64)                                              |
+| -------------------- | -------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- |
+| `htmx.min.js`        | 1.9.12   | BSD-2-Clause (header comment in file)                         | https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js                  | 48101  | `sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2` |
+| `chart.umd.min.js`   | 4.4.7    | MIT (see [`LICENSE-chart.js.txt`](./LICENSE-chart.js.txt))    | https://unpkg.com/chart.js@4.4.7/dist/chart.umd.js                  | 205615 | `sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM` |
 
-Chart.js is intentionally **not** vendored in Phase 1 — Phase 1 has no charts.
-It will be vendored when Phase 2 (time-series) lands; the same pin-and-integrity
-discipline applies.
+### What the SHA-384 pin actually defends against
+
+The pin is **machine-enforced** at CI time by
+`tests/test_dashboard_server.py::test_vendored_*_sha384_matches_readme_pin`
+(one regression test per asset). Any byte change to the vendored file fails the
+build immediately — that is the primary supply-chain control here.
+
+The primary integrity anchor going forward is **git history**: once the bytes
+are committed, any future change is a code-review event by definition, and the
+pin makes silently rewriting the file fail before merge.
+
+### The two-mirror cross-check — what it does and does NOT prove
+
+At vendoring time the Chart.js bytes were downloaded from both
+`https://unpkg.com/chart.js@4.4.7/dist/chart.umd.js` and
+`https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.js` and the two
+files were byte-identical with the same SHA-384. This is **CDN-side consistency
+evidence**, not independent upstream verification — both CDNs pull from the same
+npm registry, so a registry-level compromise (malicious publish of
+`chart.js@4.4.7`, or a registry substitution) would produce identical tampered
+bytes on both mirrors. The cross-check catches CDN-edge tampering only.
+
+The **independent** provenance pointer is the upstream GitHub release tag:
+[`https://github.com/chartjs/Chart.js/releases/tag/v4.4.7`](https://github.com/chartjs/Chart.js/releases/tag/v4.4.7)
+— hosted separately from npm, with a different trust root. A re-vendoring
+audit should cross-reference that tag's commit + release notes.
+
+### What this slice does NOT do
+
+Phase 2's first slice vendors Chart.js but does NOT yet wire it into a chart —
+the actual `<script>` tag and chart markup land with the per-turn cost chart in
+the next slice, so the asset is not loaded as dead weight while still being
+under integrity-pin discipline from day one. The existing CSP (`script-src
+'self'`) will cover the future `<script src="/static/chart.umd.min.js">` tag
+without modification — same-origin scripts are already permitted.
 
 ## Updating an asset
 

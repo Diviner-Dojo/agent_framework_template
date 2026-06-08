@@ -590,6 +590,50 @@ def test_live_fragment_root_section_is_htmx_swap_target() -> None:
     assert r.text.lstrip().startswith('<section id="live-section"')
 
 
+def _read_sha384_pin_from_readme(asset_filename: str) -> str:
+    """Parse the SHA-384 pin (base64, no ``sha384-`` prefix) for an asset from the README.
+
+    The README pin table is the human-readable contract; the module-level
+    ``_*_SHA384_PIN`` constants are the machine-enforced contract. This helper
+    closes the divergence gap qa-specialist flagged in the Phase-2 vendoring
+    review (REV-20260608-022723 qa F1): a re-vendor that updates the README pin
+    string but forgets to update the test constant (or vice versa) would
+    otherwise pass the SHA-guard while leaving the two sources of truth silently
+    inconsistent. The two SHA-384 regression tests now assert the constant
+    equals the parsed README value, so the two sources cannot drift independently
+    without the test failing.
+
+    Args:
+        asset_filename: The filename as it appears in the README pin-table row
+            (e.g. ``"htmx.min.js"``, ``"chart.umd.min.js"``).
+
+    Returns:
+        The base64-encoded SHA-384, with the ``sha384-`` prefix stripped (so it
+        compares directly to ``base64.b64encode(hashlib.sha384(...).digest())``).
+
+    Raises:
+        AssertionError: If the asset row is missing from the README or the row
+            does not contain a recognisable ``sha384-...`` integrity cell.
+    """
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    readme_path = STATIC_DIR / "README.md"
+    text = readme_path.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        # Match the pin-table row by the asset filename appearing as inline code
+        # — guards against picking up the same filename in a paragraph or link.
+        if f"`{asset_filename}`" not in line:
+            continue
+        for cell in line.split("|"):
+            cell = cell.strip().strip("`")
+            if cell.startswith("sha384-"):
+                return cell[len("sha384-") :]
+        raise AssertionError(
+            f"README pin row for {asset_filename!r} has no sha384-... integrity cell"
+        )
+    raise AssertionError(f"No README pin row found for asset {asset_filename!r}")
+
+
 def test_static_htmx_asset_is_served() -> None:
     """The vendored htmx file is served from the static mount (R11a / AC6)."""
     app = create_app(port=8765)
@@ -598,6 +642,15 @@ def test_static_htmx_asset_is_served() -> None:
     assert r.status_code == 200
     # The known-good htmx file starts with a recognisable banner / signature.
     assert "htmx" in r.text.lower()
+    # MIME contract: a StaticFiles misconfig that served the file as
+    # ``text/plain`` or ``application/octet-stream`` would pass the body check
+    # above but browsers under strict MIME sniffing would refuse to execute
+    # the script. The static mount must serve a JavaScript media type
+    # (REV-20260608-022723 qa F2 fold).
+    assert "javascript" in r.headers.get("content-type", "").lower(), (
+        f"static htmx asset served with non-JavaScript content-type: "
+        f"{r.headers.get('content-type')!r}"
+    )
 
 
 #: The vendored htmx 1.9.12 SHA-384 (base64) — must match
@@ -615,6 +668,10 @@ def test_vendored_htmx_sha384_matches_readme_pin() -> None:
     swap-in passes that. This guard reads the bytes, recomputes the SHA-384, and
     asserts it equals the pin. A supply-chain swap that leaves the README
     unchanged but rewrites the file fails this immediately.
+
+    Also asserts the module-level constant equals the README's published pin so
+    a re-vendor that updates one but not the other fails CI instead of silently
+    drifting the two contracts apart (REV-20260608-022723 qa F1 fold).
     """
     import base64
     import hashlib
@@ -628,6 +685,113 @@ def test_vendored_htmx_sha384_matches_readme_pin() -> None:
     assert computed == _HTMX_SHA384_PIN, (
         "vendored htmx SHA-384 does not match the pin in "
         "src/telemetry/static/README.md — supply-chain integrity check failed"
+    )
+    readme_pin = _read_sha384_pin_from_readme("htmx.min.js")
+    assert _HTMX_SHA384_PIN == readme_pin, (
+        "test constant _HTMX_SHA384_PIN diverged from README pin table — "
+        "update both in lockstep when re-vendoring"
+    )
+
+
+#: The vendored Chart.js 4.4.7 SHA-384 (base64). Two-mirror verified at vendoring
+#: time (unpkg.com + cdn.jsdelivr.net returned byte-identical files). Must match
+#: src/telemetry/static/README.md's pin table. Phase 2 first-slice scaffolding —
+#: the chart markup that consumes Chart.js lands in the next slice; this pin
+#: still applies from day one so the integrity discipline cannot be bypassed by
+#: a "well it's not loaded yet, who cares" argument later.
+_CHARTJS_SHA384_PIN = "zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM"
+
+
+def test_static_chartjs_asset_is_served() -> None:
+    """The vendored Chart.js file is served from the static mount (R11a / AC6).
+
+    Phase 2 first-slice scaffolding (SPEC-20260607-183136 Phase 2): the asset is
+    vendored + integrity-pinned BEFORE any chart markup consumes it, so the next
+    slice's chart can rely on the mount being present and the bytes being pinned.
+    Mirrors the htmx static-mount test verbatim — the same shape, the next file.
+    """
+    app = create_app(port=8765)
+    client = TestClient(app)
+    r = client.get("/static/chart.umd.min.js", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+    # The known-good Chart.js UMD build carries a recognisable banner in its
+    # first 256 bytes — a backdoored swap-in that drops the banner would still
+    # fail the SHA-384 guard below, but the banner check makes a "served some
+    # random JS at this path" regression read obvious in the test failure.
+    assert "chart.js" in r.text[:256].lower()
+    # MIME contract: same browser-execution requirement as for htmx — a
+    # ``text/plain`` or ``application/octet-stream`` regression would pass the
+    # body check but break the next slice's ``<script src="...">`` load
+    # (REV-20260608-022723 qa F2 fold).
+    assert "javascript" in r.headers.get("content-type", "").lower(), (
+        f"static Chart.js asset served with non-JavaScript content-type: "
+        f"{r.headers.get('content-type')!r}"
+    )
+
+
+@pytest.mark.regression
+def test_vendored_chartjs_sha384_matches_readme_pin() -> None:
+    """Regression (Phase 2 supply-chain): the vendored Chart.js integrity is machine-verified.
+
+    Mirrors :func:`test_vendored_htmx_sha384_matches_readme_pin` for the new
+    Chart.js asset. A supply-chain swap that leaves the README unchanged but
+    rewrites the file fails this immediately. The pin was two-mirror verified
+    at vendoring time (see :data:`_CHARTJS_SHA384_PIN`); any re-vendoring should
+    repeat that cross-check AND cross-reference the upstream GitHub release tag
+    (an independent trust root from npm) before updating both the constant and
+    the README.
+
+    Also asserts the module-level constant equals the README's published pin so
+    a re-vendor that updates one but not the other fails CI instead of silently
+    drifting the two contracts apart (REV-20260608-022723 qa F1 fold).
+    """
+    import base64
+    import hashlib
+
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    chartjs_path = STATIC_DIR / "chart.umd.min.js"
+    assert chartjs_path.is_file(), f"vendored Chart.js asset missing at {chartjs_path}"
+    digest = hashlib.sha384(chartjs_path.read_bytes()).digest()
+    computed = base64.b64encode(digest).decode("ascii")
+    assert computed == _CHARTJS_SHA384_PIN, (
+        "vendored Chart.js SHA-384 does not match the pin in "
+        "src/telemetry/static/README.md — supply-chain integrity check failed"
+    )
+    readme_pin = _read_sha384_pin_from_readme("chart.umd.min.js")
+    assert _CHARTJS_SHA384_PIN == readme_pin, (
+        "test constant _CHARTJS_SHA384_PIN diverged from README pin table — "
+        "update both in lockstep when re-vendoring"
+    )
+
+
+@pytest.mark.regression
+def test_chartjs_license_companion_file_present() -> None:
+    """Regression (security F1 fold): MIT license-text companion is shipped alongside the asset.
+
+    The Chart.js MIT header survives in the minified file's first comment block,
+    which satisfies the legal minimum for MIT redistribution — but a future
+    re-minification pass that strips comments would silently drop the notice.
+    This guard asserts a separate ``LICENSE-chart.js.txt`` exists with the full
+    MIT text (recoverable from disk even if the JS header is ever stripped) and
+    that the License column in the README points at it. Closes the provenance
+    gap security-specialist raised in REV-20260608-022723 F1.
+    """
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    license_path = STATIC_DIR / "LICENSE-chart.js.txt"
+    assert license_path.is_file(), (
+        f"Chart.js license companion missing at {license_path} — "
+        "MIT redistribution requires the copyright notice to survive in tree"
+    )
+    license_text = license_path.read_text(encoding="utf-8")
+    assert "MIT License" in license_text
+    assert "Chart.js Contributors" in license_text
+    assert "Permission is hereby granted" in license_text  # canonical MIT phrase
+
+    readme_text = (STATIC_DIR / "README.md").read_text(encoding="utf-8")
+    assert "LICENSE-chart.js.txt" in readme_text, (
+        "README pin table should reference the LICENSE-chart.js.txt companion"
     )
 
 
