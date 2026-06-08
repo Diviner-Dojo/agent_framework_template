@@ -811,7 +811,7 @@ def test_vendored_chartjs_sha384_matches_readme_pin() -> None:
 #: must update both the README pin table AND this constant in the same commit,
 #: making silent byte changes impossible. A re-vendor on a third-party file is
 #: a vendoring event; a re-pin on this file is a code-review event.
-_DASHBOARD_CHART_JS_SHA384_PIN = "TijWmc6daXMgcyjeViDAtsN/2Wzhrr7KpGjY6FfM1Ht2kAZvteerwGa9AWW7aEvc"
+_DASHBOARD_CHART_JS_SHA384_PIN = "vA8QifhIA8IT53aPS8bi8qRF7WKKV3V4lKrxZ7OxnNaPeTpsxLbUibR/Qzr7sAIk"
 
 
 def test_static_dashboard_chart_asset_is_served() -> None:
@@ -830,9 +830,13 @@ def test_static_dashboard_chart_asset_is_served() -> None:
     client = TestClient(app)
     r = client.get("/static/dashboard-chart.js", headers={"host": "127.0.0.1:8765"})
     assert r.status_code == 200
-    # Pin the recognisable banner phrase — a "served some random JS at this
-    # path" regression reads obvious in the failure output. The SHA-384 guard
-    # below catches a backdoored swap-in with a faked banner.
+    # qa F5 (REV-20260608-044128) — clarifying note: this banner check is a
+    # human-readable DIAGNOSTIC ONLY. It exists so a "served some random JS
+    # at this path" misroute fails with an obvious failure message in CI
+    # output, not so that the banner itself proves authenticity. The
+    # AUTHORITATIVE byte-integrity guard is `test_vendored_dashboard_chart_
+    # sha384_matches_readme_pin` below (any byte change — including a
+    # backdoored swap-in carrying a faked banner — fails THAT test).
     assert "dashboard-chart.js" in r.text[:512].lower()
     # MIME contract: same browser-execution requirement as for htmx/Chart.js
     # (REV-20260608-022723 qa F2 fold) — a ``text/plain`` regression would

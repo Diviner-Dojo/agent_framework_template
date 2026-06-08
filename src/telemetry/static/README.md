@@ -8,11 +8,11 @@ dependency and the SRI/CDN-compromise surface. The FastAPI app in
 
 ## Pins
 
-| Asset                  | Version  | License (companion file)                                      | Source                                                              | Bytes  | Integrity (SHA384, base64)                                              |
-| ---------------------- | -------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- |
-| `htmx.min.js`          | 1.9.12   | BSD-2-Clause (header comment in file)                         | https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js                  | 48101  | `sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2` |
-| `chart.umd.min.js`     | 4.4.7    | MIT (see [`LICENSE-chart.js.txt`](./LICENSE-chart.js.txt))    | https://unpkg.com/chart.js@4.4.7/dist/chart.umd.js                  | 205615 | `sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM` |
-| `dashboard-chart.js`   | 1.0.0    | first-party (this repository)                                 | in-tree (this repository)                                           | 12895  | `sha384-TijWmc6daXMgcyjeViDAtsN/2Wzhrr7KpGjY6FfM1Ht2kAZvteerwGa9AWW7aEvc` |
+| Asset                  | Trust model       | Version  | License (companion file)                                      | Source                                                              | Bytes  | Integrity (SHA384, base64)                                              |
+| ---------------------- | ----------------- | -------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- |
+| `htmx.min.js`          | third-party       | 1.9.12   | BSD-2-Clause (header comment in file)                         | https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js                  | 48101  | `sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2` |
+| `chart.umd.min.js`     | third-party       | 4.4.7    | MIT (see [`LICENSE-chart.js.txt`](./LICENSE-chart.js.txt))    | https://unpkg.com/chart.js@4.4.7/dist/chart.umd.js                  | 205615 | `sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM` |
+| `dashboard-chart.js`   | first-party       | 1.0.0    | first-party (this repository)                                 | in-tree (this repository)                                           | 14242  | `sha384-vA8QifhIA8IT53aPS8bi8qRF7WKKV3V4lKrxZ7OxnNaPeTpsxLbUibR/Qzr7sAIk` |
 
 ### What the SHA-384 pin actually defends against
 
@@ -24,6 +24,12 @@ build immediately — that is the primary supply-chain control here.
 The primary integrity anchor going forward is **git history**: once the bytes
 are committed, any future change is a code-review event by definition, and the
 pin makes silently rewriting the file fail before merge.
+
+> **Not browser SRI.** The `sha384-...` values in the table above are not used
+> as `<script integrity="...">` attributes — the assets are served same-origin
+> from this repository's static mount under a strict `script-src 'self'` CSP,
+> so browser SRI would be redundant. The digests are CI-side integrity anchors
+> only.
 
 ### The two-mirror cross-check — what it does and does NOT prove
 

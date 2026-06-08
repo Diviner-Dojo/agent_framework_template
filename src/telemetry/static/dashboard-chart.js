@@ -11,8 +11,10 @@
  * What it does:
  *   1. Looks up the canvas + JSON data block by their renderer-pinned ids
  *      (see _PER_TURN_COST_CANVAS_ID / _PER_TURN_COST_DATA_ELEMENT_ID in
- *      src/telemetry/dashboard.py — three sources of truth for these
- *      strings: Python constants, this file, regression tests).
+ *      src/telemetry/dashboard.py — each of these strings lives in three
+ *      locations: the Python constants (source of truth), this file
+ *      (copy), and the regression tests (anchor). The Python constants
+ *      are authoritative; the others are kept in lockstep by code review).
  *   2. Parses the data block's textContent as JSON (the renderer escapes
  *      `</` -> `<\/` + `allow_nan=False`, so JSON.parse never sees a
  *      `</script>` close-tag and never sees a NaN/Inf token).
@@ -85,6 +87,15 @@
   }
 
   function formatTimeLabel(isoString) {
+    // qa F6 (REV-20260608-044128) defensive guard: the Python renderer's
+    // _ChartPoint contract pins `t` as a full ISO 8601 timestamp
+    // (`"YYYY-MM-DDTHH:MM:SS..."`, always >= 19 chars), so the < 19 branch
+    // is unreachable today. The guard exists for future schema evolution —
+    // if a later slice ever shortens the time field (e.g. to `"HH:MM:SS"`
+    // for a denser view), the substring slice below would silently truncate
+    // mid-character or return an empty string. Falling back to a String()
+    // round-trip preserves a usable axis label until the contract change
+    // is reflected here.
     if (typeof isoString !== "string" || isoString.length < 19) {
       return String(isoString || "");
     }
@@ -290,6 +301,14 @@
         },
         scales: {
           x: {
+            // ux F3 (REV-20260608-044128): `autoSkip: true` lets Chart.js
+            // thin x-axis tick labels when they would overlap. The Live
+            // panel is bounded to ~100 events by the LiveState rolling
+            // window (see src/telemetry/live.py), so even at full
+            // density the auto-skipped axis remains readable on a tile
+            // narrower than ~800 px. If a future slice widens the
+            // rolling window past ~250 events, revisit (denser tile
+            // wants `maxTicksLimit` to bound the label count explicitly).
             ticks: { color: COLOR_MUTED, maxRotation: 0, autoSkip: true },
             grid: { color: COLOR_LINE },
           },

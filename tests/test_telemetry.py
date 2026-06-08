@@ -3778,10 +3778,13 @@ def test_render_live_fragment_composes_runway_then_lanes_then_stream_then_chart(
 # seam to catch a regression INSIDE the new panel that the surrounding
 # composition would silently mask.
 #
-# Phase 2 next-step note: the Chart.js init script that consumes this JSON
-# payload lands in a separate slice — see HANDOFF-supervisor-rolling.md step 4
-# (the CSP design fork). These tests pin the data block's id + canvas id + JSON
-# shape so the init script lands with one known-good integration surface.
+# The Chart.js init script (src/telemetry/static/dashboard-chart.js, shipped
+# step 4 / commit e70cfd3) consumes this JSON payload via document.getElementById
+# on the pinned data-block + canvas ids. These tests pin the id strings and the
+# JSON shape as the known-good Python↔JS integration surface; a rename or shape
+# change in dashboard.py must be reflected in dashboard-chart.js + here in
+# lockstep (see arch F3 comment in dashboard-chart.js — Python is the source of
+# truth, the JS file and these tests are copies kept in sync by code review).
 
 
 @pytest.mark.regression
@@ -3806,6 +3809,16 @@ def test_render_per_turn_cost_chart_panel_empty_events_renders_absence_tile() ->
     assert 'data-state="loading"' not in panel
     assert "<canvas" not in panel
     assert 'type="application/json"' not in panel
+    # qa F3 (REV-20260608-044128 → REV-20260608-045732 qa F1 fold): the Python
+    # renderer takes the ``if not priced_points: return absence_html`` exit
+    # BEFORE constructing any ``<script type="application/json">`` data block,
+    # so neither the media-type marker (asserted above) nor any JSON content
+    # (including the empty-array literal ``[]``) appears in the absence output.
+    # This guards the STRUCTURAL invariant — "no JSON scaffolding reaches the
+    # absence path" — not a substring coincidence: a future regression that
+    # bypasses the absence exit AND emits an empty-array stub would have to
+    # leak ``[]`` somewhere, and this assertion catches it.
+    assert "[]" not in panel
 
 
 @pytest.mark.regression
@@ -3877,9 +3890,12 @@ def test_render_per_turn_cost_chart_panel_emits_canvas_and_data_block_when_popul
     # JSON data block id + media type are pinned (init script lookup surface).
     assert 'id="per-turn-cost-data"' in panel
     assert 'type="application/json"' in panel
-    # The canvas + data block are inside the hidden render-target wrapper so
-    # the user does not see a blank canvas before step 4 ships. The Phase 2
-    # init script removes the ``hidden`` attribute on first draw.
+    # The canvas + data block are inside the hidden render-target wrapper as
+    # the Python renderer's PERMANENT wire format; the init script at
+    # /static/dashboard-chart.js removes the ``hidden`` attribute and flips
+    # the tile to ``data-state="data"`` on first successful draw. Together
+    # with the loading-copy below, this prevents the gatekeeper from seeing
+    # a blank canvas during the brief window before the first htmx swap.
     assert 'class="chart-rendering-target" hidden' in panel
     # Loading-copy explains what the user is seeing.
     assert "Chart visualization layer initializing" in panel
