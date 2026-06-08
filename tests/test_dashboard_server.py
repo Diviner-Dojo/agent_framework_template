@@ -40,7 +40,6 @@ import hashlib
 import importlib
 import json
 import re
-import shutil
 import sqlite3
 import sys
 from datetime import UTC, datetime, timedelta
@@ -214,18 +213,28 @@ def test_routes_leave_hooks_and_settings_byte_unchanged(tmp_path: Path) -> None:
     """Regression (AC3 layer (b)): every endpoint must leave ``.claude/hooks``
     and ``settings.json`` byte-unchanged.
 
-    Behavioral guard — the layer that bites new vectors. We copy
-    ``.claude/hooks`` + ``settings.json`` into ``tmp_path``, compute SHA-256
-    sums before, hit every route, and assert sums unchanged. A future change
-    that decides to "patch the hook on the fly" would fail loudly.
-    """
-    repo_claude = _REPO_ROOT / ".claude"
-    if not (repo_claude / "settings.json").exists() or not (repo_claude / "hooks").exists():
-        pytest.skip("repo .claude/ tree not present")
+    Behavioral guard — the layer that bites new vectors. We build a synthetic
+    ``.claude/`` tree in ``tmp_path`` carrying stub hook scripts and a stub
+    ``settings.json``, compute SHA-256 sums before, hit every route, and assert
+    sums unchanged. A future change that decides to "patch the hook on the fly"
+    (or any new write side that touches a ``.claude/`` path) would fail loudly.
 
+    qa F4 fold (REV-20260607-200447): the sandbox is built synthetically rather
+    than copied from the live repo, so this AC3 guard runs unconditionally on
+    CI where the ``.claude/`` tree may not be present. Byte content is opaque to
+    the contract; the contract is "the server originates no writes against
+    these paths".
+    """
     sandbox = tmp_path / ".claude"
-    shutil.copytree(repo_claude / "hooks", sandbox / "hooks")
-    shutil.copy2(repo_claude / "settings.json", sandbox / "settings.json")
+    hooks_dir = sandbox / "hooks"
+    hooks_dir.mkdir(parents=True)
+    (hooks_dir / "pre-commit-gate.sh").write_text(
+        "#!/bin/sh\n# stub hook for AC3 byte-stability fixture\n", encoding="utf-8"
+    )
+    (hooks_dir / "session-start.sh").write_text(
+        "#!/bin/sh\n# stub hook for AC3 byte-stability fixture\n", encoding="utf-8"
+    )
+    (sandbox / "settings.json").write_text('{"_ac3_fixture": true}\n', encoding="utf-8")
 
     def _digest_tree(root: Path) -> dict[str, str]:
         digests: dict[str, str] = {}
@@ -444,7 +453,10 @@ def test_error_response_is_generic(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     app = create_app(db_path=db, project_root=tmp_path, port=8765)
     client = TestClient(app)
     r = client.get("/fragments/retrospective", headers={"host": "127.0.0.1:8765"})
-    assert r.status_code in (500, 503)
+    # The OperationalError branch returns 503 (DB not ready); the bare-Exception
+    # branch returns 500 and is covered by
+    # test_retrospective_error_general_exception_response_is_generic.
+    assert r.status_code == 503
     assert secret not in r.text
     assert "OperationalError" not in r.text
 
@@ -465,6 +477,38 @@ def test_live_fragment_error_response_is_generic(
     assert r.status_code == 500
     assert "/secret/path/leak" not in r.text
     assert "RuntimeError" not in r.text
+
+
+@pytest.mark.regression
+def test_retrospective_error_general_exception_response_is_generic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression (qa F7 / REV-20260607-200447 / AC6): a non-``OperationalError``
+    exception in the retrospective route returns a generic 500 body.
+
+    The route catches ``sqlite3.OperationalError`` as a 503 ("DB not ready") and
+    bare ``Exception`` as a 500 ("could not render"). ``test_error_response_is_generic``
+    above pins the OperationalError path; this pins the catch-all branch so a
+    future edit that, e.g., dropped the bare ``except Exception`` (silently
+    letting the exception bubble to FastAPI's default 500 handler — which in a
+    debug build would expose a class name + stack trace in the body) would fail
+    loudly here.
+    """
+    db = _empty_db(tmp_path)
+    secret = "internal-call-stack-marker-9d2"
+
+    def _boom(*_a, **_kw):
+        raise RuntimeError(f"unexpected {secret} should not leak")
+
+    monkeypatch.setattr(dashboard_server, "assemble_dashboard_data", _boom)
+
+    app = create_app(db_path=db, project_root=tmp_path, port=8765)
+    client = TestClient(app)
+    r = client.get("/fragments/retrospective", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 500
+    assert secret not in r.text
+    assert "RuntimeError" not in r.text
+    assert "Traceback" not in r.text
 
 
 # --------------------------------------------------------------------------- #
@@ -743,6 +787,80 @@ def test_host_header_guard_is_middleware_layer() -> None:
     assert "HostHeaderGuard" in names, f"HostHeaderGuard missing from middleware: {names}"
     # Smoke check that the class is the one we exported.
     assert HostHeaderGuard.__name__ == "HostHeaderGuard"
+
+
+# --------------------------------------------------------------------------- #
+# qa F5 (REV-20260607-200447) — CORS preflight from a foreign Origin
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "foreign_origin",
+    [
+        "http://evil.example.com",
+        # Subdomain spoof: an accidental regex like ``http://127\.0\.0\.1.*``
+        # would echo this back; the simple foreign origin above does not exercise
+        # that vector. The header-absent contract below catches both.
+        "http://127.0.0.1.evil.example.com",
+    ],
+)
+def test_cors_preflight_from_foreign_origin_emits_no_allow_origin_header(
+    tmp_path: Path, foreign_origin: str
+) -> None:
+    """Regression (qa F5 / REV-20260607-200447 / REV-20260608-003457 F1 fold /
+    R8a / AC6): a CORS preflight from a foreign Origin emits NO
+    ``Access-Control-Allow-Origin`` header at all and NO
+    ``Access-Control-Allow-Credentials: true``.
+
+    The CORS middleware is configured with an explicit single-origin allow list
+    (``http://127.0.0.1:<port>``, ``allow_credentials=False``) — see
+    ``dashboard_server.create_app``. The precise contract Starlette's
+    ``CORSMiddleware`` enforces on a non-matching origin is: no
+    ``Access-Control-Allow-Origin`` header is emitted (so ``.get(..., "")``
+    returns ``""``). Asserting header-absence is the tightest form — it catches
+    in one assertion both a wildcard (``"*"``) and an echo (any string value).
+
+    Future regressions covered:
+
+    * ``allow_origins=["*"]`` — caught (wildcard would set the header).
+    * ``allow_origin_regex=".*"`` / ``"http://.*"`` — caught (would echo the
+      foreign origin).
+    * ``allow_origin_regex="http://127\\.0\\.0\\.1.*"`` (a "safe-looking"
+      pattern that accidentally matches a subdomain spoof) — caught by the
+      second parametrize case.
+    * ``allow_credentials=True`` paired with any of the above — caught by the
+      separate ``Allow-Credentials`` assertion.
+
+    ``host: 127.0.0.1:8765`` is deliberate: the ``HostHeaderGuard`` middleware
+    (added AFTER ``CORSMiddleware`` and therefore running FIRST in Starlette's
+    LIFO request order) would otherwise pre-empt with 400 and CORS would never
+    run. ``test_host_header_guard_rejects_evil_host`` already pins the wrong-
+    Host rejection path; this test pins the CORS layer independently.
+    """
+    db = _empty_db(tmp_path)
+    app = create_app(db_path=db, project_root=tmp_path, port=8765)
+    client = TestClient(app)
+    r = client.options(
+        "/fragments/live",
+        headers={
+            "host": "127.0.0.1:8765",
+            "origin": foreign_origin,
+            "access-control-request-method": "GET",
+            "access-control-request-headers": "content-type",
+        },
+    )
+    allow_origin = r.headers.get("access-control-allow-origin", "")
+    assert allow_origin == "", (
+        f"CORS emitted Allow-Origin {allow_origin!r} for non-matching origin "
+        f"{foreign_origin!r} — same-origin invariant violated "
+        "(contract: header MUST be absent on a non-matching origin)"
+    )
+    allow_creds = r.headers.get("access-control-allow-credentials", "false")
+    assert allow_creds.lower() != "true", (
+        f"CORS emitted Allow-Credentials=true for non-matching origin "
+        f"{foreign_origin!r} — credentials must never cross a same-origin boundary"
+    )
 
 
 # --------------------------------------------------------------------------- #
