@@ -101,6 +101,7 @@ Agent/rule/philosophy changes follow: facilitator observation → proposal → *
 - **notifying-the-developer** — ntfy push + AFK ask protocol (untrusted-reply allow-list, 1-hour timeout, confidentiality).
 - **wrapping-up-sessions** — model-aware context wrap-up + handoff (ADR-0018); fires on a soft/hard context nudge or `/handoff`; writes a paste-ready handoff and (consent-gated) launches a continuation.
 - **collaborating-async** — two-way ntfy loop (`scripts/collab_loop.py`: ask/poll/check/say) so an autonomous agent works while the developer is AFK; the empty-title free-text rule, check-before-poll resume, milestone cadence, and the loop-state resume anchor (ADR-0019). The untrusted-reply allow-list is the always-on invariant above.
+- **grill-me** — relentless one-question-at-a-time interview (each with a recommended answer) to pressure-test a plan/design/decision; checkpoints every answer verbatim to `brainstorms/YYYY-MM-DD-<topic-slug>.md` so the session survives context drift and resumes after interruption. Use when the developer says "grill me" or wants to think through / stress-test something.
 
 ## Pointers
 - **Agent architecture / orchestration / collaboration modes** → `docs/AGENT_ARCHITECTURE.md`
