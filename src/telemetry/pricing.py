@@ -11,6 +11,7 @@ priced at zero by callers.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -48,10 +49,21 @@ class TierRates:
 
 @dataclass(frozen=True)
 class PricingTable:
-    """Resolved pricing table: tier rates plus a model-id-to-tier map."""
+    """Resolved pricing table: tier rates plus a model-id-to-tier map.
+
+    Attributes:
+        tiers: Tier name to :class:`TierRates`.
+        models: Full model id to tier name.
+        last_updated: ISO date string from the YAML's top-level
+            ``last_updated`` key (empty string when the YAML omits it).
+            Used by the Layer B Phase 3 Unit 2 config-drift detector
+            (:mod:`src.telemetry.drift`) to compare against the earliest
+            captured discussion; never affects cost computation.
+    """
 
     tiers: dict[str, TierRates]
     models: dict[str, str]
+    last_updated: str = ""
 
     def resolve_tier(self, model_id: str | None) -> str:
         """Resolve a model id to a pricing tier.
@@ -158,7 +170,17 @@ def parse_pricing(data: dict[str, Any]) -> PricingTable:
         for model_id, tier in raw_models.items():
             if isinstance(tier, str):
                 models[str(model_id)] = tier
-    return PricingTable(tiers=tiers, models=models)
+    raw_last_updated = data.get("last_updated") if isinstance(data, dict) else None
+    last_updated = ""
+    if isinstance(raw_last_updated, str):
+        last_updated = raw_last_updated
+    elif isinstance(raw_last_updated, date):
+        # PyYAML deserializes an ISO date scalar as a :class:`date` object.
+        # Render it as an ISO string so the drift detector's single-shape
+        # parse (:func:`src.telemetry.drift._parse_iso_date`) is the only
+        # date-handling seam downstream.
+        last_updated = raw_last_updated.isoformat()
+    return PricingTable(tiers=tiers, models=models, last_updated=last_updated)
 
 
 def load_pricing(path: Path | None = None) -> PricingTable:

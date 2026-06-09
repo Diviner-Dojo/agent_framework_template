@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -211,12 +212,22 @@ def parse_subscription_fee(data: dict[str, Any]) -> SubscriptionFee | None:
         return None
     currency = data.get("currency")
     plan_label = data.get("plan_label")
-    effective_date = data.get("effective_date")
+    effective_date_raw = data.get("effective_date")
+    # PyYAML deserializes an unquoted ISO date scalar as a :class:`date`; render
+    # it as an ISO string so the Phase 3 Unit 2 drift detector's single-shape
+    # parse (:func:`src.telemetry.drift._parse_iso_date`) is the only
+    # date-handling seam downstream.
+    if isinstance(effective_date_raw, str):
+        effective_date = effective_date_raw
+    elif isinstance(effective_date_raw, date):
+        effective_date = effective_date_raw.isoformat()
+    else:
+        effective_date = ""
     return SubscriptionFee(
         monthly_fee_usd=fee,
         currency=str(currency) if isinstance(currency, str) else "USD",
         plan_label=str(plan_label) if isinstance(plan_label, str) else "",
-        effective_date=str(effective_date) if isinstance(effective_date, str) else "",
+        effective_date=effective_date,
     )
 
 

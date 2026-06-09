@@ -31,6 +31,8 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from src.telemetry.cost import CostReport
+from src.telemetry.drift import DRIFT_KINDS, ConfigDriftSignal
+from src.telemetry.drift import REMEDIATION_HINTS as DRIFT_REMEDIATION_HINTS
 from src.telemetry.failures import (
     ERROR_CLASSES,
     REMEDIATION_HINTS,
@@ -93,6 +95,12 @@ class DashboardData:
             typed state).
         attribution: A3 attribution-coverage :class:`DivergenceResult`.
         pricing_check: A3 OTel-pricing :class:`DivergenceResult`.
+        config_drift: Detected config-drift rows (Phase 3 Unit 2 — empty tuple
+            when no drift is detected; the renderer distinguishes a true zero
+            from the not-yet-known state via ``config_drift_state``).
+        config_drift_state: ``"data"`` once the drift detector has inputs to
+            reason about (any captured discussion exists), else ``"not_run"``.
+            Mirrors :attr:`failures_state`'s true-zero-vs-absence contract.
         generated_label: A human label for when the page was generated, injected
             by the transport layer (kept out of this pure module so the renderer
             stays deterministic for tests).
@@ -105,6 +113,8 @@ class DashboardData:
     leverage: LeverageResult
     attribution: DivergenceResult
     pricing_check: DivergenceResult
+    config_drift: tuple[ConfigDriftSignal, ...] = ()
+    config_drift_state: str = STATE_NOT_RUN
     generated_label: str = ""
 
 
@@ -386,6 +396,145 @@ def _render_failure_class_group(cls: str, rfs: list[RankedFailure]) -> str:
     )
 
 
+def _render_config_drift_panel(data: DashboardData) -> str:
+    """Render the Config drift panel (Phase 3 Unit 2 — sibling of Failure & Waste).
+
+    Three visual states, matching the failures panel's discipline (qa A7):
+
+    * ``not_run`` — the drift detector has no captured corpus to compare
+      against. Honest-absence tile.
+    * ``data`` + no signals — a true zero. The detector ran and found no
+      drift; this is GOOD news, rendered as a normal data tile with explicit
+      copy (not the absence style — that distinction matters per spec R3a).
+    * ``data`` + signals — group rows by :data:`drift.DRIFT_KINDS`, mirror
+      the failure-class-group layout, attach one static remediation hint
+      per kind. No cost/wasted-tok column: drift is qualitative; forcing a
+      dollar slot here would invite a fabricated ``$0`` (the C4 anti-pattern
+      this panel exists to flag in the cost path, ironically).
+
+    Args:
+        data: Assembled dashboard data. Reads ``config_drift_state`` and
+            ``config_drift`` only — nothing else.
+    """
+    if data.config_drift_state == STATE_NOT_RUN:
+        # qa F2 + ux F1 CONVERGENT fold (REV-20260609-060229): the prior copy
+        # pointed at ``analyze_cost.py``, which reads the discussions table but
+        # does NOT create it — a user following that hint would loop. Capture
+        # is automatic via the framework's command pipeline; the right action
+        # is "use the framework" not "run an analyzer."
+        return _absence_tile(
+            "Config drift",
+            "No corpus to compare against yet.",
+            "The drift detector needs at least one captured discussion to scan.",
+            action_html=(
+                "Use the framework (any "
+                f"{_code('/plan')}, {_code('/review')}, {_code('/build_module')}, "
+                "etc.) — captured discussions appear here automatically."
+            ),
+        )
+    signals = data.config_drift
+    if not signals:
+        return (
+            '<div class="tile tile--data" data-state="data">'
+            "<h3>Config drift</h3>"
+            '<div class="headline headline--ok">No drift detected</div>'
+            '<p class="sub">The current pricing config and subscription fee '
+            "match the captured corpus.</p>"
+            "</div>"
+        )
+    groups_html = "".join(
+        _render_drift_kind_group(kind, sigs) for kind, sigs in _group_drift_by_kind(signals)
+    )
+    # ux F2 fold (REV-20260609-060229): the prior sub-copy ended with "tells
+    # you how to read it" but left the gatekeeper without a triage anchor —
+    # drift has no cost dimension so cannot copy the failures-panel "most
+    # costly class" cue. The unknown-model group is canonically first BECAUSE
+    # it has the most direct effect on the cost figure (it makes uncosted
+    # rows appear), so the start-here cue points there in a multi-group case.
+    return (
+        '<div class="tile tile--data" data-state="data">'
+        "<h3>Config drift</h3>"
+        f'<div class="headline">{_esc(len(signals))} drift row(s) detected</div>'
+        '<p class="sub">Each group flags where the current config differs from '
+        "what was in effect when the corpus was captured. Drift does not invalidate "
+        "the cost figure — it tells you how to read it. The first group has the "
+        "most direct effect on the cost figure — start there.</p>"
+        f"{groups_html}"
+        "</div>"
+    )
+
+
+def _group_drift_by_kind(
+    signals: tuple[ConfigDriftSignal, ...],
+) -> list[tuple[str, list[ConfigDriftSignal]]]:
+    """Bucket drift signals by kind, in :data:`drift.DRIFT_KINDS` order.
+
+    Returns ``(kind, [signals])`` pairs in canonical order so a deterministic
+    detector input yields a deterministic layout across runs. Within a kind,
+    the input order is preserved (the detector module pins the rule for what
+    that ordering is, mirroring the failures-panel discipline).
+
+    Args:
+        signals: Detected drift signals.
+
+    Returns:
+        Display-ordered list of ``(kind, signals)`` tuples.
+    """
+    buckets: dict[str, list[ConfigDriftSignal]] = {}
+    for s in signals:
+        buckets.setdefault(s.kind, []).append(s)
+    return [(k, buckets[k]) for k in DRIFT_KINDS if k in buckets]
+
+
+#: Manager-facing label per drift kind. **ux F4 fold (REV-20260609-060229)**:
+#: the prior renderer derived labels from ``kind.replace("_", " ").capitalize()``
+#: which produced "Unknown model" — readable but missed the chance to name the
+#: consequence in the header (the failures-panel labels already do this).
+#: Mirrors the ``_LANE_STATUS_LABEL`` / ``_RUNWAY_LABEL`` map pattern earlier
+#: in this file; the renderer reads from this map with NO ``.get()`` fallback so
+#: a future drift kind added without a paired label surfaces as a loud
+#: ``KeyError`` rather than a silent kebab-case header (same fail-loud
+#: discipline as the symmetric-key ``DRIFT_REMEDIATION_HINTS`` test).
+_DRIFT_KIND_LABEL: dict[str, str] = {
+    "unknown_model": "Unpriced model id",
+    "stale_pricing": "Stale pricing config",
+    "stale_subscription_fee": "Stale subscription fee",
+}
+
+
+def _render_drift_kind_group(kind: str, signals: list[ConfigDriftSignal]) -> str:
+    """Render one drift-kind group: kind header + remediation hint + rows.
+
+    Mirrors :func:`_render_failure_class_group`'s shape so the two panels read
+    the same — gatekeeper learns one layout, not two. No ``.get(kind, ...)``
+    fallback: a missing hint is a programmer error (a new kind added to
+    :data:`drift.DRIFT_KINDS` without a paired entry in
+    :data:`drift.REMEDIATION_HINTS`); let the drift surface as a loud
+    ``KeyError`` rather than be silently masked.
+
+    Args:
+        kind: One of :data:`drift.DRIFT_KINDS`.
+        signals: The signals in this group, already in display order.
+    """
+    rows = []
+    for s in signals:
+        rows.append(
+            f'<tr><td>{_esc(s.observed)}</td><td class="detail">{_esc(s.detail)}</td></tr>'
+        )
+    hint = DRIFT_REMEDIATION_HINTS[kind]
+    label = _DRIFT_KIND_LABEL[kind]
+    return (
+        f'<div class="failure-class-group" data-drift-kind="{_esc(kind)}">'
+        f'<h4 class="failure-class-header">{_esc(label)} '
+        f'<span class="failure-class-count">({_esc(len(signals))} row(s))</span></h4>'
+        f'<p class="hint">{_esc(hint)}</p>'
+        '<table class="data-table">'
+        "<thead><tr><th>Observed</th><th>Detail</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
+        "</div>"
+    )
+
+
 def _render_leverage_block(lev: LeverageResult, *, cost_measured: bool) -> str:
     """Render the A3 leverage sub-block (configured data vs honest absence).
 
@@ -637,6 +786,7 @@ def render_dashboard_html(data: DashboardData) -> str:
         "<main>"
         f"{_render_cost_panel(data)}"
         f"{_render_failures_panel(data)}"
+        f"{_render_config_drift_panel(data)}"
         f"{_render_value_panel(data)}"
         "</main></body></html>"
     )
@@ -695,6 +845,13 @@ def render_console_summary(data: DashboardData, *, output_path: str) -> list[str
     else:
         lines.append("OTel cross-check: not yet active (enable OpenTelemetry export)")
 
+    if data.config_drift_state == STATE_NOT_RUN:
+        lines.append("Config drift: not yet checked (no captured corpus)")
+    elif not data.config_drift:
+        lines.append("Config drift: none detected")
+    else:
+        lines.append(f"Config drift: {len(data.config_drift)} row(s) detected")
+
     absences = _count_absences(data)
     if absences:
         lines.append(
@@ -718,6 +875,8 @@ def _count_absences(data: DashboardData) -> int:
     if not data.attribution.available:
         count += 1
     if not data.pricing_check.available:
+        count += 1
+    if data.config_drift_state == STATE_NOT_RUN:
         count += 1
     return count
 

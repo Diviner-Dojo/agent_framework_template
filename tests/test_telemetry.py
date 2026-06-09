@@ -38,6 +38,18 @@ from src.telemetry.dashboard import (
     render_live_fragment,
     render_live_shell_html,
 )
+from src.telemetry.drift import (
+    DRIFT_KINDS,
+    STALE_PRICING,
+    STALE_SUBSCRIPTION_FEE,
+    UNKNOWN_MODEL,
+    ConfigDriftSignal,
+    detect_config_drift,
+    detect_stale_pricing_drift,
+    detect_stale_subscription_drift,
+    detect_unknown_model_drift,
+)
+from src.telemetry.drift import REMEDIATION_HINTS as DRIFT_REMEDIATION_HINTS
 from src.telemetry.failures import (
     CONFIG,
     ERROR_CLASSES,
@@ -2523,7 +2535,9 @@ def test_console_summary_is_ascii_across_states(factory) -> None:
     text = "\n".join(lines)
     text.encode("ascii")  # must not raise
     text.encode("cp1252")  # must not raise (the cp1252 regression-ledger class)
-    assert 5 <= len(lines) <= 6
+    # Phase 3 Unit 2 added a Config-drift summary line (always present in one
+    # of 3 states), so the per-state line range is bumped from 5-6 to 6-7.
+    assert 6 <= len(lines) <= 7
 
 
 # --- plain-language framing (R2a) ------------------------------------------ #
@@ -4477,3 +4491,556 @@ def test_render_per_turn_cost_chart_panel_payload_carries_per_event_uncosted_fla
     # have looked indistinguishable from a priced 0.0.
     assert points[1]["cost"] == 0.0
     assert points[1]["uncosted"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3 Unit 2 — config-drift detector + panel + integration
+# --------------------------------------------------------------------------- #
+
+
+def _pricing_with(last_updated: str = "") -> PricingTable:
+    data = dict(PRICING_DATA)
+    if last_updated:
+        data["last_updated"] = last_updated
+    return parse_pricing(data)
+
+
+def test_drift_kinds_and_hints_are_symmetric() -> None:
+    """A drift kind without a hint (or vice versa) is a programmer error.
+
+    Mirrors the failures taxonomy's symmetric-key invariant — the renderer
+    looks up :data:`DRIFT_REMEDIATION_HINTS[kind]` with no ``.get()`` fallback
+    so a missing entry surfaces as a loud ``KeyError`` rather than a silent
+    blank hint row.
+    """
+    assert set(DRIFT_KINDS) == set(DRIFT_REMEDIATION_HINTS)
+    # Each hint is non-empty (a blank hint would defeat the gatekeeper-triage
+    # value of the panel).
+    for kind in DRIFT_KINDS:
+        assert DRIFT_REMEDIATION_HINTS[kind].strip()
+
+
+def test_pricing_table_carries_last_updated_from_yaml() -> None:
+    """``last_updated`` round-trips through :func:`parse_pricing`."""
+    table = parse_pricing({**PRICING_DATA, "last_updated": "2026-05-12"})
+    assert table.last_updated == "2026-05-12"
+
+
+def test_pricing_table_last_updated_defaults_empty_when_absent() -> None:
+    """A YAML without a ``last_updated`` key parses to an empty string.
+
+    The empty-string default is the typed honest-absence path: the drift
+    detector's :func:`detect_stale_pricing_drift` treats it as
+    "cannot determine" and emits no signal (rather than fabricating one).
+    """
+    assert parse_pricing(PRICING_DATA).last_updated == ""
+
+
+def test_pricing_table_last_updated_accepts_yaml_date_scalar() -> None:
+    """An unquoted YAML date scalar is normalised to an ISO string.
+
+    Equivalent: ``last_updated: 2026-05-12`` (unquoted) and
+    ``last_updated: "2026-05-12"`` (quoted) yield the same field value, so
+    the drift detector's single-shape parser is the only date-handling seam.
+    """
+    from datetime import date as _date
+
+    table = parse_pricing({**PRICING_DATA, "last_updated": _date(2026, 5, 12)})
+    assert table.last_updated == "2026-05-12"
+
+
+def test_detect_unknown_model_drift_flags_unresolvable_ids(
+    pricing: PricingTable,
+) -> None:
+    """Captured ids the current pricing cannot resolve get one signal each."""
+    # "claude-opus-4-7" resolves via the models map.
+    # "claude-opus-4" substring-matches "opus".
+    # "gpt-4o" resolves to nothing → flagged.
+    # "ada-002" resolves to nothing → flagged.
+    signals = detect_unknown_model_drift(
+        ["claude-opus-4-7", "claude-opus-4", "gpt-4o", "ada-002"], pricing
+    )
+    observed = [s.observed for s in signals]
+    assert observed == ["gpt-4o", "ada-002"]
+    assert all(s.kind == UNKNOWN_MODEL for s in signals)
+
+
+def test_detect_unknown_model_drift_dedups_repeated_ids(pricing: PricingTable) -> None:
+    """A duplicate id in the input list yields exactly one signal."""
+    signals = detect_unknown_model_drift(["gpt-4o", "gpt-4o", "gpt-4o"], pricing)
+    assert len(signals) == 1
+    assert signals[0].observed == "gpt-4o"
+
+
+def test_detect_unknown_model_drift_ignores_unknown_tier_sentinel(
+    pricing: PricingTable,
+) -> None:
+    """The ``UNKNOWN_TIER`` sentinel is not a captured id; it is never flagged.
+
+    The cost path uses ``UNKNOWN_TIER`` as a placeholder for rows with no
+    captured model id. Flagging it as drift would imply the YAML is missing
+    a resolution for "unknown" — which is incoherent. The detector skips it.
+    """
+    signals = detect_unknown_model_drift([UNKNOWN_TIER, "claude-opus-4-7"], pricing)
+    assert signals == []
+
+
+def test_detect_unknown_model_drift_ignores_non_string_inputs(
+    pricing: PricingTable,
+) -> None:
+    """Defensive: non-string items in the input (e.g. ``None``) are skipped."""
+    signals = detect_unknown_model_drift([None, 42, "gpt-4o"], pricing)  # type: ignore[list-item]
+    assert [s.observed for s in signals] == ["gpt-4o"]
+
+
+def test_detect_stale_pricing_drift_fires_when_pricing_after_earliest() -> None:
+    """Pricing updated after the earliest discussion yields one signal."""
+    pricing = _pricing_with(last_updated="2026-05-12")
+    earliest = datetime(2026, 1, 1, tzinfo=UTC)
+    signals = detect_stale_pricing_drift(pricing, earliest)
+    assert len(signals) == 1
+    s = signals[0]
+    assert s.kind == STALE_PRICING
+    assert s.observed == "2026-05-12"
+    assert "2026-05-12" in s.detail
+    assert "2026-01-01" in s.detail
+
+
+def test_detect_stale_pricing_drift_silent_when_pricing_on_or_before_earliest() -> None:
+    """No drift when the pricing date is ON or BEFORE the earliest discussion."""
+    pricing = _pricing_with(last_updated="2026-01-01")
+    earliest = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    # ON-the-same-date is not drift (boundary inclusive on the no-drift side).
+    assert detect_stale_pricing_drift(pricing, earliest) == []
+    # BEFORE is also not drift.
+    earlier_pricing = _pricing_with(last_updated="2025-12-31")
+    assert detect_stale_pricing_drift(earlier_pricing, earliest) == []
+
+
+def test_detect_stale_pricing_drift_silent_when_last_updated_missing() -> None:
+    """An empty ``last_updated`` is honest absence — no fabricated signal."""
+    pricing = _pricing_with(last_updated="")
+    earliest = datetime(2026, 5, 12, tzinfo=UTC)
+    assert detect_stale_pricing_drift(pricing, earliest) == []
+
+
+def test_detect_stale_pricing_drift_silent_when_last_updated_malformed() -> None:
+    """A malformed ``last_updated`` is honest absence too — never crashes."""
+    pricing = _pricing_with(last_updated="not-a-date")
+    earliest = datetime(2026, 5, 12, tzinfo=UTC)
+    assert detect_stale_pricing_drift(pricing, earliest) == []
+
+
+def test_detect_stale_pricing_drift_silent_when_no_corpus() -> None:
+    """No discussions captured → no window to compare against → no signal."""
+    pricing = _pricing_with(last_updated="2026-05-12")
+    assert detect_stale_pricing_drift(pricing, None) == []
+
+
+def test_detect_stale_subscription_drift_fires_when_fee_after_earliest() -> None:
+    """Subscription fee effective after the earliest discussion yields one signal."""
+    fee = SubscriptionFee(monthly_fee_usd=20.0, effective_date="2026-04-01")
+    earliest = datetime(2026, 1, 1, tzinfo=UTC)
+    signals = detect_stale_subscription_drift(fee, earliest)
+    assert len(signals) == 1
+    s = signals[0]
+    assert s.kind == STALE_SUBSCRIPTION_FEE
+    assert s.observed == "2026-04-01"
+
+
+def test_detect_stale_subscription_drift_silent_when_fee_absent() -> None:
+    """No fee configured → no signal (honest absence, never a fabricated drift)."""
+    earliest = datetime(2026, 1, 1, tzinfo=UTC)
+    assert detect_stale_subscription_drift(None, earliest) == []
+
+
+def test_detect_stale_subscription_drift_silent_when_effective_date_missing() -> None:
+    """A fee with no effective date is honest absence — no signal."""
+    fee = SubscriptionFee(monthly_fee_usd=20.0, effective_date="")
+    earliest = datetime(2026, 1, 1, tzinfo=UTC)
+    assert detect_stale_subscription_drift(fee, earliest) == []
+
+
+def test_detect_config_drift_merges_all_kinds_in_canonical_order(
+    pricing: PricingTable,
+) -> None:
+    """``detect_config_drift`` returns signals in :data:`DRIFT_KINDS` order."""
+    pricing_with_date = _pricing_with(last_updated="2026-05-12")
+    fee = SubscriptionFee(monthly_fee_usd=20.0, effective_date="2026-04-01")
+    earliest = datetime(2026, 1, 1, tzinfo=UTC)
+    signals = detect_config_drift(
+        model_ids=["gpt-4o"],
+        pricing=pricing_with_date,
+        fee=fee,
+        earliest_discussion_at=earliest,
+    )
+    kinds = [s.kind for s in signals]
+    # Canonical order: UNKNOWN_MODEL → STALE_PRICING → STALE_SUBSCRIPTION_FEE.
+    assert kinds == [UNKNOWN_MODEL, STALE_PRICING, STALE_SUBSCRIPTION_FEE]
+
+
+def test_detect_config_drift_empty_when_everything_clean(pricing: PricingTable) -> None:
+    """No drift across any detector → empty list (the GOOD-news path)."""
+    fee = SubscriptionFee(monthly_fee_usd=20.0, effective_date="2026-01-01")
+    earliest = datetime(2026, 6, 1, tzinfo=UTC)
+    pricing_old = _pricing_with(last_updated="2026-01-01")
+    signals = detect_config_drift(
+        model_ids=["claude-opus-4-7"],
+        pricing=pricing_old,
+        fee=fee,
+        earliest_discussion_at=earliest,
+    )
+    assert signals == []
+
+
+# --- Config drift panel render ------------------------------------------- #
+
+
+def _empty_dashboard_data(**overrides) -> DashboardData:
+    """Build a :class:`DashboardData` shell with cost/failures/A3 all at zero.
+
+    Keeps the config-drift panel tests focused on their own field — the other
+    panels carry harmless honest-absence states.
+    """
+    base = DashboardData(
+        cost_report=build_cost_report([], parse_pricing(PRICING_DATA)),
+        cost_state=STATE_NOT_RUN,
+        failures=[],
+        failures_state=STATE_NOT_RUN,
+        leverage=LeverageResult(
+            configured=False,
+            total_cost_usd=0.0,
+            coverage_pct=0.0,
+            monthly_fee_usd=None,
+            window_months=None,
+            fee_period="monthly",
+            leverage_cumulative=None,
+            leverage_per_month=None,
+            reason="subscription fee not configured",
+        ),
+        attribution=DivergenceResult(
+            available=False,
+            our_cost_usd=0.0,
+            independent_cost_usd=None,
+            delta_usd=None,
+            divergence_pct=None,
+            direction=None,
+            flaw_class=None,
+            scope_coverage_pct=None,
+            source_label=None,
+            reason="no independent estimate available",
+        ),
+        pricing_check=DivergenceResult(
+            available=False,
+            our_cost_usd=0.0,
+            independent_cost_usd=None,
+            delta_usd=None,
+            divergence_pct=None,
+            direction=None,
+            flaw_class=None,
+            scope_coverage_pct=None,
+            source_label="otel",
+            reason="no independent estimate available",
+        ),
+    )
+    # ``replace`` is the dataclass-safe way to override fields.
+    from dataclasses import replace
+
+    return replace(base, **overrides)
+
+
+def test_render_dashboard_html_includes_config_drift_panel() -> None:
+    """The config-drift panel is composed into the static HTML alongside the others."""
+    data = _empty_dashboard_data()
+    out = render_dashboard_html(data)
+    assert "<h3>Config drift</h3>" in out
+
+
+def test_config_drift_panel_renders_absence_when_no_corpus() -> None:
+    """``config_drift_state=not_run`` renders the honest-absence tile."""
+    data = _empty_dashboard_data()  # default state is not_run
+    out = render_dashboard_html(data)
+    # Heading is present; the absence-tile signature ``data-state="absent"`` is
+    # present alongside the absence-copy sentence.
+    assert "<h3>Config drift</h3>" in out
+    assert "No corpus to compare against yet." in out
+
+
+def test_config_drift_panel_renders_true_zero_data_tile() -> None:
+    """``config_drift_state=data`` with no signals = true-zero good-news tile."""
+    data = _empty_dashboard_data(config_drift=(), config_drift_state=STATE_DATA)
+    out = render_dashboard_html(data)
+    assert "No drift detected" in out
+    # Spec R3a: a true zero uses ``data-state="data"``, NOT ``absent``.
+    drift_panel_start = out.index("<h3>Config drift</h3>")
+    drift_panel_slice = out[drift_panel_start : drift_panel_start + 400]
+    assert 'data-state="data"' in drift_panel_slice
+
+
+def test_config_drift_panel_renders_grouped_rows_in_canonical_order() -> None:
+    """A panel with all three drift kinds groups them in :data:`DRIFT_KINDS` order."""
+    signals = (
+        ConfigDriftSignal(kind=UNKNOWN_MODEL, observed="gpt-4o", detail="..."),
+        ConfigDriftSignal(kind=STALE_PRICING, observed="2026-05-12", detail="..."),
+        ConfigDriftSignal(kind=STALE_SUBSCRIPTION_FEE, observed="2026-04-01", detail="..."),
+    )
+    data = _empty_dashboard_data(config_drift=signals, config_drift_state=STATE_DATA)
+    out = render_dashboard_html(data)
+    # Each kind renders as its own group with the ``data-drift-kind`` attr.
+    unknown_idx = out.index('data-drift-kind="unknown_model"')
+    pricing_idx = out.index('data-drift-kind="stale_pricing"')
+    fee_idx = out.index('data-drift-kind="stale_subscription_fee"')
+    assert unknown_idx < pricing_idx < fee_idx
+    # Each remediation hint appears in escaped form (the renderer routes every
+    # dynamic string through ``_esc`` which uses ``html.escape(..., quote=True)``,
+    # so apostrophes/quotes inside hints become character entities).
+    import html as _html
+
+    for kind in (UNKNOWN_MODEL, STALE_PRICING, STALE_SUBSCRIPTION_FEE):
+        assert _html.escape(DRIFT_REMEDIATION_HINTS[kind], quote=True) in out
+
+
+def test_config_drift_panel_escapes_observed_and_detail() -> None:
+    """A drift row's dynamic strings are HTML-escaped at the render boundary."""
+    signals = (
+        ConfigDriftSignal(
+            kind=UNKNOWN_MODEL,
+            observed="<script>alert(1)</script>",
+            detail="<img src=x onerror=alert(1)>",
+        ),
+    )
+    data = _empty_dashboard_data(config_drift=signals, config_drift_state=STATE_DATA)
+    out = render_dashboard_html(data)
+    assert "<script>alert(1)</script>" not in out
+    assert "<img src=x onerror=alert(1)>" not in out
+    # The escaped forms ARE present.
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in out
+
+
+def test_console_summary_reports_config_drift_count() -> None:
+    """The ASCII console summary carries a config-drift line (3 states)."""
+    not_run = _empty_dashboard_data()
+    lines_not_run = render_console_summary(not_run, output_path="/tmp/x.html")
+    assert any("Config drift: not yet checked" in line for line in lines_not_run)
+
+    zero = _empty_dashboard_data(config_drift=(), config_drift_state=STATE_DATA)
+    lines_zero = render_console_summary(zero, output_path="/tmp/x.html")
+    assert any("Config drift: none detected" in line for line in lines_zero)
+
+    one = _empty_dashboard_data(
+        config_drift=(ConfigDriftSignal(kind=UNKNOWN_MODEL, observed="gpt-4o", detail="..."),),
+        config_drift_state=STATE_DATA,
+    )
+    lines_one = render_console_summary(one, output_path="/tmp/x.html")
+    assert any("Config drift: 1 row(s) detected" in line for line in lines_one)
+
+
+# --- assemble_dashboard_data integration --------------------------------- #
+
+
+@pytest.mark.regression
+def test_assemble_dashboard_data_populates_config_drift_from_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Integration: drift detectors see the captured corpus through the transport.
+
+    Builds a tiny DB with one discussion whose ``created_at`` is BEFORE the
+    pricing YAML's ``last_updated``, plus one captured ``model_id`` the
+    pricing config does not resolve. The assembler must populate
+    :attr:`DashboardData.config_drift` with both signals.
+    """
+    db_path = _make_db(tmp_path)
+    _insert_discussion(db_path, "d1", "2026-01-01 00:00:00", "2026-01-02 00:00:00")
+    # One captured row with an unresolved model id.
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """INSERT INTO discussion_model_tokens
+               (discussion_id, model_id, tier, tokens_in, tokens_out,
+                cache_read_tokens, cache_create_tokens, message_count,
+                computed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "d1",
+                "gpt-4o",
+                UNKNOWN_TIER,
+                100,
+                100,
+                0,
+                0,
+                1,
+                "2026-01-02 00:00:00",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Pricing table whose last_updated is AFTER the discussion's created_at.
+    pricing = _pricing_with(last_updated="2026-05-12")
+
+    # Subscription fee config: a temp YAML so the drift detector also fires
+    # the STALE_SUBSCRIPTION_FEE signal (effective_date after the discussion).
+    sub_path = tmp_path / "subscription.yaml"
+    sub_path.write_text("monthly_fee_usd: 20.0\neffective_date: '2026-04-01'\n", encoding="utf-8")
+
+    data = dash.assemble_dashboard_data(
+        db_path,
+        pricing=pricing,
+        subscription_path=sub_path,
+        otel_path=tmp_path / "otel-does-not-exist.jsonl",
+        project_root=tmp_path,
+    )
+    assert data.config_drift_state == STATE_DATA
+    kinds = [s.kind for s in data.config_drift]
+    assert UNKNOWN_MODEL in kinds
+    assert STALE_PRICING in kinds
+    assert STALE_SUBSCRIPTION_FEE in kinds
+    # Renderer composes the panel without crashing.
+    assert "<h3>Config drift</h3>" in render_dashboard_html(data)
+
+
+@pytest.mark.regression
+def test_assemble_dashboard_data_config_drift_state_not_run_on_empty_db(
+    tmp_path: Path,
+) -> None:
+    """An empty discussions table → ``config_drift_state=not_run`` (honest absence)."""
+    db_path = _make_db(tmp_path)
+    data = dash.assemble_dashboard_data(
+        db_path,
+        pricing=parse_pricing(PRICING_DATA),
+        subscription_path=tmp_path / "missing-fee.yaml",
+        otel_path=tmp_path / "missing-otel.jsonl",
+        project_root=tmp_path,
+    )
+    assert data.config_drift_state == STATE_NOT_RUN
+    assert data.config_drift == ()
+
+
+# --- REV-20260609-060229 in-session folds ---------------------------------- #
+
+
+def test_detect_stale_subscription_drift_silent_when_no_corpus() -> None:
+    """qa F1 fold: symmetric no-corpus test (pricing path has one already).
+
+    A fee with a usable effective_date but no discussions captured yields no
+    signal — the window-to-compare-against does not yet exist, so the typed
+    honest-absence path fires.
+    """
+    fee = SubscriptionFee(monthly_fee_usd=20.0, effective_date="2026-04-01")
+    assert detect_stale_subscription_drift(fee, None) == []
+
+
+def test_detect_stale_subscription_drift_silent_when_effective_date_malformed() -> None:
+    """qa F5 fold: malformed effective_date is honest absence (no signal).
+
+    Symmetric to ``test_detect_stale_pricing_drift_silent_when_last_updated_malformed``
+    — routes through ``_parse_iso_date`` returning ``None``.
+    """
+    fee = SubscriptionFee(monthly_fee_usd=20.0, effective_date="not-a-date")
+    earliest = datetime(2026, 1, 1, tzinfo=UTC)
+    assert detect_stale_subscription_drift(fee, earliest) == []
+
+
+def test_pricing_table_last_updated_explicit_empty_string() -> None:
+    """qa F4 fold: an explicit ``last_updated: ""`` YAML key parses to "".
+
+    The ``_pricing_with("")`` test helper skips the assignment for the
+    empty-string case (so the YAML key is absent rather than present-but-blank).
+    This test pins the explicit-empty-string YAML input path independently of
+    the helper's key-omission shortcut — if ``parse_pricing`` ever distinguishes
+    absence from empty-string, both paths stay covered.
+    """
+    table = parse_pricing({**PRICING_DATA, "last_updated": ""})
+    assert table.last_updated == ""
+
+
+def test_parse_subscription_fee_date_scalar_normalised_to_iso_string() -> None:
+    """qa F7 fold: PyYAML unquoted ISO date scalar → ISO string on SubscriptionFee.
+
+    Symmetric to ``test_pricing_table_last_updated_accepts_yaml_date_scalar``.
+    The drift detector's single-shape ``_parse_iso_date`` is the only date
+    handler downstream; this test pins that both YAML inputs
+    (``effective_date: '2026-04-01'`` quoted and ``effective_date: 2026-04-01``
+    unquoted) yield the same string value here.
+    """
+    from datetime import date as _date
+
+    fee = parse_subscription_fee({"monthly_fee_usd": 20.0, "effective_date": _date(2026, 4, 1)})
+    assert fee is not None
+    assert fee.effective_date == "2026-04-01"
+
+
+@pytest.mark.regression
+def test_load_drift_inputs_schema_pins_not_null_created_at(tmp_path: Path) -> None:
+    """qa F1 fold: the ``discussions.created_at NOT NULL`` constraint is the
+    invariant ``load_drift_inputs`` relies on to skip a row-count tiebreaker.
+
+    The earlier draft of ``load_drift_inputs`` had a defensive
+    ``SELECT COUNT(*)`` branch to distinguish "empty table" from
+    "all-NULL column". The schema makes the all-NULL case unreachable, so
+    the branch is genuine dead code (per principle: do not add error
+    handling for scenarios that can't happen). This regression test pins
+    the schema invariant — if a future migration drops ``NOT NULL`` on
+    ``created_at``, this test fires and the dead-branch reasoning must be
+    revisited.
+    """
+    db_path = _make_db(tmp_path)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                """INSERT INTO discussions
+                   (discussion_id, created_at, closed_at, risk_level,
+                    collaboration_mode, status)
+                   VALUES (?, NULL, NULL, 'medium', 'structured-dialogue', 'open')""",
+                ("d-null-ts",),
+            )
+    finally:
+        conn.close()
+
+
+def test_config_drift_panel_absence_action_points_at_capture_flow() -> None:
+    """qa F2 + ux F1 CONVERGENT fold: not_run action hint must NOT point at analyze_cost.
+
+    The pre-fold copy said "Run scripts/telemetry/analyze_cost.py after capturing
+    a session" — but analyze_cost.py reads the discussions table; it does not
+    populate it. A user following that hint would loop. This test pins that the
+    action hint references the capture pipeline (framework commands), not the
+    cost analyzer. Calls the panel renderer directly so the assertion is scoped
+    to the Config drift tile (the dashboard's other panels also reference
+    analyze_cost.py in their own absence copy).
+    """
+    from src.telemetry.dashboard import _render_config_drift_panel
+
+    data = _empty_dashboard_data()  # default state is not_run
+    panel = _render_config_drift_panel(data)
+    # The wrong target is GONE from this panel.
+    assert "analyze_cost.py" not in panel
+    # The capture-flow framing is present (at least one framework command
+    # appears in the action hint).
+    assert "/plan" in panel or "/review" in panel
+
+
+def test_render_dashboard_html_config_drift_group_label_uses_static_map() -> None:
+    """ux F4 fold: kind headers come from _DRIFT_KIND_LABEL, not str.replace.capitalize.
+
+    The pre-fold renderer derived headers from ``kind.replace("_", " ").capitalize()``
+    yielding "Unknown model". The fold replaces that with manager-facing labels
+    that name the consequence ("Unpriced model id"). This test pins the new
+    label vocabulary so a future regression that re-introduced the derivation
+    fails here.
+    """
+    signals = (
+        ConfigDriftSignal(kind=UNKNOWN_MODEL, observed="gpt-4o", detail="x"),
+        ConfigDriftSignal(kind=STALE_PRICING, observed="2026-05-12", detail="x"),
+        ConfigDriftSignal(kind=STALE_SUBSCRIPTION_FEE, observed="2026-04-01", detail="x"),
+    )
+    data = _empty_dashboard_data(config_drift=signals, config_drift_state=STATE_DATA)
+    out = render_dashboard_html(data)
+    assert "Unpriced model id" in out
+    assert "Stale pricing config" in out
+    assert "Stale subscription fee" in out
+    # The pre-fold derivation result for UNKNOWN_MODEL is absent.
+    assert "Unknown model" not in out

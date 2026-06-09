@@ -57,8 +57,10 @@ from src.telemetry.dashboard import (  # noqa: E402
     render_console_summary,
     render_dashboard_html,
 )
+from src.telemetry.drift import detect_config_drift  # noqa: E402
 from src.telemetry.failures import rank_failures  # noqa: E402
 from src.telemetry.pricing import PricingTable, load_pricing  # noqa: E402
+from src.telemetry.value import load_subscription_fee  # noqa: E402
 from src.telemetry.weekly import WeeklyTrends, aggregate_by_week  # noqa: E402
 
 DB_PATH = _REPO_ROOT / "metrics" / "evaluation.db"
@@ -120,6 +122,73 @@ def _parse_created_at(raw: str) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed
+
+
+def load_drift_inputs(
+    conn: sqlite3.Connection,
+) -> tuple[list[str], datetime | None, bool]:
+    """Load the inputs the drift detector needs from an open read-only conn.
+
+    **arch F1 fold (REV-20260609-060229)**: this helper takes an
+    already-open ``sqlite3.Connection`` rather than opening one itself
+    (unlike :func:`load_weekly_trends`). The reason is composition: it is
+    called from inside :func:`assemble_dashboard_data`'s existing
+    ``try:``/``finally:`` connection block, so opening a second connection
+    would be wasteful. The "public loader" shape that wraps
+    :func:`_connect_readonly` (the dead-helper rule pinned by
+    REV-20260607-200447 arch F3) only applies when an EXTERNAL transport
+    needs a read-side surface; this helper has no external caller and
+    therefore does not need to mirror that shape. A future external
+    caller should add a sibling ``load_drift_inputs_from_path(db_path)``
+    that wraps this one, rather than reverse-engineering a
+    ``_connect_readonly`` call site.
+
+    Returns three values:
+
+    * **distinct model ids** captured in ``discussion_model_tokens`` (sorted
+      ascending so the detector's input ordering is deterministic across runs
+      — the rule "what ordering is canonical for unknown ids" stays on the
+      transport side, mirroring :func:`load_weekly_trends`).
+    * **earliest captured ``discussions.created_at``** as a tz-aware
+      :class:`datetime`, or ``None`` if the table is empty or the value cannot
+      be parsed.
+    * **corpus-present** flag — ``True`` iff the discussions table contains
+      at least one row. The caller maps this to
+      :attr:`DashboardData.config_drift_state` so the renderer can distinguish
+      ``no-corpus-yet`` from ``corpus-checked-no-drift``.
+
+    A missing telemetry table (fresh clone / analyzers never run) is the
+    not-yet-corpus path: returns ``([], None, False)``. Same defensive shape as
+    :func:`assemble_dashboard_data` so the renderer's honest-absence tile fires.
+
+    Args:
+        conn: An open read-only sqlite3 connection (caller closes it).
+
+    Returns:
+        ``(distinct_model_ids, earliest_discussion_at, corpus_present)``.
+    """
+    try:
+        model_id_rows = conn.execute(
+            "SELECT DISTINCT model_id FROM discussion_model_tokens ORDER BY model_id"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        model_id_rows = []
+    distinct_model_ids = [row[0] for row in model_id_rows if isinstance(row[0], str)]
+
+    try:
+        created_at_row = conn.execute("SELECT MIN(created_at) FROM discussions").fetchone()
+    except sqlite3.OperationalError:
+        return distinct_model_ids, None, False
+
+    raw_min = created_at_row[0] if created_at_row else None
+    if raw_min is None:
+        # The ``discussions.created_at`` column is ``NOT NULL`` (per
+        # ``scripts/init_db.py``), so ``MIN(created_at) IS NULL`` is reachable
+        # only when the table is empty. No row-count tiebreaker is required.
+        return distinct_model_ids, None, False
+
+    earliest_at = _parse_created_at(raw_min)
+    return distinct_model_ids, earliest_at, True
 
 
 def load_weekly_trends(db_path: Path, pricing: PricingTable) -> WeeklyTrends:
@@ -251,6 +320,36 @@ def assemble_dashboard_data(
             otel_path=otel_path,
             a1_report=cost_report,
         )
+
+        # Phase 3 Unit 2 — config-drift rows. Reads two thin queries from the
+        # same read-only connection (no second open, no second loader) and
+        # feeds the pure detector. The subscription fee is read separately
+        # from disk because A3's ``assemble_value_inputs`` already accepts
+        # the path but only returns the leverage/attribution/pricing shapes
+        # — keeping the fee load right here means the drift detector does not
+        # have to dig into the A3 inputs dict.
+        distinct_model_ids, earliest_at, corpus_present = load_drift_inputs(conn)
+        # arch F2 fold (REV-20260609-060229): the subscription YAML is parsed
+        # TWICE in this assemble pass — once inside ``assemble_value_inputs``
+        # for the leverage result, and once here for the drift detector.
+        # Acceptable at N=2 (Rule of Two): the inline cost is a single small
+        # YAML read, and the alternative (returning the parsed fee from
+        # ``assemble_value_inputs``) would broaden the A3 inputs dict shape
+        # for one extra consumer. **Rule-of-Three trigger**: when a THIRD
+        # consumer of ``SubscriptionFee`` lands in this assemble pass,
+        # refactor: either return the fee from ``assemble_value_inputs`` or
+        # parse it ONCE at the top of ``assemble_dashboard_data`` and thread
+        # the result through both call sites.
+        fee = load_subscription_fee(subscription_path)
+        config_drift = tuple(
+            detect_config_drift(
+                model_ids=distinct_model_ids,
+                pricing=pricing,
+                fee=fee,
+                earliest_discussion_at=earliest_at,
+            )
+        )
+        config_drift_state = STATE_DATA if corpus_present else STATE_NOT_RUN
     finally:
         conn.close()
 
@@ -262,6 +361,8 @@ def assemble_dashboard_data(
         leverage=value["leverage"],
         attribution=value["attribution"],
         pricing_check=value["pricing"],
+        config_drift=config_drift,
+        config_drift_state=config_drift_state,
         generated_label=generated_label,
     )
 

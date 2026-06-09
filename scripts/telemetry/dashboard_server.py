@@ -73,10 +73,10 @@ from scripts.telemetry.dashboard import (  # noqa: E402
     load_weekly_trends,
 )
 from src.telemetry.dashboard import (  # noqa: E402
-    render_weekly_trends_chart_panel,
     render_dashboard_html,
     render_live_fragment,
     render_live_shell_html,
+    render_weekly_trends_chart_panel,
 )
 from src.telemetry.live import LiveEvent, empty_state, fold_events  # noqa: E402
 from src.telemetry.pricing import PricingTable, load_pricing  # noqa: E402
