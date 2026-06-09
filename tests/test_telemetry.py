@@ -39,11 +39,24 @@ from src.telemetry.dashboard import (
     render_live_shell_html,
 )
 from src.telemetry.failures import (
+    CONFIG,
+    ERROR_CLASSES,
+    NETWORK,
+    NOT_FOUND,
+    ORPHAN,
+    ORPHANED_SUBAGENT,
+    OTHER,
+    PERMISSION,
+    REMEDIATION_HINTS,
+    RETRY_LOOP,
+    TIMEOUT,
+    VALIDATION,
     FailureSignal,
     RankedFailure,
     SubagentDispatch,
     SubagentRun,
     ToolCall,
+    classify_error,
     detect_orphaned_subagents,
     detect_retry_loops,
     rank_failures,
@@ -2219,6 +2232,213 @@ def test_failure_string_fields_are_escaped(field) -> None:
     assert _XSS not in html
     assert "&lt;script&gt;" in html
     assert "innerHTML" not in html  # rendered as escaped text, never raw innerHTML
+
+
+# --- error-class classifier + remediation hints (Phase 3 Unit 1) ----------- #
+
+
+def _sig(failure_type: str, signature: str) -> FailureSignal:
+    """Build a minimal FailureSignal for classifier tests."""
+    return FailureSignal(
+        failure_type=failure_type,
+        signature=signature,
+        occurrence_count=1,
+        tier="opus",
+        wasted_tokens_out=10,
+    )
+
+
+def test_classify_orphaned_subagent_returns_orphan_class() -> None:
+    # The structural mapping: an orphaned_subagent failure_type is exactly the
+    # spec's "orphan" class — never anything else.
+    s = _sig(ORPHANED_SUBAGENT, "toolu_123")
+    assert classify_error(s) == ORPHAN
+
+
+@pytest.mark.parametrize("tool", ["Read", "Glob", "Grep", "LS"])
+def test_classify_read_style_retry_loop_returns_not_found(tool: str) -> None:
+    # A retry loop on a read-style tool (file/symbol lookup) is the
+    # not_found heuristic: the dominant cause is a path/pattern that doesn't
+    # exist.
+    s = _sig(RETRY_LOOP, f"{tool}:abc123")
+    assert classify_error(s) == NOT_FOUND
+
+
+@pytest.mark.parametrize("tool", ["Edit", "Write", "NotebookEdit"])
+def test_classify_edit_style_retry_loop_returns_validation(tool: str) -> None:
+    # A retry loop on an edit-style tool (Edit/Write/NotebookEdit) is the
+    # validation heuristic: old_string mismatch / payload rejected.
+    s = _sig(RETRY_LOOP, f"{tool}:abc123")
+    assert classify_error(s) == VALIDATION
+
+
+@pytest.mark.regression
+def test_classify_bash_retry_loop_returns_other_not_a_guess() -> None:
+    # ADR-0020 honesty: Bash retry causes are genuinely ambiguous (permission,
+    # network, timeout, missing command, …). The classifier MUST NOT guess one;
+    # it returns the honest "other" class.
+    assert classify_error(_sig(RETRY_LOOP, "Bash:abc123")) == OTHER
+
+
+@pytest.mark.regression
+def test_classify_unknown_tool_retry_loop_returns_other() -> None:
+    # An unknown tool name falls into "other" — the classifier never
+    # fabricates a class to make the panel look tidier.
+    assert classify_error(_sig(RETRY_LOOP, "SomeNewTool:abc")) == OTHER
+
+
+@pytest.mark.regression
+def test_classify_unknown_failure_type_returns_other() -> None:
+    # A failure_type the classifier doesn't recognise is honestly "other",
+    # not a silently-fabricated mapping.
+    assert classify_error(_sig("future_failure_type", "anything")) == OTHER
+
+
+def test_classify_handles_signature_with_colon_in_hash() -> None:
+    # The signature is "<tool>:<input_hash>"; the split is on the FIRST colon
+    # so a hash containing ":" doesn't corrupt the tool-name read.
+    assert classify_error(_sig(RETRY_LOOP, "Read:abc:def:123")) == NOT_FOUND
+
+
+def test_remediation_hint_exists_for_every_error_class() -> None:
+    # Each canonical class MUST have a static hint — the panel renderer reads
+    # this dict with REMEDIATION_HINTS[cls] (no .get fallback) so a missing
+    # key would crash the render path.
+    for cls in ERROR_CLASSES:
+        assert cls in REMEDIATION_HINTS
+        assert REMEDIATION_HINTS[cls].strip(), f"hint for {cls} is empty"
+
+
+@pytest.mark.regression
+def test_remediation_hints_keys_match_error_classes_exactly() -> None:
+    # Symmetric drift guard (arch F1 fold REV-20260609-052616): an orphan key
+    # in REMEDIATION_HINTS (a hint for a class that was removed from
+    # ERROR_CLASSES) is just as much a programmer error as a missing hint.
+    # Pin both directions with a single set-equality assertion so the
+    # taxonomy + hint dict cannot drift apart silently.
+    assert set(REMEDIATION_HINTS) == set(ERROR_CLASSES)
+
+
+def test_error_classes_contains_seven_spec_classes_plus_other() -> None:
+    # The spec names 7 classes; "other" is the honest-absence default. Pinning
+    # the set guards against a stealth rename or accidental removal.
+    assert set(ERROR_CLASSES) == {
+        NOT_FOUND,
+        PERMISSION,
+        ORPHAN,
+        CONFIG,
+        VALIDATION,
+        TIMEOUT,
+        NETWORK,
+        OTHER,
+    }
+
+
+# --- failures panel grouping (Phase 3 Unit 1) ------------------------------ #
+
+
+def _ranked(
+    failure_type: str, signature: str, *, cost: float | None, tokens: int
+) -> RankedFailure:
+    """Build a RankedFailure with chosen cost + wasted tokens for panel tests."""
+    sig = FailureSignal(
+        failure_type=failure_type,
+        signature=signature,
+        occurrence_count=3,
+        tier="opus" if cost is not None else UNKNOWN_TIER,
+        wasted_tokens_out=tokens,
+        detail=f"{signature.split(':', 1)[0]} called identically",
+    )
+    return RankedFailure(signal=sig, cost_usd=cost)
+
+
+def test_failures_panel_groups_by_class_with_hint_header() -> None:
+    # Two failures of different classes -> two class groups in the rendered
+    # HTML, each carrying its class label + static hint. The hint text is
+    # html.escape-d, so we assert on a substring that contains no
+    # quote/apostrophe characters (avoiding entity-form drift in the test).
+    rfs = [
+        _ranked(ORPHANED_SUBAGENT, "toolu_1", cost=5.0, tokens=100),
+        _ranked(RETRY_LOOP, "Read:abc", cost=1.0, tokens=50),
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    assert 'data-class="orphan"' in html_doc
+    assert 'data-class="not_found"' in html_doc
+    assert "Orphan" in html_doc  # class label rendered
+    assert "Not found" in html_doc
+    # Use a quote-free substring of each hint so the assertion survives the
+    # html.escape pass on apostrophes/quotes.
+    assert "A subagent was dispatched but never finished" in html_doc
+    assert "the agent was looking for a file" in html_doc
+
+
+@pytest.mark.regression
+def test_failures_panel_other_group_rendered_honestly_not_omitted() -> None:
+    # ADR-0020 honesty: an unclassifiable signal must render in an explicit
+    # "other" group with the "does not fit a known class" hint, NEVER omitted
+    # or silently folded into a real class.
+    rfs = [_ranked(RETRY_LOOP, "Bash:abc", cost=1.0, tokens=10)]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    assert 'data-class="other"' in html_doc
+    # Substring without quote/apostrophe so it survives html.escape on the hint.
+    assert "These signals do not fit a known class" in html_doc
+
+
+def test_failures_panel_group_order_priced_before_unpriced() -> None:
+    # Mirrors rank_failures: priced groups come before unpriced groups so an
+    # unpriced waste cannot preempt a real measured cost in the visual order.
+    rfs = [
+        _ranked(RETRY_LOOP, "Read:abc", cost=None, tokens=1_000_000),  # not_found, unpriced
+        _ranked(ORPHANED_SUBAGENT, "toolu_1", cost=0.0001, tokens=5),  # orphan, priced
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    assert html_doc.index('data-class="orphan"') < html_doc.index('data-class="not_found"')
+
+
+@pytest.mark.regression
+def test_failures_panel_mixed_priced_group_outranks_pure_unpriced_group() -> None:
+    # qa F1 fold REV-20260609-052616: a MIXED group (at least one priced +
+    # at least one unpriced signal) must still rank before a pure-unpriced
+    # group, even if the unpriced group has a much larger token total. This
+    # guards the ``has_priced = any(...)`` semantic in _group_failures_by_class
+    # against a future "simplification" to ``all(...)`` that would silently
+    # demote mixed groups behind huge pure-unpriced waste.
+    rfs = [
+        # not_found bucket: one priced (small cost) + one unpriced (small tokens).
+        _ranked(RETRY_LOOP, "Read:hit", cost=0.001, tokens=5),
+        _ranked(RETRY_LOOP, "Read:miss", cost=None, tokens=5),
+        # orphan bucket: pure-unpriced with enormous wasted tokens.
+        _ranked(ORPHANED_SUBAGENT, "toolu_1", cost=None, tokens=10_000_000),
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    # The mixed not_found group must appear before the pure-unpriced orphan
+    # group even though orphan's token waste is several orders of magnitude
+    # larger.
+    assert html_doc.index('data-class="not_found"') < html_doc.index('data-class="orphan"')
+
+
+def test_failures_panel_preserves_ranked_order_within_group() -> None:
+    # Two failures in the SAME class — their inbound ranked order must be
+    # preserved verbatim inside the group's <tbody>.
+    rfs = [
+        _ranked(RETRY_LOOP, "Read:high", cost=10.0, tokens=100),
+        _ranked(RETRY_LOOP, "Read:low", cost=0.1, tokens=10),
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    assert html_doc.index("Read:high") < html_doc.index("Read:low")
+
+
+@pytest.mark.regression
+def test_failures_panel_class_label_and_hint_are_escaped() -> None:
+    # Defense in depth: class label + hint pass through _esc, so even if a
+    # future class name carried HTML it could not inject. Today's class names
+    # are static so the assertion runs against the static content.
+    rfs = [_ranked(RETRY_LOOP, "Bash:abc", cost=1.0, tokens=10)]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    # No raw <script> markup; hint is escaped text only.
+    assert "<script>" not in html_doc
+    # Hint is rendered as plain text inside <p class="hint">.
+    assert '<p class="hint">' in html_doc
 
 
 @pytest.mark.regression

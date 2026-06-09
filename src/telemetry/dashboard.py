@@ -31,7 +31,12 @@ from dataclasses import dataclass
 from typing import TypedDict
 
 from src.telemetry.cost import CostReport
-from src.telemetry.failures import RankedFailure
+from src.telemetry.failures import (
+    ERROR_CLASSES,
+    REMEDIATION_HINTS,
+    RankedFailure,
+    classify_error,
+)
 from src.telemetry.live import (
     LANE_ACTIVE,
     LANE_COMPLETE,
@@ -248,7 +253,15 @@ def _render_cost_panel(data: DashboardData) -> str:
 
 
 def _render_failures_panel(data: DashboardData) -> str:
-    """Render the A2 Failure & Waste panel (true-zero vs not-run are distinct)."""
+    """Render the A2 Failure & Waste panel (true-zero vs not-run are distinct).
+
+    Phase 3 Unit 1 (SPEC-20260607-183136): failures are grouped by error class
+    with a static remediation hint per group. The ranking order from
+    :func:`rank_failures` is preserved *within* each group, and groups are
+    ordered by their summed cost (priced groups first, then unpriced by
+    wasted tokens, then the canonical class order as the final tiebreaker —
+    mirrors the priced-before-unpriced policy in :func:`rank_failures`).
+    """
     if data.failures_state == STATE_NOT_RUN:
         return _absence_tile(
             "Failure & Waste",
@@ -269,8 +282,80 @@ def _render_failures_panel(data: DashboardData) -> str:
             '<p class="sub">No retry loops or orphaned subagents were found.</p>'
             "</div>"
         )
-    rows = []
+    groups_html = "".join(
+        _render_failure_class_group(cls, rfs) for cls, rfs in _group_failures_by_class(failures)
+    )
+    return (
+        '<div class="tile tile--data" data-state="data">'
+        "<h3>Failure &amp; Waste</h3>"
+        f'<div class="headline">{_esc(len(failures))} signal(s) detected</div>'
+        '<p class="sub">The most costly class appears first — start there. '
+        "Within each group, signals are ranked by wasted API-equivalent cost.</p>"
+        f"{groups_html}"
+        "</div>"
+    )
+
+
+def _group_failures_by_class(
+    failures: list[RankedFailure],
+) -> list[tuple[str, list[RankedFailure]]]:
+    """Bucket ranked failures by :func:`classify_error`, preserving input order.
+
+    Returns ``(class_name, [ranked_failures])`` pairs in the display order: the
+    class with the highest summed priced cost first, then unpriced classes
+    ordered by wasted-token total, with :data:`ERROR_CLASSES` providing the
+    final tiebreaker so the layout is deterministic across runs.
+
+    Args:
+        failures: Already-ranked failures from :func:`rank_failures`.
+
+    Returns:
+        Display-ordered list of ``(class, rows)`` tuples. Each ``rows`` keeps
+        the inbound rank order (the dollar-weighted ranking is preserved
+        within a class).
+    """
+    buckets: dict[str, list[RankedFailure]] = {}
     for rf in failures:
+        buckets.setdefault(classify_error(rf.signal), []).append(rf)
+    class_index = {cls: i for i, cls in enumerate(ERROR_CLASSES)}
+
+    def sort_key(item: tuple[str, list[RankedFailure]]) -> tuple[bool, float, int, int]:
+        cls, rfs = item
+        # ``has_priced`` is ``any(...)`` (not ``all(...)``): a MIXED group with
+        # at least one priced row still ranks before a pure-unpriced group, so
+        # a small measured cost is not preempted by a large unpriced waste.
+        # For a pure-unpriced group ``priced_total`` is 0.0 and the comparison
+        # falls through to ``-unpriced_tokens`` — do not add an ``if has_priced``
+        # branch here, the third tuple slot already handles it structurally.
+        priced_total = sum(rf.cost_usd for rf in rfs if rf.cost_usd is not None)
+        unpriced_tokens = sum(rf.signal.wasted_total_tokens() for rf in rfs if rf.cost_usd is None)
+        has_priced = any(rf.cost_usd is not None for rf in rfs)
+        return (
+            not has_priced,
+            -priced_total,
+            -unpriced_tokens,
+            class_index.get(cls, len(ERROR_CLASSES)),
+        )
+
+    return sorted(buckets.items(), key=sort_key)
+
+
+def _render_failure_class_group(cls: str, rfs: list[RankedFailure]) -> str:
+    """Render one error-class group: class header + remediation hint + rows.
+
+    Honesty discipline (ADR-0020): the ``other`` group renders with the same
+    visual treatment as a real class and surfaces its "does not fit a known
+    class" hint — never collapsed away to hide unclassified signals.
+
+    Args:
+        cls: One of :data:`ERROR_CLASSES`.
+        rfs: The ranked failures in this group, already in display order.
+
+    Returns:
+        An escaped HTML ``<div class="failure-class-group">`` fragment.
+    """
+    rows = []
+    for rf in rfs:
         s = rf.signal
         rows.append(
             "<tr>"
@@ -282,11 +367,17 @@ def _render_failures_panel(data: DashboardData) -> str:
             f'<span class="sig">{_esc(s.signature)}</span></td>'
             "</tr>"
         )
+    # No ``.get(cls, fallback)``: a missing hint is a programmer error (a new
+    # class added to ERROR_CLASSES without a paired entry in REMEDIATION_HINTS).
+    # The taxonomy + symmetric-key tests pin both sides; let a future drift
+    # surface as a loud KeyError rather than be silently masked by ``other``.
+    hint = REMEDIATION_HINTS[cls]
+    label = cls.replace("_", " ").capitalize()
     return (
-        '<div class="tile tile--data" data-state="data">'
-        "<h3>Failure &amp; Waste</h3>"
-        f'<div class="headline">{_esc(len(failures))} signal(s) detected</div>'
-        '<p class="sub">Ranked by wasted API-equivalent cost (most wasteful first).</p>'
+        f'<div class="failure-class-group" data-class="{_esc(cls)}">'
+        f'<h4 class="failure-class-header">{_esc(label)} '
+        f'<span class="failure-class-count">({_esc(len(rfs))} signal(s))</span></h4>'
+        f'<p class="hint">{_esc(hint)}</p>'
         '<table class="data-table">'
         "<thead><tr><th>Type</th><th>Cost</th><th>Wasted tok</th>"
         "<th>Tier</th><th>Detail</th></tr></thead>"
@@ -502,6 +593,11 @@ align-items:start;}
 .data-table th{color:var(--muted);font-weight:600;}
 .data-table td.num{text-align:right;font-variant-numeric:tabular-nums;}
 td.uncosted{color:var(--absent);font-style:italic;}
+.failure-class-group{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);}
+.failure-class-group:first-of-type{margin-top:10px;border-top:none;padding-top:0;}
+.failure-class-header{margin:0 0 4px;font-size:14px;}
+.failure-class-count{color:var(--muted);font-weight:500;font-size:12.5px;}
+.hint{color:var(--muted);font-size:12.5px;margin:0 0 8px;font-style:italic;}
 .detail{font-size:12px;}
 .sig{display:block;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
 font-size:11px;margin-top:3px;word-break:break-all;}

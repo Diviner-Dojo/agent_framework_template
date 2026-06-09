@@ -38,6 +38,143 @@ DEFAULT_RETRY_THRESHOLD = 3
 ORPHANED_SUBAGENT = "orphaned_subagent"
 RETRY_LOOP = "retry_loop"
 
+#: Error-class taxonomy (SPEC-20260607-183136 Phase 3 — failure intelligence).
+#:
+#: A coarse domain-vocabulary grouping over :class:`FailureSignal` rows so the
+#: dashboard's A2 panel can attach a short, static remediation hint per class
+#: and show the gatekeeper a triage view rather than a flat ranked list.
+#:
+#: The taxonomy carries the 7 classes named in the spec plus an explicit
+#: ``"other"`` for signals the classifier cannot confidently place. ADR-0020
+#: honesty discipline: an unclassifiable signal renders in the ``"other"``
+#: group with a generic "does not fit a known class" hint — **never**
+#: fabricated into a class to make the panel look tidier.
+NOT_FOUND = "not_found"
+PERMISSION = "permission"
+ORPHAN = "orphan"
+CONFIG = "config"
+VALIDATION = "validation"
+TIMEOUT = "timeout"
+NETWORK = "network"
+OTHER = "other"
+
+#: Canonical ordering of error classes (used for stable group iteration when
+#: two groups tie on cost). The 7 spec classes lead; ``other`` always comes
+#: last so an honest-absence group does not preempt a real one.
+ERROR_CLASSES: tuple[str, ...] = (
+    NOT_FOUND,
+    PERMISSION,
+    ORPHAN,
+    CONFIG,
+    VALIDATION,
+    TIMEOUT,
+    NETWORK,
+    OTHER,
+)
+
+#: Short, **static** remediation hint per class. One sentence each; no
+#: fabricated root-cause claims, no dollar/ratio fabrications, no calls to
+#: action that imply the analyzer knows more than it does. These are the only
+#: guidance strings the dashboard renders for the failure groups — keeping
+#: them static (not derived from the signal) is what makes the ADR-0020
+#: honesty discipline straightforward to audit.
+REMEDIATION_HINTS: dict[str, str] = {
+    NOT_FOUND: (
+        "These signals typically mean the agent was looking for a file, "
+        "path, or pattern that does not exist. The Detail column shows "
+        "what it was trying to find."
+    ),
+    PERMISSION: (
+        "These signals typically mean a call was rejected at a boundary "
+        "(filesystem, API, or sandbox). The Detail column shows which "
+        "tool was being blocked."
+    ),
+    ORPHAN: (
+        "A subagent was dispatched but never finished and returned to its "
+        "main session. The Detail column names the subagent type; the "
+        "transcript's last events show where it stopped."
+    ),
+    CONFIG: (
+        "These signals typically point to a missing or invalid setting. "
+        "Look for the related config file or environment variable in the "
+        "Detail column."
+    ),
+    VALIDATION: (
+        "The agent tried to apply an edit or write that the tool rejected. "
+        "The Detail column may show which file or argument caused the "
+        "mismatch."
+    ),
+    TIMEOUT: (
+        "A call exceeded its time budget. Look in the Detail column for "
+        "the tool that timed out; a long input or a slow downstream "
+        "service is the usual cause."
+    ),
+    NETWORK: (
+        "A network-dependent call failed. Look for a transient outage, a "
+        "wrong endpoint, or a missing retry setting in the agent's "
+        "configuration."
+    ),
+    OTHER: (
+        "These signals do not fit a known class. Inspect the transcript "
+        "for context before assigning a fix."
+    ),
+}
+
+#: Tools whose retry loop most commonly indicates a missing target. Used by
+#: :func:`classify_error` as a conservative heuristic — Bash and other
+#: catch-all shells are deliberately NOT in this set because their retry
+#: cause is genuinely ambiguous (honest ``other`` instead of a guess).
+_NOT_FOUND_RETRY_TOOLS: frozenset[str] = frozenset({"Read", "Glob", "Grep", "LS"})
+
+#: Tools whose retry loop most commonly indicates an input/contract mismatch
+#: (``Edit`` rejects an ``old_string`` that does not match; ``Write`` /
+#: ``NotebookEdit`` fail on a malformed payload). Distinct from
+#: ``_NOT_FOUND_RETRY_TOOLS`` because the remediation differs.
+_VALIDATION_RETRY_TOOLS: frozenset[str] = frozenset({"Edit", "Write", "NotebookEdit"})
+
+
+def classify_error(signal: FailureSignal) -> str:
+    """Map a :class:`FailureSignal` to one of :data:`ERROR_CLASSES`.
+
+    Pure and deterministic: the same signal always returns the same class.
+    The classifier reads ``failure_type`` and (for retry loops) the tool name
+    at the head of the signature; it never inspects ``detail`` for
+    natural-language phrases (those are transcript-shaped and would invite a
+    drifting heuristic).
+
+    Mapping rules (first match wins):
+
+    * ``orphaned_subagent`` → ``"orphan"`` (structural — the spec class is
+      the direct rename of the existing failure_type).
+    * ``retry_loop`` of a read-style tool (``Read``/``Glob``/``Grep``/``LS``)
+      → ``"not_found"`` (the dominant cause empirically: looking for a path
+      or pattern that does not exist).
+    * ``retry_loop`` of an edit-style tool (``Edit``/``Write``/``NotebookEdit``)
+      → ``"validation"`` (the dominant cause: ``old_string`` mismatch or
+      payload rejected by the tool's contract).
+    * Anything else → ``"other"``. ``Bash`` retry loops fall here on purpose:
+      the cause is genuinely ambiguous (permission, network, timeout, missing
+      command, …) and guessing one would violate ADR-0020 honesty.
+
+    Args:
+        signal: One detected failure signal.
+
+    Returns:
+        One of the strings in :data:`ERROR_CLASSES`.
+    """
+    if signal.failure_type == ORPHANED_SUBAGENT:
+        return ORPHAN
+    if signal.failure_type == RETRY_LOOP:
+        # ``signature`` is built as ``f"{tool_name}:{input_hash}"`` (see
+        # ``_build_retry_signal``); split on the FIRST ``:`` so a hash that
+        # happens to contain ``:`` does not corrupt the tool name.
+        tool_name = signal.signature.split(":", 1)[0]
+        if tool_name in _NOT_FOUND_RETRY_TOOLS:
+            return NOT_FOUND
+        if tool_name in _VALIDATION_RETRY_TOOLS:
+            return VALIDATION
+    return OTHER
+
 
 @dataclass(frozen=True)
 class ToolCall:
