@@ -29,6 +29,7 @@ import pytest
 
 from src.telemetry.cost import ModelTokenRow
 from src.telemetry.dashboard import (
+    LiveFragmentPanels,
     _json_in_script,
     _render_weekly_delta_caption,
     render_live_fragment,
@@ -495,7 +496,7 @@ def test_render_live_fragment_includes_weekly_panel_when_supplied() -> None:
     index-ordering check here.
     """
     weekly_panel = '<div class="tile" data-state="data"><h3>Weekly cost trends</h3></div>'
-    html = render_live_fragment(LiveState(), weekly_panel_html=weekly_panel)
+    html = render_live_fragment(LiveState(), LiveFragmentPanels(weekly_panel_html=weekly_panel))
     assert "Weekly cost trends" in html
     # The weekly panel sits AFTER the per-turn-cost-chart panel — broader
     # window after narrower window.

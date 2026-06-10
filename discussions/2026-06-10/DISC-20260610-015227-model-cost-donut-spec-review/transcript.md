@@ -1,0 +1,59 @@
+---
+discussion_id: DISC-20260610-015227-model-cost-donut-spec-review
+started: 2026-06-10T01:52:39.138396+00:00
+ended: 2026-06-10T01:57:55.593814+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist]
+total_turns: 5
+---
+
+# Discussion: DISC-20260610-015227-model-cost-donut-spec-review
+
+## Turn 1 — facilitator (evidence)
+*2026-06-10T01:52:39.138396+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Phase 4 Unit 4.2 of the telemetry Layer B dashboard — a Chart.js doughnut of cost split by model tier (Opus/Sonnet/Haiku), reusing the vendored Chart.js + established chart pattern (canvas + JSON-in-script via _json_in_script + init path in dashboard-chart.js + SHA-384 re-pin lockstep). Directive issued 2026-06-09 by the developer (run Phases 3-5 to completion autonomously, one bounded unit per supervised session).
+- **Files/scope**: src/telemetry/dashboard.py (renderer + render_live_fragment Rule-of-Three param fold), scripts/telemetry/dashboard.py (public load_cost_report loader), scripts/telemetry/dashboard_server.py (route wiring), src/telemetry/static/dashboard-chart.js (donut init path + SHA re-pin), tests. Spec: SPEC-20260610-015114.
+- **Developer-stated motivation**: the Layer B dashboard is the north-star oversight surface; the donut makes the per-tier cost table visual so the manager-gatekeeper sees where the money goes across models.
+- **Explicit constraints**: ADR-0020 honesty — uncosted tiers must NOT be silently folded into a $0 slice (developer pre-authorized an uncosted slice OR caption); no push; full workflow (plan -> build -> gate -> review) per unit; no CSP relaxation.
+
+---
+
+## Turn 2 — architecture-consultant (critique)
+*2026-06-10T01:56:28.387651+00:00 | confidence: 0.86*
+*tags: spec-review, advisory*
+
+Verdict: APPROVE-WITH-CHANGES (0.86). Dataclass fold is the correct discharge of the SPEC-20260610-005602 Rule-of-Three watchpoint; loader placement correct; renderer/transport boundary clean; ADR-0020/0013 aligned. Findings (all ADVISORY): F1 MED — load_cost_report returns tuple(CostReport, bool) while load_weekly_trends returns bare WeeklyTrends; divergent shapes for the same conceptual outcome. Pin the rationale (watermark bit distinguishes ran-zero-rows from never-ran; weekly self-signals via emptiness) in the loader docstring so a future loader does not normalise the wrong way. F2 LOW — has_run logic now duplicated with assemble_dashboard_data cost_state; Rule of Two OK; add keep-in-lockstep cross-ref note both ways; do NOT extract a helper yet. F3 LOW — LiveFragmentPanels docstring should pin additive-only evolution (fourth panel = new field with empty-string default; never a new positional arg). Strengths: caption-not-slice is the right inverse of the weekly token-unit choice; donut-last respects the pinned broader-after-narrower hierarchy; public helper satisfies R15 for Phase 5 reuse.
+
+---
+
+## Turn 3 — qa-specialist (critique)
+*2026-06-10T01:56:28.512953+00:00 | confidence: 0.88*
+*tags: spec-review, blocking*
+
+Verdict: APPROVE-WITH-CHANGES (0.88). 2 BLOCKING: F1 HIGH missing-edge-case — AC10 loader matrix omits the DB-file-absent path (mode=ro raises sqlite3.OperationalError at connect); load_weekly_trends catches this at the outer try; AC10 must add a fourth cell: DB file absent -> (empty report, False) with a direct unit test on a non-existent Path, else a builder passes all ACs while the route 500s on a fresh clone. F2 HIGH weak-assertion — AC8/AC9 chip-first/donut-last is presence-level; a silent weekly/donut inversion passes as written. Prescribe the full six-position index chain: chip < runway < per-turn < weekly < donut < /section (html.index pattern from the existing weekly composition test). 4 ADVISORY: F3 MED single-tier (one-slice) report test — payload exactly one entry, no uncosted caption; F4 MED payload tier-order determinism pin (call renderer twice, assert list equality); F5 LOW zero-token uncosted tier — emit with tokens:0 + caption, or document unreachable from build_cost_report; F6 LOW make explicit in AC9 that no weekly_panel_html=/hook_health_chip_html= kwarg survives anywhere (grep assertion or rely on gate TypeError, but name it). Strengths: honesty contract surgically specified (R3/AC2/AC4); AC6 injection round-trip first-class; separate test file precedent appropriate; AC14 ledger format machine-verifiable.
+
+---
+
+## Turn 4 — security-specialist (critique)
+*2026-06-10T01:56:28.668034+00:00 | confidence: 0.88*
+*tags: spec-review, advisory*
+
+Verdict: APPROVE-WITH-CHANGES (0.88). No blockers; threat model narrow (localhost read-only dashboard; risk = transcript-shaped tier names crossing the JSON-in-script boundary). F1 LOW (A03 XSS) — R1 names caption escaping but not aria-label escaping; existing renderers apply _esc on aria-label (dashboard.py:1579, :1775); spec must either route aria-label through _esc explicitly or state it is fully static copy. F2 LOW (prototype pollution) — donut JS per-tier accumulator must use the hasOwnProperty guard like buildWeeklyDatasets (dashboard-chart.js:413) or a null-prototype/Map structure; tier named __proto__ must not write the prototype chain (impact nil on loopback but the discipline exists in two places already). F3 INFO confirmed — Chart.js 4.x tooltips render via canvas fillText, not HTML: no DOM injection through tooltip strings. Trust boundaries verified: _json_in_script 4-step chain + _esc + script-src self CSP + mode=ro + generic error wrapper at server route all intact. Chart destroy-before-recreate per swap inherited from established pattern. R7/AC12 SHA-384 lockstep sufficient.
+
+---
+
+## Turn 5 — facilitator (synthesis)
+*2026-06-10T01:57:55.593814+00:00 | confidence: 0.9*
+
+## Request Context
+- **What was requested**: Phase 4 Unit 4.2 (model-cost donut) of SPEC-20260607-183136 — Chart.js doughnut of corpus cost split by model tier on the live dashboard, per the developer's 2026-06-09 run-Phases-3-5-autonomously directive.
+- **Files/scope**: src/telemetry/dashboard.py (renderer + LiveFragmentPanels Rule-of-Three fold), scripts/telemetry/dashboard.py (load_cost_report), dashboard_server.py wiring, dashboard-chart.js (+SHA-384 re-pin), new tests/test_telemetry_donut.py.
+- **Developer-stated motivation**: dashboard is the oversight north star; per-tier cost made visual.
+- **Explicit constraints**: ADR-0020 uncosted never folded to $0 (slice-or-caption pre-authorized); no CSP change; no push; full workflow per unit.
+
+## Synthesis
+3-specialist panel (arch 0.86 + qa 0.88 + sec 0.88): unanimous APPROVE-WITH-CHANGES; all 11 findings FOLDED into SPEC-20260610-015114 in-session. 2 BLOCKING (qa): F1 AC10 gains the fourth loader cell (DB file absent -> empty report + has_run=False, tested with a non-existent Path); F2 AC9 now prescribes the full six-position composition index chain (chip < runway < per-turn < weekly < donut < /section). 9 advisory folded: qa F3 single-slice AC1b; qa F4 payload-order determinism in AC1; qa F5 zero-token uncosted tier R3 rule (or documented-unreachable); qa F6 explicit no-surviving-kwarg grep in AC9; arch F1 tuple-vs-bare-return rationale docstring pin on load_cost_report; arch F2 has_run lockstep cross-ref (no helper extraction at N=2); arch F3 LiveFragmentPanels additive-only evolution pin; sec F1 aria-label declared fully-static (else _esc); sec F2 hasOwnProperty/null-prototype guard on the donut JS accumulator. Sec F3 INFO confirmed: Chart.js 4.x tooltips render via canvas fillText — no DOM injection through tooltip strings. Design ratified: caption-not-slice for uncosted (USD units make a token-sized slice fabricate proportion — inverse of the weekly chart's token-unit precedent); donut composes LAST (broadest view); public renderer satisfies R15 for Phase 5 static export. Spec status -> reviewed. 0 unresolved findings.
+
+---

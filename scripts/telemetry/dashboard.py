@@ -49,7 +49,7 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts.telemetry.analyze_cost import load_cost_rows  # noqa: E402
 from scripts.telemetry.analyze_failures import load_failure_signals  # noqa: E402
 from scripts.telemetry.analyze_value import OTEL_EXPORT_PATH, assemble_value_inputs  # noqa: E402
-from src.telemetry.cost import build_cost_report  # noqa: E402
+from src.telemetry.cost import CostReport, build_cost_report  # noqa: E402
 from src.telemetry.dashboard import (  # noqa: E402
     STATE_DATA,
     STATE_NOT_RUN,
@@ -252,6 +252,57 @@ def load_weekly_trends(db_path: Path, pricing: PricingTable) -> WeeklyTrends:
         conn.close()
 
 
+def load_cost_report(db_path: Path, pricing: PricingTable) -> tuple[CostReport, bool]:
+    """Load the stored per-tier cost report for the live dashboard's donut panel.
+
+    Opens the DB read-only (``?mode=ro`` — the same C1 invariant as
+    :func:`assemble_dashboard_data`), reads the stored A1 cost rows, and
+    returns ``(report, has_run)``.
+
+    **Why a tuple here when** :func:`load_weekly_trends` **returns a bare**
+    :class:`~src.telemetry.weekly.WeeklyTrends`: the donut renderer must
+    distinguish *analyzer ran with zero rows* (true-zero data tile) from
+    *analyzer never ran* (absence tile pointing at the pipeline), and
+    :class:`~src.telemetry.cost.CostReport` carries no has-run bit — the
+    distinction lives in the ``telemetry_run_state`` watermark. The weekly
+    case self-signals via emptiness (both states render the same absence
+    tile), so it does not need the extra bit. A future loader should pick
+    its shape from this rationale, not by normalising the two signatures
+    (SPEC-20260610-015114 arch F1).
+
+    **Keep in lockstep**: the ``has_run`` computation (rows present OR cost
+    watermark present) mirrors :func:`assemble_dashboard_data`'s
+    ``cost_state`` logic above — change both together. Deliberately NOT
+    extracted into a shared helper at N=2 call sites (SPEC arch F2,
+    Principle #8).
+
+    The four-state contract (SPEC-20260610-015114 AC10):
+
+    * DB file absent (``mode=ro`` raises at connect) -> ``(empty, False)``.
+    * Telemetry table missing (analyzer never ran) -> ``(empty, False)``.
+    * Watermark present, zero rows -> ``(empty, True)`` (true zero).
+    * Rows present -> ``(populated, True)``.
+
+    The per-poll DB-IO decision + caching triggers recorded in
+    :func:`load_weekly_trends`'s docstring apply to this loader too (same
+    3 s ``/fragments/live`` poll, same bounded row scale).
+    """
+    try:
+        conn = _connect_readonly(db_path)
+    except sqlite3.OperationalError:
+        return build_cost_report([], pricing), False
+    try:
+        try:
+            cost_rows = load_cost_rows(conn)
+        except sqlite3.OperationalError:
+            return build_cost_report([], pricing), False
+        report = build_cost_report(cost_rows, pricing)
+        has_run = bool(cost_rows) or _watermark_present(conn, _COST_WATERMARK_KEY)
+        return report, has_run
+    finally:
+        conn.close()
+
+
 def assemble_dashboard_data(
     db_path: Path = DB_PATH,
     *,
@@ -291,6 +342,9 @@ def assemble_dashboard_data(
         except sqlite3.OperationalError:
             cost_rows = []
         cost_report = build_cost_report(cost_rows, pricing)
+        # Keep in lockstep with load_cost_report's has_run computation (the
+        # live donut loader mirrors this exact rows-or-watermark logic;
+        # SPEC-20260610-015114 arch F2) — change both together.
         cost_has_run = bool(cost_rows) or _watermark_present(conn, _COST_WATERMARK_KEY)
         cost_state = STATE_DATA if cost_has_run else STATE_NOT_RUN
 

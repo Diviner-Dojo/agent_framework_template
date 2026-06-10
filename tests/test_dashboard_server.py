@@ -843,7 +843,7 @@ def test_vendored_chartjs_sha384_matches_readme_pin() -> None:
 #: must update both the README pin table AND this constant in the same commit,
 #: making silent byte changes impossible. A re-vendor on a third-party file is
 #: a vendoring event; a re-pin on this file is a code-review event.
-_DASHBOARD_CHART_JS_SHA384_PIN = "uTPT7PNOVjojQmcUsQt8DvbaK+94T+046qdVX1dIUwTrBXYZgKcTpR5lzDmyZmLH"
+_DASHBOARD_CHART_JS_SHA384_PIN = "jfKiKyHEewZ/0Ys2Kgccpc6W1NcNyFDiC/gbpTaOVEvzCzx1w7OBINOioUJYMK63"
 
 
 def test_static_dashboard_chart_asset_is_served() -> None:
@@ -1038,8 +1038,10 @@ def test_dashboard_chart_init_script_carries_load_bearing_integration_points() -
       - ``per-turn-cost-data`` — _PER_TURN_COST_DATA_ELEMENT_ID
       - ``weekly-trends-chart`` — _WEEKLY_TRENDS_CANVAS_ID
       - ``weekly-trends-data`` — _WEEKLY_TRENDS_DATA_ELEMENT_ID
+      - ``model-cost-donut-chart`` — _MODEL_COST_DONUT_CANVAS_ID
+      - ``model-cost-donut-data`` — _MODEL_COST_DONUT_DATA_ELEMENT_ID
       - ``chart-rendering-target`` — _PER_TURN_COST_RENDER_TARGET_CLASS
-        (shared by both chart panels — one render-target class for both)
+        (shared by all chart panels — one render-target class)
       - ``htmx:afterSwap`` — the htmx polling re-render seam
       - ``Chart`` — the Chart.js global (the IIFE early-returns if undefined)
 
@@ -1070,6 +1072,25 @@ def test_dashboard_chart_init_script_carries_load_bearing_integration_points() -
     assert "weekly-trends-data" in js_text, (
         "init script lost the weekly data-block id — it must match "
         "_WEEKLY_TRENDS_DATA_ELEMENT_ID in src/telemetry/dashboard.py"
+    )
+    # Model-cost donut integration points (SPEC-20260610-015114 AC12).
+    assert "model-cost-donut-chart" in js_text, (
+        "init script lost the donut canvas id — it must match "
+        "_MODEL_COST_DONUT_CANVAS_ID in src/telemetry/dashboard.py"
+    )
+    assert "model-cost-donut-data" in js_text, (
+        "init script lost the donut data-block id — it must match "
+        "_MODEL_COST_DONUT_DATA_ELEMENT_ID in src/telemetry/dashboard.py"
+    )
+    # AC13 (REV qa F1 fold): the donut slice colors must come from the
+    # SHARED tierColor lookup — scope the assertion to the donut section of
+    # the file so a future divergent DONUT_TIER_COLORS map (which would
+    # leave the weekly tierColor call satisfying a whole-file substring
+    # check) still fails here.
+    donut_section = js_text[js_text.index("function buildDonutSlices") :]
+    assert "tierColor(" in donut_section, (
+        "the donut renderer must route slice colors through the shared "
+        "tierColor lookup (one palette source in JS — spec AC13)"
     )
     # Render-target wrapper class (shared by both chart panels).
     assert "chart-rendering-target" in js_text, (
@@ -2442,3 +2463,129 @@ def test_fragments_live_carries_hook_chip_exactly_once(tmp_path: Path) -> None:
     assert resp.status_code == 200
     assert resp.text.count("data-hook-health=") == 1
     assert 'data-hook-health="ok"' in resp.text
+
+
+# --------------------------------------------------------------------------- #
+# load_cost_report — 4-state matrix (SPEC-20260610-015114 AC10) + donut route
+# --------------------------------------------------------------------------- #
+
+
+def test_load_cost_report_db_file_absent_is_empty_not_run(tmp_path: Path) -> None:
+    # AC10 state 1 (qa F1 BLOCKING fold from the spec review): a non-existent
+    # DB file (mode=ro raises sqlite3.OperationalError at connect) maps to
+    # the honest (empty report, has_run=False) pair, never a crash.
+    from scripts.telemetry.dashboard import load_cost_report
+    from src.telemetry.pricing import load_pricing
+
+    report, has_run = load_cost_report(tmp_path / "absent.db", load_pricing())
+    assert report.by_tier == {}
+    assert has_run is False
+
+
+def test_load_cost_report_table_absent_is_empty_not_run(tmp_path: Path) -> None:
+    # AC10 state 2: telemetry table missing (analyzer never ran).
+    from scripts.telemetry.dashboard import load_cost_report
+    from src.telemetry.pricing import load_pricing
+
+    db = _empty_db(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute("DROP TABLE discussion_model_tokens")
+    conn.commit()
+    conn.close()
+    report, has_run = load_cost_report(db, load_pricing())
+    assert report.by_tier == {}
+    assert has_run is False
+
+
+def test_load_cost_report_watermark_only_is_empty_true_zero(tmp_path: Path) -> None:
+    # AC10 state 3: analyzer ran, zero rows -> (empty report, has_run=True).
+    # This is the bit CostReport itself cannot carry — the loader reads it
+    # from the telemetry_run_state watermark.
+    from scripts.telemetry.dashboard import load_cost_report
+    from src.telemetry.pricing import load_pricing
+
+    db = _empty_db(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO telemetry_run_state(key, value, updated_at) VALUES (?, ?, ?)",
+        ("cost_last_analyzed_at", "2026-06-10T01:00:00+00:00", "2026-06-10T01:00:00+00:00"),
+    )
+    conn.commit()
+    conn.close()
+    report, has_run = load_cost_report(db, load_pricing())
+    assert report.by_tier == {}
+    assert has_run is True
+
+
+def _db_with_cost_row(tmp_path: Path) -> Path:
+    db = _empty_db(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO discussions("
+        "discussion_id, created_at, risk_level, collaboration_mode, status) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (
+            "DISC-20260610-120000-donut-test",
+            "2026-06-10T12:00:00+00:00",
+            "low",
+            "ensemble",
+            "open",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO discussion_model_tokens("
+        "discussion_id, model_id, tier, tokens_in, tokens_out, "
+        "cache_read_tokens, cache_create_tokens, message_count, computed_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "DISC-20260610-120000-donut-test",
+            "claude-opus-4-7",
+            "opus",
+            1_000,
+            1_000,
+            0,
+            0,
+            1,
+            "2026-06-10T12:00:00+00:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return db
+
+
+@pytest.mark.regression
+def test_load_cost_report_rows_present_is_populated_and_run(tmp_path: Path) -> None:
+    # AC10 state 4: stored rows -> populated report, has_run=True, priced
+    # cost present (non-vacuous: the seeded opus row resolves to a price).
+    from scripts.telemetry.dashboard import load_cost_report
+    from src.telemetry.pricing import load_pricing
+
+    report, has_run = load_cost_report(_db_with_cost_row(tmp_path), load_pricing())
+    assert has_run is True
+    assert "opus" in report.by_tier
+    assert report.by_tier["opus"].cost_usd is not None
+    assert report.by_tier["opus"].cost_usd > 0.0
+
+
+@pytest.mark.regression
+def test_live_fragment_route_carries_donut_panel_end_to_end(tmp_path: Path) -> None:
+    # AC11 (non-vacuous): with a seeded cost row, /fragments/live carries the
+    # donut data block and a payload entry for the seeded tier.
+    app = create_app(port=8765, db_path=_db_with_cost_row(tmp_path))
+    with TestClient(app) as client:
+        resp = client.get("/fragments/live", headers={"host": "127.0.0.1:8765"})
+    assert resp.status_code == 200
+    assert resp.text.count("model-cost-donut-data") == 1
+    assert '"tier":"opus"' in resp.text
+
+
+def test_live_fragment_route_donut_absence_on_fresh_db(tmp_path: Path) -> None:
+    # Fresh DB (analyzer never ran): the route serves the donut absence tile,
+    # never an empty chart scaffold.
+    app = create_app(port=8765, db_path=_empty_db(tmp_path))
+    with TestClient(app) as client:
+        resp = client.get("/fragments/live", headers={"host": "127.0.0.1:8765"})
+    assert resp.status_code == 200
+    assert "No stored cost rows yet." in resp.text
+    assert "model-cost-donut-chart" not in resp.text

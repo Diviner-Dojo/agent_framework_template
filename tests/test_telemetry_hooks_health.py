@@ -14,7 +14,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.telemetry.dashboard import render_hook_health_chip, render_live_fragment
+from src.telemetry.dashboard import (
+    LiveFragmentPanels,
+    render_hook_health_chip,
+    render_live_fragment,
+)
 from src.telemetry.hooks_health import (
     HOOK_HEALTH_STATUSES,
     HOOK_STATUS_MISSING_SCRIPTS,
@@ -306,6 +310,6 @@ def test_live_fragment_chip_appears_exactly_once_and_first() -> None:
     # AC-U5 (spec qa F7): asserted with count() == 1, not `in` — and the chip
     # composes FIRST inside the section (precondition-banner placement).
     chip = render_hook_health_chip(_hook_report())
-    fragment = render_live_fragment(empty_state(), hook_health_chip_html=chip)
+    fragment = render_live_fragment(empty_state(), LiveFragmentPanels(hook_health_chip_html=chip))
     assert fragment.count('data-hook-health="ok"') == 1
     assert fragment.index("hook-chip") < fragment.index("runway")

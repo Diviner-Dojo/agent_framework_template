@@ -70,13 +70,16 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts import ingest_token_usage as itu  # noqa: E402
 from scripts.telemetry.dashboard import (  # noqa: E402
     assemble_dashboard_data,
+    load_cost_report,
     load_weekly_trends,
 )
 from src.telemetry.dashboard import (  # noqa: E402
+    LiveFragmentPanels,
     render_dashboard_html,
     render_hook_health_chip,
     render_live_fragment,
     render_live_shell_html,
+    render_model_cost_donut_panel,
     render_weekly_trends_chart_panel,
 )
 from src.telemetry.hooks_health import (  # noqa: E402
@@ -694,11 +697,19 @@ def _register_routes(app: FastAPI) -> None:
             # <=4KB log tail), rendered by the pure helper and passed in as
             # pre-rendered HTML — same composition seam as the weekly panel.
             hook_chip = render_hook_health_chip(load_hook_health(app.state.hook_health_root))
+            # Model-cost donut (SPEC-20260610-015114): persisted-corpus
+            # per-tier cost split; same bounded per-poll read scale as
+            # load_weekly_trends (caching triggers recorded there).
+            report, cost_has_run = load_cost_report(app.state.db_path, app.state.pricing)
+            donut_panel = render_model_cost_donut_panel(report, cost_has_run)
             return HTMLResponse(
                 render_live_fragment(
                     state,
-                    weekly_panel_html=weekly_panel,
-                    hook_health_chip_html=hook_chip,
+                    LiveFragmentPanels(
+                        hook_health_chip_html=hook_chip,
+                        weekly_panel_html=weekly_panel,
+                        model_cost_donut_html=donut_panel,
+                    ),
                 )
             )
         except Exception:

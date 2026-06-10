@@ -1136,62 +1136,86 @@ def render_hook_health_chip(report: HookHealthReport) -> str:
     )
 
 
-def render_live_fragment(
-    state: LiveState, weekly_panel_html: str = "", hook_health_chip_html: str = ""
-) -> str:
+@dataclass(frozen=True)
+class LiveFragmentPanels:
+    """Pre-rendered HTML panels the transport layer passes into the live fragment.
+
+    Rule-of-Three fold (SPEC-20260610-015114, discharging the watchpoint
+    pinned in SPEC-20260610-005602): the model-cost donut would have been
+    the THIRD additive pre-rendered-HTML keyword param on
+    :func:`render_live_fragment`, so the params folded into this single
+    container instead.
+
+    **Additive-only evolution rule (spec arch F3)**: a future fourth panel
+    adds a field here with an empty-string default — never a new
+    positional/keyword parameter on :func:`render_live_fragment` itself.
+    An empty-string field means "panel absent"; existing callers are
+    unaffected by new fields.
+
+    **Caller contract (SPEC-20260610-005602 security F3)**: every field
+    MUST carry only HTML produced by a ``src.telemetry.dashboard`` render
+    helper (:func:`render_hook_health_chip`,
+    :func:`render_weekly_trends_chart_panel`,
+    :func:`render_model_cost_donut_panel`) — those helpers apply ``_esc``
+    to every dynamic field internally. Passing raw or hand-built strings
+    bypasses all escaping and is an injection bug.
+
+    Attributes:
+        hook_health_chip_html: Hook-health chip strip, rendered FIRST
+            (above the runway) — a precondition banner framing how much to
+            trust everything below it (SPEC-20260610-005602).
+        weekly_panel_html: Weekly trends chart panel (persisted-corpus
+            derived view; transport owns the DB IO).
+        model_cost_donut_html: Model-cost donut panel, rendered LAST — the
+            broadest derived view (whole stored corpus, no time axis) per
+            the broader-after-narrower hierarchy.
+    """
+
+    hook_health_chip_html: str = ""
+    weekly_panel_html: str = ""
+    model_cost_donut_html: str = ""
+
+
+def render_live_fragment(state: LiveState, panels: LiveFragmentPanels | None = None) -> str:
     """Render the htmx live fragment (agent lanes + runway + cost/failure stream + charts).
 
     Returned as ONE root ``<section>`` so an htmx ``hx-swap="outerHTML"`` swap
     replaces the previous fragment cleanly. The server polls this endpoint on
     a server-specified interval (spec R2 — htmx polling, not SSE in Phase 1).
 
-    Composition order is the visual-hierarchy contract: runway (highest-stakes
-    "how much headroom do I have?") → lanes (operational state) → stream
-    (per-event trail) → per-turn cost chart (recent-window derived view) →
-    weekly trends chart (broader-window derived view). The two charts appear
-    LAST because they are derived views of the stream data above them; among
-    the two, the broader-window weekly chart comes after the narrower
-    rolling-window per-turn chart so the reader's eye travels from "what just
-    happened" to "what's the longer arc". A future third chart slotting in
-    must respect this broader-after-narrower hierarchy.
+    Composition order is the visual-hierarchy contract: hook-health chip
+    (precondition banner) → runway (highest-stakes "how much headroom do I
+    have?") → lanes (operational state) → stream (per-event trail) →
+    per-turn cost chart (recent-window derived view) → weekly trends chart
+    (broader-window derived view) → model-cost donut (broadest derived
+    view: the whole stored corpus, no time axis). Charts appear LAST
+    because they are derived views of the stream data above them, ordered
+    narrower-to-broader so the reader's eye travels from "what just
+    happened" to "what's the longer arc". A future chart slotting in must
+    respect this broader-after-narrower hierarchy.
 
     Args:
-        state: The pure live model snapshot. Untouched by the weekly chart
-            seam — the weekly trends panel takes its data from the persisted
-            ``discussion_model_tokens`` table, not the in-memory live state,
-            so it is rendered by the transport layer (which owns the DB IO)
-            and passed in as pre-rendered HTML.
-        weekly_panel_html: Optional pre-rendered ``<div>`` for the weekly
-            trends chart panel. The empty-string default preserves backward
-            compatibility for tests and callers that drive the function
-            without a transport layer in scope. The transport layer at
-            ``scripts/telemetry/dashboard_server.py`` builds the panel via
-            :func:`render_weekly_trends_chart_panel` and passes the HTML
-            here; the live model (``src/telemetry/live.py``) stays pure
-            (AC14) — it does NOT learn about the weekly aggregator.
-        hook_health_chip_html: Optional pre-rendered hook-health chip strip
-            (SPEC-20260610-005602). Same additive contract as
-            ``weekly_panel_html``: empty-string default = no chip, existing
-            callers unaffected. Rendered FIRST (above the runway) because it
-            is a precondition banner — the wiring health of the enforcement
-            layer frames how much to trust everything below it.
-
-            **Caller contract (spec security F3)**: both pre-rendered HTML
-            parameters MUST carry only HTML produced by a
-            ``src.telemetry.dashboard`` render helper
-            (:func:`render_weekly_trends_chart_panel`,
-            :func:`render_hook_health_chip`) — those helpers apply ``_esc``
-            to every dynamic field internally. Passing raw or hand-built
-            strings here bypasses all escaping and is an injection bug.
+        state: The pure live model snapshot. The persisted-corpus panels
+            (weekly chart, donut) do NOT read it — their data comes from
+            the DB at the transport layer, which passes pre-rendered HTML
+            via ``panels`` so the live model (``src/telemetry/live.py``)
+            stays pure (AC14).
+        panels: Optional pre-rendered panel container. ``None`` (the
+            default) renders no extra panels — the backward-compatible
+            shape for tests and callers without a transport layer in
+            scope. See :class:`LiveFragmentPanels` for the caller contract
+            and the additive-only evolution rule.
     """
+    panels = panels or LiveFragmentPanels()
     return (
         '<section id="live-section" class="live-section" data-state="live">'
-        f"{hook_health_chip_html}"
+        f"{panels.hook_health_chip_html}"
         f"{_render_runway_panel(state.runway)}"
         f"{_render_agent_lanes_panel(state)}"
         f"{_render_live_stream_panel(state.recent_events)}"
         f"{_render_per_turn_cost_chart_panel(state.recent_events)}"
-        f"{weekly_panel_html}"
+        f"{panels.weekly_panel_html}"
+        f"{panels.model_cost_donut_html}"
         "</section>"
     )
 
@@ -1781,6 +1805,215 @@ def render_weekly_trends_chart_panel(trends: WeeklyTrends) -> str:
         "</script>"
         "</div>"
         f"{delta_caption}"
+        "</div>"
+    )
+
+
+#: Data-block element id for the model-cost donut's JSON payload (id-pin
+#: convention: the literal also appears in ``/static/dashboard-chart.js`` and
+#: the integration-points regression test in tests/test_dashboard_server.py
+#: asserts it is present there).
+_MODEL_COST_DONUT_DATA_ELEMENT_ID = "model-cost-donut-data"
+
+#: Canvas element id for the model-cost donut chart.
+_MODEL_COST_DONUT_CANVAS_ID = "model-cost-donut-chart"
+
+
+class _DonutSlice(TypedDict):
+    """The chart-data contract baked into the model-cost donut's JSON block.
+
+    One entry per tier in :attr:`~src.telemetry.cost.CostReport.by_tier` —
+    priced AND uncosted (the JS draws slices only for ``uncosted: false``
+    entries; uncosted entries stay in the payload so the data block is the
+    complete honest record, ADR-0020):
+
+    * ``tier`` — tier key string (DB-origin, untrusted; escaped at the JSON
+      boundary by :func:`_json_in_script` and at the HTML boundary by
+      ``_esc`` in the caption).
+    * ``cost_usd`` — API-equivalent USD as a finite float for a priced tier;
+      ``None`` (JSON ``null``) for an uncosted tier — never ``0.0``.
+    * ``tokens`` — all billable tokens accumulated for the tier.
+    * ``uncosted`` — ``True`` iff the tier has no list price.
+
+    **Schema evolution rule** (mirrors ``_ChartPoint``): adding a field is
+    non-breaking IFF the init script treats unknown fields as opaque;
+    removing or renaming a field requires updating
+    ``/static/dashboard-chart.js`` in the same commit.
+    """
+
+    tier: str
+    cost_usd: float | None
+    tokens: int
+    uncosted: bool
+
+
+def _donut_slices(report: CostReport) -> list[_DonutSlice]:
+    """Order the report's tiers into the donut payload deterministically.
+
+    Priced tiers first (cost descending), then uncosted tiers (tokens
+    descending), tier name as the final tiebreaker — the same
+    priced-first discipline as ``rank_failures``. Sorting (rather than
+    relying on ``by_tier`` dict insertion order) pins the payload order
+    against future ``build_cost_report`` refactors (spec qa F4).
+    """
+    priced = [tc for tc in report.by_tier.values() if tc.cost_usd is not None]
+    uncosted = [tc for tc in report.by_tier.values() if tc.cost_usd is None]
+    # ``or 0.0`` is unreachable at runtime (priced is pre-filtered to
+    # ``cost_usd is not None``); it exists only to give the type checker a
+    # plain ``float`` to negate. A genuine 0.0-cost tier sorts by tier name
+    # (-0.0 == 0.0), which is correct and deterministic.
+    priced.sort(key=lambda tc: (-(tc.cost_usd or 0.0), tc.tier))
+    uncosted.sort(key=lambda tc: (-tc.total_tokens(), tc.tier))
+    return [
+        {
+            "tier": tc.tier,
+            "cost_usd": tc.cost_usd,
+            "tokens": tc.total_tokens(),
+            "uncosted": tc.cost_usd is None,
+        }
+        for tc in priced + uncosted
+    ]
+
+
+def _render_donut_uncosted_caption(uncosted: list[_DonutSlice]) -> str:
+    """Render the explicit uncosted-tiers caption (ADR-0020: marked, never $0).
+
+    Empty input renders nothing — a fully-priced corpus needs no caveat
+    (and the absence of the caption is itself pinned by the single-slice
+    test, spec AC1b).
+    """
+    if not uncosted:
+        return ""
+    names = ", ".join(s["tier"] for s in uncosted)
+    total = sum(s["tokens"] for s in uncosted)
+    return (
+        f'<p class="note">Uncosted: {_esc(_fmt_int(total))} tokens across '
+        f"tier(s) {_esc(names)} have no known list price and are not drawn "
+        "in the donut &mdash; uncosted, not free (ADR-0020).</p>"
+    )
+
+
+def _render_donut_cost_breakdown(priced: list[_DonutSlice]) -> str:
+    """Render the always-visible per-tier dollar line (ux F1, REV this unit).
+
+    The donut's dollar figures are otherwise hover-tooltip-only — a
+    pointer-gated interaction that keyboard and screen-reader users cannot
+    reach (WCAG 1.1.1 / 2.1.1). This plain-text line surfaces the same
+    numbers without hover, rendered server-side so no JS is involved.
+    Empty input renders nothing (the chart tile is only emitted when at
+    least one priced tier exists, so this is defensive).
+    """
+    if not priced:
+        return ""
+    items = "; ".join(
+        f"{_esc(s['tier'])} {_esc(_fmt_usd(s['cost_usd'], places=4))}" for s in priced
+    )
+    return f'<p class="src">Per-tier cost: {items}.</p>'
+
+
+def render_model_cost_donut_panel(report: CostReport, has_run: bool) -> str:
+    """Render the model-cost donut panel (SPEC-20260610-015114, Phase 4 Unit 4.2).
+
+    Third chart consumer, composed LAST in :func:`render_live_fragment`
+    (the broadest derived view: whole stored corpus, no time axis — the
+    pinned broader-after-narrower hierarchy). Public so Phase 5's
+    ``--render-static`` export reuses the same helper (R15 single render
+    path); callable without a server.
+
+    **Honesty contract (ADR-0020 / spec R3)**: the visual unit is USD, so
+    an uncosted tier has no honest slice size — uncosted tiers are NEVER
+    drawn as $0 slices. They stay in the JSON payload flagged
+    ``uncosted: true`` and are named in an explicit caption with their
+    token count (the inverse resolution of the weekly chart, whose
+    token-unit choice let uncosted stack honestly). Three data states:
+
+    * ``has_run`` False — analyzer never ran: honest absence tile.
+    * ``has_run`` True, no priced tier: "nothing priced to chart" data
+      tile naming any uncosted tiers — never an empty donut.
+    * Priced tiers present: the chart tile (``tile--loading`` + ``hidden``
+      wrapper until the init script's first successful draw).
+
+    The canvas ``aria-label`` is fully static copy (no tier names
+    interpolated — spec sec F1); dynamic strings in the caption route
+    through ``_esc`` and the payload through :func:`_json_in_script`.
+
+    Args:
+        report: The per-tier cost breakdown (read-side, from
+            ``load_cost_report`` at the transport layer).
+        has_run: True iff the cost analyzer has run (rows or watermark
+            present) — distinguishes true-zero from not-yet-run.
+    """
+    if not has_run:
+        return _absence_tile(
+            "Model cost split",
+            "No stored cost rows yet.",
+            "This panel fills in once the cost analyzer "
+            "(scripts/telemetry/analyze_cost.py) has processed the captured "
+            "session data — ask your developer to run it, or run it from "
+            "the repository root.",
+        )
+    slices = _donut_slices(report)
+    priced = [s for s in slices if not s["uncosted"]]
+    uncosted = [s for s in slices if s["uncosted"]]
+    if not priced:
+        # sec F1 fold (REV, this unit): tier names are escaped PER-SITE at
+        # the interpolation point (the caption helper's discipline), not
+        # deferred to a wrapping _esc at emission — a deferred escape is a
+        # refactor trap (hoisting the f-string out of the wrapper would
+        # silently open the seam). ``body`` is therefore emitted raw below:
+        # it contains only static copy + the pre-escaped listing.
+        if uncosted:
+            listing = "; ".join(
+                f"{_esc(s['tier'])} ({_esc(_fmt_int(s['tokens']))} tokens)" for s in uncosted
+            )
+            body = (
+                "All stored cost rows belong to tiers without a known list "
+                "price, so there is no priced cost to chart. Uncosted tiers: "
+                f"{listing}. Uncosted is not free — your developer can add "
+                "prices for these tiers in config/model_pricing.yaml."
+            )
+        else:
+            body = (
+                "The cost analyzer has run but found no stored cost rows "
+                "yet. The chart will fill in once the framework has "
+                "captured session data and the analyzer has processed it."
+            )
+        return (
+            '<div class="tile tile--data" data-state="data">'
+            "<h3>Model cost split</h3>"
+            f'<p class="sub">{body}</p>'
+            "</div>"
+        )
+    payload = _json_in_script(slices)
+    aria_label = (
+        "Model cost split — doughnut chart of API-equivalent USD cost per "
+        "model tier across the stored corpus; only priced tiers are drawn "
+        "as slices, and tiers without a known list price are listed in a "
+        "caption instead of being charted as zero."
+    )
+    return (
+        '<div class="tile tile--loading" data-state="loading">'
+        "<h3>Model cost split</h3>"
+        '<p class="legend">What each model tier would cost at standard API '
+        "prices (API-equivalent USD), across all captured sessions. Slices "
+        "are priced tiers only; hover a slice for its dollar figure. Tiers "
+        "without a known list price are named below the chart &mdash; "
+        "marked, never collapsed to $0 (per ADR-0020).</p>"
+        '<p class="loading-copy">Chart visualization layer initializing '
+        "&mdash; the doughnut will draw once the rendering layer is ready. "
+        "Per-tier figures are also shown in the retrospective cost panel.</p>"
+        f'<div class="{_PER_TURN_COST_RENDER_TARGET_CLASS}" hidden>'
+        f'<canvas id="{_MODEL_COST_DONUT_CANVAS_ID}" width="400" height="260"'
+        f' role="img" aria-label="{_esc(aria_label)}">'
+        "<p>Model cost split chart (data available; chart rendering "
+        "requires a visual display).</p>"
+        "</canvas>"
+        f'<script id="{_MODEL_COST_DONUT_DATA_ELEMENT_ID}" type="application/json">'
+        f"{payload}"
+        "</script>"
+        "</div>"
+        f"{_render_donut_cost_breakdown(priced)}"
+        f"{_render_donut_uncosted_caption(uncosted)}"
         "</div>"
     )
 

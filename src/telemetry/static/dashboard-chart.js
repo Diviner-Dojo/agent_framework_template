@@ -1,6 +1,7 @@
 /*!
- * dashboard-chart.js — Phase 2 per-turn cost chart init for the Layer B
- * telemetry dashboard (SPEC-20260607-183136 Phase 2, step 4).
+ * dashboard-chart.js — chart init for the Layer B telemetry dashboard
+ * (SPEC-20260607-183136 Phase 2 step 4 per-turn chart; Phase 2 weekly
+ * trends chart; SPEC-20260610-015114 Phase 4 model-cost donut).
  *
  * Same-origin first-party script loaded under the dashboard's existing
  * `script-src 'self'` CSP — NO `'unsafe-inline'` relaxation, NO CDN. The
@@ -9,21 +10,30 @@
  * patterns).
  *
  * What it does:
- *   1. Looks up the canvas + JSON data block by their renderer-pinned ids
- *      (see _PER_TURN_COST_CANVAS_ID / _PER_TURN_COST_DATA_ELEMENT_ID in
- *      src/telemetry/dashboard.py — each of these strings lives in three
- *      locations: the Python constants (source of truth), this file
- *      (copy), and the regression tests (anchor). The Python constants
- *      are authoritative; the others are kept in lockstep by code review).
+ *   1. Looks up each chart's canvas + JSON data block by their
+ *      renderer-pinned ids (see _PER_TURN_COST_* / _WEEKLY_TRENDS_* /
+ *      _MODEL_COST_DONUT_* in src/telemetry/dashboard.py — each of these
+ *      strings lives in three locations: the Python constants (source of
+ *      truth), this file (copy), and the regression tests (anchor). The
+ *      Python constants are authoritative; the others are kept in
+ *      lockstep by code review).
  *   2. Parses the data block's textContent as JSON (the renderer escapes
  *      `</` -> `<\/` + `allow_nan=False`, so JSON.parse never sees a
  *      `</script>` close-tag and never sees a NaN/Inf token).
- *   3. Renders a Chart.js line chart — TWO datasets keyed by `uncosted`
- *      so priced and uncosted turns are visually distinct (priced = solid
- *      accent line + circle markers; uncosted = dashed border + cross
- *      markers, plotted at their actual cost of 0.0 on a y-axis-zero
- *      baseline). The "uncosted != $0" honesty discipline (ADR-0020) is
- *      preserved: uncosted points are NOT hidden, they are MARKED.
+ *   3. Renders the charts:
+ *      - Per-turn line chart: TWO datasets keyed by `uncosted` so priced
+ *        and uncosted turns are visually distinct (priced = solid accent
+ *        line + circle markers; uncosted = cross markers at the
+ *        y-axis-zero baseline). The "uncosted != $0" honesty discipline
+ *        (ADR-0020) is preserved: uncosted points are NOT hidden, they
+ *        are MARKED.
+ *      - Weekly stacked bar chart: token volume per ISO week by tier;
+ *        the uncosted slice is its own stack slice.
+ *      - Model-cost donut: doughnut of API-equivalent USD per PRICED
+ *        tier only. Uncosted tiers are never drawn as $0 slices — the
+ *        Python renderer names them in a caption below the chart, and
+ *        they remain in the JSON payload flagged `uncosted: true`
+ *        (ADR-0020: marked in copy, never fabricated in geometry).
  *   4. On first successful draw, reveals the chart by removing the
  *      `hidden` attribute on the `.chart-rendering-target` wrapper,
  *      flipping the parent tile from `tile--loading` to `tile--data`
@@ -32,17 +42,22 @@
  * htmx integration:
  *   The live fragment is `outerHTML`-swapped every ~3 s by htmx (see
  *   render_live_shell_html in src/telemetry/dashboard.py). Each swap
- *   destroys the previous canvas, so we re-initialise on every
+ *   destroys the previous canvases, so we re-initialise on every
  *   `htmx:afterSwap` event whose target is `#live-section` (or, as a
- *   fallback, whenever the canvas DOM node identity changes).
+ *   fallback, whenever a canvas DOM node identity changes).
  *
  * Guarantees:
  *   - No global pollution (IIFE).
- *   - Bails silently if the canvas, data block, or Chart.js global is
- *     missing (the renderer renders the absence tile when there are no
- *     priced turns; this script must not break the page when that happens).
- *   - Treats unknown JSON fields as opaque per the _ChartPoint
- *     schema-evolution rule (see src/telemetry/dashboard.py).
+ *   - Bails silently if a canvas, data block, or the Chart.js global is
+ *     missing (the renderer renders the absence tile when there is no
+ *     data; this script must not break the page when that happens).
+ *   - Treats unknown JSON fields as opaque per the _ChartPoint /
+ *     _DonutSlice schema-evolution rules (see src/telemetry/dashboard.py).
+ *   - Never writes payload-origin strings as keys into a plain object
+ *     (SPEC-20260610-015114 sec F2): the donut builds parallel ARRAYS,
+ *     and the weekly accumulator guards every keyed write with
+ *     hasOwnProperty — a tier named "__proto__" cannot touch the
+ *     prototype chain.
  *   - Honours `prefers-reduced-motion` by disabling Chart.js animations.
  */
 (function () {
@@ -52,6 +67,8 @@
   var DATA_ID = "per-turn-cost-data";
   var WEEKLY_CANVAS_ID = "weekly-trends-chart";
   var WEEKLY_DATA_ID = "weekly-trends-data";
+  var DONUT_CANVAS_ID = "model-cost-donut-chart";
+  var DONUT_DATA_ID = "model-cost-donut-data";
   var RENDER_TARGET_SELECTOR = ".chart-rendering-target";
   var LIVE_SECTION_ID = "live-section";
 
@@ -62,12 +79,13 @@
   var COLOR_INK = "#e6edf3";
   var COLOR_LINE = "#30363d";
 
-  // Per-tier palette for the weekly stacked bar chart. The 'unknown' tier
-  // (uncosted slice) reuses COLOR_MUTED so its visual treatment matches the
-  // per-turn chart's uncosted markers — one project-wide convention for
-  // "this is uncosted". Other tier colors come from the same palette family
-  // as COLOR_ACCENT but offset in hue so adjacent stack slices stay
-  // distinguishable on a dim display.
+  // Per-tier palette shared by the weekly stacked bar chart and the
+  // model-cost donut (one palette source in JS — spec AC13). The 'unknown'
+  // tier (uncosted slice) reuses COLOR_MUTED so its visual treatment
+  // matches the per-turn chart's uncosted markers — one project-wide
+  // convention for "this is uncosted". Other tier colors come from the
+  // same palette family as COLOR_ACCENT but offset in hue so adjacent
+  // slices stay distinguishable on a dim display.
   var WEEKLY_TIER_COLORS = {
     opus: "#58a6ff",
     sonnet: "#3fb950",
@@ -79,45 +97,58 @@
   // rather than disappearing).
   var WEEKLY_TIER_FALLBACK_COLOR = "#6e7681";
 
-  // Per-turn chart singletons.
-  var chartInstance = null;
-  var lastCanvas = null;
-  // Weekly chart singletons — parallel pair (arch L2 from REV-20260608-053032:
-  // parallel at N=2, NOT a per-canvas-id map; the map IS the deferred
-  // generalization for a future third chart).
-  var weeklyChartInstance = null;
-  var lastWeeklyCanvas = null;
-  // ux F1 fold (REV-20260608-042729 + REV-20260608-053507): when the IIFE
-  // silently bails (Chart global unavailable, JSON.parse failure, empty
-  // payload) the tile would otherwise stay in tile--loading with the
-  // "initializing" pulse forever. After FALLBACK_MS without a successful
-  // draw we swap the loading-copy text to a per-chart recovery message.
+  // Per-chart state registry, keyed by canvas id.
   //
-  // Per-chart state (REV-20260608-053507 ux F1 fold): a single shared timer
-  // was a bug — if the per-turn chart drew successfully, revealChart()
-  // cleared the shared timer and the weekly chart could strand in the
-  // loading state permanently. Each chart now owns its own timer + delivered
-  // flag + canvas-id + tile-targeted recovery copy, so a successful draw on
-  // one chart does NOT cancel the other chart's fallback.
+  // Rule-of-Three fold (SPEC-20260610-015114): the trigger pinned at N=2
+  // in REV-20260608-053032 arch L2 ("parallel at N=2, NOT a per-canvas-id
+  // map; the map IS the deferred generalization for a future third chart")
+  // fired when the model-cost donut landed as the third chart. Each entry
+  // owns its Chart.js instance, its last-seen canvas node, and its
+  // fallback-timer state. The fallback state stays PER-CHART
+  // (REV-20260608-053507 ux F1: a shared timer let one chart's successful
+  // draw permanently strand another chart in tile--loading).
+  //
+  // After FALLBACK_MS without a successful draw (Chart global unavailable,
+  // JSON.parse failure, empty payload) we swap that chart's loading-copy
+  // text to its recovery message.
   var FALLBACK_MS = 10000;
-  var perTurnFallback = {
-    timerId: null,
-    delivered: false,
-    canvasId: CANVAS_ID,
-    copy:
-      "Chart rendering unavailable. Turn data is listed in the Live stream " +
-      "panel above.",
-  };
-  var weeklyFallback = {
-    timerId: null,
-    delivered: false,
-    canvasId: WEEKLY_CANVAS_ID,
-    copy:
-      "Chart rendering unavailable. Weekly aggregates are also shown in the " +
-      "retrospective cost view.",
-  };
+  var CHART_STATES = {};
 
-  function parsePayload(dataBlock) {
+  function registerChart(canvasId, recoveryCopy) {
+    CHART_STATES[canvasId] = {
+      canvasId: canvasId,
+      instance: null,
+      lastCanvas: null,
+      timerId: null,
+      delivered: false,
+      copy: recoveryCopy,
+    };
+    return CHART_STATES[canvasId];
+  }
+
+  var perTurnState = registerChart(
+    CANVAS_ID,
+    "Chart rendering unavailable. Turn data is listed in the Live stream " +
+      "panel above."
+  );
+  var weeklyState = registerChart(
+    WEEKLY_CANVAS_ID,
+    "Chart rendering unavailable. Weekly aggregates are also shown in the " +
+      "retrospective cost view."
+  );
+  var donutState = registerChart(
+    DONUT_CANVAS_ID,
+    "Chart rendering unavailable. Per-tier cost totals are also shown in " +
+      "the retrospective cost panel."
+  );
+
+  // Shared JSON-array parse for every chart data block (Rule-of-Three
+  // extraction: two prior copies existed — parsePayload + parseWeeklyPayload
+  // — and the donut landing as the THIRD caller is what fires the trigger;
+  // extracting at N=2 would have been premature). Defensive parse — return
+  // null on any failure so the caller leaves the loading state visible
+  // rather than drawing a fabricated chart.
+  function parseJsonArray(dataBlock) {
     try {
       var raw = dataBlock.textContent || "[]";
       var arr = JSON.parse(raw);
@@ -178,7 +209,7 @@
     }
   }
 
-  function revealChart(canvas, fallback) {
+  function revealChart(canvas, state) {
     var wrapper = canvas.closest(RENDER_TARGET_SELECTOR);
     if (wrapper) {
       wrapper.removeAttribute("hidden");
@@ -196,14 +227,14 @@
     // Successful draw — cancel ONLY this chart's pending fallback. A shared
     // timer here was the source of the REV-20260608-053507 ux F1 stranding
     // bug: clearing the per-turn timer also disarmed the weekly fallback.
-    if (fallback && fallback.timerId !== null) {
-      clearTimeout(fallback.timerId);
-      fallback.timerId = null;
+    if (state && state.timerId !== null) {
+      clearTimeout(state.timerId);
+      state.timerId = null;
     }
   }
 
-  function deliverFallback(fallback) {
-    if (fallback.delivered) {
+  function deliverFallback(state) {
+    if (state.delivered) {
       return;
     }
     // Target ONLY this chart's tile by its known canvas id. The prior
@@ -211,26 +242,46 @@
     // which meant the per-turn copy could be stamped onto the weekly tile
     // (and vice versa) — a misdirected recovery message that pointed the
     // user at the wrong place to find their data.
-    var canvas = document.getElementById(fallback.canvasId);
+    var canvas = document.getElementById(state.canvasId);
     if (canvas) {
       var tile = canvas.closest(".tile");
       if (tile && tile.classList.contains("tile--loading")) {
         var lc = tile.querySelector(".loading-copy");
         if (lc) {
-          lc.textContent = fallback.copy;
+          lc.textContent = state.copy;
         }
       }
     }
-    fallback.delivered = true;
+    state.delivered = true;
   }
 
-  function armFallback(fallback) {
-    if (fallback.delivered || fallback.timerId !== null) {
+  function armFallback(state) {
+    if (state.delivered || state.timerId !== null) {
       return;
     }
-    fallback.timerId = setTimeout(function () {
-      deliverFallback(fallback);
+    state.timerId = setTimeout(function () {
+      deliverFallback(state);
     }, FALLBACK_MS);
+  }
+
+  // Shared per-swap render guards. htmx's outerHTML swap destroys the
+  // previous canvas; the same DOM node means nothing changed and
+  // re-instantiating would noisily error.
+  function shouldSkipRender(state, canvas) {
+    return canvas === state.lastCanvas && state.instance !== null;
+  }
+
+  function destroyChart(state) {
+    if (state.instance) {
+      state.instance.destroy();
+      state.instance = null;
+      // arch F2 fold (REV-20260608-042729): clear lastCanvas in lockstep
+      // with the instance so the two fields never disagree. If a future
+      // change ever destroys without immediately re-creating, a stale
+      // lastCanvas would block the next render via shouldSkipRender.
+      // Releasing it here closes that door.
+      state.lastCanvas = null;
+    }
   }
 
   function renderChart() {
@@ -242,14 +293,11 @@
     if (!canvas || !dataBlock) {
       return;
     }
-
-    // htmx's outerHTML swap destroys the previous canvas; same DOM node
-    // means nothing changed and re-instantiating would noisily error.
-    if (canvas === lastCanvas && chartInstance) {
+    if (shouldSkipRender(perTurnState, canvas)) {
       return;
     }
 
-    var points = parsePayload(dataBlock);
+    var points = parseJsonArray(dataBlock);
     if (!points || points.length === 0) {
       // Defensive: the Python renderer never emits an empty data block
       // (it renders the honest-absence tile instead), but if a future
@@ -258,17 +306,8 @@
       return;
     }
 
-    if (chartInstance) {
-      chartInstance.destroy();
-      chartInstance = null;
-      // arch F2 fold (REV-20260608-042729): clear lastCanvas in lockstep
-      // with chartInstance so the two module-level vars never disagree.
-      // If a future change ever destroys without immediately re-creating,
-      // a stale lastCanvas would block the next render via the equality
-      // guard above. Releasing it here closes that door.
-      lastCanvas = null;
-    }
-    lastCanvas = canvas;
+    destroyChart(perTurnState);
+    perTurnState.lastCanvas = canvas;
 
     var labels = points.map(function (p) {
       return formatTimeLabel((p && p.t) || "");
@@ -277,7 +316,7 @@
 
     var animations = reduceMotionEnabled() ? false : { duration: 200 };
 
-    chartInstance = new window.Chart(canvas.getContext("2d"), {
+    perTurnState.instance = new window.Chart(canvas.getContext("2d"), {
       type: "line",
       data: {
         labels: labels,
@@ -374,23 +413,7 @@
       },
     });
 
-    revealChart(canvas, perTurnFallback);
-  }
-
-  function parseWeeklyPayload(dataBlock) {
-    // Mirrors parsePayload's discipline: defensive parse, return null on any
-    // failure so the renderer leaves the loading state visible rather than
-    // drawing a fabricated chart.
-    try {
-      var raw = dataBlock.textContent || "[]";
-      var arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) {
-        return null;
-      }
-      return arr;
-    } catch (err) {
-      return null;
-    }
+    revealChart(canvas, perTurnState);
   }
 
   function buildWeeklyDatasets(points) {
@@ -465,19 +488,15 @@
     if (!canvas || !dataBlock) {
       return;
     }
-    if (canvas === lastWeeklyCanvas && weeklyChartInstance) {
+    if (shouldSkipRender(weeklyState, canvas)) {
       return;
     }
-    var points = parseWeeklyPayload(dataBlock);
+    var points = parseJsonArray(dataBlock);
     if (!points || points.length === 0) {
       return;
     }
-    if (weeklyChartInstance) {
-      weeklyChartInstance.destroy();
-      weeklyChartInstance = null;
-      lastWeeklyCanvas = null;
-    }
-    lastWeeklyCanvas = canvas;
+    destroyChart(weeklyState);
+    weeklyState.lastCanvas = canvas;
 
     var labels = points.map(function (p) {
       return formatWeekLabel((p && p.week_start) || "");
@@ -507,7 +526,7 @@
 
     var animations = reduceMotionEnabled() ? false : { duration: 200 };
 
-    weeklyChartInstance = new window.Chart(canvas.getContext("2d"), {
+    weeklyState.instance = new window.Chart(canvas.getContext("2d"), {
       type: "bar",
       data: {
         labels: labels,
@@ -579,12 +598,115 @@
       },
     });
 
-    revealChart(canvas, weeklyFallback);
+    revealChart(canvas, weeklyState);
+  }
+
+  function buildDonutSlices(points) {
+    // Parallel ARRAYS only — no plain object is ever keyed by a
+    // payload-origin tier string here (SPEC-20260610-015114 sec F2:
+    // prototype-pollution surface closed by construction; the only keyed
+    // lookup is tierColor's hasOwnProperty-guarded read). Slices are drawn
+    // for PRICED tiers only (`uncosted: false` and a numeric cost_usd) —
+    // the Python renderer guarantees at least one priced entry when the
+    // chart tile is emitted, and carries uncosted tiers in the caption
+    // (ADR-0020: a USD donut has no honest slice size for an unpriced
+    // tier, so the slice is never fabricated).
+    var labels = [];
+    var data = [];
+    var colors = [];
+    for (var i = 0; i < points.length; i++) {
+      var s = points[i] || {};
+      if (s.uncosted === true || typeof s.cost_usd !== "number") {
+        continue;
+      }
+      var tier = typeof s.tier === "string" ? s.tier : "unknown";
+      labels.push(tier);
+      data.push(s.cost_usd);
+      colors.push(tierColor(tier));
+    }
+    return { labels: labels, data: data, colors: colors };
+  }
+
+  function renderModelCostDonut() {
+    if (typeof window.Chart === "undefined") {
+      return;
+    }
+    var canvas = document.getElementById(DONUT_CANVAS_ID);
+    var dataBlock = document.getElementById(DONUT_DATA_ID);
+    if (!canvas || !dataBlock) {
+      return;
+    }
+    if (shouldSkipRender(donutState, canvas)) {
+      return;
+    }
+    var points = parseJsonArray(dataBlock);
+    if (!points || points.length === 0) {
+      return;
+    }
+    var built = buildDonutSlices(points);
+    if (built.data.length === 0) {
+      // Defensive: the Python renderer emits the chart tile only when at
+      // least one priced tier exists (otherwise the "nothing priced to
+      // chart" data tile renders instead) — but if a regression slips an
+      // all-uncosted payload through, leave the loading state visible
+      // rather than draw an empty ring.
+      return;
+    }
+    destroyChart(donutState);
+    donutState.lastCanvas = canvas;
+
+    var animations = reduceMotionEnabled() ? false : { duration: 200 };
+
+    donutState.instance = new window.Chart(canvas.getContext("2d"), {
+      type: "doughnut",
+      data: {
+        labels: built.labels,
+        datasets: [
+          {
+            data: built.data,
+            backgroundColor: built.colors,
+            // Same WCAG 1.4.1 non-color separation channel as the weekly
+            // stacked bars (ux F5, REV-20260608-053507): a 1px border in
+            // the tile bg color keeps adjacent slices distinguishable
+            // under colorblind simulation.
+            borderColor: "#0d1117",
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: animations,
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: { color: COLOR_INK, boxWidth: 14 },
+          },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var v = ctx.parsed;
+                if (v === null || v === undefined) {
+                  return null;
+                }
+                // Chart.js tooltips draw via canvas fillText — plain text,
+                // never HTML (spec sec F3-INFO) — so the tier label needs
+                // no escaping here.
+                return ctx.label + ": $" + Number(v).toFixed(4);
+              },
+            },
+          },
+        },
+      },
+    });
+
+    revealChart(canvas, donutState);
   }
 
   function handleHtmxAfterSwap(evt) {
     // The live fragment swaps `outerHTML` on `#live-section`. Other swaps
-    // on the page do not touch the chart, so this filter keeps us idle
+    // on the page do not touch the charts, so this filter keeps us idle
     // unless our subtree just changed.
     //
     // security F2 fold (REV-20260608-042729): the previous filter form
@@ -594,35 +716,42 @@
     // renderChart. The tightened form ``if (target && target.id !==
     // LIVE_SECTION_ID)`` makes a target with no id correctly skip the
     // handler. Targets with no target object (initial-load events) still
-    // proceed to renderChart.
+    // proceed to the render calls.
     var target = evt && evt.detail && evt.detail.target;
     if (target && target.id !== LIVE_SECTION_ID) {
       return;
     }
     renderChart();
     renderWeeklyChart();
+    renderModelCostDonut();
   }
 
   document.addEventListener("htmx:afterSwap", handleHtmxAfterSwap);
   // Also handle the htmx `:load` event variant on first paint (some htmx
   // versions fire `htmx:load` after the initial trigger swap instead of
-  // `afterSwap`); the renderChart guard makes repeat calls idempotent.
+  // `afterSwap`); the render guards make repeat calls idempotent.
   document.addEventListener("htmx:load", handleHtmxAfterSwap);
 
-  function armBothFallbacks() {
-    armFallback(perTurnFallback);
-    armFallback(weeklyFallback);
+  function armAllFallbacks() {
+    var ids = Object.keys(CHART_STATES);
+    for (var i = 0; i < ids.length; i++) {
+      armFallback(CHART_STATES[ids[i]]);
+    }
+  }
+
+  function renderAllCharts() {
+    renderChart();
+    renderWeeklyChart();
+    renderModelCostDonut();
   }
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
-      renderChart();
-      renderWeeklyChart();
-      armBothFallbacks();
+      renderAllCharts();
+      armAllFallbacks();
     });
   } else {
-    renderChart();
-    renderWeeklyChart();
-    armBothFallbacks();
+    renderAllCharts();
+    armAllFallbacks();
   }
 })();
