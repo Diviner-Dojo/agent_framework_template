@@ -37,7 +37,9 @@ from src.telemetry.failures import (
     ERROR_CLASSES,
     REMEDIATION_HINTS,
     RankedFailure,
+    RetryChain,
     classify_error,
+    group_retry_chains,
 )
 from src.telemetry.live import (
     LANE_ACTIVE,
@@ -357,6 +359,16 @@ def _render_failure_class_group(cls: str, rfs: list[RankedFailure]) -> str:
     visual treatment as a real class and surfaces its "does not fit a known
     class" hint — never collapsed away to hide unclassified signals.
 
+    Phase 3 Unit 3 (SPEC-20260610-001134): within each class, consecutive
+    retry-loops within ``MAX_RETRY_CHAIN_GAP_SECONDS`` are folded into
+    :class:`RetryChain` objects by :func:`group_retry_chains`. Each chain
+    renders through :func:`_render_retry_chain`, which short-circuits a
+    length-1 chain to the same flat ``<tr>`` shape used before chaining
+    (structural-absence invariant A8 — no ``data-chain-size`` attribute,
+    no ``retry-chain-link`` child rows for non-chained signals). Non-retry
+    signals (today, orphans in the ORPHAN class) bypass the chain layer
+    and render directly via :func:`_render_failure_row`.
+
     Args:
         cls: One of :data:`ERROR_CLASSES`.
         rfs: The ranked failures in this group, already in display order.
@@ -364,19 +376,34 @@ def _render_failure_class_group(cls: str, rfs: list[RankedFailure]) -> str:
     Returns:
         An escaped HTML ``<div class="failure-class-group">`` fragment.
     """
-    rows = []
+    # Compose chains for retry-loops in this class; non-retry signals are
+    # dropped by group_retry_chains and rendered directly below. The skip-set
+    # is keyed by ``id(rf.signal)`` (identity, not signature equality) so a
+    # future failure type whose signature scheme could collide with a
+    # retry-loop signature still composes correctly — arch F1 fold from
+    # REV-20260610-003237. ``id()`` is safe here because ``rfs`` and the
+    # chains both hold the same ``RankedFailure`` references (the chain
+    # walker does not clone signals).
+    chains = group_retry_chains(rfs)
+    chained_signal_ids: set[int] = set()
+    for chain in chains:
+        for rf_in_chain in chain.all_links():
+            chained_signal_ids.add(id(rf_in_chain.signal))
+
+    body_parts: list[str] = []
+    chain_iter = iter(chains)
+    next_chain: RetryChain | None = next(chain_iter, None)
     for rf in rfs:
-        s = rf.signal
-        rows.append(
-            "<tr>"
-            f"<td>{_esc(s.failure_type)}</td>"
-            f'<td class="num">{_esc(_fmt_usd(rf.cost_usd, places=4))}</td>'
-            f'<td class="num">{_fmt_int(s.wasted_total_tokens())}</td>'
-            f"<td>{_esc(s.tier)}</td>"
-            f'<td class="detail">{_esc(s.detail)}'
-            f'<span class="sig">{_esc(s.signature)}</span></td>'
-            "</tr>"
-        )
+        if id(rf.signal) in chained_signal_ids:
+            # This row belongs to a chain — emit the chain when we hit its
+            # head, then skip its links as we encounter them.
+            if next_chain is not None and rf is next_chain.head:
+                body_parts.append(_render_retry_chain(next_chain))
+                next_chain = next(chain_iter, None)
+            # links are emitted as part of the chain block; skip them here.
+            continue
+        body_parts.append(_render_failure_row(rf))
+
     # No ``.get(cls, fallback)``: a missing hint is a programmer error (a new
     # class added to ERROR_CLASSES without a paired entry in REMEDIATION_HINTS).
     # The taxonomy + symmetric-key tests pin both sides; let a future drift
@@ -391,9 +418,105 @@ def _render_failure_class_group(cls: str, rfs: list[RankedFailure]) -> str:
         '<table class="data-table">'
         "<thead><tr><th>Type</th><th>Cost</th><th>Wasted tok</th>"
         "<th>Tier</th><th>Detail</th></tr></thead>"
-        f"<tbody>{''.join(rows)}</tbody></table>"
+        f"<tbody>{''.join(body_parts)}</tbody></table>"
         "</div>"
     )
+
+
+def _render_failure_row(rf: RankedFailure) -> str:
+    """Render one ranked failure as a flat ``<tr>`` row.
+
+    The pre-Phase-3-Unit-3 row shape, extracted as a helper so the
+    length-1 chain short-circuit in :func:`_render_retry_chain` and the
+    non-retry rows in :func:`_render_failure_class_group` share one
+    source of truth. Length-1 chains emit through this helper directly
+    — that is the structural-absence invariant (A8): no chain scaffold
+    when there is no cascade to display.
+    """
+    s = rf.signal
+    return (
+        "<tr>"
+        f"<td>{_esc(s.failure_type)}</td>"
+        f'<td class="num">{_esc(_fmt_usd(rf.cost_usd, places=4))}</td>'
+        f'<td class="num">{_fmt_int(s.wasted_total_tokens())}</td>'
+        f"<td>{_esc(s.tier)}</td>"
+        f'<td class="detail">{_esc(s.detail)}'
+        f'<span class="sig">{_esc(s.signature)}</span></td>'
+        "</tr>"
+    )
+
+
+def _render_retry_chain(chain: RetryChain) -> str:
+    """Render one :class:`RetryChain` as a parent ``<tr>`` + N-1 link rows.
+
+    Two shapes (single seam — A8 invariant local to this function):
+
+    * **Length 1** — short-circuit to :func:`_render_failure_row` so the
+      output is structurally identical to today's flat row: no
+      ``data-chain-size`` attribute, no ``retry-chain-link`` sibling rows,
+      no parent-row ``aria-label``. A regression test pins this invariant
+      so a future "always render the chain wrapper" refactor surfaces here.
+    * **Length ≥ 2** — parent row carries the head's display fields
+      replaced by the CHAIN TOTALS (chain-total cost, chain-total wasted
+      tokens, chain-size badge in the Detail column) and a
+      ``data-chain-size="N"`` attribute + an ``aria-label`` for screen
+      readers. N-1 indented link rows follow (CSS class
+      ``retry-chain-link``) in temporal order. Honest-absence carried from
+      :class:`RetryChain`: a chain whose links are all unpriced renders
+      its total as ``uncosted`` (never ``$0``).
+    """
+    if chain.size() == 1:
+        return _render_failure_row(chain.head)
+
+    s_head = chain.head.signal
+    chain_size = chain.size()
+    aria_label = f"Retry chain ({chain_size} consecutive retries)"
+    chain_badge = f" &middot; chain of {chain_size}"
+    # Visually-hidden sr-only span carries the chain announcement INSIDE the
+    # parent row's first cell as the AUTHORITATIVE screen-reader cue (ux F1
+    # MED fold REV-20260610-003237). ``aria-label`` on a ``<tr>`` is
+    # documented but inconsistently announced by NVDA / JAWS in
+    # table-navigation mode (which reads cell content, not row labels). The
+    # sr-only span makes the announcement reliable across ATs because the
+    # screen reader WILL read the first cell's text. The ``aria-label`` on
+    # the ``<tr>`` is retained as belt-and-braces for ATs that DO announce
+    # it (and for any future grid-navigation mode). The "sr-only" CSS class
+    # convention (position:absolute;clip-path) is the established
+    # Bootstrap/Tailwind pattern; a future stylesheet pass will add the
+    # rule (no inline stylesheet on this fragment).
+    sr_announce = f'<span class="sr-only">{_esc(aria_label)}: </span>'
+    parent_row = (
+        f'<tr data-chain-size="{_esc(chain_size)}" '
+        f'class="retry-chain-parent" aria-label="{_esc(aria_label)}">'
+        f"<td>{sr_announce}{_esc(s_head.failure_type)}</td>"
+        f'<td class="num">{_esc(_fmt_usd(chain.total_cost_usd, places=4))}</td>'
+        f'<td class="num">{_fmt_int(chain.total_wasted_tokens)}</td>'
+        f"<td>{_esc(s_head.tier)}</td>"
+        f'<td class="detail">{_esc(s_head.detail)}{chain_badge}'
+        f'<span class="sig">{_esc(s_head.signature)}</span></td>'
+        "</tr>"
+    )
+    link_rows: list[str] = []
+    for link in chain.links:
+        sl = link.signal
+        # The leading "↳ " glyph is a NON-COLOR structural cue (WCAG 1.4.1
+        # — ux F1 fold T2 checkpoint): a user who overrides background color
+        # or cannot perceive the CSS-side indent still sees that link rows
+        # are continuation of the parent. ``aria-hidden`` on the glyph wrapper
+        # so screen readers (which already get the parent row's aria-label)
+        # don't double-announce "right arrow hook" for every link.
+        link_rows.append(
+            '<tr class="retry-chain-link">'
+            f'<td><span class="chain-glyph" aria-hidden="true">&#x21B3; </span>'
+            f"{_esc(sl.failure_type)}</td>"
+            f'<td class="num">{_esc(_fmt_usd(link.cost_usd, places=4))}</td>'
+            f'<td class="num">{_fmt_int(sl.wasted_total_tokens())}</td>'
+            f"<td>{_esc(sl.tier)}</td>"
+            f'<td class="detail">{_esc(sl.detail)}'
+            f'<span class="sig">{_esc(sl.signature)}</span></td>'
+            "</tr>"
+        )
+    return parent_row + "".join(link_rows)
 
 
 def _render_config_drift_panel(data: DashboardData) -> str:
@@ -750,6 +873,18 @@ td.uncosted{color:var(--absent);font-style:italic;}
 .detail{font-size:12px;}
 .sig{display:block;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
 font-size:11px;margin-top:3px;word-break:break-all;}
+/* Retry-chain nesting (Phase 3 Unit 3 — ux F1 + F2 fold REV-20260610-003237).
+   .sr-only: visually-hidden span carrying the chain announcement inside the
+   parent row's first cell — reliable screen-reader cue across NVDA/JAWS/VO
+   in table-navigation mode (where aria-label on a <tr> is inconsistently
+   announced). .retry-chain-parent: slight font weight to signal the row
+   leads its group. .retry-chain-link td:first-child: left padding stacks
+   with the U+21B3 glyph so the indent survives CJK font fallback. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.retry-chain-parent td:first-child{font-weight:500;}
+.retry-chain-link td:first-child{padding-left:22px;}
+.chain-glyph{color:var(--muted);}
 .kv{list-style:none;padding:0;margin:10px 0 0;font-size:13px;color:var(--muted);}
 .kv li{margin:3px 0;}
 code{background:#0d1117;border:1px solid var(--line);border-radius:5px;padding:1px 5px;

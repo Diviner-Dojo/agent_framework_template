@@ -53,6 +53,7 @@ from src.telemetry.drift import REMEDIATION_HINTS as DRIFT_REMEDIATION_HINTS
 from src.telemetry.failures import (
     CONFIG,
     ERROR_CLASSES,
+    MAX_RETRY_CHAIN_GAP_SECONDS,
     NETWORK,
     NOT_FOUND,
     ORPHAN,
@@ -71,6 +72,7 @@ from src.telemetry.failures import (
     classify_error,
     detect_orphaned_subagents,
     detect_retry_loops,
+    group_retry_chains,
     rank_failures,
 )
 from src.telemetry.live import (
@@ -2451,6 +2453,464 @@ def test_failures_panel_class_label_and_hint_are_escaped() -> None:
     assert "<script>" not in html_doc
     # Hint is rendered as plain text inside <p class="hint">.
     assert '<p class="hint">' in html_doc
+
+
+# --- retry-chain nesting (Phase 3 Unit 3 — SPEC-20260610-001134) ---------- #
+
+
+_BASE_TS = datetime(2026, 6, 10, 12, 0, 0, tzinfo=UTC)
+
+
+def _chain_signal(
+    tool: str,
+    suffix: str,
+    *,
+    offset_seconds: float,
+    duration_seconds: float = 0.0,
+    failure_type: str = RETRY_LOOP,
+    tokens: int = 10,
+) -> FailureSignal:
+    """Build a FailureSignal with deterministic tz-aware timestamps.
+
+    ``offset_seconds`` is the seconds offset from ``_BASE_TS`` for ``first_seen``;
+    ``duration_seconds`` is the time between ``first_seen`` and ``last_seen``
+    (0 = zero-duration / instantaneous signal). Tokens default low so the
+    chain-total assertions don't drift on cost arithmetic.
+    """
+    first = _BASE_TS + timedelta(seconds=offset_seconds)
+    last = first + timedelta(seconds=duration_seconds)
+    return FailureSignal(
+        failure_type=failure_type,
+        signature=f"{tool}:{suffix}",
+        occurrence_count=3,
+        tier="opus",
+        wasted_tokens_out=tokens,
+        detail=f"{tool} called identically",
+        first_seen=first,
+        last_seen=last,
+    )
+
+
+def _chain_rf(
+    tool: str,
+    suffix: str,
+    *,
+    offset_seconds: float,
+    duration_seconds: float = 0.0,
+    failure_type: str = RETRY_LOOP,
+    tokens: int = 10,
+    cost: float | None = 0.001,
+) -> RankedFailure:
+    """Build a RankedFailure with a tz-aware FailureSignal (chain test helper)."""
+    return RankedFailure(
+        signal=_chain_signal(
+            tool,
+            suffix,
+            offset_seconds=offset_seconds,
+            duration_seconds=duration_seconds,
+            failure_type=failure_type,
+            tokens=tokens,
+        ),
+        cost_usd=cost,
+    )
+
+
+def test_group_retry_chains_empty_input_returns_empty() -> None:
+    # Spec A1 — empty input is a chain of nothing.
+    assert group_retry_chains([]) == []
+
+
+def test_group_retry_chains_two_retries_inside_window_chain_to_length_two() -> None:
+    # Spec A2 — gap strictly less than window chains.
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("Read", "b", offset_seconds=60),  # gap=60s, window=120s
+    ]
+    chains = group_retry_chains(rfs)
+    assert len(chains) == 1
+    assert chains[0].size() == 2
+    assert chains[0].head is rfs[0]
+    assert chains[0].links == (rfs[1],)
+
+
+@pytest.mark.regression
+def test_group_retry_chains_boundary_inclusive_at_max_gap_seconds() -> None:
+    # Spec A2 + qa F2 fold — gap == MAX_RETRY_CHAIN_GAP_SECONDS chains
+    # (boundary inclusive; the `<=` in _retry_pair_chains).
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("Read", "b", offset_seconds=float(MAX_RETRY_CHAIN_GAP_SECONDS)),
+    ]
+    chains = group_retry_chains(rfs)
+    assert len(chains) == 1
+    assert chains[0].size() == 2
+
+
+@pytest.mark.regression
+def test_group_retry_chains_one_second_past_window_does_not_chain() -> None:
+    # Spec A3 — gap == window + 1 does NOT chain (off-by-one guard).
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("Read", "b", offset_seconds=float(MAX_RETRY_CHAIN_GAP_SECONDS + 1)),
+    ]
+    chains = group_retry_chains(rfs)
+    assert len(chains) == 2
+    assert all(chain.size() == 1 for chain in chains)
+
+
+def test_group_retry_chains_orphan_adjacent_to_retry_does_not_chain() -> None:
+    # Spec A4 — an orphan signal cannot chain with a retry (both endpoints
+    # must be RETRY_LOOP).
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("_", "orphan_id", offset_seconds=30, failure_type=ORPHANED_SUBAGENT),
+    ]
+    chains = group_retry_chains(rfs)
+    # Only the retry is wrapped as a chain (length 1); the orphan is dropped
+    # from the chain layer (rendered separately by the row helper).
+    assert len(chains) == 1
+    assert chains[0].size() == 1
+    assert chains[0].head.signal.failure_type == RETRY_LOOP
+
+
+@pytest.mark.regression
+def test_group_retry_chains_interleaved_orphan_does_not_break_chain() -> None:
+    # Spec A4b (qa F1 fold) — a non-retry signal interleaved in time between
+    # two retries (retry@0s, orphan@60s, retry@80s) MUST NOT prevent the two
+    # retries from chaining. The orphan is skipped over, not chain-reset.
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("_", "orphan_id", offset_seconds=60, failure_type=ORPHANED_SUBAGENT),
+        _chain_rf("Read", "b", offset_seconds=80),  # gap from retry-a's last_seen=0s -> 80s
+    ]
+    chains = group_retry_chains(rfs)
+    assert len(chains) == 1
+    assert chains[0].size() == 2
+    assert chains[0].head.signal.signature == "Read:a"
+    assert chains[0].links[0].signal.signature == "Read:b"
+
+
+def test_group_retry_chains_missing_first_seen_never_chains() -> None:
+    # Spec A5 — first_seen=None on the next signal blocks chaining.
+    first = _chain_rf("Read", "a", offset_seconds=0)
+    second_sig = FailureSignal(
+        failure_type=RETRY_LOOP,
+        signature="Read:b",
+        occurrence_count=3,
+        tier="opus",
+        wasted_tokens_out=10,
+        detail="Read called identically",
+        first_seen=None,  # <-- missing
+        last_seen=_BASE_TS + timedelta(seconds=60),
+    )
+    rfs = [first, RankedFailure(signal=second_sig, cost_usd=0.001)]
+    chains = group_retry_chains(rfs)
+    assert len(chains) == 2  # two length-1 chains, never merged
+
+
+def test_group_retry_chains_missing_last_seen_never_chains() -> None:
+    # Spec A5 — last_seen=None on the prev signal blocks chaining.
+    first_sig = FailureSignal(
+        failure_type=RETRY_LOOP,
+        signature="Read:a",
+        occurrence_count=3,
+        tier="opus",
+        wasted_tokens_out=10,
+        detail="Read called identically",
+        first_seen=_BASE_TS,
+        last_seen=None,  # <-- missing
+    )
+    first = RankedFailure(signal=first_sig, cost_usd=0.001)
+    second = _chain_rf("Read", "b", offset_seconds=60)
+    chains = group_retry_chains([first, second])
+    assert len(chains) == 2  # two length-1 chains
+
+
+@pytest.mark.regression
+def test_group_retry_chains_tz_mismatch_caught_as_unchainable() -> None:
+    # Spec A5b (qa F3 fold) — one tz-aware + one tz-naive timestamp would
+    # raise TypeError on subtraction; the function catches it and treats the
+    # pair as unchainable rather than crashing the render path.
+    tz_aware = _chain_rf("Read", "a", offset_seconds=0)
+    naive_sig = FailureSignal(
+        failure_type=RETRY_LOOP,
+        signature="Read:b",
+        occurrence_count=3,
+        tier="opus",
+        wasted_tokens_out=10,
+        detail="Read called identically",
+        first_seen=datetime(2026, 6, 10, 12, 1, 0),  # <-- tz-naive
+        last_seen=datetime(2026, 6, 10, 12, 1, 0),
+    )
+    naive = RankedFailure(signal=naive_sig, cost_usd=0.001)
+    chains = group_retry_chains([tz_aware, naive])
+    # No crash, two length-1 chains.
+    assert len(chains) == 2
+    assert all(chain.size() == 1 for chain in chains)
+
+
+def test_retry_chain_total_cost_none_when_all_links_unpriced() -> None:
+    # Spec A6 — every link cost_usd is None -> total is None (honest absence).
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0, cost=None),
+        _chain_rf("Read", "b", offset_seconds=60, cost=None),
+    ]
+    chains = group_retry_chains(rfs)
+    assert chains[0].total_cost_usd is None
+
+
+def test_retry_chain_total_cost_sums_priced_only_in_mixed_chain() -> None:
+    # Spec A6a — a single priced link in a mixed chain contributes; unpriced
+    # links are excluded (never fabricated as 0).
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0, cost=0.5),
+        _chain_rf("Read", "b", offset_seconds=60, cost=None),
+    ]
+    chains = group_retry_chains(rfs)
+    assert chains[0].total_cost_usd == 0.5
+
+
+@pytest.mark.regression
+def test_retry_chain_total_cost_treats_zero_as_priced_not_falsy() -> None:
+    # Spec A6b (qa F6 fold) — a link with cost_usd == 0.0 IS priced
+    # (genuinely free) and contributes 0.0 to the sum. Guards against a
+    # future `if cost_usd:` truthy guard accidentally excluding 0-cost rows.
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0, cost=0.0),
+        _chain_rf("Read", "b", offset_seconds=60, cost=0.25),
+    ]
+    chains = group_retry_chains(rfs)
+    assert chains[0].total_cost_usd == 0.25  # 0.0 + 0.25, NOT None
+
+
+def test_retry_chain_total_wasted_tokens_sums_every_link() -> None:
+    # Spec A7 — wasted-token total is the sum across every link.
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0, tokens=100),
+        _chain_rf("Read", "b", offset_seconds=60, tokens=50),
+    ]
+    chains = group_retry_chains(rfs)
+    assert chains[0].total_wasted_tokens == 150
+
+
+@pytest.mark.regression
+def test_retry_chain_zero_duration_signals_with_zero_gap_chain() -> None:
+    # Spec A7b (qa F5 fold) — two signals with first_seen == last_seen
+    # (instantaneous) separated by 0s gap chain (0 <= window).
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0, duration_seconds=0),
+        _chain_rf("Read", "b", offset_seconds=0, duration_seconds=0),
+    ]
+    chains = group_retry_chains(rfs)
+    assert len(chains) == 1
+    assert chains[0].size() == 2
+
+
+@pytest.mark.regression
+def test_length_one_chain_renders_no_chain_scaffold() -> None:
+    # Spec A8 (qa F4 fold) — STRUCTURAL ABSENCE: a length-1 chain emits no
+    # data-chain-size attribute, no retry-chain-link rows, no aria-label
+    # on the parent row. Property assertions (not byte equality) so a
+    # whitespace/attribute-order refactor of the surrounding HTML does not
+    # break the regression guard.
+    rfs = [_ranked(RETRY_LOOP, "Read:lone", cost=0.001, tokens=10)]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    assert "data-chain-size" not in html_doc
+    # Match the HTML class attribute, not the inline CSS selector (the
+    # stylesheet's .retry-chain-link rule contains the substring).
+    assert 'class="retry-chain-link"' not in html_doc
+    assert 'aria-label="Retry chain' not in html_doc
+
+
+def test_chain_of_two_renders_parent_attributes_and_one_link_row() -> None:
+    # Spec A9 — data-chain-size, aria-label, and exactly N-1 retry-chain-link
+    # child rows (here N=2 -> 1 link row).
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("Read", "b", offset_seconds=60),
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    assert 'data-chain-size="2"' in html_doc
+    assert 'aria-label="Retry chain (2 consecutive retries)"' in html_doc
+    assert html_doc.count('class="retry-chain-link"') == 1
+
+
+def test_chain_of_three_renders_two_link_rows_in_temporal_order() -> None:
+    # Spec A9 + A10 — N=3 chain emits 2 link rows; links in temporal order
+    # (first_seen ascending). The head's first_seen is the earliest.
+    rfs = [
+        _chain_rf("Read", "first", offset_seconds=0),
+        _chain_rf("Read", "second", offset_seconds=30),
+        _chain_rf("Read", "third", offset_seconds=80),
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    assert 'data-chain-size="3"' in html_doc
+    assert html_doc.count('class="retry-chain-link"') == 2
+    # Temporal order: head's signature comes first, then second, then third.
+    assert html_doc.index("Read:first") < html_doc.index("Read:second")
+    assert html_doc.index("Read:second") < html_doc.index("Read:third")
+
+
+@pytest.mark.regression
+def test_chain_link_row_carries_non_color_glyph_for_wcag_1_4_1() -> None:
+    # Spec R5 + ux F1 T2-checkpoint fold — link rows carry a non-color
+    # structural cue (the U+21B3 "↳" glyph wrapped in aria-hidden="true"
+    # so screen readers don't double-announce it). Guards against a future
+    # CSS-only indent refactor that removes the glyph and silently fails
+    # WCAG 1.4.1 (distinction not by color alone).
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("Read", "b", offset_seconds=60),
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    # The glyph is encoded as the HTML entity &#x21B3; in the rendered output.
+    assert "&#x21B3;" in html_doc
+    assert 'class="chain-glyph"' in html_doc
+    assert 'aria-hidden="true"' in html_doc
+
+
+@pytest.mark.regression
+def test_group_retry_chains_is_deterministic_across_repeated_calls() -> None:
+    # Spec A10b (qa F8 fold) — calling the pure fold twice on the same input
+    # produces identical output. Guards against any future non-stable sort
+    # introduction.
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("Read", "b", offset_seconds=60),
+        _chain_rf("Read", "c", offset_seconds=500),  # outside window -> new chain
+        _chain_rf("Read", "d", offset_seconds=540),
+    ]
+    first = group_retry_chains(rfs)
+    second = group_retry_chains(rfs)
+    assert first == second
+    # Sanity: the second pair-out-of-window split produced 2 chains.
+    assert len(first) == 2
+    assert first[0].size() == 2
+    assert first[1].size() == 2
+
+
+def test_max_retry_chain_gap_seconds_override_changes_boundary() -> None:
+    # Spec A11 — passing max_gap_seconds=60 (instead of the 120 default)
+    # narrows the window; a 90s gap chains under the default but not the
+    # override.
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0),
+        _chain_rf("Read", "b", offset_seconds=90),
+    ]
+    chains_default = group_retry_chains(rfs)
+    chains_narrow = group_retry_chains(rfs, max_gap_seconds=60)
+    assert len(chains_default) == 1
+    assert chains_default[0].size() == 2
+    assert len(chains_narrow) == 2
+    assert all(chain.size() == 1 for chain in chains_narrow)
+
+
+@pytest.mark.regression
+def test_group_retry_chains_all_orphan_input_returns_empty() -> None:
+    # Spec A11b (qa F7 fold) — all-non-retry input yields no chains
+    # (orphans are never wrapped in a RetryChain; they pass through to the
+    # row renderer untouched).
+    rfs = [
+        _chain_rf("_", "o1", offset_seconds=0, failure_type=ORPHANED_SUBAGENT),
+        _chain_rf("_", "o2", offset_seconds=30, failure_type=ORPHANED_SUBAGENT),
+    ]
+    assert group_retry_chains(rfs) == []
+
+
+def test_failures_panel_renders_orphan_alongside_retry_chain_in_same_class_group() -> None:
+    # End-to-end: a single class group with one orphan + one retry-loop
+    # renders both (orphan via the flat row path; retry-loop via the chain
+    # of length 1). Confirms _render_failure_class_group composes the two
+    # paths cleanly.
+    rfs = [
+        # orphan goes to ORPHAN class, retry to OTHER (Bash) — render both
+        # so the panel proves it composes; ordering is by class rank.
+        _ranked(ORPHANED_SUBAGENT, "orphan_id", cost=2.0, tokens=200),
+        _ranked(RETRY_LOOP, "Bash:abc", cost=0.001, tokens=10),
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    # Both signatures appear; neither chain scaffold appears (both length-1
+    # in their own class groups).
+    assert "orphan_id" in html_doc
+    assert "Bash:abc" in html_doc
+    assert "data-chain-size" not in html_doc
+
+
+# --- /review (REV-20260610-003237) in-session fold tests ------------------ #
+
+
+@pytest.mark.regression
+def test_failures_panel_class_group_with_chain_and_standalone_retry_composes() -> None:
+    # qa F1 fold REV-20260610-003237: a class group containing BOTH a
+    # length-≥2 chain AND a separate standalone retry exercises the
+    # chain_iter / next_chain double-advancement logic in
+    # _render_failure_class_group. The arch F1 fold (identity-based skip
+    # lookup) also rides this case — a future regression that broke
+    # iterator advancement or skip identity would render the standalone
+    # row twice or drop it.
+    rfs = [
+        # Two Read retries within window -> chain of 2 in NOT_FOUND class
+        _chain_rf("Read", "cascade-1", offset_seconds=0),
+        _chain_rf("Read", "cascade-2", offset_seconds=60),
+        # Isolated Read retry well outside window -> standalone in same class
+        _chain_rf("Read", "isolated", offset_seconds=10_000),
+    ]
+    html_doc = render_dashboard_html(_data(failures=rfs))
+    # Chain rendered exactly once
+    assert html_doc.count('data-chain-size="2"') == 1
+    assert html_doc.count('class="retry-chain-link"') == 1
+    # Standalone signature appears as a flat row (no chain scaffold around it)
+    assert "Read:isolated" in html_doc
+    # Standalone is rendered after the chain block (rank-order preserved)
+    chain_pos = html_doc.index('data-chain-size="2"')
+    standalone_pos = html_doc.index("Read:isolated")
+    assert chain_pos < standalone_pos
+
+
+@pytest.mark.regression
+def test_chain_link_row_fields_are_escaped() -> None:
+    # qa F3 fold REV-20260610-003237: the length-≥2 chain link-row
+    # interpolation seam (sl.detail, sl.signature) is a NEW render path —
+    # the pre-Phase-3-Unit-3 escape tests only exercised the flat-row /
+    # length-1 path. Build a chain whose LINK carries _XSS in both detail
+    # and signature and assert the escape contract holds end-to-end.
+    head = _chain_rf("Read", "ok", offset_seconds=0)
+    link_sig = FailureSignal(
+        failure_type=RETRY_LOOP,
+        signature=f"Read:{_XSS}",
+        occurrence_count=3,
+        tier="opus",
+        wasted_tokens_out=10,
+        detail=_XSS,
+        first_seen=_BASE_TS + timedelta(seconds=60),
+        last_seen=_BASE_TS + timedelta(seconds=60),
+    )
+    link = RankedFailure(signal=link_sig, cost_usd=0.001)
+    html_doc = render_dashboard_html(_data(failures=[head, link]))
+    # Both flat- and chain-link rendering must escape; _XSS must NOT leak raw
+    assert _XSS not in html_doc
+    # Confirm the chain DID render (so we know the escape ran on the link path)
+    assert 'data-chain-size="2"' in html_doc
+    assert 'class="retry-chain-link"' in html_doc
+    # Escaped form is present
+    assert "&lt;script&gt;" in html_doc
+
+
+@pytest.mark.regression
+def test_group_retry_chains_overlapping_signals_chain() -> None:
+    # qa F2 fold REV-20260610-003237: a "next.first_seen < prev.last_seen"
+    # case (negative gap) — the boundary check `gap_seconds <= 120` admits
+    # negative gaps, which is correct (overlapping retries should chain).
+    # Pin the implicit "overlapping is fine" decision so a future tightening
+    # to `0 <= gap_seconds <= 120` is caught.
+    rfs = [
+        _chain_rf("Read", "a", offset_seconds=0, duration_seconds=120),
+        # next.first_seen=60 < prev.last_seen=120 -> gap_seconds = -60
+        _chain_rf("Read", "b", offset_seconds=60),
+    ]
+    chains = group_retry_chains(rfs)
+    assert len(chains) == 1
+    assert chains[0].size() == 2
 
 
 @pytest.mark.regression

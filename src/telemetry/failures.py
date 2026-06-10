@@ -35,6 +35,14 @@ from src.telemetry.pricing import UNKNOWN_TIER, PricingTable
 #: a loop — a single retry is normal; three identical calls in a row is stuck.
 DEFAULT_RETRY_THRESHOLD = 3
 
+#: Default maximum gap (seconds) between consecutive retry_loop signals that may
+#: be grouped into one :class:`RetryChain`. Tunable via ``group_retry_chains``'s
+#: ``max_gap_seconds`` kwarg; 120s is wide enough to capture a typical cascade
+#: (e.g. failed Read → fall back to Glob → fall back to Bash search) without
+#: collapsing genuinely-independent loops separated by minutes of other work.
+#: Named so a test can change the boundary deterministically (spec A11).
+MAX_RETRY_CHAIN_GAP_SECONDS = 120
+
 ORPHANED_SUBAGENT = "orphaned_subagent"
 RETRY_LOOP = "retry_loop"
 
@@ -467,3 +475,169 @@ def rank_failures(signals: list[FailureSignal], pricing: PricingTable) -> list[R
         )
     )
     return ranked
+
+
+@dataclass(frozen=True)
+class RetryChain:
+    """A temporally-adjacent cascade of one or more retry_loop failures.
+
+    Phase 3 Unit 3 (SPEC-20260610-001134): one underlying cause (e.g. a missing
+    path) often produces a CASCADE of retry loops as the agent flails — a
+    ``Read`` retry loop followed shortly by a ``Glob`` retry loop chasing the
+    same target. A :class:`RetryChain` groups those into one logical unit so
+    the gatekeeper reads "one root cause, N reactions" rather than N
+    independent failures.
+
+    Honest-absence discipline (ADR-0020): ``total_cost_usd`` is ``None`` ONLY
+    when every link is unpriced; a single priced link in a mixed chain
+    contributes its cost and the unpriced links are excluded — never fabricated
+    as ``$0``. A link with ``cost_usd == 0.0`` IS priced (genuinely free) and
+    contributes ``0.0`` to the sum.
+
+    Attributes:
+        head: The earliest signal (by ``first_seen``) in the chain. Renders as
+            the parent row in the dashboard.
+        links: The remaining signals in the chain, in temporal order
+            (ascending ``first_seen``). A chain of length 1 has an empty list.
+        total_cost_usd: Sum of every link's ``cost_usd`` whose value is
+            non-``None``. ``None`` iff EVERY link is unpriced.
+        total_wasted_tokens: Sum of every link's
+            :meth:`FailureSignal.wasted_total_tokens` (``None`` values count
+            as 0 per the existing convention).
+    """
+
+    head: RankedFailure
+    links: tuple[RankedFailure, ...]
+    total_cost_usd: float | None
+    total_wasted_tokens: int
+
+    def size(self) -> int:
+        """The number of signals in the chain (head + links)."""
+        return 1 + len(self.links)
+
+    def all_links(self) -> tuple[RankedFailure, ...]:
+        """All signals in temporal order: head followed by links."""
+        return (self.head, *self.links)
+
+
+def _retry_pair_chains(prev: RankedFailure, nxt: RankedFailure, max_gap_seconds: int) -> bool:
+    """Return True iff ``prev`` and ``nxt`` are temporally adjacent retries.
+
+    Honest-absence rules (spec R3):
+
+    * Both signals must be ``failure_type == RETRY_LOOP`` (non-retry signals
+      are not chainable; the caller is responsible for filtering).
+    * Both endpoints must have populated timestamps; ``None`` on either side
+      means no chain (no fabricated adjacency).
+    * If the ``datetime`` subtraction raises ``TypeError`` (tz-aware/naive
+      mismatch from an alternate data source), the pair is treated as
+      unchainable. The canonical analyzer transport emits tz-aware UTC, so
+      this branch is defensive belt-and-braces for future importers.
+
+    The boundary is **inclusive**: ``gap == max_gap_seconds`` chains.
+    """
+    if prev.signal.failure_type != RETRY_LOOP or nxt.signal.failure_type != RETRY_LOOP:
+        return False
+    prev_end = prev.signal.last_seen
+    nxt_start = nxt.signal.first_seen
+    if prev_end is None or nxt_start is None:
+        return False
+    try:
+        gap_seconds = (nxt_start - prev_end).total_seconds()
+    except TypeError:
+        # tz-aware / naive mismatch — treat as missing-timestamp (no chain).
+        return False
+    return gap_seconds <= max_gap_seconds
+
+
+def group_retry_chains(
+    ranked: list[RankedFailure],
+    *,
+    max_gap_seconds: int = MAX_RETRY_CHAIN_GAP_SECONDS,
+) -> list[RetryChain]:
+    """Group temporally-adjacent retry_loop signals into :class:`RetryChain`s.
+
+    Pure read-time fold over the existing :class:`RankedFailure` list — no
+    DB read, no mutation, no IO (ADR-0013 compute-don't-store). Public (called
+    from ``dashboard.py``); the sibling failures-/drift-grouping helpers
+    ``_group_failures_by_class`` / ``_group_drift_by_kind`` live in
+    ``dashboard.py`` and are private because they don't cross a module boundary.
+
+    The TEMPORAL heuristic: two consecutive ``retry_loop`` signals chain iff
+    ``next.first_seen - prev.last_seen <= max_gap_seconds`` (boundary
+    inclusive). Non-retry-loop signals are **skipped over** by the chain
+    walker — they do NOT reset the chain-candidate pointer. Rationale: the
+    caller composes ``_group_failures_by_class`` before this function, so a
+    per-class group today contains only retry-loops (orphans go to ORPHAN
+    class); the skip-over rule preserves the "one root cause, N reactions"
+    semantic for future heterogeneous classes (an unrelated failure between
+    two retries does not undo their temporal adjacency).
+
+    The head of each chain is the earliest retry-loop in the run (preserving
+    inbound rank order on ``first_seen`` ties via Python's stable sort);
+    links are the rest in ascending ``first_seen`` order.
+
+    Honest-absence (spec R2/A6, ADR-0020):
+
+    * ``total_cost_usd = None`` iff EVERY link has ``cost_usd is None``.
+      A single priced link in a mixed chain contributes its cost; unpriced
+      links are silently excluded (never fabricated as ``$0``).
+    * A link with ``cost_usd == 0.0`` IS priced (genuinely free) and
+      contributes ``0.0`` to the sum — guards against a future ``if cost_usd``
+      truthy guard accidentally excluding zero-cost rows.
+
+    Args:
+        ranked: Inbound list (typically the per-class slice from
+            :func:`_group_failures_by_class`). Non-retry signals pass through
+            invisibly and produce no chain.
+        max_gap_seconds: Override for :data:`MAX_RETRY_CHAIN_GAP_SECONDS`.
+
+    Returns:
+        Zero or more :class:`RetryChain` objects in inbound order (the head's
+        rank-list position determines chain order). A retry-loop with no
+        eligible neighbour produces a chain of length 1 (empty ``links``).
+        Non-retry signals produce no chain — they are dropped from the result.
+    """
+    chains: list[RetryChain] = []
+    current_links: list[RankedFailure] = []
+    for rf in ranked:
+        if rf.signal.failure_type != RETRY_LOOP:
+            # Skipped over: does NOT close the current chain (the next retry,
+            # if within the window of the previous retry's last_seen, still
+            # joins it). Rationale documented above.
+            continue
+        if not current_links:
+            current_links.append(rf)
+            continue
+        if _retry_pair_chains(current_links[-1], rf, max_gap_seconds):
+            current_links.append(rf)
+        else:
+            chains.append(_build_retry_chain(current_links))
+            current_links = [rf]
+    if current_links:
+        chains.append(_build_retry_chain(current_links))
+    return chains
+
+
+def _build_retry_chain(members: list[RankedFailure]) -> RetryChain:
+    """Construct a :class:`RetryChain` from an ordered list of retry-loop members.
+
+    Members arrive in inbound (rank-list) order, which equals temporal order
+    for chained members (Python's stable sort + the chain walker's
+    front-to-back pass preserve ``first_seen`` order). The first element is
+    the head; the rest are links.
+
+    ``total_cost_usd`` and ``total_wasted_tokens`` are computed here per the
+    honest-absence rule documented on :class:`RetryChain`.
+    """
+    head = members[0]
+    links = tuple(members[1:])
+    priced_costs = [m.cost_usd for m in members if m.cost_usd is not None]
+    total_cost: float | None = sum(priced_costs) if priced_costs else None
+    total_wasted = sum(m.signal.wasted_total_tokens() for m in members)
+    return RetryChain(
+        head=head,
+        links=links,
+        total_cost_usd=total_cost,
+        total_wasted_tokens=total_wasted,
+    )
