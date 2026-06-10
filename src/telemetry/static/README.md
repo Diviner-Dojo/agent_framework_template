@@ -13,6 +13,7 @@ dependency and the SRI/CDN-compromise surface. The FastAPI app in
 | `htmx.min.js`          | third-party       | 1.9.12   | BSD-2-Clause (header comment in file)                         | https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js                  | 48101  | `sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2` |
 | `chart.umd.min.js`     | third-party       | 4.4.7    | MIT (see [`LICENSE-chart.js.txt`](./LICENSE-chart.js.txt))    | https://unpkg.com/chart.js@4.4.7/dist/chart.umd.js                  | 205615 | `sha384-zYPBGXwO4633CABX/5Spf6emCKUJCfoOkhOMYyxMsatqQZPnDblmmOewfjsIVWCM` |
 | `dashboard-chart.js`   | first-party       | 1.0.0    | first-party (this repository)                                 | in-tree (this repository)                                           | 28329  | `sha384-jfKiKyHEewZ/0Ys2Kgccpc6W1NcNyFDiC/gbpTaOVEvzCzx1w7OBINOioUJYMK63` |
+| `dashboard-pip.js`     | first-party       | 1.0.0    | first-party (this repository)                                 | in-tree (this repository)                                           | 12274  | `sha384-1XjxdzJTV/43WDwG3879MAyKqtViJfFNi5NuvtHBoXlZyTK4qZCCBwWVQumUns9g` |
 
 ### What the SHA-384 pin actually defends against
 
@@ -47,10 +48,11 @@ The **independent** provenance pointer is the upstream GitHub release tag:
 — hosted separately from npm, with a different trust root. A re-vendoring
 audit should cross-reference that tag's commit + release notes.
 
-### First-party `dashboard-chart.js` integrity
+### First-party `dashboard-chart.js` / `dashboard-pip.js` integrity
 
-`dashboard-chart.js` is a first-party file authored in this repository —
-NOT a vendored third-party library. It is pinned in the same SHA-384 table
+`dashboard-chart.js` and `dashboard-pip.js` are first-party files authored
+in this repository —
+NOT vendored third-party libraries. Each is pinned in the same SHA-384 table
 so byte-stability is machine-enforced: any future edit (intentional or
 otherwise) must update the pin in lockstep, which keeps the file's
 provenance auditable from the in-tree artifacts alone. The integrity

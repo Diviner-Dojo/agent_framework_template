@@ -2026,6 +2026,25 @@ def render_model_cost_donut_panel(report: CostReport, has_run: bool) -> str:
     )
 
 
+#: Pop-out toggle button id for the Document Picture-in-Picture affordance
+#: (SPEC-20260610-031224). Like the chart ids above, this string lives in
+#: three locations: this constant (source of truth), the vendored init
+#: script at ``/static/dashboard-pip.js`` (copy), and the regression tests
+#: (anchor) — kept in lockstep by code review. The button is server-rendered
+#: ``hidden``: only ``dashboard-pip.js`` reveals it, and only when the
+#: browser exposes ``documentPictureInPicture`` (honest absence on
+#: unsupported browsers — no dead control).
+_PIP_TOGGLE_BUTTON_ID = "pip-toggle"
+
+#: Visually-hidden ``role="status"`` span next to the PiP button. Status-only
+#: messages (the transient "unavailable" copy on a rejected open) go HERE so
+#: screen readers announce them once via the live region (WCAG 4.1.3) — NOT
+#: via ``aria-live`` on the button itself, which double-announces every
+#: label change on NVDA/VoiceOver (REV ux F1). Same three-location lockstep
+#: as the button id (this constant / dashboard-pip.js / regression tests).
+_PIP_STATUS_ID = "pip-status"
+
+
 def render_live_shell_html(*, generated_label: str = "") -> str:
     """Render the htmx shell page that polls the live fragment.
 
@@ -2067,6 +2086,13 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
     swap-target), so a plain ``<a href>`` is the correct affordance; without
     it the route is live but unreachable from the UI.
 
+    The header also carries the Picture-in-Picture toggle button
+    (SPEC-20260610-031224): server-rendered ``hidden`` and revealed only by
+    ``/static/dashboard-pip.js`` when the browser supports the Document PiP
+    API. The pip script tag MUST stay AFTER the dashboard-chart.js tag —
+    with ``defer`` the listener registration order makes charts re-init
+    before the PiP mirror snapshots them (order pinned by test).
+
     The first-paint placeholder uses a distinct ``tile--loading`` class (NOT
     ``tile--absent``) so a transient htmx delay does not present as an
     honest-absence tile to the gatekeeper — the visual states are different
@@ -2082,9 +2108,15 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
         '<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>Telemetry Dashboard (live)</title>"
+        # Script ORDER is load-bearing (SPEC-20260610-031224 R8): with
+        # ``defer`` the browser executes in document order, so
+        # dashboard-pip.js registers its htmx:afterSwap listener AFTER
+        # dashboard-chart.js — charts re-initialise before the PiP mirror
+        # snapshots them. Order is pinned by a regression test (AC2).
         '<script src="/static/htmx.min.js" defer></script>'
         '<script src="/static/chart.umd.min.js" defer></script>'
         '<script src="/static/dashboard-chart.js" defer></script>'
+        '<script src="/static/dashboard-pip.js" defer></script>'
         f"<style>{_CSS}{_LIVE_CSS}</style></head><body>"
         "<header><h1>Telemetry &amp; Oversight — live</h1>"
         f'<div class="gen">{_esc(generated_label)}</div>'
@@ -2092,6 +2124,15 @@ def render_live_shell_html(*, generated_label: str = "") -> str:
         '<a href="/fragments/retrospective" class="nav-link"'
         ' aria-label="Retrospective view">'
         "Retrospective view &rarr;</a>"
+        # Server-rendered hidden; revealed only by dashboard-pip.js when the
+        # Document PiP API exists (honest absence on unsupported browsers).
+        # The button label serves sighted users; SR status announcements go
+        # through the adjacent role="status" live region (REV ux F1 — an
+        # aria-live button double-announces every label change).
+        f'<button id="{_PIP_TOGGLE_BUTTON_ID}" class="pip-toggle"'
+        ' type="button" hidden aria-pressed="false">'
+        "Pop out live view</button>"
+        f'<span id="{_PIP_STATUS_ID}" class="sr-only" role="status"></span>'
         "</nav></header>"
         "<main>"
         # hx-swap-error="outerHTML" so non-2xx (e.g. the 500 honest-error fragment)
@@ -2166,8 +2207,14 @@ font-size:13px;color:var(--muted);}
 .hook-chip__missing{color:#d29922;}
 .hook-chip--not_configured{border-style:dashed;}
 .hook-chip--not_configured .hook-chip__label{color:var(--ink);}
-.shell-nav{margin-top:6px;}
+.shell-nav{margin-top:6px;display:flex;gap:14px;align-items:center;}
 .nav-link{color:var(--accent);font-size:13px;text-decoration:none;
 border-bottom:1px dotted var(--accent);padding-bottom:1px;}
 .nav-link:hover{border-bottom-style:solid;}
+.pip-toggle{background:none;border:1px solid var(--line);border-radius:6px;
+color:var(--accent);font-size:13px;padding:2px 10px;cursor:pointer;}
+.pip-toggle:hover{border-color:var(--accent);}
+.pip-toggle[aria-pressed="true"]{color:var(--ok);border-color:var(--ok);}
+.pip-body{margin:10px;}
+.pip-body .live-section{grid-template-columns:1fr;}
 """

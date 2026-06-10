@@ -32,6 +32,16 @@ with the Phase 2 live-tail when the background watcher replaces lazy-per-
 request folding. The Phase 1 surface here is the *transport* (bind, escape,
 read-only, lifespan) — the *behavioral parity against authored fixtures*
 follows.
+
+**Declared test boundary — browser JS (SPEC-20260610-031224 AC10):** pytest
+cannot execute browser JavaScript. For the vendored first-party scripts
+(``dashboard-chart.js``, ``dashboard-pip.js``) the tests here verify the
+*static contract only* — file integrity (SHA-384 pins), serving (status +
+MIME), and content anchors (lockstep ids, guard ordering). Runtime behavior
+(PiP open/mirror/close, the unsupported-browser fallback, chart drawing) is
+verified by JS code review at build checkpoints plus the manual browser
+checklist in the spec's Verification Notes. Nothing in this module claims
+behavioral coverage of browser execution.
 """
 
 from __future__ import annotations
@@ -912,6 +922,178 @@ def test_vendored_dashboard_chart_sha384_matches_readme_pin() -> None:
     assert _DASHBOARD_CHART_JS_SHA384_PIN == readme_pin, (
         "test constant _DASHBOARD_CHART_JS_SHA384_PIN diverged from "
         "README pin table — update both in lockstep on every edit"
+    )
+
+
+#: First-party ``dashboard-pip.js`` (SPEC-20260610-031224 Phase 4 Unit 4.4)
+#: SHA-384 pin — same lockstep discipline as _DASHBOARD_CHART_JS_SHA384_PIN:
+#: every intentional edit must update the README pin table AND this constant
+#: in the same commit, making silent byte changes impossible.
+_DASHBOARD_PIP_JS_SHA384_PIN = "1XjxdzJTV/43WDwG3879MAyKqtViJfFNi5NuvtHBoXlZyTK4qZCCBwWVQumUns9g"
+
+
+def _read_pip_js_text() -> str:
+    """Read the vendored ``dashboard-pip.js`` source for content-contract tests."""
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    js_path = STATIC_DIR / "dashboard-pip.js"
+    assert js_path.is_file(), f"first-party PiP script missing at {js_path}"
+    return js_path.read_text(encoding="utf-8")
+
+
+def test_static_dashboard_pip_asset_is_served() -> None:
+    """SPEC-20260610-031224 AC12: the PiP script is served from the static mount.
+
+    Mirrors ``test_static_dashboard_chart_asset_is_served`` — status, a
+    human-readable banner diagnostic, and the MIME contract (a ``text/plain``
+    regression would pass the banner check but break the ``<script src>``
+    load under strict MIME sniffing).
+    """
+    app = create_app(port=8765)
+    client = TestClient(app)
+    r = client.get("/static/dashboard-pip.js", headers={"host": "127.0.0.1:8765"})
+    assert r.status_code == 200
+    # REV qa F1: pin actual file content, not just a path echo — a 404 body
+    # that echoes the filename would pass the substring check alone. The
+    # file's first bytes are the /*! banner (also asserted structurally in
+    # test_dashboard_pip_js_iife_and_lockstep_anchors).
+    assert r.text.startswith("/*!")
+    assert "dashboard-pip.js" in r.text[:512].lower()
+    assert "javascript" in r.headers.get("content-type", "").lower(), (
+        f"static dashboard-pip asset served with non-JavaScript content-type: "
+        f"{r.headers.get('content-type')!r}"
+    )
+
+
+@pytest.mark.regression
+def test_vendored_dashboard_pip_sha384_matches_readme_pin() -> None:
+    """SPEC-20260610-031224 AC4: the PiP script's integrity is machine-verified.
+
+    Mirrors :func:`test_vendored_dashboard_chart_sha384_matches_readme_pin`
+    exactly — the constant must match the file bytes AND the README pin-table
+    row (the two-mirror cross-check via :func:`_read_sha384_pin_from_readme`,
+    so the two sources of truth cannot drift independently).
+    """
+    import base64
+
+    from scripts.telemetry.dashboard_server import STATIC_DIR
+
+    js_path = STATIC_DIR / "dashboard-pip.js"
+    assert js_path.is_file(), f"first-party PiP script missing at {js_path}"
+    digest = hashlib.sha384(js_path.read_bytes()).digest()
+    computed = base64.b64encode(digest).decode("ascii")
+    assert computed == _DASHBOARD_PIP_JS_SHA384_PIN, (
+        "dashboard-pip.js SHA-384 does not match the pin in "
+        "src/telemetry/static/README.md — every intentional edit must "
+        "re-pin BOTH the README table AND _DASHBOARD_PIP_JS_SHA384_PIN "
+        "in the same commit"
+    )
+    readme_pin = _read_sha384_pin_from_readme("dashboard-pip.js")
+    assert _DASHBOARD_PIP_JS_SHA384_PIN == readme_pin, (
+        "test constant _DASHBOARD_PIP_JS_SHA384_PIN diverged from "
+        "README pin table — update both in lockstep on every edit"
+    )
+
+
+def test_dashboard_pip_js_iife_and_lockstep_anchors() -> None:
+    """SPEC-20260610-031224 AC3 (qa F1 fold): structural + lockstep anchors.
+
+    Not a parse — pytest cannot parse JS (see the module-docstring test
+    boundary). The structural claim is bounded honestly: the file opens with
+    the ``/*!`` banner, and the first code after the banner is the exact
+    IIFE opener form used by ``dashboard-chart.js`` (no top-level code can
+    precede it). The lockstep ids are the three-location contract anchors
+    (Python constant in dashboard.py = source of truth; this test = anchor;
+    the JS literal = copy).
+    """
+    text = _read_pip_js_text()
+    assert text.startswith("/*!"), "banner comment must open the file"
+    after_banner = text.split("*/", 1)[1].lstrip()
+    # Pin the opener + strict-mode pragma as ONE unit (CP2 qa F2: a split-
+    # index anchor breaks on a harmless blank-line insertion; startswith
+    # pins the contract — nothing can precede strict mode inside the IIFE).
+    assert after_banner.startswith('(function () {\n  "use strict";'), (
+        "first code after the banner must be the IIFE opener immediately "
+        "followed by the strict-mode pragma (exact dashboard-chart.js "
+        "form) — top-level code outside the IIFE would pollute the global "
+        "scope"
+    )
+    # Three-location lockstep anchors (SPEC R1; mirrors the chart-id pattern).
+    assert 'var BUTTON_ID = "pip-toggle";' in text
+    assert 'var LIVE_SECTION_ID = "live-section";' in text
+
+
+@pytest.mark.regression
+def test_dashboard_pip_js_feature_detect_precedes_request_window() -> None:
+    """SPEC-20260610-031224 AC7: feature-detect guard + caught rejection.
+
+    Static content contract: the ``documentPictureInPicture`` feature-detect
+    literal appears BEFORE every ``requestWindow`` call site, and the
+    ``requestWindow`` promise chain carries a ``.catch(`` (a rejection —
+    e.g. ``NotAllowedError`` when another PiP window is already open — must
+    be non-fatal). Behavioral fallback is browser-verified per the declared
+    test boundary.
+    """
+    text = _read_pip_js_text()
+    detect_idx = text.index("documentPictureInPicture")
+    request_idx = text.index("requestWindow")
+    assert detect_idx < request_idx, (
+        "the feature-detect guard must precede the first requestWindow "
+        "call site — on unsupported browsers the module must return before "
+        "any PiP API access"
+    )
+    catch_idx = text.index(".catch(", request_idx)
+    assert catch_idx > request_idx, "the requestWindow promise chain must catch rejections"
+
+
+@pytest.mark.regression
+def test_dashboard_pip_js_stale_window_guards() -> None:
+    """SPEC-20260610-031224 AC11 (sec F1 fold): stale pipWindow guards.
+
+    Static anchors for the two halves of the close-during-swap race fix:
+    (a) the ``pagehide`` handler's FIRST statement nulls ``pipWindow``;
+    (b) the mirror function's FIRST statement is the null-check guard; and
+    (c) the afterSwap mirror listener is registered exactly ONCE at module
+    init (never per-open), so open/close cycles cannot accumulate listeners.
+    """
+    text = _read_pip_js_text()
+    # (a) first statement of the pagehide handler nulls the handle.
+    pagehide_body = text.split("function handlePipPagehide() {", 1)[1]
+    first_stmt = next(
+        line.strip()
+        for line in pagehide_body.splitlines()
+        if line.strip() and not line.strip().startswith("//")
+    )
+    assert first_stmt == "pipWindow = null;", (
+        "handlePipPagehide must null pipWindow as its FIRST synchronous "
+        "action (sec F1 — close-during-swap race)"
+    )
+    # (b) the mirror entry guard.
+    mirror_body = text.split("function mirrorLiveSection() {", 1)[1]
+    guard_idx = mirror_body.index("if (pipWindow === null) {")
+    dom_idx = mirror_body.index("getLiveSection()")
+    assert guard_idx < dom_idx, "mirrorLiveSection must null-check pipWindow before any DOM access"
+    # (c) exactly one afterSwap registration, at module scope.
+    assert text.count('document.addEventListener("htmx:afterSwap"') == 1, (
+        "the mirror listener must be registered exactly once at module "
+        "init — re-registration per open accumulates listeners (qa F3)"
+    )
+    # CP2 qa F1: the htmx:load registration is INTENTIONAL (defensive
+    # symmetry with dashboard-chart.js — some htmx versions fire htmx:load
+    # for certain swap variants; the mirror is idempotent + null-gated).
+    # Pinned to exactly one so it can neither silently multiply nor
+    # silently disappear.
+    assert text.count('document.addEventListener("htmx:load"') == 1, (
+        "the htmx:load companion registration must appear exactly once at "
+        "module init (deliberate dashboard-chart.js symmetry)"
+    )
+    # REV qa F2: the null-check guard exists at BOTH async boundaries — the
+    # mirror entry AND the rAF callback (close-during-rAF sub-race). The
+    # count anchors the rAF inner guard independently of the structural
+    # walk above.
+    assert text.count("if (pipWindow === null)") >= 2, (
+        "both the mirror entry and the rAF callback must null-check "
+        "pipWindow (sec F1 defense-in-depth)"
     )
 
 

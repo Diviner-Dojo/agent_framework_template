@@ -24,6 +24,9 @@ from scripts.telemetry import analyze_value as av
 from scripts.telemetry import dashboard as dash
 from src.telemetry.cost import CostReport, ModelTokenRow, build_cost_report
 from src.telemetry.dashboard import (
+    _CSS,
+    _LIVE_CSS,
+    _PIP_TOGGLE_BUTTON_ID,
     STATE_DATA,
     STATE_NOT_RUN,
     DashboardData,
@@ -4689,7 +4692,7 @@ def test_render_per_turn_cost_chart_panel_json_payload_carries_t_cost_lane_id() 
     for entry in points:
         assert set(entry) == {"t", "cost", "lane_id", "uncosted"}
         assert isinstance(entry["t"], str)
-        assert isinstance(entry["cost"], (int, float))
+        assert isinstance(entry["cost"], int | float)
         assert isinstance(entry["lane_id"], str)
         assert isinstance(entry["uncosted"], bool)
     # Specific values pinned (catches a future re-key that mapped cost to
@@ -4948,6 +4951,68 @@ def test_render_live_shell_html_includes_dashboard_chart_init_script_tag() -> No
     # render order matches the existing chartjs shell guard above.
     style_idx = shell.index("<style>")
     assert init_idx < style_idx
+
+
+def test_render_live_shell_html_includes_hidden_pip_toggle_button() -> None:
+    """SPEC-20260610-031224 AC1: the shell carries the PiP pop-out button.
+
+    Server-rendered ``hidden`` inside ``shell-nav`` — only the vendored
+    ``dashboard-pip.js`` reveals it, and only when the browser exposes the
+    Document PiP API (honest absence on unsupported browsers: the control
+    never appears, it is never a dead button).
+    """
+    shell = render_live_shell_html(generated_label="2026-06-10 03:00 UTC")
+    nav = shell.split('<nav class="shell-nav">', 1)[1].split("</nav>", 1)[0]
+    assert f'<button id="{_PIP_TOGGLE_BUTTON_ID}"' in nav
+    button = nav.split(f'<button id="{_PIP_TOGGLE_BUTTON_ID}"', 1)[1].split("</button>", 1)[0]
+    assert " hidden" in button
+    assert 'aria-pressed="false"' in button
+    assert 'type="button"' in button
+    assert 'class="pip-toggle"' in button
+    assert "Pop out live view" in button
+    # REV ux F1: status announcements go through a visually-hidden
+    # role="status" live region NEXT TO the button — never aria-live on the
+    # button itself (double-announces every label change in NVDA/VoiceOver).
+    assert "aria-live" not in button
+    assert '<span id="pip-status" class="sr-only" role="status"></span>' in nav
+
+
+@pytest.mark.regression
+def test_render_live_shell_html_includes_dashboard_pip_script_tag() -> None:
+    """SPEC-20260610-031224 AC2 (qa F2 + arch F1 folds): pip script wiring.
+
+    Pins the EXACT tag form — a ``<script>`` without ``defer`` would still
+    load, but ``defer`` is what guarantees document-order execution, and the
+    PiP mirror's correctness depends on its ``htmx:afterSwap`` listener
+    registering AFTER dashboard-chart.js's (charts re-init before the mirror
+    snapshots them). A reorder or a dropped ``defer`` breaks that silently
+    in the browser only, so this markup pin is the regression guard.
+    """
+    shell = render_live_shell_html(generated_label="2026-06-10 03:00 UTC")
+    assert '<script src="/static/dashboard-pip.js" defer></script>' in shell
+    chart_init_idx = shell.index("/static/dashboard-chart.js")
+    pip_idx = shell.index("/static/dashboard-pip.js")
+    assert chart_init_idx < pip_idx, (
+        "shell script tag order must keep dashboard-chart.js BEFORE "
+        "dashboard-pip.js — the PiP mirror's afterSwap listener must "
+        "register after the chart init's so snapshots see drawn charts"
+    )
+    # Like the other script tags, it sits in the <head> before the styles.
+    assert pip_idx < shell.index("<style>")
+
+
+def test_pip_styles_live_in_live_css_not_shared_css() -> None:
+    """SPEC-20260610-031224 AC8 (arch F2 fold): PiP CSS placement.
+
+    The ``.pip-body`` override and the button styling can only ever
+    activate from the live shell, so they belong in ``_LIVE_CSS``. The
+    shared ``_CSS`` keeps its "rules consumed by both views" invariant —
+    the static retrospective render must not carry PiP dead code.
+    """
+    assert ".pip-body .live-section{grid-template-columns:1fr;}" in _LIVE_CSS
+    assert ".pip-toggle{" in _LIVE_CSS
+    assert ".pip-body" not in _CSS
+    assert ".pip-toggle" not in _CSS
 
 
 @pytest.mark.regression
