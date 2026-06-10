@@ -8,7 +8,7 @@ reviewed_by: [architecture-consultant, qa-specialist, security-specialist]
 discussion_id: DISC-20260610-040022-render-static-export-spec-review
 intake_ids: []
 completed_at: 2026-06-10
-completed_commit:  # stamped retroactively once the unit commit SHA exists
+completed_commit: c5a9cf2
 ---
 
 ## Goal
