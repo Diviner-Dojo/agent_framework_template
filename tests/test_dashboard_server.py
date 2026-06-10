@@ -236,7 +236,33 @@ def test_routes_leave_hooks_and_settings_byte_unchanged(tmp_path: Path) -> None:
     (hooks_dir / "session-start.sh").write_text(
         "#!/bin/sh\n# stub hook for AC3 byte-stability fixture\n", encoding="utf-8"
     )
-    (sandbox / "settings.json").write_text('{"_ac3_fixture": true}\n', encoding="utf-8")
+    # The settings stub carries a REAL hooks entry (SPEC-20260610-005602 qa F3
+    # strengthening): with ``hook_health_root=tmp_path`` below, the live
+    # fragment's ``load_hook_health`` read path actually parses this file and
+    # stats the stub scripts — so the byte-unchanged assertion now bites the
+    # new read surface instead of passing vacuously against an unwired tree.
+    (sandbox / "settings.json").write_text(
+        json.dumps(
+            {
+                "_ac3_fixture": True,
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "bash .claude/hooks/pre-commit-gate.sh",
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     def _digest_tree(root: Path) -> dict[str, str]:
         digests: dict[str, str] = {}
@@ -247,15 +273,21 @@ def test_routes_leave_hooks_and_settings_byte_unchanged(tmp_path: Path) -> None:
 
     before_digests = _digest_tree(sandbox)
 
-    app = create_app(port=8765)
+    app = create_app(port=8765, hook_health_root=tmp_path)
     client = TestClient(app)
+    responses: dict[str, str] = {}
     for path in ("/", "/healthz", "/fragments/live", "/fragments/retrospective"):
-        client.get(path, headers={"host": "127.0.0.1:8765"})
+        responses[path] = client.get(path, headers={"host": "127.0.0.1:8765"}).text
 
     after_digests = _digest_tree(sandbox)
     assert before_digests == after_digests, (
         "the dashboard server modified .claude/hooks or settings.json — AC3 violated"
     )
+    # qa F3 (SPEC-20260610-005602): confirm the hook-health read path actually
+    # ran against the sandbox (one configured hook, script present -> ok chip),
+    # so a future silent failure swallowed by the route's generic catch cannot
+    # leave this guard green-but-vacuous.
+    assert 'data-hook-health="ok"' in responses["/fragments/live"]
 
 
 # --------------------------------------------------------------------------- #
@@ -2190,3 +2222,223 @@ def test_load_weekly_trends_skips_rows_with_malformed_created_at(tmp_path: Path)
 
     trends = load_weekly_trends(db, load_pricing())
     assert trends == WeeklyTrends(weeks=())
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4 Unit 4.1 — hook-health transport loader + endpoint (SPEC-20260610-005602)
+# --------------------------------------------------------------------------- #
+#
+# AC-U6 (loader against tmp_path fixture trees, read-only) + AC-U7 (the live
+# fragment carries the chip exactly once). The pure-model + render tests live
+# in tests/test_telemetry_hooks_health.py (the R14 split, mirrored in tests).
+
+
+def _hook_fixture_tree(
+    tmp_path: Path,
+    *,
+    settings_text: str | None = None,
+    scripts: tuple[str, ...] = ("guard.sh",),
+    gate_log_lines: tuple[str, ...] | None = None,
+) -> Path:
+    """Build a minimal repo tree carrying .claude/ + metrics/ for the loader."""
+    claude_dir = tmp_path / ".claude"
+    hooks_dir = claude_dir / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    for name in scripts:
+        (hooks_dir / name).write_text("#!/bin/sh\n# fixture stub\n", encoding="utf-8")
+    if settings_text is None:
+        settings_text = json.dumps(
+            {
+                "hooks": {
+                    "UserPromptSubmit": [
+                        {"hooks": [{"type": "command", "command": "bash .claude/hooks/guard.sh"}]}
+                    ]
+                }
+            }
+        )
+    (claude_dir / "settings.json").write_text(settings_text, encoding="utf-8")
+    if gate_log_lines is not None:
+        metrics = tmp_path / "metrics"
+        metrics.mkdir(exist_ok=True)
+        (metrics / "quality_gate_log.jsonl").write_text(
+            "\n".join(gate_log_lines) + "\n", encoding="utf-8"
+        )
+    return tmp_path
+
+
+def _digest_fixture_tree(root: Path) -> dict[str, str]:
+    digests: dict[str, str] = {}
+    for p in sorted(root.rglob("*")):
+        if p.is_file():
+            digests[str(p.relative_to(root))] = hashlib.sha256(p.read_bytes()).hexdigest()
+    return digests
+
+
+def test_load_hook_health_happy_path_is_ok_with_tz_aware_recency(tmp_path: Path) -> None:
+    # AC-U6 happy path + the read-only promise at the unit level: the fixture
+    # tree is byte-unchanged after the load.
+    root = _hook_fixture_tree(
+        tmp_path,
+        gate_log_lines=(
+            json.dumps({"timestamp": "2026-06-09T22:00:00+00:00", "overall": "pass"}),
+            json.dumps({"timestamp": "2026-06-10T00:30:00+00:00", "overall": "pass"}),
+        ),
+    )
+    before = _digest_fixture_tree(root)
+    report = dashboard_server.load_hook_health(root)
+    assert report.status == "ok"
+    assert report.hooks_configured == 1
+    assert report.scripts_missing == ()
+    assert report.last_gate_run == datetime(2026, 6, 10, 0, 30, tzinfo=UTC)
+    assert report.last_gate_run.tzinfo is not None
+    assert _digest_fixture_tree(root) == before, "load_hook_health mutated the fixture tree"
+
+
+def test_load_hook_health_missing_settings_is_not_configured(tmp_path: Path) -> None:
+    # AC-U6: no settings.json at all -> honest not_configured, no raise.
+    (tmp_path / ".claude" / "hooks").mkdir(parents=True)
+    report = dashboard_server.load_hook_health(tmp_path)
+    assert report.status == "not_configured"
+    assert report.last_gate_run is None
+
+
+@pytest.mark.regression
+def test_load_hook_health_empty_settings_file_is_not_configured(tmp_path: Path) -> None:
+    # Regression (AC-U6, REV qa F1): settings.json PRESENT but zero-length is a
+    # distinct branch from missing-file (readable, no OSError — the empty text
+    # reaches parse_hook_script_refs and must degrade via JSONDecodeError).
+    (tmp_path / ".claude" / "hooks").mkdir(parents=True)
+    (tmp_path / ".claude" / "settings.json").write_bytes(b"")
+    report = dashboard_server.load_hook_health(tmp_path)
+    assert report.status == "not_configured"
+
+
+@pytest.mark.regression
+def test_load_hook_health_two_hooks_same_absent_script_deduplicated(tmp_path: Path) -> None:
+    # Regression (AC-U3 at the TRANSPORT layer, REV qa F2): load_hook_health
+    # accumulates missing names in its own dict — a refactor from setdefault
+    # to append would double-count without firing the parse-layer dedup test.
+    settings = json.dumps(
+        {
+            "hooks": {
+                "A": [{"hooks": [{"type": "command", "command": "bash .claude/hooks/gone.sh"}]}],
+                "B": [{"hooks": [{"type": "command", "command": "bash .claude/hooks/gone.sh"}]}],
+            }
+        }
+    )
+    root = _hook_fixture_tree(tmp_path, settings_text=settings, scripts=())
+    report = dashboard_server.load_hook_health(root)
+    assert report.scripts_missing == ("gone.sh",)
+    assert report.hooks_configured == 2
+
+
+def test_load_hook_health_missing_log_yields_none_recency(tmp_path: Path) -> None:
+    # AC-U6: hooks fine, gate log absent -> ok with honest None recency.
+    root = _hook_fixture_tree(tmp_path, gate_log_lines=None)
+    report = dashboard_server.load_hook_health(root)
+    assert report.status == "ok"
+    assert report.last_gate_run is None
+
+
+def test_load_hook_health_missing_script_reported_by_basename(tmp_path: Path) -> None:
+    # AC-U6: a referenced-but-absent script surfaces by basename.
+    settings = json.dumps(
+        {
+            "hooks": {
+                "A": [{"hooks": [{"type": "command", "command": "bash .claude/hooks/guard.sh"}]}],
+                "B": [{"hooks": [{"type": "command", "command": "bash .claude/hooks/gone.sh"}]}],
+            }
+        }
+    )
+    root = _hook_fixture_tree(tmp_path, settings_text=settings, scripts=("guard.sh",))
+    report = dashboard_server.load_hook_health(root)
+    assert report.status == "missing_scripts"
+    assert report.scripts_missing == ("gone.sh",)
+
+
+@pytest.mark.regression
+def test_load_hook_health_trailing_malformed_lines_fall_back(tmp_path: Path) -> None:
+    # Regression (AC-U6, spec qa F4 — DEFINITE contract): trailing malformed
+    # lines fall back to the previous well-formed entry within the window.
+    root = _hook_fixture_tree(
+        tmp_path,
+        gate_log_lines=(
+            json.dumps({"timestamp": "2026-06-10T00:30:00+00:00"}),
+            "{ truncated junk",
+            "not json",
+            '{"timestamp": 42}',
+        ),
+    )
+    report = dashboard_server.load_hook_health(root)
+    assert report.last_gate_run == datetime(2026, 6, 10, 0, 30, tzinfo=UTC)
+
+
+@pytest.mark.regression
+def test_load_hook_health_only_malformed_or_naive_lines_yield_none(tmp_path: Path) -> None:
+    # Regression (AC-U6, spec qa F4): a window with only malformed lines OR a
+    # naive (no-timezone) timestamp is treated as no observed run — a naive
+    # stamp is malformed by contract, never silently localized.
+    root = _hook_fixture_tree(
+        tmp_path,
+        gate_log_lines=(
+            "garbage",
+            json.dumps({"timestamp": "2026-06-10T00:30:00"}),
+        ),
+    )
+    report = dashboard_server.load_hook_health(root)
+    assert report.last_gate_run is None
+
+
+@pytest.mark.regression
+def test_load_hook_health_traversal_ref_cannot_escape_hooks_dir(tmp_path: Path) -> None:
+    # Regression (AC-U6, spec security F2): a crafted ref with traversal dots
+    # normalizes to an empty basename and is skipped — nothing outside
+    # .claude/hooks/ is statted and no traversal artifact reaches the report.
+    settings = json.dumps(
+        {
+            "hooks": {
+                "A": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "bash .claude/hooks/../../../etc/evil.sh",
+                            },
+                            {"type": "command", "command": "bash .claude/hooks/guard.sh"},
+                        ]
+                    }
+                ]
+            }
+        }
+    )
+    root = _hook_fixture_tree(tmp_path, settings_text=settings, scripts=("guard.sh",))
+    report = dashboard_server.load_hook_health(root)
+    assert report.status == "ok"
+    assert all("/" not in m and "\\" not in m and m != ".." for m in report.scripts_missing)
+
+
+def test_load_hook_health_tail_read_is_bounded(tmp_path: Path) -> None:
+    # AC-U6 + spec arch F4/security F4: only the last _GATE_LOG_TAIL_BYTES of
+    # a large log are read — a well-formed entry pushed out of the tail window
+    # by kilobytes of newer junk is NOT scanned (the per-poll cost stays flat).
+    filler = json.dumps({"note": "no timestamp here"})
+    lines = [json.dumps({"timestamp": "2026-06-01T00:00:00+00:00"})] + [filler] * 5000
+    root = _hook_fixture_tree(tmp_path, gate_log_lines=tuple(lines))
+    report = dashboard_server.load_hook_health(root)
+    # The early well-formed entry is far outside the 4KB tail window.
+    assert report.last_gate_run is None
+
+
+def test_fragments_live_carries_hook_chip_exactly_once(tmp_path: Path) -> None:
+    # AC-U7 (spec qa F3): the live fragment carries the chip marker exactly
+    # once, proving load_hook_health ran (not the silent fallback path).
+    root = _hook_fixture_tree(
+        tmp_path,
+        gate_log_lines=(json.dumps({"timestamp": "2026-06-10T00:30:00+00:00"}),),
+    )
+    app = create_app(port=8765, db_path=_empty_db(tmp_path), hook_health_root=root)
+    with TestClient(app) as client:
+        resp = client.get("/fragments/live", headers={"host": "127.0.0.1:8765"})
+    assert resp.status_code == 200
+    assert resp.text.count("data-hook-health=") == 1
+    assert 'data-hook-health="ok"' in resp.text

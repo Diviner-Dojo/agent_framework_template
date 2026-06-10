@@ -74,9 +74,15 @@ from scripts.telemetry.dashboard import (  # noqa: E402
 )
 from src.telemetry.dashboard import (  # noqa: E402
     render_dashboard_html,
+    render_hook_health_chip,
     render_live_fragment,
     render_live_shell_html,
     render_weekly_trends_chart_panel,
+)
+from src.telemetry.hooks_health import (  # noqa: E402
+    HookHealthReport,
+    assess_hook_health,
+    parse_hook_script_refs,
 )
 from src.telemetry.live import LiveEvent, empty_state, fold_events  # noqa: E402
 from src.telemetry.pricing import PricingTable, load_pricing  # noqa: E402
@@ -151,6 +157,14 @@ CONTENT_SECURITY_POLICY = (
 #: session but tight enough that a fresh poll stays fast. Phase 2 replaces this
 #: with a background watcher; the cutoff stays as the cold-start fallback.
 LIVE_FOLD_LOOKBACK_MINUTES = 10
+
+#: Bounded tail-read window for the quality-gate log recency evidence
+#: (SPEC-20260610-005602 arch F4 / security F4): the log is append-only and
+#: grows monotonically, so the loader reads at most this many bytes from the
+#: END of the file per poll — never the whole file. 4 KB comfortably covers
+#: many gate entries (~300 bytes each) while keeping the per-poll cost flat
+#: regardless of log age.
+_GATE_LOG_TAIL_BYTES = 4096
 
 #: Default DB path (same as the static dashboard).
 DB_PATH = _REPO_ROOT / "metrics" / "evaluation.db"
@@ -430,6 +444,95 @@ def _default_event_source(project_root: Path) -> list[LiveEvent]:
     return _extract_live_events(project_root, since=since)
 
 
+def _read_last_gate_timestamp(log_path: Path) -> datetime | None:
+    """Bounded, read-only tail of the gate log for the last well-formed entry.
+
+    Seeks to the last :data:`_GATE_LOG_TAIL_BYTES` of ``log_path`` and scans
+    the lines in that window BACKWARD for the last *well-formed* entry —
+    defined (spec qa F4, a definite contract rather than an implementation
+    choice) as a JSON object whose ``"timestamp"`` is an ISO-8601 string that
+    parses to a **timezone-aware** datetime; a naive timestamp is treated as
+    malformed. Trailing malformed lines therefore fall back to the previous
+    well-formed entry within the window; no well-formed entry in the window or
+    a missing/unreadable file yields ``None`` (the honest-absence input).
+
+    Only the ``timestamp`` field is consumed — the entry's ``overall`` field
+    has known skip-semantics subtleties (see the ``scripts/quality_gate.py``
+    regression-ledger entry) and the chip makes no pass/fail claim from it.
+    """
+    try:
+        with log_path.open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - _GATE_LOG_TAIL_BYTES))
+            window = fh.read().decode("utf-8", errors="ignore")
+    except OSError:
+        return None
+    for line in reversed(window.splitlines()):
+        record = _safe_text(line)
+        if not isinstance(record, dict):
+            continue
+        stamp = record.get("timestamp")
+        if not isinstance(stamp, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(stamp)
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            continue
+        return parsed
+    return None
+
+
+def load_hook_health(repo_root: Path) -> HookHealthReport:
+    """Resolve the hook-health facts read-only and assemble the pure report.
+
+    The transport half of SPEC-20260610-005602 R-4.1.2 (public, mirroring the
+    :func:`load_weekly_trends` precedent in SHAPE: public name + direct unit
+    tests + route consumer). It deliberately does NOT live next to
+    ``load_weekly_trends`` in ``scripts/telemetry/dashboard.py`` — that module
+    is the DB read-side surface (single ``_connect_readonly`` seam,
+    REV-20260607-200447 arch F3) and this is a FILESYSTEM read; co-locating
+    them would widen that module's concern boundary (REV arch F1, this unit).
+    Strictly read-only — ``read_text`` / ``open``-for-read / ``is_file`` only;
+    never executes a hook, never opens anything for write, never imports a
+    hook module. The parent spec's AC3(b) byte-unchanged behavioral test is
+    the authoritative guard on that promise.
+
+    Args:
+        repo_root: The framework repo root containing ``.claude/`` and
+            ``metrics/`` (injectable so tests drive ``tmp_path`` fixture
+            trees).
+
+    Returns:
+        The assembled :class:`HookHealthReport`.
+    """
+    settings_path = repo_root / ".claude" / "settings.json"
+    try:
+        settings_text: str | None = settings_path.read_text(encoding="utf-8")
+    except OSError:
+        settings_text = None
+    parsed = parse_hook_script_refs(settings_text)
+    hooks_dir = repo_root / ".claude" / "hooks"
+    missing: dict[str, None] = {}
+    for ref in parsed.script_refs:
+        # Basename re-normalized at the stat site (spec security F2): even if
+        # a crafted config smuggled path separators past the parser's charset,
+        # no path component from config can escape ``.claude/hooks/``. A
+        # dot-only ref (``.`` / ``..`` — note ``Path("..").name == ".."``) is
+        # a traversal artifact, not a script name: statting it would resolve
+        # to a DIRECTORY outside/above ``hooks/`` and reporting it would
+        # surface the artifact in the chip — skipped instead.
+        basename = Path(ref).name
+        if not basename.strip("."):
+            continue
+        if not (hooks_dir / basename).is_file():
+            missing.setdefault(basename)
+    last_gate_run = _read_last_gate_timestamp(repo_root / "metrics" / "quality_gate_log.jsonl")
+    return assess_hook_health(parsed, tuple(missing), last_gate_run)
+
+
 def create_app(
     *,
     db_path: Path = DB_PATH,
@@ -438,6 +541,7 @@ def create_app(
     static_dir: Path = STATIC_DIR,
     port: int = DEFAULT_PORT,
     event_source: Callable[[], list[LiveEvent]] | None = None,
+    hook_health_root: Path | None = None,
 ) -> FastAPI:
     """Build the FastAPI app.
 
@@ -461,6 +565,12 @@ def create_app(
             background watcher swaps in by passing ``watcher.snapshot`` here;
             the route handler does not change. This is the seam called out by
             REV-20260607-200447 arch F2.
+        hook_health_root: Repo root for the read-only hook-health facts
+            (``.claude/settings.json`` + ``.claude/hooks/`` presence + the
+            gate-log tail; SPEC-20260610-005602). Defaults to the repo root
+            this script lives in; tests point it at a ``tmp_path`` fixture
+            tree. Deliberately SEPARATE from ``project_root``, which
+            addresses the transcript store under ``~/.claude/projects``.
 
     Returns:
         A configured :class:`FastAPI` app.
@@ -529,6 +639,12 @@ def create_app(
     app.state.pricing = pricing
     app.state.poll_interval_s = LIVE_POLL_INTERVAL_S
     app.state.event_source = resolved_event_source
+    # Hook-health facts root (SPEC-20260610-005602). Deliberately SEPARATE
+    # from ``proj_root``: that addresses the transcript store under
+    # ``~/.claude/projects``; this addresses the repo tree carrying
+    # ``.claude/settings.json`` + ``.claude/hooks/`` + the gate log. Tests
+    # point it at a ``tmp_path`` fixture tree.
+    app.state.hook_health_root = hook_health_root or _REPO_ROOT
 
     _register_routes(app)
     return app
@@ -573,7 +689,18 @@ def _register_routes(app: FastAPI) -> None:
             # triggers live in :func:`load_weekly_trends`'s docstring.
             trends = load_weekly_trends(app.state.db_path, app.state.pricing)
             weekly_panel = render_weekly_trends_chart_panel(trends)
-            return HTMLResponse(render_live_fragment(state, weekly_panel_html=weekly_panel))
+            # Hook-health chip (SPEC-20260610-005602): read-only facts
+            # resolved per poll (one small JSON read + ~10 stats + a bounded
+            # <=4KB log tail), rendered by the pure helper and passed in as
+            # pre-rendered HTML — same composition seam as the weekly panel.
+            hook_chip = render_hook_health_chip(load_hook_health(app.state.hook_health_root))
+            return HTMLResponse(
+                render_live_fragment(
+                    state,
+                    weekly_panel_html=weekly_panel,
+                    hook_health_chip_html=hook_chip,
+                )
+            )
         except Exception:
             # Generic error (AC6): no exception class, no DB path, no stack.
             return HTMLResponse(

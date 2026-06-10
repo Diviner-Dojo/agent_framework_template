@@ -2,13 +2,13 @@
 spec_id: SPEC-20260606-211429
 title: "Telemetry Layer A3 — value-vs-subscription leverage + estimate cross-check (local, no billing API)"
 type: spec
-status: reviewed
+status: complete
 risk_level: medium
 intake_ids: []
 reviewed_by: [architecture-consultant, security-specialist, qa-specialist]
 discussion_id: DISC-20260606-211551-telemetry-value-crosscheck-a3-spec-review
-completed_at:
-completed_commit:
+completed_at: 2026-06-06
+completed_commit: a639903
 ---
 
 ## Goal

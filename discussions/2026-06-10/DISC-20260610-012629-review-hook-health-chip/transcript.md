@@ -1,0 +1,128 @@
+---
+discussion_id: DISC-20260610-012629-review-hook-health-chip
+started: 2026-06-10T01:26:53.220338+00:00
+ended: 2026-06-10T01:39:35.824647+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist, ux-evaluator]
+total_turns: 11
+---
+
+# Discussion: DISC-20260610-012629-review-hook-health-chip
+
+## Turn 1 — facilitator (evidence)
+*2026-06-10T01:26:53.220338+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Full multi-agent review of Phase 4 Unit 4.1 (hook-health chip) before commit - supervised headless session under the developer's 2026-06-09 autonomous Phases 4-5 directive.
+- **Files/scope**: Uncommitted changes on fix/c-gate-log-integrity: src/telemetry/hooks_health.py (NEW pure model), src/telemetry/dashboard.py (render_hook_health_chip + _HOOK_HEALTH_STATUS_LABEL + additive hook_health_chip_html param + CSS), scripts/telemetry/dashboard_server.py (public load_hook_health + bounded gate-log tail + /fragments/live wiring + hook_health_root param), tests/test_telemetry_hooks_health.py (NEW, 20 tests), tests/test_dashboard_server.py (9 new tests + strengthened AC3(b)), memory/bugs/regression-ledger.md (entry #45).
+- **Developer-stated motivation**: SPEC-20260607-183136 R6 self-monitoring surface; spec SPEC-20260610-005602 reviewed with all blocking findings folded.
+- **Explicit constraints**: AC1/AC3 no-inject load-bearing (read-only observer; basename-only disclosure; statusLine excluded); R14 pure/transport split; ADR-0020 narrow recency labelling; NO push.
+
+---
+
+## Turn 2 — qa-specialist (proposal)
+*2026-06-10T01:34:20.643962+00:00 | confidence: 0.88*
+*tags: review, qa*
+
+APPROVE-WITH-CHANGES (0.88). All 103 tests pass; AC-U1/U4/U5/U7/U8/U9 solidly backed; AC3(b) strengthening correctly converts a vacuous digest check into a live behavioral guard. F1 MED (missing-edge-case, REVIEW.md R13): AC-U6 lists settings.json-present-but-EMPTY verbatim but no transport test covers it (behavior manually confirmed correct - json.loads of empty string degrades to not_configured - just unpinned). F2 MED (missing-edge-case): the AC-U3 transport-layer dedup clause (two hooks referencing the SAME absent script -> scripts_missing length 1 while hooks_configured 2) is only pinned at the parse layer; load_hook_health uses a SEPARATE missing dict whose setdefault could regress to append without firing any test. F3 LOW (weak-assertion): the purity guard evicts only hooks_health from sys.modules, so already-loaded third-party modules do not appear in the delta - the stdlib-only claim is stronger than what is measured (same limitation as the pre-existing live.py guard; narrow scripts-injection claim is adequately guarded). Strengths: traversal test asserts the full behavioral invariant; injection test asserts both negative and positive; count==1 + index-ordering pins multiplicity AND composition order; ledger entry present pre-commit and correctly classified.
+
+---
+
+## Turn 3 — architecture-consultant (proposal)
+*2026-06-10T01:34:20.737227+00:00 | confidence: 0.88*
+*tags: review, architecture*
+
+APPROVE (0.88). All six spec-stage arch contracts survived implementation faithfully (HookConfigParse frozen dataclass; 3-arg assess; public load_hook_health; _GATE_LOG_TAIL_BYTES named constant; label map co-located with _LANE_STATUS_LABEL; Rule-of-Three watchpoint correctly DEFERRED at the second additive param). Two-root create_app shape (project_root = transcript store vs hook_health_root = repo tree) is sound, NOT a smell - merging them would be a category error; docstring documents the separation. F1 INFO (drift): load_hook_health lives in dashboard_server.py not scripts/telemetry/dashboard.py where load_weekly_trends lives - KEEP: that module is the DB read-side surface (single _connect_readonly seam per REV-20260607-200447 arch F3) and a filesystem read does not belong there; the spec word mirroring was about shape (public name + direct tests + route consumer), which is matched; optional one-line docstring pin so nobody fixes the inconsistency by moving it. F2 INFO: record the Rule-of-Three trigger somewhere durable beyond the spec (optional ledger sentence). F3 LOW: HookHealthReport import is annotation-only - leave as-is, TYPE_CHECKING block would be inconsistent for zero gain. Strengths: two-layer basename discipline with the dot-only edge named inline; bounded tail proves the bound bites via test; composition-order contract documented AND pinned by test; caller contract documented at the right location.
+
+---
+
+## Turn 4 — security-specialist (proposal)
+*2026-06-10T01:34:40.738628+00:00 | confidence: 0.95*
+*tags: review, security*
+
+APPROVE (0.95). Adversarial pass over the final code: the no-mutation / no-execution / minimum-disclosure / no-traversal / escaping guarantees all hold. Three independent disclosure layers (regex charset structurally excludes separators; Path(ref).name re-normalization at stat site; _esc on all HTML output), each sufficient alone. statusLine exclusion structurally enforced (walk only visits document.get(hooks)). Live-execution verified: token after script ref never propagates; a ref like ...sh passes the dot-only guard CORRECTLY (valid child filename, cannot escape hooks_dir); a 6000-byte single-line gate entry degrades gracefully to None. 5 informational findings, none requiring change: F1 LOW pre-existing _safe_text annotation says dict|None but json.loads returns any JSON value (callers all isinstance-guard); F2 LOW dot-only-skip comment could note ...sh passes correctly; F3 LOW minimum-disclosure verified, no action; F4 LOW a legitimate gate entry exceeding 4096 bytes would yield a false no-run-observed (accepted trade-off, entries are ~300 bytes); F5 LOW fail-loud KeyError on unknown status propagates to the AC6 generic catch - correct posture, no detail exposure. AC3(a) allowlist not weakened; no CSP change needed.
+
+---
+
+## Turn 5 — ux-evaluator (proposal)
+*2026-06-10T01:34:40.839923+00:00 | confidence: 0.88*
+*tags: review, ux*
+
+APPROVE-WITH-CHANGES (0.88). F1 MED (visual-hierarchy): in the not_configured state both label and recency render in --muted, so the status claim and the metadata line differ only by font weight - inconsistent with the ok/missing states where the label carries a status color; remediation: .hook-chip--not_configured .hook-chip__label{color:var(--ink);} (base text color, no alarm implied). F2 LOW (microcopy register): all-caps OK breaks the chip sentence-case register ("not configured", "missing"); exception clause applies if the stamp metaphor is intentional. Confirmed strong: WCAG 1.4.3 contrast across all states (6.02-7.33:1); 1.4.1 not-by-color-alone (dashed border + distinct label text); 1.3.1 visible-text fold correctly implemented with rationale comment; ADR-0020 honesty (recency never widens; observed signals absence of data not absence of compliance); precondition-banner placement does not compete with the runway headline; flex-wrap handles narrow widths; data-hook-health attribute is the right forward-looking sentinel.
+
+---
+
+## Turn 6 — facilitator (critique)
+*2026-06-10T01:35:04.343214+00:00 | confidence: 0.8*
+*tags: finding-verification*
+
+Finding verification: 10 verified (qa F1/F2 absent tests confirmed by inspection; qa F3 purity-guard scope confirmed; arch F1 placement fact confirmed; ux F1 confirmed - no not_configured label color rule exists and var(--ink) is defined at :root in the shell CSS; security F1/F2/F4/F5 confirmed by the specialist's own live execution), 2 inconclusive (ux F2 capitalization register - judgment-dependent; arch F2 durable-watchpoint location - judgment-dependent), 0 discarded.
+
+---
+
+## Turn 7 — facilitator (synthesis)
+*2026-06-10T01:37:37.127284+00:00 | confidence: 0.9*
+*tags: blocking:0, advisory:10, speculative:0, model-tiers:default-mixed*
+
+## Request Context
+- **What was requested**: Full multi-agent review of Phase 4 Unit 4.1 (hook-health chip) before commit, autonomous session under the developer 2026-06-09 Phases 4-5 directive.
+- **Files/scope**: src/telemetry/hooks_health.py (NEW), src/telemetry/dashboard.py, scripts/telemetry/dashboard_server.py, tests/test_telemetry_hooks_health.py (NEW), tests/test_dashboard_server.py, memory/bugs/regression-ledger.md.
+- **Developer-stated motivation**: SPEC-20260607-183136 R6 self-monitoring; per-unit spec SPEC-20260610-005602 (reviewed).
+- **Explicit constraints**: AC1/AC3 no-inject load-bearing; R14 split; ADR-0020 narrow labelling; NO push.
+
+## Synthesis
+4-specialist ensemble: qa 0.88 AWC + arch 0.88 APPROVE + security 0.95 APPROVE + ux 0.88 AWC; weighted ~0.90. 0 BLOCKING / 2 MED + 2 LOW folded in-session / 6 LOW-INFO deferred-as-advisory / 2 INFO confirmed-no-action. FOLDED: (qa F1 MED) empty-settings-file regression test - the present-but-zero-length branch is distinct from missing-file and was unpinned; (qa F2 MED) transport-layer dedup regression test - load_hook_health accumulates missing names in its OWN dict so the parse-layer dedup test could not catch an append regression; (ux F1 MED) .hook-chip--not_configured .hook-chip__label{color:var(--ink)} restores the label-vs-recency hierarchy consistency across all three states; (arch F1 INFO->fold) load_hook_health docstring now pins WHY it does not live next to load_weekly_trends (DB read-side vs filesystem read concern boundary) so nobody fixes the inconsistency by moving it. DEFERRED-AS-ADVISORY: qa F3 (purity-guard eviction scope - same limitation as the pre-existing live.py guard; fix both in one consistency pass), ux F2 (OK capitalization - DECLINED-LEANING: _RUNWAY_LABEL also uses all-caps OK so the register is dashboard-consistent; defer until user-study signal), arch F2 (durable Rule-of-Three pin beyond spec - the render_live_fragment docstring carries it), security F1 (_safe_text annotation - pre-existing), security F2 (dot-skip comment nuance), security F4 (>4KB single-entry false-absence - accepted trade-off). CONFIRMED-NO-ACTION: security F3/F5 (verified-by-execution disclosure + fail-loud posture). Verification pass: 10 verified / 2 inconclusive / 0 discarded. Speculative section: 0 findings under 0.80; 0 unscored. Model tiers: qa-specialist:default, architecture-consultant:default, security-specialist:default, ux-evaluator:default (no --cost flag). Post-fold quality gate 7/7 (105 tests in the touched suites; ledger 45 guards). VERDICT: APPROVE (post-fold).
+
+---
+
+## Turn 8 — qa-specialist (reflection)
+*2026-06-10T01:39:35.236578+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Under-weighted whether the purity-guard forbidden-prefix list itself was complete; accepted the eviction-scope weakness as a consistency-pass deferral without surfacing that the AC is only weakly evidenced (guard catches NEW imports, not pre-cached ones).
+## Candidate Improvement Rule
+For sys.modules-delta purity guards: verify the eviction set includes all aliasing modules (incl. cached src.* siblings) and document the pre-loaded-third-party blind spot as a named limitation in the test comment; if purity is a hard AC, clear full interpreter state or the AC is weakly evidenced.
+## Confidence Calibration
+Original: 0.88, Revised: 0.84, Delta: -0.04
+
+---
+
+## Turn 9 — architecture-consultant (reflection)
+*2026-06-10T01:39:35.433306+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Flagged the load_hook_health placement deviation without first checking whether the spec or an ADR already permitted it, and endorsed a docstring pin without verifying it landed in the file.
+## Candidate Improvement Rule
+Before flagging a placement/naming deviation as INFO, verify whether the ADR or sprint spec already contains explicit language permitting it; if so, suppress the finding rather than folding it as advisory.
+## Confidence Calibration
+Original: 0.88, Revised: 0.82, Delta: -0.06
+
+---
+
+## Turn 10 — security-specialist (reflection)
+*2026-06-10T01:39:35.607000+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Did not probe Windows junction-point behavior in the traversal guard verification - a guard verified only with POSIX-style paths is not verified for Windows deployments (this repo IS Windows-first; the stat site uses pathlib which mitigates, but the platform gap was not named).
+## Candidate Improvement Rule
+Traversal-guard live-execution verification must note the OS; Windows junction behavior must be explicitly confirmed or flagged as untested (candidate addition to security_baseline).
+## Confidence Calibration
+Original: 0.95, Revised: 0.91, Delta: -0.04
+
+---
+
+## Turn 11 — ux-evaluator (reflection)
+*2026-06-10T01:39:35.824647+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Reviewed terminal states only; did not trace the polling-transient state (the chip sits silently in last-known state between polls with no staleness affordance). Mitigating context: the chip recomputes per fragment poll inside the htmx swap, so there is no persistent stale window beyond the 3s interval - but the trace should have been explicit.
+## Candidate Improvement Rule
+Any status chip reflecting a polled/async value must have a documented in-flight or staleness story (loading affordance, staleness indicator, or last-checked timestamp) before review closes without a state-feedback finding.
+## Confidence Calibration
+Original: 0.88, Revised: 0.82, Delta: -0.06
+
+---

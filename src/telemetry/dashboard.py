@@ -28,6 +28,7 @@ from __future__ import annotations
 import html
 import json
 from dataclasses import dataclass
+from datetime import UTC
 from typing import TypedDict
 
 from src.telemetry.cost import CostReport
@@ -40,6 +41,12 @@ from src.telemetry.failures import (
     RetryChain,
     classify_error,
     group_retry_chains,
+)
+from src.telemetry.hooks_health import (
+    HOOK_STATUS_MISSING_SCRIPTS,
+    HOOK_STATUS_NOT_CONFIGURED,
+    HOOK_STATUS_OK,
+    HookHealthReport,
 )
 from src.telemetry.live import (
     LANE_ACTIVE,
@@ -1055,8 +1062,83 @@ _RUNWAY_LABEL = {
     RUNWAY_RED: "critical",
 }
 
+#: Manager-facing label per hook-health status (SPEC-20260610-005602 arch F5:
+#: the status *constants* live in ``src/telemetry/hooks_health.py`` — the pure
+#: model owns the vocabulary — while this map carries the human-readable copy
+#: and is the only renderer-side translation, co-located with the other live
+#: label maps above). Lookups are fail-loud ``[status]`` (the Unit 1
+#: discipline): an unmapped status is a render-layer bug, not a silent default.
+_HOOK_HEALTH_STATUS_LABEL = {
+    HOOK_STATUS_OK: "OK",
+    HOOK_STATUS_MISSING_SCRIPTS: "missing",
+    HOOK_STATUS_NOT_CONFIGURED: "not configured",
+}
 
-def render_live_fragment(state: LiveState, weekly_panel_html: str = "") -> str:
+
+def render_hook_health_chip(report: HookHealthReport) -> str:
+    """Render the read-only hook-health chip (SPEC-20260610-005602 R-4.1.3).
+
+    A compact full-width strip summarizing whether the framework's enforcement
+    hooks are configured and their script files present, plus narrowly-labelled
+    recency evidence. Two honesty rules are load-bearing here (R-4.1.4):
+
+    * The recency copy names the **quality gate** specifically ("quality gate
+      last ran ..." / "no quality-gate run observed") — the gate log evidences
+      exactly ONE hook's underlying gate, so the copy must never widen the
+      claim to "hooks last fired".
+    * ``not_configured`` is the typed honest-absence state and renders as an
+      explicit chip (dashed border, "not configured" label), never an error
+      and never silence.
+
+    Args:
+        report: The pure health report assembled by
+            :func:`src.telemetry.hooks_health.assess_hook_health` from facts
+            the transport layer resolved read-only.
+
+    Returns:
+        One ``<div class="hook-chip ...">`` element. Every dynamic string
+        field is ``_esc``'d HERE, inside the helper (spec security F3) — the
+        caller contract on :func:`render_live_fragment` relies on it.
+    """
+    status_label = _HOOK_HEALTH_STATUS_LABEL[report.status]
+    missing_html = ""
+    if report.status == HOOK_STATUS_NOT_CONFIGURED:
+        summary = f"Hooks: {status_label}"
+        title = "No hook entries were found in .claude/settings.json."
+    elif report.status == HOOK_STATUS_MISSING_SCRIPTS:
+        missing_names = ", ".join(report.scripts_missing)
+        summary = (
+            f"Hooks: {len(report.scripts_missing)} of {report.hooks_configured} "
+            f"hook scripts {status_label}"
+        )
+        title = f"Missing under .claude/hooks/: {missing_names}"
+        # The missing basenames are the actionable detail — they must be
+        # VISIBLE text, not title-attribute-only (ux checkpoint fold: a
+        # title attribute is unreachable for keyboard/touch users and most
+        # screen-reader browse modes; WCAG 1.3.1). The title stays as a
+        # convenience layer.
+        missing_html = f'<span class="hook-chip__missing">Missing: {_esc(missing_names)}</span>'
+    else:
+        summary = f"Hooks: {report.hooks_configured} configured — {status_label}"
+        title = "All hook scripts referenced by .claude/settings.json are present."
+    if report.last_gate_run is None:
+        recency = "no quality-gate run observed"
+    else:
+        stamp = report.last_gate_run.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        recency = f"quality gate last ran {stamp}"
+    return (
+        f'<div class="hook-chip hook-chip--{_esc(report.status)}" '
+        f'data-hook-health="{_esc(report.status)}" title="{_esc(title)}">'
+        f'<span class="hook-chip__label">{_esc(summary)}</span>'
+        f"{missing_html}"
+        f'<span class="hook-chip__recency">{_esc(recency)}</span>'
+        "</div>"
+    )
+
+
+def render_live_fragment(
+    state: LiveState, weekly_panel_html: str = "", hook_health_chip_html: str = ""
+) -> str:
     """Render the htmx live fragment (agent lanes + runway + cost/failure stream + charts).
 
     Returned as ONE root ``<section>`` so an htmx ``hx-swap="outerHTML"`` swap
@@ -1087,9 +1169,24 @@ def render_live_fragment(state: LiveState, weekly_panel_html: str = "") -> str:
             :func:`render_weekly_trends_chart_panel` and passes the HTML
             here; the live model (``src/telemetry/live.py``) stays pure
             (AC14) — it does NOT learn about the weekly aggregator.
+        hook_health_chip_html: Optional pre-rendered hook-health chip strip
+            (SPEC-20260610-005602). Same additive contract as
+            ``weekly_panel_html``: empty-string default = no chip, existing
+            callers unaffected. Rendered FIRST (above the runway) because it
+            is a precondition banner — the wiring health of the enforcement
+            layer frames how much to trust everything below it.
+
+            **Caller contract (spec security F3)**: both pre-rendered HTML
+            parameters MUST carry only HTML produced by a
+            ``src.telemetry.dashboard`` render helper
+            (:func:`render_weekly_trends_chart_panel`,
+            :func:`render_hook_health_chip`) — those helpers apply ``_esc``
+            to every dynamic field internally. Passing raw or hand-built
+            strings here bypasses all escaping and is an injection bug.
     """
     return (
         '<section id="live-section" class="live-section" data-state="live">'
+        f"{hook_health_chip_html}"
         f"{_render_runway_panel(state.runway)}"
         f"{_render_agent_lanes_panel(state)}"
         f"{_render_live_stream_panel(state.recent_events)}"
@@ -1817,6 +1914,17 @@ animation:tile-loading-pulse 1.4s ease-in-out infinite;}
 @media (prefers-reduced-motion: reduce){
 .tile--loading{animation:none;}
 }
+.hook-chip{grid-column:1 / -1;display:flex;gap:14px;align-items:baseline;
+flex-wrap:wrap;padding:6px 12px;border:1px solid var(--line);border-radius:8px;
+font-size:13px;color:var(--muted);}
+.hook-chip__label{font-weight:600;}
+.hook-chip--ok{border-color:var(--ok);}
+.hook-chip--ok .hook-chip__label{color:var(--ok);}
+.hook-chip--missing_scripts{border-color:#d29922;}
+.hook-chip--missing_scripts .hook-chip__label{color:#d29922;}
+.hook-chip__missing{color:#d29922;}
+.hook-chip--not_configured{border-style:dashed;}
+.hook-chip--not_configured .hook-chip__label{color:var(--ink);}
 .shell-nav{margin-top:6px;}
 .nav-link{color:var(--accent);font-size:13px;text-decoration:none;
 border-bottom:1px dotted var(--accent);padding-bottom:1px;}
