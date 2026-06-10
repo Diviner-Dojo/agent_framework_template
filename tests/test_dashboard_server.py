@@ -2859,3 +2859,226 @@ def test_print_console_summary_does_not_mutate_database(
     assert "Cost:" in out  # seeded row -> a real measured digest line
     assert _schema_snapshot(db) == schema_before
     assert _row_counts(db) == rows_before
+
+
+# --------------------------------------------------------------------------- #
+# Phase 5 Unit 5.1 — --render-static export mode (SPEC-20260610-035920)
+# --------------------------------------------------------------------------- #
+
+
+def _stub_tempdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Redirect the export's temp-dir write into the test sandbox."""
+    monkeypatch.setattr(dashboard_server.tempfile, "gettempdir", lambda: str(tmp_path))
+    return tmp_path / dashboard_server.DASHBOARD_FILENAME
+
+
+def test_main_render_static_writes_artifact_without_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """AC1: --render-static --no-open writes the artifact; no server, no browser."""
+    monkeypatch.setattr(dashboard_server, "DB_PATH", _db_with_cost_row(tmp_path))
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+    server_calls, browser_calls = _stub_server_and_browser(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["dashboard_server.py", "--render-static", "--no-open"])
+    dashboard_server.main()
+    assert out_file.exists()
+    assert "<!DOCTYPE html>" in out_file.read_text(encoding="utf-8")
+    out = capsys.readouterr().out
+    assert "Dashboard:" in out  # artifact-mode summary line
+    # qa F2 (this unit's review): the PATH VALUE is load-bearing — a mis-wired
+    # output_path would still print the bare "Dashboard:" prefix.
+    assert str(out_file) in out
+    assert server_calls == []
+    assert browser_calls == []
+
+
+def test_main_render_static_empty_db_renders_absence_tiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """AC1a: initialized-but-empty DB exports valid HTML with honest absence states."""
+    monkeypatch.setattr(dashboard_server, "DB_PATH", _empty_db(tmp_path))
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+    server_calls, browser_calls = _stub_server_and_browser(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["dashboard_server.py", "--render-static", "--no-open"])
+    dashboard_server.main()
+    assert out_file.exists()
+    assert "<!DOCTYPE html>" in out_file.read_text(encoding="utf-8")
+    out = capsys.readouterr().out
+    assert "Cost: analyzer not yet run" in out  # honest not-yet-run digest line
+    assert server_calls == []
+    assert browser_calls == []
+
+
+@pytest.mark.regression
+def test_render_static_byte_parity_with_retrospective_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC2 (parent AC12 / R15): static export == live retrospective view, byte-for-byte.
+
+    Determinism pin (spec qa F1): the monkeypatched assembler IGNORES its
+    ``generated_label`` argument and returns one fixed ``DashboardData``, so
+    the clock-derived labels on the two paths cannot diverge into the bytes.
+    A drift between these two surfaces would mean a second render path exists.
+    """
+    db = _db_with_cost_row(tmp_path)
+    fixed = dashboard_server.assemble_dashboard_data(db, generated_label="2026-06-10 04:00 UTC")
+    monkeypatch.setattr(dashboard_server, "assemble_dashboard_data", lambda *a, **kw: fixed)
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+    exported = dashboard_server.export_static_dashboard(db)
+    assert exported == out_file
+    app = create_app(port=8765, db_path=db)
+    with TestClient(app) as client:
+        resp = client.get("/fragments/retrospective", headers={"host": "127.0.0.1:8765"})
+    assert resp.status_code == 200
+    assert resp.text == out_file.read_text(encoding="utf-8")
+
+
+def test_main_render_static_opens_browser_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """AC3: without --no-open the artifact opens exactly once, as a file:// URI."""
+    monkeypatch.setattr(dashboard_server, "DB_PATH", _db_with_cost_row(tmp_path))
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+    server_calls, browser_calls = _stub_server_and_browser(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["dashboard_server.py", "--render-static"])
+    dashboard_server.main()
+    assert browser_calls == [out_file.as_uri()]
+    assert server_calls == []
+
+
+@pytest.mark.regression
+def test_main_render_static_missing_db_no_file_no_browser_no_slug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """AC4 + AC9: missing DB -> honest init copy; nothing written/opened; no slug leak.
+
+    Migrated from the retired legacy CLI test
+    ``test_no_slug_or_env_leak_on_no_db_path`` (spec C2).
+    """
+    monkeypatch.setenv("NTFY_TOPIC", "secret-slug-do-not-print")
+    monkeypatch.setattr(dashboard_server, "DB_PATH", tmp_path / "absent.db")
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+    server_calls, browser_calls = _stub_server_and_browser(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["dashboard_server.py", "--render-static"])
+    dashboard_server.main()
+    captured = capsys.readouterr()
+    assert "No telemetry database" in captured.out
+    assert "init_db" in captured.out
+    assert "secret-slug-do-not-print" not in (captured.out + captured.err)
+    assert not out_file.exists()
+    assert browser_calls == []
+    assert server_calls == []
+
+
+@pytest.mark.regression
+def test_export_static_operational_error_sanitized_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """AC5: OperationalError -> path-only copy, never str(exc); no file written.
+
+    Pins the door the legacy CLI left open (scripts/telemetry/dashboard.py:443
+    pre-retirement printed the raw exception text).
+    """
+    db = _empty_db(tmp_path)
+
+    def _boom(*args: Any, **kwargs: Any) -> None:
+        raise sqlite3.OperationalError("secret-internal-detail: disk I/O error")
+
+    monkeypatch.setattr(dashboard_server, "assemble_dashboard_data", _boom)
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+    result = dashboard_server.export_static_dashboard(db)
+    out = capsys.readouterr().out
+    assert result is None
+    assert "Could not open the telemetry database" in out
+    assert "secret-internal-detail" not in out  # raw exception text never printed
+    assert not out_file.exists()
+
+
+@pytest.mark.regression
+def test_export_static_write_failure_prints_sanitized_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """qa F1 (this unit's review): an OSError on the artifact write is sanitized.
+
+    Without the handler, a PermissionError on out_path.write_text propagated
+    as a raw traceback — contradicting the sanitized-copy discipline every
+    other error path on this CLI follows.
+    """
+    db = _db_with_cost_row(tmp_path)
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+
+    def _boom(self: Path, *args: Any, **kwargs: Any) -> None:
+        raise PermissionError("secret-os-detail: device full")
+
+    monkeypatch.setattr(Path, "write_text", _boom)
+    result = dashboard_server.export_static_dashboard(db)
+    out = capsys.readouterr().out
+    assert result is None
+    assert "Could not write the dashboard file" in out
+    assert "No export was produced." in out
+    assert "secret-os-detail" not in out  # raw OS error text never printed
+    assert not out_file.exists()
+
+
+def test_main_render_static_operational_error_skips_browser(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """qa F3: the main()-level gate skips the browser when the export fails."""
+    monkeypatch.setattr(dashboard_server, "DB_PATH", _empty_db(tmp_path))
+
+    def _boom(*args: Any, **kwargs: Any) -> None:
+        raise sqlite3.OperationalError("cannot open")
+
+    monkeypatch.setattr(dashboard_server, "assemble_dashboard_data", _boom)
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+    server_calls, browser_calls = _stub_server_and_browser(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["dashboard_server.py", "--render-static"])
+    dashboard_server.main()
+    assert browser_calls == []
+    assert server_calls == []
+    assert not out_file.exists()
+
+
+def test_main_summary_and_render_static_mutually_exclusive(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """AC6: the two one-shot modes cannot be combined (argparse exit code 2)."""
+    monkeypatch.setattr(sys, "argv", ["dashboard_server.py", "--summary", "--render-static"])
+    with pytest.raises(SystemExit) as excinfo:
+        dashboard_server.main()
+    assert excinfo.value.code == 2
+
+
+def test_main_render_static_with_port_is_accepted_and_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """AC6a: --port alongside --render-static is accepted; no server is started."""
+    monkeypatch.setattr(dashboard_server, "DB_PATH", _db_with_cost_row(tmp_path))
+    out_file = _stub_tempdir(monkeypatch, tmp_path)
+    server_calls, browser_calls = _stub_server_and_browser(monkeypatch)
+    monkeypatch.setattr(
+        sys, "argv", ["dashboard_server.py", "--render-static", "--port", "9999", "--no-open"]
+    )
+    dashboard_server.main()
+    assert out_file.exists()
+    assert server_calls == []
+
+
+def test_export_static_does_not_mutate_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """AC7: schema, row counts, and the .db file hash are unchanged by an export.
+
+    -wal/-shm sizes are deliberately NOT asserted (spec qa F2): a read-only
+    open in WAL mode may legitimately create or touch the sidecars.
+    """
+    db = _db_with_cost_row(tmp_path)
+    schema_before = _schema_snapshot(db)
+    rows_before = _row_counts(db)
+    hash_before = hashlib.sha256(db.read_bytes()).hexdigest()
+    _stub_tempdir(monkeypatch, tmp_path)
+    exported = dashboard_server.export_static_dashboard(db)
+    assert exported is not None
+    assert _schema_snapshot(db) == schema_before
+    assert _row_counts(db) == rows_before
+    assert hashlib.sha256(db.read_bytes()).hexdigest() == hash_before

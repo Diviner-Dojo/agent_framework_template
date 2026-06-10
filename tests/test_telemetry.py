@@ -2958,20 +2958,6 @@ def test_divergence_source_label_is_escaped() -> None:
 
 
 @pytest.mark.regression
-def test_no_slug_or_env_leak_on_no_db_path(tmp_path, monkeypatch, capsys) -> None:
-    # Behavioral: inject a fake NTFY_TOPIC, force the no-DB path, assert the slug
-    # never appears in stdout/stderr. The generator imports no notify module.
-    monkeypatch.setenv("NTFY_TOPIC", "secret-slug-do-not-print")
-    monkeypatch.setattr(dash, "DB_PATH", tmp_path / "absent.db")
-    monkeypatch.setattr(dash.sys, "argv", ["dashboard.py", "--no-open"])
-    dash.main()
-    captured = capsys.readouterr()
-    assert "secret-slug-do-not-print" not in captured.out
-    assert "secret-slug-do-not-print" not in captured.err
-    assert not hasattr(dash, "notify")
-
-
-@pytest.mark.regression
 def test_assemble_on_missing_db_raises_without_leaking_slug(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("NTFY_TOPIC", "secret-slug-do-not-print")
     with pytest.raises(sqlite3.OperationalError):
@@ -3018,35 +3004,38 @@ def test_plain_language_legends_present(pricing) -> None:
     assert "monthly subscription fee" in html  # A3 legend gloss
 
 
-# --- main() generate + --no-open (R1/R4/R6) -------------------------------- #
+# --- legacy CLI retirement (SPEC-20260610-035920 U5/AC8) ------------------- #
+# The one-shot CLI tests that lived here migrated to the --render-static tests
+# in tests/test_dashboard_server.py (the surviving entry point).
 
 
-def test_main_no_open_writes_file_without_opening(
-    env, pricing, tmp_path, monkeypatch, capsys
-) -> None:
-    fee, otel = _populate_dashboard_db(env, pricing, tmp_path)
-    monkeypatch.setattr(dash, "DB_PATH", env.db_path)
-    monkeypatch.setattr(dash.tempfile, "gettempdir", lambda: str(tmp_path))
-    opened: list[str] = []
-    monkeypatch.setattr(dash.webbrowser, "open", lambda u: opened.append(u))
-    monkeypatch.setattr(dash.sys, "argv", ["dashboard.py", "--no-open"])
-    dash.main()
-    out_file = tmp_path / dash.DASHBOARD_FILENAME
-    assert out_file.exists()
-    assert "<!DOCTYPE html>" in out_file.read_text(encoding="utf-8")
-    assert opened == []  # --no-open suppressed the browser
-    assert "Dashboard:" in capsys.readouterr().out
+@pytest.mark.regression
+def test_legacy_dashboard_cli_retired_loader_surface_intact() -> None:
+    """AC8: scripts/telemetry/dashboard.py is a library, not a second entry point.
 
-
-def test_main_opens_browser_without_no_open(env, pricing, tmp_path, monkeypatch) -> None:
-    _populate_dashboard_db(env, pricing, tmp_path)
-    monkeypatch.setattr(dash, "DB_PATH", env.db_path)
-    monkeypatch.setattr(dash.tempfile, "gettempdir", lambda: str(tmp_path))
-    opened: list[str] = []
-    monkeypatch.setattr(dash.webbrowser, "open", lambda u: opened.append(u))
-    monkeypatch.setattr(dash.sys, "argv", ["dashboard.py"])
-    dash.main()
-    assert len(opened) == 1  # browser opened exactly once
+    Regression pin for the arch F5 retirement: the legacy ``main()`` (whose
+    ``OperationalError`` branch carried a ``str(exc)`` passthrough) must not
+    come back, and the module must stay un-runnable. The read-side loader
+    surface stays importable, and the no-notify-module property (spec C2)
+    carries over from the retired CLI tests.
+    """
+    assert not hasattr(dash, "main")
+    assert not hasattr(dash, "DASHBOARD_FILENAME")  # moved to dashboard_server
+    assert not hasattr(dash, "notify")
+    source = Path(dash.__file__).read_text(encoding="utf-8")
+    # The only __main__ block allowed is the ux-fold SIGNPOST: it points a
+    # stale alias at the replacement command and must never render or write
+    # (no render/webbrowser/tempfile usage may come back to this module).
+    assert "dashboard_server.py --render-static" in source
+    for forbidden in ("webbrowser", "tempfile", "argparse"):
+        assert forbidden not in source
+    for loader in (
+        "assemble_dashboard_data",
+        "load_weekly_trends",
+        "load_cost_report",
+        "load_drift_inputs",
+    ):
+        assert callable(getattr(dash, loader))
 
 
 def test_pricing_cross_check_available_renders_divergence() -> None:

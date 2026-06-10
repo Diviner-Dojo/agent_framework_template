@@ -8,7 +8,7 @@ reviewed_by: [architecture-consultant, security-specialist, qa-specialist]
 discussion_id: DISC-20260610-031327-live-dashboard-pip-spec-review
 intake_ids: []
 completed_at: 2026-06-10
-completed_commit:  # stamped retroactively once the unit commit SHA exists
+completed_commit: 7b2f8e4
 ---
 
 ## Goal

@@ -37,6 +37,7 @@ Usage:
     python scripts/telemetry/dashboard_server.py --port 8765
     python scripts/telemetry/dashboard_server.py --no-open
     python scripts/telemetry/dashboard_server.py --summary
+    python scripts/telemetry/dashboard_server.py --render-static [--no-open]
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ import argparse
 import json
 import sqlite3
 import sys
+import tempfile
 import webbrowser
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -100,6 +102,11 @@ HARDCODED_HOST = "127.0.0.1"
 #: Default port (above the ephemeral range to avoid conflict). The developer
 #: may override via ``--port`` when launching, but the host literal stays.
 DEFAULT_PORT = 8765
+
+#: Conventional static-export filename (also the defensive .gitignore entry).
+#: Moved here from the retired scripts/telemetry/dashboard.py CLI
+#: (SPEC-20260610-035920 U5) — this module is the only consumer.
+DASHBOARD_FILENAME = "telemetry_dashboard.html"
 
 #: htmx polling interval — server-specified, NOT client-overridable (security
 #: F5 — a client-controlled interval would let a tab burn CPU on the daemon).
@@ -848,6 +855,76 @@ def print_console_summary(db_path: Path) -> None:
         print(line)
 
 
+def export_static_dashboard(db_path: Path) -> Path | None:
+    """Write the retrospective dashboard as a static HTML artifact (``--render-static``).
+
+    One-shot export for headless/derived instances with no standing-process
+    option (SPEC-20260610-035920, parent R4): assembles the same read-side
+    :class:`~src.telemetry.dashboard.DashboardData` the live retrospective
+    route uses and renders it through the same
+    :func:`~src.telemetry.dashboard.render_dashboard_html` — the single render
+    path (parent R15) — then writes the document to the OS temp dir. No server
+    is started, no port is bound, and the DB is opened read-only by the
+    assembler (parent R10).
+
+    The artifact path is FIXED to ``<tempdir>/telemetry_dashboard.html``
+    (developer decision #6 — personal cost/fee figures never enter the repo
+    tree). The fixed, predictable filename is an acknowledged trade-off scoped
+    to the personal-machine deployment model; a shared-machine deployment is
+    the re-review trigger for a non-predictable temp path. There is
+    deliberately no ``--out`` flag: an arbitrary-write affordance would also
+    invalidate the constant-path assumption that makes the caller's
+    ``webbrowser.open(out_path.as_uri())`` safe.
+
+    Error paths mirror :func:`print_console_summary`: a missing DB file prints
+    the plain-language init copy; ``sqlite3.OperationalError`` prints the
+    sanitized path-only copy (never ``str(exc)`` — the raw-error passthrough
+    the legacy ``scripts/telemetry/dashboard.py`` CLI carried is retired with
+    it). Both error paths write NO file.
+
+    Args:
+        db_path: SQLite database path (opened ``mode=ro`` by the assembler).
+
+    Returns:
+        The written artifact path, or ``None`` when nothing was exported
+        (missing DB / unreadable DB) so the caller skips the browser open.
+    """
+    if not db_path.exists():
+        print(
+            f"No telemetry database found at {db_path}. "
+            "To initialize it, run: python scripts/init_db.py"
+        )
+        print("No export was produced.")
+        return None
+    label = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    try:
+        data = assemble_dashboard_data(db_path, generated_label=label)
+    except sqlite3.OperationalError:
+        # Path only in the message; never the raw SQLite error text (spec
+        # C2/C5 + the str(exc) ledger class).
+        print(
+            f"Could not open the telemetry database read-only at {db_path}: "
+            "unable to open (check file permissions)."
+        )
+        print("No export was produced.")
+        return None
+    out_path = Path(tempfile.gettempdir()) / DASHBOARD_FILENAME
+    try:
+        out_path.write_text(render_dashboard_html(data), encoding="utf-8")
+    except OSError:
+        # Same sanitized discipline as the DB branch (qa F1, this unit's
+        # review): never the raw OS error text, path + plain action only.
+        print(
+            f"Could not write the dashboard file at {out_path}: "
+            "unable to write (check disk space and permissions)."
+        )
+        print("No export was produced.")
+        return None
+    for line in render_console_summary(data, output_path=str(out_path)):
+        print(line)
+    return out_path
+
+
 def main() -> None:
     """CLI entry point.
 
@@ -857,8 +934,10 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(
         description=(
-            "Telemetry Layer B — live, localhost-only dashboard daemon. "
-            "Binds 127.0.0.1 only; no host configuration."
+            "Telemetry Layer B dashboard — three modes: live server (default), "
+            "--summary (ASCII digest, one-shot), --render-static (static HTML "
+            "export, one-shot). Server mode binds 127.0.0.1 only; no host "
+            "configuration."
         )
     )
     parser.add_argument(
@@ -870,9 +949,10 @@ def main() -> None:
     parser.add_argument(
         "--no-open",
         action="store_true",
-        help="Do not auto-open the browser at startup.",
+        help=("Do not auto-open the browser (applies to server mode and to --render-static)."),
     )
-    parser.add_argument(
+    one_shot = parser.add_mutually_exclusive_group()
+    one_shot.add_argument(
         "--summary",
         action="store_true",
         help=(
@@ -880,10 +960,27 @@ def main() -> None:
             "(read-only; no server, no browser)."
         ),
     )
+    one_shot.add_argument(
+        "--render-static",
+        action="store_true",
+        help=(
+            "Write the retrospective dashboard as a static HTML file in the "
+            "OS temp dir and exit (read-only; no server). Opens the file in "
+            "the browser unless --no-open is passed."
+        ),
+    )
     args = parser.parse_args()
 
     if args.summary:
         print_console_summary(DB_PATH)
+        return
+
+    if args.render_static:
+        out_path = export_static_dashboard(DB_PATH)
+        # webbrowser.open is safe here ONLY because out_path is the constant
+        # temp-dir artifact path (sec F2 pin) — never a caller-supplied path.
+        if out_path is not None and not args.no_open:
+            webbrowser.open(out_path.as_uri())
         return
 
     if not args.no_open:

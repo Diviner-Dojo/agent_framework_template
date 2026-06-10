@@ -213,10 +213,14 @@ precedent — categorically lighter than the deferred FastAPI/web-app server
 - **Layering (corrects the spec's component note).** The coverage-counted pure
   layer `src/telemetry/dashboard.py` holds `DashboardData`, the `html.escape`
   helpers, the inline HTML template, `render_dashboard_html`, and the ASCII
-  `render_console_summary`. The transport `scripts/telemetry/dashboard.py` holds
-  `assemble_dashboard_data` (DB/transcript IO) + `main`. `src/` does not import
-  `scripts/` (the package `__init__` declares I/O orchestration lives in
-  `scripts/telemetry/`).
+  `render_console_summary`. The read-side loader library
+  `scripts/telemetry/dashboard.py` holds `assemble_dashboard_data` and the
+  public loaders (DB/transcript IO); the CLI (`main`, `--render-static`,
+  `--summary`) lives on the transport `scripts/telemetry/dashboard_server.py`
+  (the loader module's one-shot `main` was retired into `--render-static` by
+  SPEC-20260610-035920 — in-place factual update, decision unchanged). `src/`
+  does not import `scripts/` (the package `__init__` declares I/O
+  orchestration lives in `scripts/telemetry/`).
 - **Escaping is a deliberate divergence from `/status` (spec C6).** `git_visualize.py`
   interpolates raw git-plumbing output into `innerHTML` (safe — controlled); the
   dashboard renders **server-side** with `html.escape()` in Python on every dynamic

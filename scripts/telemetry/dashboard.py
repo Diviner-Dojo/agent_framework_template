@@ -1,10 +1,15 @@
-"""Render the Telemetry Layer B dashboard (ADR-0020) — transport / IO layer.
+"""Read-side loader library for the Telemetry Layer B dashboard (ADR-0020).
 
-The north-star Layer B surface: a single self-contained HTML infographic,
-generated locally at read-time, that makes the already-captured A1/A2/A3
-telemetry visible. This module is **render, not measurement** — it reads the
-stored Layer-A outputs through the *read-side* assembly functions and never
-forks a second computation path:
+This module is a LIBRARY, not a runnable script: its one-shot CLI was retired
+into ``python scripts/telemetry/dashboard_server.py --render-static`` /
+``--summary`` (SPEC-20260610-035920 U5 — no second static entry point). It
+owns the read-side IO that both the live daemon and the static export consume —
+open the DB read-only, assemble, return render-ready dataclasses. The pure
+formatting / escaping / HTML lives in ``src/telemetry/dashboard.py`` (the
+coverage-counted layer).
+
+It reads the stored Layer-A outputs through the *read-side* assembly functions
+and never forks a second computation path:
 
 * **A1 cost** — ``analyze_cost.load_cost_rows`` -> ``cost.build_cost_report``.
 * **A2 failures** — ``analyze_failures.load_failure_signals`` -> ``failures.rank_failures``
@@ -17,28 +22,15 @@ It **never** calls ``analyze_cost()`` / ``analyze_failures()`` / ``init_db()`` �
 those mutate the database (spec R7/R8/C1). The database is opened **read-only**
 (``file:...?mode=ro``); a missing telemetry table (fresh clone / analyzers never
 run) is caught and mapped to the honest *analyzer-not-yet-run* absence state,
-never a crash or a fabricated zero. The pure formatting / escaping / HTML lives
-in ``src/telemetry/dashboard.py`` (the coverage-counted layer); this module owns
-only the IO: open read-only, assemble, write to a temp file, open the browser,
-print an ASCII summary.
-
-The artifact is written to the OS temp dir (developer decision #6), so personal
-cost/fee figures never enter the repo tree. The ntfy topic slug is never read,
-imported, printed, or interpolated here (spec C2) — this generator imports no
+never a crash or a fabricated zero. The ntfy topic slug is never read,
+imported, printed, or interpolated here (spec C2) — this module imports no
 ``notify`` module and reads no environment.
-
-Usage:
-    python scripts/telemetry/dashboard.py
-    python scripts/telemetry/dashboard.py --no-open
 """
 
 from __future__ import annotations
 
-import argparse
 import sqlite3
 import sys
-import tempfile
-import webbrowser
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -54,8 +46,6 @@ from src.telemetry.dashboard import (  # noqa: E402
     STATE_DATA,
     STATE_NOT_RUN,
     DashboardData,
-    render_console_summary,
-    render_dashboard_html,
 )
 from src.telemetry.drift import detect_config_drift  # noqa: E402
 from src.telemetry.failures import rank_failures  # noqa: E402
@@ -64,8 +54,6 @@ from src.telemetry.value import load_subscription_fee  # noqa: E402
 from src.telemetry.weekly import WeeklyTrends, aggregate_by_week  # noqa: E402
 
 DB_PATH = _REPO_ROOT / "metrics" / "evaluation.db"
-#: Conventional dashboard filename (also the defensive .gitignore entry).
-DASHBOARD_FILENAME = "telemetry_dashboard.html"
 
 #: Watermark keys that mark an analyzer as "has run" (distinguishes a true zero
 #: from a not-yet-run panel — spec R3a / qa ADVISORY 7).
@@ -421,37 +409,11 @@ def assemble_dashboard_data(
     )
 
 
-def main() -> None:
-    """CLI entry point: generate the HTML, open it, and print the ASCII summary."""
-    parser = argparse.ArgumentParser(
-        description="Render the Telemetry Layer B dashboard (static HTML, read-only)."
-    )
-    parser.add_argument(
-        "--no-open", action="store_true", help="Generate the file without opening a browser."
-    )
-    args = parser.parse_args()
-
-    if not DB_PATH.exists():
-        print(f"No telemetry database at {DB_PATH}. Run scripts/init_db.py first.")
-        return
-
-    label = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    try:
-        data = assemble_dashboard_data(DB_PATH, generated_label=label)
-    except sqlite3.OperationalError as exc:
-        # Path only in the message; never any environment/secret (spec C2/C5).
-        print(f"Could not open the telemetry database read-only at {DB_PATH}: {exc}")
-        return
-
-    out_path = Path(tempfile.gettempdir()) / DASHBOARD_FILENAME
-    out_path.write_text(render_dashboard_html(data), encoding="utf-8")
-
-    for line in render_console_summary(data, output_path=str(out_path)):
-        print(line)
-
-    if not args.no_open:
-        webbrowser.open(out_path.as_uri())
-
-
 if __name__ == "__main__":
-    main()
+    # Signpost ONLY (ux CP2 fold, SPEC-20260610-035920): the one-shot CLI was
+    # retired into the daemon script. This block must never render, write a
+    # file, open a browser, or touch the DB — a stale alias/muscle-memory run
+    # gets a pointer instead of a silent no-op.
+    print(
+        "This command has moved. Use: python scripts/telemetry/dashboard_server.py --render-static"
+    )
