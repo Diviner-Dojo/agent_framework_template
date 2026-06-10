@@ -934,8 +934,8 @@ def render_dashboard_html(data: DashboardData) -> str:
     )
 
 
-def render_console_summary(data: DashboardData, *, output_path: str) -> list[str]:
-    """Build the 5-6 line ASCII console summary (spec R4, C7).
+def render_console_summary(data: DashboardData, *, output_path: str | None) -> list[str]:
+    """Build the ASCII console summary (spec R4, C7; Phase 4 CLI inline summary).
 
     Every line is pure ASCII so it round-trips through Windows cp1252 without a
     ``UnicodeEncodeError`` (the 4th guard of that class — statusLine, ntfy title,
@@ -945,12 +945,17 @@ def render_console_summary(data: DashboardData, *, output_path: str) -> list[str
 
     Args:
         data: The assembled telemetry.
-        output_path: Where the HTML was written (line 1).
+        output_path: Where the HTML was written (line 1). ``None`` means
+            summary-only mode (no HTML artifact exists): the ``Dashboard:``
+            line is omitted and the absence advisory points at launching the
+            dashboard instead of "the page" — the copy must never reference
+            an artifact that was not produced.
 
     Returns:
-        A list of ASCII summary lines (5 always, plus an optional 6th advisory).
+        A list of ASCII summary lines (digest lines plus an optional trailing
+        absence advisory; one shorter in summary-only mode).
     """
-    lines = [f"Dashboard: {output_path}"]
+    lines = [] if output_path is None else [f"Dashboard: {output_path}"]
 
     if data.cost_state == STATE_NOT_RUN:
         lines.append("Cost: analyzer not yet run (run scripts/telemetry/analyze_cost.py)")
@@ -996,9 +1001,12 @@ def render_console_summary(data: DashboardData, *, output_path: str) -> list[str
 
     absences = _count_absences(data)
     if absences:
+        detail_hint = (
+            "see the page." if output_path is not None else "launch the dashboard for detail."
+        )
         lines.append(
             f"Note: {absences} panel(s) show an honest-absence state "
-            "(not-yet-run / not-configured) - see the page."
+            f"(not-yet-run / not-configured) - {detail_hint}"
         )
     return lines
 

@@ -3074,6 +3074,44 @@ def test_console_summary_cumulative_only_and_not_run_lines() -> None:
     assert any("Failures: analyzer not yet run" in line for line in not_run)
 
 
+# --- Phase 4 Unit 4.3: summary-only renderer mode (output_path=None) -------- #
+
+
+def test_console_summary_without_output_path_omits_dashboard_line() -> None:
+    """``output_path=None`` (CLI inline summary) must not print a Dashboard line.
+
+    Summary-only mode produces no HTML artifact, so a ``Dashboard: <path>``
+    line would reference a file that does not exist (ADR-0020 honesty).
+    The digest is exactly one line shorter than the with-artifact variant.
+    """
+    with_path = render_console_summary(_data(), output_path="C:/tmp/telemetry_dashboard.html")
+    without = render_console_summary(_data(), output_path=None)
+    assert not any(line.startswith("Dashboard:") for line in without)
+    # Identical digest body; only the Dashboard line is dropped (the trailing
+    # absence advisory differs by intent — its copy is artifact-aware).
+    body = [ln for ln in without if not ln.startswith("Note:")]
+    body_with_path = [ln for ln in with_path[1:] if not ln.startswith("Note:")]
+    assert body == body_with_path
+    # qa F2: the len arithmetic relies on _data() defaults always producing the
+    # Note line (pricing_check + config_drift default to absence states); the
+    # body comparison above catches any asymmetry if that fixture ever changes.
+    assert len(without) == len(with_path) - 1
+    text = "\n".join(without)
+    text.encode("ascii")  # C7 discipline carries into summary-only mode
+    text.encode("cp1252")
+
+
+def test_console_summary_summary_only_absence_note_never_references_the_page() -> None:
+    """The trailing absence advisory must not say "see the page" when no page exists."""
+    lines = render_console_summary(
+        _data(cost_state=STATE_NOT_RUN, failures_state=STATE_NOT_RUN), output_path=None
+    )
+    notes = [line for line in lines if line.startswith("Note:")]
+    assert notes, "absence states present, so the advisory line must render"
+    assert "see the page" not in notes[0]
+    assert "launch the dashboard for detail" in notes[0]
+
+
 # --- review B1: leverage must not fabricate a 0.00x when cost is not measured -- #
 
 

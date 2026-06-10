@@ -36,6 +36,7 @@ Usage:
     python scripts/telemetry/dashboard_server.py
     python scripts/telemetry/dashboard_server.py --port 8765
     python scripts/telemetry/dashboard_server.py --no-open
+    python scripts/telemetry/dashboard_server.py --summary
 """
 
 from __future__ import annotations
@@ -75,6 +76,7 @@ from scripts.telemetry.dashboard import (  # noqa: E402
 )
 from src.telemetry.dashboard import (  # noqa: E402
     LiveFragmentPanels,
+    render_console_summary,
     render_dashboard_html,
     render_hook_health_chip,
     render_live_fragment,
@@ -808,6 +810,44 @@ def run_server(*, host: str, port: int) -> None:
         sys.exit(1)
 
 
+def print_console_summary(db_path: Path) -> None:
+    """Print the read-only ASCII telemetry digest to stdout (Phase 4 CLI inline summary).
+
+    No server is started, no browser is opened, no file is written: this is the
+    terminal-only at-a-glance echo of the same read-side data the dashboard
+    renders (``assemble_dashboard_data`` -> ``render_console_summary`` with
+    ``output_path=None``, the summary-only renderer mode). The DB is opened
+    read-only by the assembler; a missing database prints the honest
+    not-yet-initialised message rather than fabricating an empty digest.
+
+    Args:
+        db_path: SQLite database path (opened ``mode=ro`` by the assembler).
+    """
+    if not db_path.exists():
+        # ux F1 (REV this unit): state the fact, then the one-time setup action
+        # in plain language — never a bare engineer imperative.
+        print(
+            f"No telemetry database found at {db_path}. "
+            "To initialize it, run: python scripts/init_db.py"
+        )
+        return
+    label = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    try:
+        data = assemble_dashboard_data(db_path, generated_label=label)
+    except sqlite3.OperationalError:
+        # Path only in the message; never the raw SQLite error text (spec C2/C5
+        # + security F1: str(exc) passthrough is a latent reuse leak). The
+        # exists() pre-check means this branch is permissions/corruption.
+        print(
+            f"Could not open the telemetry database read-only at {db_path}: "
+            "unable to open (check file permissions)."
+        )
+        return
+    print(f"Telemetry summary ({label})")
+    for line in render_console_summary(data, output_path=None):
+        print(line)
+
+
 def main() -> None:
     """CLI entry point.
 
@@ -832,7 +872,19 @@ def main() -> None:
         action="store_true",
         help="Do not auto-open the browser at startup.",
     )
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help=(
+            "Print the ASCII telemetry digest to the terminal and exit "
+            "(read-only; no server, no browser)."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.summary:
+        print_console_summary(DB_PATH)
+        return
 
     if not args.no_open:
         webbrowser.open(f"http://{HARDCODED_HOST}:{args.port}/")

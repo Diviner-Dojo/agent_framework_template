@@ -2589,3 +2589,91 @@ def test_live_fragment_route_donut_absence_on_fresh_db(tmp_path: Path) -> None:
     assert resp.status_code == 200
     assert "No stored cost rows yet." in resp.text
     assert "model-cost-donut-chart" not in resp.text
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4 Unit 4.3 — CLI inline summary (--summary: digest-and-exit)
+# --------------------------------------------------------------------------- #
+
+
+def _stub_server_and_browser(monkeypatch: pytest.MonkeyPatch) -> tuple[list, list]:
+    """Record (never execute) run_server + webbrowser.open calls from main()."""
+    server_calls: list = []
+    browser_calls: list = []
+    monkeypatch.setattr(dashboard_server, "run_server", lambda **kw: server_calls.append(kw))
+    monkeypatch.setattr(dashboard_server.webbrowser, "open", lambda url: browser_calls.append(url))
+    return server_calls, browser_calls
+
+
+def test_main_summary_prints_digest_without_server_or_browser(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """--summary prints the ASCII digest and exits: no bind, no browser, no file.
+
+    The digest must carry the honest not-yet-run lines on a fresh DB and must
+    NOT carry a ``Dashboard:`` artifact line (summary-only renderer mode).
+    """
+    monkeypatch.setattr(dashboard_server, "DB_PATH", _empty_db(tmp_path))
+    server_calls, browser_calls = _stub_server_and_browser(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["dashboard_server.py", "--summary"])
+    dashboard_server.main()
+    out = capsys.readouterr().out
+    assert "Telemetry summary (" in out
+    assert "Cost: analyzer not yet run" in out
+    assert "Dashboard:" not in out
+    out.encode("ascii")  # C7: the terminal digest is pure ASCII (cp1252-safe)
+    assert server_calls == []
+    assert browser_calls == []
+
+
+def test_main_summary_missing_db_prints_honest_message_and_starts_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """--summary with no DB file: honest init_db pointer, never a fabricated digest."""
+    monkeypatch.setattr(dashboard_server, "DB_PATH", tmp_path / "absent.db")
+    server_calls, browser_calls = _stub_server_and_browser(monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["dashboard_server.py", "--summary"])
+    dashboard_server.main()
+    out = capsys.readouterr().out
+    assert "No telemetry database" in out
+    assert "init_db" in out
+    assert "Telemetry summary (" not in out
+    assert server_calls == []
+    assert browser_calls == []
+
+
+def test_print_console_summary_operational_error_prints_generic_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """DB exists but cannot be opened: generic copy, never the raw SQLite text.
+
+    qa F1 + security F1 (this unit's review): the OperationalError branch must
+    print the path-only generic message — str(exc) passthrough would be a
+    latent information leak if the helper is ever reused with a non-constant
+    db_path.
+    """
+    db = _empty_db(tmp_path)
+
+    def _boom(*args: Any, **kwargs: Any) -> None:
+        raise sqlite3.OperationalError("secret-internal-detail: disk I/O error")
+
+    monkeypatch.setattr(dashboard_server, "assemble_dashboard_data", _boom)
+    dashboard_server.print_console_summary(db)
+    out = capsys.readouterr().out
+    assert "Could not open the telemetry database" in out
+    assert "secret-internal-detail" not in out  # raw exception text never printed
+    assert "Telemetry summary (" not in out  # no digest after the failure
+
+
+def test_print_console_summary_does_not_mutate_database(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """AC5 parity for the summary path: schema + row counts unchanged."""
+    db = _db_with_cost_row(tmp_path)
+    schema_before = _schema_snapshot(db)
+    rows_before = _row_counts(db)
+    dashboard_server.print_console_summary(db)
+    out = capsys.readouterr().out
+    assert "Cost:" in out  # seeded row -> a real measured digest line
+    assert _schema_snapshot(db) == schema_before
+    assert _row_counts(db) == rows_before
