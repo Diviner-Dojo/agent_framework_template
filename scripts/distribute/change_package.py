@@ -28,11 +28,20 @@ Classifications:
                           ``accept_paths``.
 - ``unavailable``      — the offered file does not exist in the hub (defensive; should not occur).
 
-Divergence is read from the lineage engine (:func:`scripts.lineage.drift.drift_scan`) run against
-the *target*. The drift baseline is the target's *mutable* DB, NOT a hub-target ancestor,
-so it cannot *prove* an overwrite is safe — any overwrite of differing content fails safe to
-``value-unverified`` (the floor) until v1.1 adds hub-side ancestor tracking. Provable divergence
-(modified / added / deleted) is ``collision-diverged``; a missing baseline never silently passes.
+Divergence is read through an injected :class:`Baseline` (R4) — the *single* floor primitive runs
+against two interchangeable baselines so the UPDATE and APPLY routes can never diverge:
+
+- :class:`LineageBaseline` (the UPDATE route) reads the lineage engine
+  (:func:`scripts.lineage.drift.drift_scan`) + the target manifest. The drift baseline is the
+  target's *mutable* DB, NOT a hub-target ancestor, so it cannot *prove* an overwrite is safe — any
+  overwrite of differing content fails safe to ``value-unverified`` (the floor) until v1.1 adds
+  hub-side ancestor tracking. Provable divergence (modified / added / deleted) is
+  ``collision-diverged``; a missing baseline never silently passes.
+- :class:`OnDiskBaseline` (the greenfield APPLY route) has **no** lineage history and **no**
+  manifest, so it reports no provable divergence and no pinned/accept/deny policy. Every existing
+  target file at a framework path is therefore an unprovable overwrite (``value-unverified``); a
+  path the target lacks is a pure addition (``inert``). This is the structural reason the B1 floor
+  extends to greenfield unchanged — it is the same primitive, just a baseline with no ancestor.
 
 Usage:
     python scripts/distribute/change_package.py <template_root> <target> --offer FILE [FILE ...]
@@ -45,17 +54,22 @@ import fnmatch
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 # Ensure project root is on sys.path for both CLI and module usage.
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from scripts.lineage._utils import hash_file  # noqa: E402
+from scripts.lineage._utils import collect_framework_files, hash_file  # noqa: E402
 from scripts.lineage.drift import FileDrift, drift_scan  # noqa: E402
 from scripts.lineage.manifest import manifest_read  # noqa: E402
 
 MANIFEST_NAME = "framework-lineage.yaml"
+
+# Bound the greenfield offer set (R4): the framework corpus is enumerated and CAPPED, never an
+# implicit "everything". A pathological hub tree must not turn an APPLY into an unbounded copy.
+MAX_GREENFIELD_OFFER = 5000
 
 # Classifications that stage_branch will actually write to the staged branch. ``value-unverified``
 # is stageable but ALWAYS surfaced with per-file detail (the floor stages it, never silently).
@@ -241,39 +255,150 @@ def _bound_patterns(patterns: object) -> list[str]:
     return out
 
 
+class Baseline(Protocol):
+    """The target's prior-version oracle for the floor decision (R4) — one floor, two baselines.
+
+    A :class:`Baseline` supplies everything the shared floor primitive (:func:`_classify`) needs
+    about *the target* that is not a direct disk read of the offered file: the provable-divergence
+    status of a path and the manifest-derived per-target policy (pinned traits / accept / deny).
+    Two implementations feed the *same* primitive — :class:`LineageBaseline` (UPDATE) and
+    :class:`OnDiskBaseline` (greenfield APPLY) — so the B1 floor lives in one auditable place and
+    route divergence is structurally impossible.
+
+    Attributes:
+        pinned_patterns: Target pinned-trait path patterns (absolute drops).
+        accept_paths: Per-path allow-list globs (empty = allow all, subject to deny).
+        deny_paths: Per-path deny-list globs.
+    """
+
+    pinned_patterns: list[str]
+    accept_paths: list[str]
+    deny_paths: list[str]
+
+    def divergence(self, rel_path: str) -> str | None:
+        """Return the target's *provable* drift status for a path, or None.
+
+        Only ``"modified"`` / ``"added"`` / ``"deleted"`` (and ``"pinned"``) are *provable* — they
+        convene assessment. ``"current"`` / ``None`` do NOT prove the target's copy descends
+        untouched from the hub (finding B1), so a differing overwrite under them is the floor's
+        ``value-unverified``, never a silent safe update.
+        """
+        ...
+
+
+@dataclass
+class LineageBaseline:
+    """The UPDATE-route baseline: lineage drift + the target's manifest policy (R4).
+
+    Unchanged behavior relative to the pre-R4 inline path — it just names the abstraction the floor
+    consults so the greenfield route can swap in :class:`OnDiskBaseline`.
+
+    Attributes:
+        drift_map: Target drift status keyed by relative path (from :func:`drift_scan`).
+        pinned_patterns: Pinned-trait patterns from the target manifest.
+        accept_paths: Bounded per-path allow-list globs from the manifest custodian block.
+        deny_paths: Bounded per-path deny-list globs from the manifest custodian block.
+    """
+
+    drift_map: dict[str, FileDrift]
+    pinned_patterns: list[str] = field(default_factory=list)
+    accept_paths: list[str] = field(default_factory=list)
+    deny_paths: list[str] = field(default_factory=list)
+
+    def divergence(self, rel_path: str) -> str | None:
+        """Read the drift status for a path from the lineage scan, or None if untracked."""
+        drift = self.drift_map.get(rel_path)
+        return drift.drift_status if drift else None
+
+    @classmethod
+    def from_target(
+        cls, target_root: Path, *, manifest_path: Path, db_path: Path
+    ) -> LineageBaseline:
+        """Build a baseline from a target's manifest + a drift scan.
+
+        Args:
+            target_root: Target repository root.
+            manifest_path: Path to the target ``framework-lineage.yaml``.
+            db_path: Path to the target metrics DB (the drift baseline source).
+
+        Returns:
+            A populated :class:`LineageBaseline`.
+
+        Raises:
+            FileNotFoundError: If the target manifest does not exist (fail closed — never silently
+                fall back to a greenfield read of a framework-tracked target).
+        """
+        manifest = manifest_read(manifest_path)
+        pinned = _load_pinned_patterns(manifest)
+        custodian = manifest.get("custodian") or {}
+        accept = (
+            _bound_patterns(custodian.get("accept_paths")) if isinstance(custodian, dict) else []
+        )
+        deny = _bound_patterns(custodian.get("deny_paths")) if isinstance(custodian, dict) else []
+        drift_results = drift_scan(
+            manifest_path=manifest_path, project_root=target_root, db_path=db_path
+        )
+        drift_map = {f.file_path: f for f in drift_results}
+        return cls(
+            drift_map=drift_map, pinned_patterns=pinned, accept_paths=accept, deny_paths=deny
+        )
+
+
+@dataclass
+class OnDiskBaseline:
+    """The greenfield APPLY-route baseline: no lineage history, no manifest (R4).
+
+    There is no recorded ancestor, so NOTHING is provably diverged: every existing target file at
+    a framework path is an overwrite the hub cannot prove safe (``value-unverified``, the floor),
+    and a path the target lacks is a pure addition (``inert``). No manifest means no pinned /
+    accept / deny policy. This is the structural reason the B1 floor extends to greenfield
+    *unchanged*: the floor primitive is identical; only the baseline (ancestor-less) differs.
+    """
+
+    pinned_patterns: list[str] = field(default_factory=list)
+    accept_paths: list[str] = field(default_factory=list)
+    deny_paths: list[str] = field(default_factory=list)
+
+    def divergence(self, rel_path: str) -> str | None:
+        """Greenfield has no ancestor — no path is ever provably diverged."""
+        return None
+
+
 def _classify(
     rel_path: str,
     *,
     hub_root: Path,
     target_root: Path,
-    drift_map: dict[str, FileDrift],
-    pinned_patterns: list[str],
-    accept_paths: list[str],
-    deny_paths: list[str],
+    baseline: Baseline,
 ) -> ChangeItem:
-    """Classify a single offered file against the target.
+    """Classify a single offered file against the target — the one shared floor primitive (R4).
+
+    Route-agnostic by construction: it reads the offered file from the hub and the target's copy
+    from disk, and consults the injected :class:`Baseline` for divergence + per-path policy. The
+    floor (an unprovable overwrite → ``value-unverified``) is decided here, once, for both the
+    UPDATE (:class:`LineageBaseline`) and greenfield (:class:`OnDiskBaseline`) routes.
 
     Args:
         rel_path: Forward-slash relative path of the offered file.
         hub_root: Hub (template) repository root.
         target_root: Target repository root.
-        drift_map: Target drift status keyed by relative path.
-        pinned_patterns: Target pinned-trait patterns.
-        accept_paths: Per-path allow-list (empty = allow all, subject to deny).
-        deny_paths: Per-path deny-list.
+        baseline: The injected prior-version oracle (divergence + pinned/accept/deny policy).
 
     Returns:
         A :class:`ChangeItem`.
     """
-    drift = drift_map.get(rel_path)
-    drift_status = drift.drift_status if drift else None
+    drift_status = baseline.divergence(rel_path)
+    pinned_patterns = baseline.pinned_patterns
+    accept_paths = baseline.accept_paths
+    deny_paths = baseline.deny_paths
 
     hub_file = hub_root / rel_path
     if not hub_file.is_file():
         return ChangeItem(rel_path, "unavailable", None, None, drift_status, "not present in hub")
     hub_hash = hash_file(hub_file)
 
-    # Per-path opt-in granularity (deny takes precedence over accept).
+    # Per-path opt-in granularity (deny takes precedence over accept). Excluded here, before the
+    # target disk read, so target_hash is intentionally None on these gates (the file is dropped).
     if _matches_any(rel_path, deny_paths):
         return ChangeItem(rel_path, "denied", hub_hash, None, drift_status, "matches deny_paths")
     if accept_paths and not _matches_any(rel_path, accept_paths):
@@ -368,28 +493,78 @@ def compute_package(
     m_path = manifest_path or (target_root / MANIFEST_NAME)
     d_path = db_path or (target_root / "metrics" / "evaluation.db")
 
-    manifest = manifest_read(m_path)
-    pinned_patterns = _load_pinned_patterns(manifest)
-    custodian = manifest.get("custodian") or {}
-    accept_paths = (
-        _bound_patterns(custodian.get("accept_paths")) if isinstance(custodian, dict) else []
-    )
-    deny_paths = (
-        _bound_patterns(custodian.get("deny_paths")) if isinstance(custodian, dict) else []
-    )
-
-    drift_results = drift_scan(manifest_path=m_path, project_root=target_root, db_path=d_path)
-    drift_map = {f.file_path: f for f in drift_results}
-
+    baseline = LineageBaseline.from_target(target_root, manifest_path=m_path, db_path=d_path)
     items = [
         _classify(
             rel.replace("\\", "/"),
             hub_root=hub_root,
             target_root=target_root,
-            drift_map=drift_map,
-            pinned_patterns=pinned_patterns,
-            accept_paths=accept_paths,
-            deny_paths=deny_paths,
+            baseline=baseline,
+        )
+        for rel in offer_set
+    ]
+    return ChangePackage(target_path=str(target_root), items=items)
+
+
+def greenfield_offer_set(
+    template_root: Path | str, *, cap: int = MAX_GREENFIELD_OFFER
+) -> list[str]:
+    """The hub's framework corpus as a bounded, sorted greenfield offer set (R4).
+
+    Enumerates the framework-path corpus (``FRAMEWORK_PATHS``: ``.claude/``, ``scripts/``,
+    ``CLAUDE.md``, ``docs/templates/``, ``docs/adr/``) from the hub and CAPS it. The greenfield
+    APPLY route offers exactly this set — explicitly bounded and enumerated, never an implicit
+    "everything" — so a pathological hub tree cannot turn an APPLY into an unbounded copy.
+
+    Args:
+        template_root: Hub (template) repository root.
+        cap: Maximum number of files to offer (defaults to :data:`MAX_GREENFIELD_OFFER`).
+
+    Returns:
+        A sorted, capped list of relative, forward-slash framework paths.
+    """
+    files = sorted(collect_framework_files(Path(template_root)).keys())
+    return files[:cap]
+
+
+def compute_greenfield_package(
+    template_root: Path | str,
+    target_path: Path | str,
+    offer_set: list[str],
+) -> ChangePackage:
+    """Classify an offer set against a target with **no** framework lineage (the APPLY route, R4).
+
+    The greenfield sibling of :func:`compute_package`: it builds an :class:`OnDiskBaseline` (no
+    drift scan, no manifest) and runs the **same** floor primitive (:func:`_classify`). Because the
+    baseline reports no provable divergence and no policy, every existing target file at a
+    framework path classifies as ``value-unverified`` (the floor — flagged, never overwritten) and
+    every path the target lacks as ``inert``. Returns the identical :class:`ChangePackage` shape as
+    the UPDATE route, so the report front-end and ``stage_branch`` consume it unchanged.
+
+    .. warning::
+        This is an **ASSESS-phase** read only. It computes classifications; it does **not** enforce
+        consent. The R8 APPLY assent preflight (a human-authored ``primary_human`` + the
+        deploy-step-zero stub, see :mod:`scripts.distribute.repo_safety_check`) is a **required
+        precondition** of any caller that then stages this package — never route this result to
+        ``stage_branch`` outside the gated DEPLOY path.
+
+    Args:
+        template_root: Hub (template) repository root.
+        target_path: Target repository root (need not be a git repo or framework-tracked).
+        offer_set: Relative, forward-slash paths to offer (typically :func:`greenfield_offer_set`).
+
+    Returns:
+        A :class:`ChangePackage` describing each offered file's classification.
+    """
+    hub_root = Path(template_root).resolve()
+    target_root = Path(target_path).resolve()
+    baseline = OnDiskBaseline()
+    items = [
+        _classify(
+            rel.replace("\\", "/"),
+            hub_root=hub_root,
+            target_root=target_root,
+            baseline=baseline,
         )
         for rel in offer_set
     ]

@@ -2,12 +2,13 @@
 spec_id: SPEC-20260524-203931
 title: "Unify distribute + onboard: one framework apply-or-update command with an up-front value/risk assessment"
 type: spec
-status: approved
+status: complete
 risk_level: high
 reviewed_by: [architecture-consultant, security-specialist, qa-specialist, independent-perspective]
 discussion_id: DISC-20260524-204142-framework-apply-unification-spec-review
 intake_ids: []
-completed_at:
+status_note: "BUILT 2026-05-24 (DISC-20260524-212509-build-apply-framework, sealed; quality gate 7/7, 114 tests). Pending /review + developer commit; completed_commit filled post-merge."
+completed_at: 2026-05-24
 completed_commit:
 ---
 

@@ -1,11 +1,12 @@
 ---
 adr_id: ADR-0017
 title: "Down-Propagation Protocol — consent model, classification taxonomy, and the mechanical safety floor"
-status: accepted
+status: superseded
 date: 2026-05-23
 decision_makers: [facilitator, architecture-consultant, independent-perspective, security-specialist, qa-specialist]
 discussion_id: DISC-20260523-170335-distribute-interpreted-assessment-spec-review
 supersedes: null
+superseded_by: ADR-0021
 scope: framework
 risk_level: high
 confidence: 0.85

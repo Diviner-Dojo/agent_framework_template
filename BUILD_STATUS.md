@@ -1,7 +1,7 @@
 # Build Status
 
 > Read this at session start. Update before context compaction.
-> Last updated: 2026-05-24 — **/distribute B1-floor build COMPLETE + re-reviewed APPROVE, committed on `feat/distribute-b1-floor` (NO push).** This branch's BUILD_STATUS is scoped to the distribute work; the broader session ledger lives on `feat/session-wrapup`.
+> Last updated: 2026-05-24 — **`/apply-framework` BUILD COMPLETE** (SPEC-20260524-203931, ADR-0021 — drafted as ADR-0019, renumbered at merge). Quality gate 7/7, 114 tests (41 new), discussion `DISC-20260524-212509-build-apply-framework` sealed. **NOT committed/pushed — `/review` + education gate + commit are the developer's next steps.** Full re-entry brief: `docs/handoff/RESUME-apply-framework-build.md`. (Prior `/distribute` B1-floor work below is the committed base this built on.)
 
 ## ⮕ CURRENT — /distribute B1 mechanical floor + interpreted assessment (feat/distribute-b1-floor)
 

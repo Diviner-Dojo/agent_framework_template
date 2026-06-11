@@ -38,14 +38,18 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from scripts.distribute._git_utils import git_cmd as _git  # noqa: E402
 from scripts.distribute.change_package import ChangePackage  # noqa: E402
-from scripts.distribute.repo_safety_check import repo_safety_check  # noqa: E402
+from scripts.distribute.repo_safety_check import check_clean_tree  # noqa: E402
 
 # Conservative git ref-name allow-list: blocks option injection (leading '-'), traversal ('..'),
 # whitespace, and ref-format hazards. Branch names are hub-generated, but we validate anyway.
 _REF_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 
 DEFAULT_DOC_DIR = "docs/distribution"
-COMMIT_TRAILER = "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+# Defense-in-depth cap on caller-supplied ``extra_files`` content (the assent stub is tiny). Bounds
+# an upstream logic error that tries to write a runaway blob onto the target branch.
+MAX_EXTRA_FILE_BYTES = 512 * 1024
+# Model-agnostic on purpose: the hub does not track which live model staged a given proposal here.
+COMMIT_TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>"
 
 
 @dataclass
@@ -146,6 +150,7 @@ def stage(
     base_branch: str | None = None,
     doc_relpath: str | None = None,
     exclude_paths: set[str] | None = None,
+    extra_files: dict[str, str] | None = None,
 ) -> StageResult:
     """Stage a distribution proposal onto a fresh branch in the target.
 
@@ -177,6 +182,12 @@ def stage(
             ``collision-diverged`` is passed here so it is never physically written to the branch,
             even if a future orchestrator forgets to halt. The guarantee is mechanical, not prose
             (the override is a ``RouteDecision``, not a mutation of ``classification``).
+        extra_files: Caller-supplied ``{relpath: content}`` written onto the branch as **deploy
+            step zero**, before any framework file is copied (R8 / Steward condition 3). The APPLY
+            route uses this for the human-authored assent stub (``framework-lineage.yaml``) so the
+            consent record lands *inside the back-out branch* — deleting the branch reverts it,
+            leaving no orphaned consent record on a repo that received nothing else. Each path is
+            contained within the target by :func:`_resolve_within`.
 
     Returns:
         A :class:`StageResult`.
@@ -189,16 +200,20 @@ def stage(
     hub_root = Path(template_root).resolve()
     _validate_ref_name(branch)
 
-    # Defense in depth: refuse to write into an unsafe tree even if called directly.
-    report = repo_safety_check(target)
-    if not report.is_safe:
-        raise RuntimeError(f"target not safe to stage into: {report.blockers}")
+    # Defense in depth: refuse to write into an unsafe tree even if called directly. The DEPLOY
+    # gate is the *separable* clean-tree check (R7), NOT the fused repo_safety_check — a greenfield
+    # APPLY target has no manifest and is not opted in, so the fused gate would reject it even when
+    # clean. Consent on the APPLY route is enforced upstream (the R8 assent preflight); here we
+    # guard only that the tree is safe to write into, which is identical for both routes.
+    clean = check_clean_tree(target)
+    if not clean.is_clean:
+        raise RuntimeError(f"target not safe to stage into: {clean.blockers}")
 
     if _branch_exists(target, branch):
         raise ValueError(f"branch already exists: {branch}")
 
     base = base_branch or detect_base_branch(target)
-    original_branch = report.branch or base
+    original_branch = clean.branch or base
     # All three refs flow into `git checkout` as positional args — validate every one
     # (not just the hub-generated branch) to close the option-injection surface.
     _validate_ref_name(base)
@@ -214,6 +229,20 @@ def stage(
     try:
         files_staged: list[str] = []
         excluded = exclude_paths or set()
+
+        # Deploy step zero (R8 / Steward condition 3): write caller-supplied files (e.g. the APPLY
+        # human-authored assent stub) FIRST, contained within the target. They live on this branch
+        # only, so deleting the branch on back-out reverts them — no orphaned consent record.
+        for rel, content in (extra_files or {}).items():
+            if len(content.encode("utf-8")) > MAX_EXTRA_FILE_BYTES:
+                raise ValueError(
+                    f"extra_files content for {rel!r} exceeds {MAX_EXTRA_FILE_BYTES} bytes"
+                )
+            dest = _resolve_within(target, rel)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content, encoding="utf-8")
+            files_staged.append(rel)
+
         for item in package.stageable:
             # Mechanical backstop for the escalate-only bridge: never copy an escalated file, even
             # if it is still in package.stageable (the override is a RouteDecision, not mutation).
