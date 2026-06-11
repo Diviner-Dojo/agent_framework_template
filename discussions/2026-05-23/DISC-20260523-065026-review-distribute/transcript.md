@@ -1,0 +1,96 @@
+---
+discussion_id: DISC-20260523-065026-review-distribute
+started: 2026-05-23T06:50:47.393861+00:00
+ended: 2026-05-23T06:59:15.406157+00:00
+agents: [architecture-consultant, docs-knowledge, facilitator, independent-perspective, qa-specialist, security-specialist]
+total_turns: 9
+---
+
+# Discussion: DISC-20260523-065026-review-distribute
+
+## Turn 1 — facilitator (evidence)
+*2026-05-23T06:50:47.393861+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Review the newly-built /distribute framework capability (scripts/distribute/{__init__,_git_utils,repo_safety_check,change_package,stage_branch}.py + .claude/commands/distribute.md + tests/test_distribute.py) before committing on branch feat/distribute-command (no push; developer merges).
+- **Files/scope**: 7 files — a new scripts/distribute package, a command orchestrator, and its tests. Stages framework updates into derived projects as unmerged/unpushed branches + an advisory doc.
+- **Developer-stated motivation**: Keep derived projects in sync ('firmware-update' style) without disturbing work-in-progress; involve the human only when risk can't be mediated. Honors the Prime Objective's per-instance assent.
+- **Explicit constraints**: opt-in HARD GATE (custodian.accepts_distribution strict is-True); pinned_traits never overwritten; NEVER push; NEVER touch a target's main; fail-closed on ambiguity. Already passed 3 build checkpoints + quality gate 7/7. Carried advisory: confirm stage-for-manual-review cannot promote a RED post-stage-gate branch to 'ready'.
+
+---
+
+## Turn 2 — qa-specialist (proposal)
+*2026-05-23T06:56:06.800041+00:00 | confidence: 0.88*
+*tags: review, findings, blocking:4, advisory:4*
+
+Verdict: request-changes (conf 0.88). 4 HIGH (all silent-false-safe gaps for a safety-gate): (1) custodian non-dict / accepts_distribution null untested; (2) only MERGE_HEAD of 6 in-progress markers tested (CHERRY_PICK/REVERT/BISECT/rebase-merge/rebase-apply untested); (3) rollback try/finally never exercised for COMMIT failure (only path-escape, which raises before any git write); (4) no-DB-baseline -> diverged fail-safe is undocumented-by-test (package_env always inits DB). 2 MED: deny-AND-diverged + deleted-but-pinned precedence untested; ref-name validation only tests leading-dash (not .. / trailing-slash / whitespace). 2 LOW: baseline_gate_green success+timeout paths untested; original_branch != base (non-main checkout) restore untested. Strengths: strict is-True tested against true/1/False; behavioral assertions (git show/rev-parse); never-push spy; deterministic fixtures.
+
+---
+
+## Turn 3 — security-specialist (proposal)
+*2026-05-23T06:56:06.905044+00:00 | confidence: 0.91*
+*tags: review, findings, blocking:2, advisory:2*
+
+Verdict: request-changes (conf 0.91). HIGH-1 (A03 path traversal, conf 0.78): stage_branch validates doc_rel via _resolve_within then DISCARDS result and re-resolves after the checkout mutates the tree (validate-then-discard TOCTOU); fix = store + reuse the validated path. HIGH-2 (A03/A05, conf 0.82): accept_paths/deny_paths from target manifest flow into fnmatch with no length/char/count bounds (DoS / pattern hazard); add bounds at load. MED-3 (A01, conf 0.87 = the carried advisory CONFIRMED): stage-for-manual-review stages --no-verify AND skips post-stage gate, but the doc does not mandate a visible gate-bypass warning in the staged assessment doc; add explicit WARNING header + gate_bypassed:true lineage field. LOW-4: rollback not captured to a discussion event. CONFIRMED prior fixes held: all 3 refs validated; double-side _resolve_within on file copy. Opt-in is genuinely hard; ntfy allow-list correct; counts-only confidentiality correct.
+
+---
+
+## Turn 4 — architecture-consultant (proposal)
+*2026-05-23T06:56:23.877409+00:00 | confidence: 0.86*
+*tags: review, findings, blocking:0, advisory:3*
+
+Verdict: approve-with-changes (conf 0.86). Clean reader/classifier/writer split, acyclic deps, genuine reuse of drift/manifest/hash (Principle #8 satisfied), exhaustive coherent taxonomy, fail-closed defaults pervasive. MED-1 missing-ADR: /distribute introduces hub->derived down-propagation that ADR-0003 explicitly DEFERRED to Phase 2+; write ADR-0017 (consent model, taxonomy, v1/v1.1 split, single-owner ACE assumption); cross-ref 0002/0003/0015 (does NOT supersede 0003). MED-2 schema-drift: custodian.accepts_distribution/accept_paths/deny_paths + top-level distribution_log are read/written by code but absent from manifest.py validator + init_lineage template; seed accepts_distribution:false in lineage_init + add type checks. LOW-3: base-branch policy resolvable in 2 places (acceptable middle-ground; record ownership in ADR). INFO-4: fail-soft(orchestrator)/fail-closed(scripts) split is correct but prose-enforced; record in ADR. Prime Objective a/b/c: all pass (attribution trailer, human merge authority, per-instance opt-in).
+
+---
+
+## Turn 5 — docs-knowledge (proposal)
+*2026-05-23T06:56:24.014797+00:00 | confidence: 0.91*
+*tags: review, findings, blocking:2, advisory:3*
+
+Verdict: request-changes (conf 0.91). Module/function docstrings exemplary; --no-verify + ACE documented at call site; Steward-gate flow traceable. HIGH-1 missing-ADR-0017 (same as architecture): the decision (HARD GATE vs warn, push-proposal/pull-apply, manifest schema ext, ACE surface) lives only in Layer-1 discussion DISC-20260522-224424; must become a searchable/supersedable ADR. HIGH-2 schema awareness: init_lineage must seed accepts_distribution:false + comment; manifest_validate must type-check the new custodian fields; template framework-lineage.yaml needs a custodian comment block (else targets hit SKIPPED opt-in-absent with no reference). MED-3: add CLAUDE.md Pointer for /distribute + a FRAMEWORK_CHANGELOG.md entry (else the 3 sibling projects never learn it exists -> defeats its purpose). MED-4: STEWARD_ARCHITECTURE Phase 5 should be annotated superseded-by-ADR-0017. LOW-5: distribution_log schema undefined (field names/status values: staged/staged-manual-review/staged-risk-accepted).
+
+---
+
+## Turn 6 — independent-perspective (critique)
+*2026-05-23T06:56:38.433233+00:00 | confidence: 0.82*
+*tags: review, findings, blocking, anti-groupthink, prime-objective*
+
+Verdict: request-changes (conf 0.82). SHARED BLIND SPOT found: qa/security/architecture AND the test fixture all trust the target's drift baseline DB as the hub-target common ancestor; it is not (it is mutable, target-owned, time-shifted). Scenario A (HIGH impact, MED likelihood) STALE-BASELINE CLOBBER: a target that re-baselined AFTER a local edit has that edit baked into its baseline -> drift says current -> hub differs -> classified VALUE (the SAFEST category, zero human-visible detail) -> silently reverts the target's customization on merge. Prime Objective (b)/(c) violation; and v1.1 auto-re-baseline is exactly what makes this common. package_env fixture bakes in target_baseline==hub_old by construction, so green tests are partly an artifact of the shared blind spot. Mitigations: v1 = surface per-file DIFFS for value files in the assessment doc (cheap, confidential, human-only); v1.1 = hub-side ancestor tracking (true 3-way merge: value iff target_current==hub_ancestor) in distribution_log. Scenario B (MED-HIGH) wrong-base: detect_base_branch main/master heuristic stages a trunk-based (develop) target off stale main, gate passes green against stale base -> violates fail-closed-on-ambiguity; surface chosen base + halt-ask on ambiguity. Scenario C (MED) inert-but-active config: a NEW .claude/settings.json or *.toml is classified inert but ACTIVATES behavior on presence; fast-path waves it through (its trigger has_unmediable_candidates is blind to this); force full room for config-activating paths. Scenario D (LOW prob/HIGH impact) concurrent-edit TOCTOU: checkout --force restore can eat uncommitted work that appeared after the preflight; dirty-check before forced restore. Fast-path predicate should also trip on undiffed value + activating-config. Strengths: fail-closed git preflight thorough; strict is-True; all-3-ref validation; honest ACE disclosure; finally branch -D atomicity.
+
+---
+
+## Turn 7 — facilitator (critique)
+*2026-05-23T06:57:37.689434+00:00 | confidence: 0.8*
+*tags: finding-verification*
+
+Finding verification: 2 verified-true (code), remainder inconclusive-by-design (likelihood/process) or test-gaps. VERIFIED security-1 (stage_branch.py:200 vs :218): doc_rel validated then result discarded, re-resolved after checkout -b mutates tree — pattern confirmed; fix=reuse the validated path. VERIFIED independent Scenario A (change_package.py:249-266): the 'value' branch fires when drift_status is 'current' OR None; a target that re-baselined after a local edit, or narrowed tracked_paths (drift None), is classified value='safe update' and would overwrite its own customization — the classifier trusts the target's mutable baseline DB as the hub-target common ancestor, which it is not. Design limitation confirmed; real-world frequency inconclusive (rises with v1.1 auto-re-baseline). qa test-gaps confirmed real by absence. security-2 fnmatch-bounds confirmed (no bounds at load). Nothing marked verified-false / discarded.
+
+---
+
+## Turn 8 — facilitator (synthesis)
+*2026-05-23T06:58:08.011324+00:00 | confidence: 0.87*
+*tags: blocking:6, advisory:8, speculative:1, model-tiers:medium-defaults*
+
+## Request Context
+- What was requested: Review the new /distribute capability before commit (branch feat/distribute-command; no push; developer merges).
+- Files/scope: 5 scripts/distribute/*.py + .claude/commands/distribute.md + tests/test_distribute.py.
+- Developer-stated motivation: Orderly firmware-update propagation to derived projects without disturbing WIP; human-only-when-unmediable; honors Prime Objective per-instance assent.
+- Explicit constraints: opt-in HARD GATE; pinned never overwritten; never push; never touch target main; fail-closed.
+
+VERDICT: request-changes. 4 of 5 specialists request-changes; architecture approve-with-changes. The independent panel earned its keep: it found a Prime-Objective-relevant design flaw (Scenario A stale-baseline clobber) that build checkpoints AND the test fixture shared a blind spot on. Mechanical safety (never-push/never-main/pinned/fail-closed/opt-in) is verified solid; the gaps are (a) two cheap code bugs, (b) a Prime-Objective classification blind spot, (c) owed governance docs (ADR-0017 + manifest schema awareness).
+
+MUST-FIX before commit: sec-1 reuse validated doc path (TOCTOU); sec-2 bound accept/deny patterns; sec-3/carried-advisory mandate gate-bypass WARNING for stage-for-manual-review; indep-A v1 mitigation = surface per-file value diffs (or paths+clobber-warning) in the assessment doc (Prime Objective); ADR-0017 (framework requires it; ADR-0003 deferred this axis); manifest schema awareness (seed accepts_distribution:false in init_lineage + type-check + template comment). Quick qa tests: no-DB->diverged, custodian non-dict/null, all in-progress markers, commit-failure rollback.
+SHOULD-FIX/v1: Scenario D dirty-check before forced restore; surface chosen base (Scenario B); CLAUDE.md pointer + FRAMEWORK_CHANGELOG entry.
+DEFER v1.1 (document limitation): Scenario A full fix = hub-side ancestor tracking / 3-way merge; Scenario B halt-ask base; Scenario C config-activating forces full room; distribution_log schema; STEWARD_ARCHITECTURE Phase 5 superseded note.
+Confidence annotation: 1 finding speculative (security-1 sub-conf 0.78). Model tiers: medium / agent defaults (no per-agent pin). Strengths: clean reader/classifier/writer boundaries, genuine Principle-#8 reuse, fail-closed preflight, strict is-True opt-in, all-3-ref validation, honest ACE disclosure, never-push spy test.
+
+---
+
+## Turn 9 — facilitator (decision)
+*2026-05-23T06:59:15.406157+00:00 | confidence: 0.8*
+*tags: reflection-gap*
+
+Step 7c reflections deferred (cost; consistent with build). High-value exception worth noting at retro: independent-perspective's Scenario A + the consensus-check observation (test fixture sharing the code's blind spot) is itself a candidate process-improvement signal — flag for /retro rather than a per-agent reflection now.
+
+---
