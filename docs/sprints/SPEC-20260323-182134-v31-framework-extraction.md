@@ -1,12 +1,20 @@
 ---
 spec_id: SPEC-20260323-182134
 title: "Release v3.1.0: Framework Enhancements from Real-World Usage"
-status: approved
+status: complete
 risk_level: medium
 type: spec
 reviewed_by: [architecture-consultant, qa-specialist, docs-knowledge]
 discussion_id: DISC-20260323-182242-v31-framework-extraction-spec-review
+completed_at: 2026-03-25
+completed_commit: a8bfcb6
 ---
+
+<!-- Retroactively closed 2026-06-05: v3.1.0 release shipped (pyproject.toml now at
+     3.5.0); docs/adr/ADR-0008-v31-real-world-extraction.md landed in commit a8bfcb6.
+     Some items shipped with deviations (micro-fix landed as the handling-micro-fixes
+     skill rather than a rules/ file). Predates the spec-lifecycle-completion fix. -->
+
 
 ## Goal
 

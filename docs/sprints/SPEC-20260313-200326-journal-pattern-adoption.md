@@ -1,11 +1,19 @@
 ---
 spec_id: SPEC-20260313-200326
 title: "Adopt patterns from agentic journal and external project analyses"
-status: reviewed
+status: complete
 risk_level: medium
 reviewed_by: [architecture-consultant, security-specialist, qa-specialist]
 discussion_id: DISC-20260313-200419-journal-pattern-adoption-spec-review
+completed_at: 2026-03-17
+completed_commit: b20500d
 ---
+
+<!-- Retroactively closed 2026-06-05: shipped artifacts verified in tree
+     (scripts/bump_version.py + tests, docs/adr/ADR-0004-ship-automation-architecture.md,
+     evaluate-repo-security + feature-status-registry skills). Landed in the v3.0.0
+     release commit. Predates the spec-lifecycle-completion fix (SPEC-20260323 item 1). -->
+
 
 ## Goal
 

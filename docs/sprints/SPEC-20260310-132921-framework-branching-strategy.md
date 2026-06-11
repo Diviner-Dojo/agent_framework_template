@@ -1,11 +1,19 @@
 ---
 spec_id: SPEC-20260310-132921
 title: "Framework Branching Strategy for Private Development and Public Promotion"
-status: reviewed
+status: complete
 risk_level: medium
 reviewed_by: [architecture-consultant, docs-knowledge, independent-perspective]
 discussion_id: DISC-20260310-133048-framework-branching-strategy-spec-review
+completed_at: 2026-03-12
+completed_commit: e3eb20e
 ---
+
+<!-- Retroactively closed 2026-06-05: shipped artifacts verified in tree
+     (BRANCHING.md, docs/adr/ADR-0003-private-fork-branching-strategy.md).
+     Predates the spec-lifecycle-completion fix (SPEC-20260323 item 1), so it
+     never received an automatic status stamp. -->
+
 
 ## Goal
 

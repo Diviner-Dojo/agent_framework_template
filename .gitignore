@@ -11,6 +11,8 @@ build/
 .env.*
 !.env.example
 *.db
+*.db-shm
+*.db-wal
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
