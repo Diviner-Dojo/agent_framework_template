@@ -1,0 +1,61 @@
+---
+discussion_id: DISC-20260523-191833-build-distribute-b1-floor
+started: 2026-05-23T19:18:34.063863+00:00
+ended: 2026-05-23T19:50:03.999090+00:00
+agents: [facilitator, independent-perspective, security-specialist]
+total_turns: 6
+---
+
+# Discussion: DISC-20260523-191833-build-distribute-b1-floor
+
+## Turn 1 — facilitator (evidence)
+*2026-05-23T19:18:34.063863+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- What was requested: implement SPEC-20260523-100224 — close B1 in /distribute by adding a MECHANICAL SAFETY FLOOR (R1: value-unverified replaces silent value for unprovable overwrites) plus an interpreted-assessment teaching layer. Build floor first, then diff/triage sibling (R2), reclassification predicate (R4), orchestration in distribute.md (R3/R3a/R5/R6/R7), secret-scrub (R8), and ADR-0017 (R9, clears review B5).
+- Files/scope: scripts/distribute/change_package.py (floor + requires_interpretation + reclassification predicate), NEW scripts/distribute/assessment.py (diff/triage/scrub), .claude/commands/distribute.md (orchestration prose), tests/test_distribute.py (stale_baseline_env fixture + AC tests), docs/adr/ADR-0017-*.md. Isolated worktree feat/distribute-b1-floor (concurrent 2nd session in main checkout); no push; do NOT touch BUILD_STATUS.md.
+- Developer-stated motivation: a raw diff won't let the gatekeeper decide well — the gate should show its work and teach; core fear is silently breaking a downstream project.
+- Explicit constraints: interpretation rides on the SAME unreliable ancestor as B1 (full hub-side ancestor / 3-way merge deferred to v1.1); the floor — not the agent — is the consent guarantee; reclassification is escalate-only and never mutates ChangeItem.classification; diff data is a sibling (not ChangeItem fields); content-free at ALL sinks (counts/ntfy/write_event); safe-default triage = unknown.
+
+---
+
+## Turn 2 — facilitator (proposal)
+*2026-05-23T19:18:34.171063+00:00 | confidence: 0.8*
+*tags: build-plan*
+
+Build plan (7 tasks from SPEC-20260523-100224): T1 R1 mechanical floor (value-unverified in _classify; add to STAGEABLE; requires_interpretation property) [change_package.py]. T2 R2 diff+triage sibling (OverwriteDiff dataclass, compute_overwrite_diffs via difflib, triage_diff cosmetic/behavioral/unknown safe-default unknown) [NEW assessment.py]. T3 R8 scrub_secrets (reuse 12-pattern hook set) [assessment.py]. T4 R4 pure reclassification predicate + RouteDecision (escalate-only) [change_package.py]. T5 R3/R3a/R5/R6/R7 orchestration prose (data-only diff framing, consent-stakes ordering, counted disclaimer, backflow hand-off, write_event content limits) [distribute.md]. T6 R9 ADR-0017 down-propagation protocol [docs/adr]. T7 tests: stale_baseline_env fixture + all AC tests [test_distribute.py]. Checkpoints expected on T1+T4 (classification/routing — security+independent) and T5 (orchestration confidentiality/anti-injection — security+architecture).
+
+---
+
+## Turn 3 — security-specialist (critique)
+*2026-05-23T19:28:46.930602+00:00 | confidence: 0.87*
+*tags: checkpoint, task-core, security, fail-open*
+
+CHECKPOINT (core mechanical layer) VERDICT: REVISE (0.87). 3 of 4 items PASS: reclassify_route co-gate defends F1 (injected cosmetic verdict vs behavioral hint escalates); compute_overwrite_diffs is pure stdlib difflib (no shell/subprocess); ChangeItem(content-free)/OverwriteDiff(content-bearing) separation makes leakage structural not disciplinary. ONE FINDING (medium, fail-safe-defaults): redact_secrets FAILS OPEN — if validate_tool_use import fails, SECRET_PATTERNS becomes [] and every line passes through unredacted into a doc staged under --no-verify. Fix: fail CLOSED — set a _SECRET_PATTERNS_LOADED flag; redact_secrets raises if patterns unavailable rather than silently no-op. (Note: assessment.py runs in the hub so the import resolves against the hub's own hooks and succeeds in practice — but fail-closed is the correct posture.)
+
+---
+
+## Turn 4 — independent-perspective (critique)
+*2026-05-23T19:28:47.036012+00:00 | confidence: 0.92*
+*tags: checkpoint, task-core, independent, approve*
+
+CHECKPOINT (core mechanical layer) VERDICT: APPROVE (0.92). Floor mechanically solid. Both B1 paths (drift_status=='current' re-baseline AND drift_status is None tracked_paths-narrowed) fall through to the single value-unverified return with no conditional split — fires by construction, not judgment. value is unreachable for overwrites in v1 (appears only in STAGEABLE + docstring; _classify never returns it). reclassify_route is escalate-only (returns machine_classification unchanged or collision-diverged; never demotes). NON-BLOCKING seam: reclassify_route does not validate triage_hint against a fixed vocabulary; safe today (floor fires before reclassify_route, and the hint is the deterministic R2 output), but if v1.1 widens the contract or a caller derives the hint from agent content, a non-'behavioral' string could suppress the co-gate. Add a comment/normalizer.
+
+---
+
+## Turn 5 — security-specialist (critique)
+*2026-05-23T19:30:10.358996+00:00 | confidence: 0.97*
+*tags: checkpoint, task-core, security, revise-resolved*
+
+CHECKPOINT ROUND 2 VERDICT: APPROVE (0.97). Fail-closed fix confirmed: import block sets _SECRET_PATTERNS_LOADED (True on success / False in except); redact_secrets raises RuntimeError immediately when False, before any unredacted text can reach splitlines() or the return. The fail-open path your Round-1 finding identified is closed. Also folded the non-blocking triage_hint normalization (independent-perspective): reclassify_route now lowercases/strips the hint defensively. Checkpoint RESOLVED.
+
+---
+
+## Turn 6 — facilitator (synthesis)
+*2026-05-23T19:50:03.999090+00:00 | confidence: 0.8*
+*tags: build-summary, blocking:1, advisory:1*
+
+Build complete: 7 spec tasks (R1 floor / R2 diff+triage / R4 escalate-only predicate / R3+R3a+R5+R6+R7 orchestration / R8 secret-scrub / R9 ADR-0017 / tests). 1 checkpoint fired (core mechanical layer: security + independent-perspective); 1 blocking finding (redact_secrets fail-open → fixed fail-closed) + 1 advisory (triage_hint normalization → folded), revise-resolved at Round 2 (security APPROVE 0.97, independent APPROVE 0.92). 0 unresolved concerns. Tests 35 new (67 total, all pass) incl. the B1 keystone regression (stale_baseline_env reproduces re-baseline-after-edit → value-unverified, not silent value). Quality gate 7/7 (coverage >=80%, ruff clean, ADR completeness 17). Reflection deferred (cost; critiques fully captured in this discussion, consistent with the v1 build). Next: /review (full panel), then fold B2/B3/B4, --dry-run, commit on feat/distribute-b1-floor (NO push).
+
+---

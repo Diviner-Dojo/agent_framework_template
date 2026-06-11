@@ -1,12 +1,18 @@
 ---
-description: "Onboard an existing project into the framework. Implements the 'takeover' protocol: codebase mapping, reverse-engineered ADRs, standards proposal, stabilization, and debt ledger."
+description: "The DEEPER takeover protocol (codebase mapping, reverse-engineered ADRs, standards calibration, stabilization, debt ledger). Superseded-but-retained (ADR-0021): /apply-framework does the light apply + offers this as the deep follow-on. Run directly when you want the full takeover."
 allowed-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "Task"]
 argument-hint: "[project path to onboard]"
 ---
 
-# Existing Project Onboarding (Takeover Protocol)
+# Existing Project Onboarding (Deeper Takeover Protocol)
 
 You are acting as the Facilitator. This protocol brings an existing codebase into the framework without rewriting everything.
+
+> **Superseded but retained (ADR-0021, Principle #5).** The *light* apply (lay down the framework +
+> surface collisions + clean-tree-gated deploy) now lives in **`/apply-framework`** (its APPLY route).
+> `/onboard` is the **deeper takeover** that `/apply-framework` *offers* as an explicit follow-on (R5):
+> codebase mapping, reverse-engineered ADRs, standards calibration, stabilization, and the debt ledger.
+> Run `/onboard` directly when you want the full takeover; otherwise reach it via `/apply-framework`.
 
 ## Pre-Flight Checks
 
