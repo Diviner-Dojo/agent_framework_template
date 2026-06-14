@@ -11,11 +11,16 @@
 # The `tier` mapping is the stable analytical dimension. The `models`
 # mapping resolves full model IDs to a tier when one is captured.
 
-last_updated: 2026-05-12
+last_updated: 2026-06-10
 currency: USD
 unit: per_1m_tokens
 
 tiers:
+  fable:
+    input: 10.00
+    output: 50.00
+    cache_read_multiplier: 0.10   # 10% of input rate
+    cache_create_multiplier: 1.25 # 125% of input rate
   opus:
     input: 15.00
     output: 75.00
@@ -36,6 +41,9 @@ tiers:
 # `model_id:<id>` as an opportunistic tag. If a model ID is not
 # listed here, queries fall back to the `model:<tier>` tag.
 models:
+  claude-fable-5: fable
+  "claude-fable-5[1m]": fable
+  claude-opus-4-8: opus
   claude-opus-4-7: opus
   claude-opus-4-6: opus
   claude-opus-4: opus

@@ -1,0 +1,75 @@
+---
+discussion_id: DISC-20260610-001934-build-retry-chain-nesting
+started: 2026-06-10T00:19:52.657457+00:00
+ended: 2026-06-10T00:32:08.559850+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, ux-evaluator]
+total_turns: 7
+---
+
+# Discussion: DISC-20260610-001934-build-retry-chain-nesting
+
+## Turn 1 — facilitator (evidence)
+*2026-06-10T00:19:52.657457+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Implement Phase 3 Unit 3 (retry-chain nesting) per SPEC-20260610-001134 (reviewed + folded). Final Phase 3 unit; cohort closes after this commit.
+- **Files/scope**: src/telemetry/failures.py (helper + dataclass + constant); src/telemetry/dashboard.py (new private _render_retry_chain + extension to _render_failure_class_group); tests/test_telemetry.py (new tests at line 2240+); memory/bugs/regression-ledger.md.
+- **Developer-stated motivation**: a cascade of N retries sharing one root cause should read as one chain not N independent rows. Completes Phase 3 cohort.
+- **Explicit constraints**: TEMPORAL heuristic (developer-resolved fork). ADR-0013 read-time only. ADR-0020 honesty. MAX_RETRY_CHAIN_GAP_SECONDS=120 named constant. Length-1 = today's flat row (structural-absence assertions). Within-class only. Non-retry signals skipped over (not chain-reset). TypeError on tz-mismatched subtraction caught and treated as missing-timestamp. Decline _group_by_key Rule-of-Three extraction (document the decline in ledger). No push. SUPERVISOR_DONE after commit.
+
+---
+
+## Turn 2 — facilitator (proposal)
+*2026-06-10T00:19:52.778944+00:00 | confidence: 0.8*
+*tags: build-plan*
+
+Build plan (4 tasks):
+T1. Add MAX_RETRY_CHAIN_GAP_SECONDS constant + RetryChain dataclass + group_retry_chains helper in src/telemetry/failures.py. Pure read-time fold; skip-over for non-retry signals; TypeError-on-tz-mismatch treated as no-chain; honest-absence total_cost_usd.
+T2. Add private _render_retry_chain helper in src/telemetry/dashboard.py; refactor _render_failure_class_group to call group_retry_chains and iterate chains via the new helper. Length-1 short-circuit preserves today's flat-row shape (structural-absence: no data-chain-size, no .retry-chain-link, no aria-label).
+T3. Tests in tests/test_telemetry.py mirroring Unit 1 patterns: A1-A12 + sub-cases (A4b/A5b/A6a/A6b/A7b/A10b/A11b). Helper tests + render tests; honest-absence pins; boundary-inclusive pins; structural-absence regression for length-1.
+T4. regression-ledger entry for src/telemetry/failures.py covering all new guards; explicit DECLINE note for _group_by_key Rule-of-Three trigger (close the door).
+
+Checkpoint plan: T1 = architecture-consultant + qa-specialist (pure-logic + edge-case-heavy). T2 = ux-evaluator + architecture-consultant (render-shape + length-1 invariant). T3-T4 are test-writing + docs-only (exempt per running-build-checkpoints skill).
+
+---
+
+## Turn 3 — architecture-consultant (critique)
+*2026-06-10T00:22:21.881038+00:00 | confidence: 0.93*
+*tags: checkpoint, task-1*
+
+T1 APPROVE (0.93). Boundary placement correct; ADR-0013+0020 alignment honest; frozen=True dataclass + tuple links match immutable-value convention; R3 enforced at two layers (defense in depth). Docstrings load-bearing — rationale (skip-over reasoning, 0.0-vs-None guard, tz-mismatch belt-and-braces) encoded in prose. C9 Rule-of-Three decline honored. Minor INFO: _build_retry_chain could take Sequence not list — single private caller, defer.
+
+---
+
+## Turn 4 — qa-specialist (critique)
+*2026-06-10T00:22:22.011234+00:00 | confidence: 0.91*
+*tags: checkpoint, task-1*
+
+T1 APPROVE (0.91). All A1-A11b have direct unambiguous code paths. Skip-over semantic correct (continue at orphan line does NOT touch current_links; chain-candidate pointer = current_links[-1] survives). cost_usd is not None guard correctly admits 0.0 (A6b). Empty + single-element + all-orphan + mutation-of-input cases all safe. LOW: A10b determinism test should use a deliberately unsorted retry list to confirm stability AND verify temporal ordering within chains — make test fixture reflect 'rank_failures precedes group_retry_chains' contract.
+
+---
+
+## Turn 5 — ux-evaluator (critique)
+*2026-06-10T00:24:36.944921+00:00 | confidence: 0.88*
+*tags: checkpoint, task-2*
+
+T2 APPROVE (0.88). Length-1 short-circuit is the first executable line — invariant local and obvious. 'chain of N' badge in Detail column is plain language; manager reads 'API timeout · chain of 4' as one event with four reactions, not four separate events. aria-label satisfies WCAG 1.3.1. LOW advisory: WCAG 1.4.1 — the retry-chain-link class is a CSS hook; if the stylesheet uses ONLY background-color/left-border to signal nesting, a user who overrides color sees flat rows. Add either a left-padding text indent OR a non-color glyph prefix in the first <td> — this is a Python-side hook decision since the project ships no external CSS for these classes today.
+
+---
+
+## Turn 6 — architecture-consultant (critique)
+*2026-06-10T00:24:37.078160+00:00 | confidence: 0.92*
+*tags: checkpoint, task-2*
+
+T2 APPROVE (0.92). Refactor honors arch F1 from spec review: _render_retry_chain single seam; A8 documented in-place at lines 444-450 and pinned via chain.size()==1 early return. _render_failure_class_group ~25 lines executable logic; single responsibility intact. Parallel-iterator logic correct (chain_signatures set + next_chain advance only on head; no drift). C6 escaping complete; chain_badge interpolates int chain_size directly (safe by type; defensive _esc wrap is optional). INFO: link-row markup duplicates _render_failure_row shape modulo CSS class — do NOT extract yet (Rule-of-Three watch; defer to third variant). Strengths: chain_signatures precomputed O(n) not O(n·m); docstrings encode invariants AT the seam where future refactors would break them.
+
+---
+
+## Turn 7 — facilitator (synthesis)
+*2026-06-10T00:32:08.559850+00:00 | confidence: 0.8*
+*tags: build-summary, blocking:0, advisory:0*
+
+Build complete: 4 tasks, 2 checkpoints fired (T1 + T2), 0 unresolved concerns. T1 (failures.py): arch APPROVE 0.93, qa APPROVE 0.91 — 1 LOW INFO each (Sequence type tightening; A10b test-fixture clarification) both addressed in tests. T2 (dashboard.py): ux APPROVE 0.88 with 1 LOW WCAG 1.4.1 advisory FOLDED in-session (added U+21B3 chain-glyph + aria-hidden on link rows); arch APPROVE 0.92 with 1 INFO (Rule-of-Three watch for link-row markup duplication — defer per Principle #8, currently 2 variants). T3 tests + T4 ledger entry are test-writing + docs (exempt per running-build-checkpoints skill). Quality gate 7/7 (formatting + linting + 371 telemetry+server tests pass + coverage + ADRs + review-existence + 44 regression-ledger guards). Ready for /review.
+
+---

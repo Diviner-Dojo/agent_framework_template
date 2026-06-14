@@ -20,7 +20,7 @@ When a `/review`, `/deliberate`, `/build_module`, `/plan`, `/retro`, `/meta-revi
    - Sets the discussion directory to read-only
 4. `scripts/record_yield.py` records protocol-yield metrics into `protocol_yield`. Called at synthesis time in `/review`, `/build_module`, `/retro`.
 5. `scripts/ingest_token_usage.py` (post-hoc) parses Claude Code's transcript JSONL at `~/.claude/projects/`, dedupes by `message.id`, attributes token usage to discussions by timestamp. Authoritative cost-side telemetry per ADR-0013.
-6. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl`.
+6. Each `python scripts/quality_gate.py` run appends a JSONL record to `metrics/quality_gate_log.jsonl`. Record shape: `{"timestamp": ..., "overall": "pass|pass_with_skips|fail", "passed_count": N, "total": M, "skipped_count": K, "checks": {"<name>": "pass|fail|skipped", ...}}`. `pass_with_skips` means every check that *ran* passed but ≥1 was skipped (incl. the vacuous all-skipped case) — count it **separately** in trend queries; folding it into `pass` over-reports clean runs.
 7. `/knowledge-health` runs `scripts/knowledge_dashboard.py` and appends to `metrics/knowledge_pipeline_log.jsonl`.
 
 **Context-brief events** (turn_id=1, agent="facilitator", tags="context-brief") are emitted by: /review, /deliberate, /build_module, /plan, /retro. Excluded: /analyze-project, /meta-review.

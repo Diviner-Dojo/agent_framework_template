@@ -1,0 +1,58 @@
+---
+discussion_id: DISC-20260607-072951-build-telemetry-layer-b-dashboard
+started: 2026-06-07T07:30:18.147479+00:00
+ended: 2026-06-07T07:53:36.313681+00:00
+agents: [architecture-consultant, facilitator, security-specialist]
+total_turns: 5
+---
+
+# Discussion: DISC-20260607-072951-build-telemetry-layer-b-dashboard
+
+## Turn 1 — facilitator (evidence)
+*2026-06-07T07:30:18.147479+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Run /build_module against SPEC-20260607-064958 — build the north-star Layer B telemetry dashboard: a single self-contained static HTML infographic generated at read-time that renders the existing A1/A2/A3 honest outputs. Build = render, not new measurement. Full cycle: build, checkpoints, quality gate, /review (must probe honest-absence C4), education gate, commit (NO push without OK).
+- **Files/scope**: NEW scripts/telemetry/dashboard.py (transport: assemble_dashboard_data + main); NEW src/telemetry/dashboard.py (pure: DashboardData + render_dashboard_html + ASCII summary + html.escape/format helpers + HTML template); surgical extract-method refactor of scripts/telemetry/analyze_value.py (read-only A3 assembler for single-path); EDIT tests/test_telemetry.py, .gitignore, docs/adr/ADR-0020, memory/bugs/regression-ledger.md.
+- **Developer-stated motivation**: The whole point of the Telemetry and Oversight component is a powerful Layer B dashboard for understanding AI use; A1/A2/A3 were the data foundation. North star.
+- **Explicit constraints**: Read-side functions ONLY (load_cost_rows then build_cost_report; load_failure_signals then rank_failures; analyze_value returned objects) — NEVER analyze_cost/analyze_failures/init_db (they mutate the DB). html.escape in Python not raw innerHTML. Honest-absence as first-class visual states (true-zero uses a data tile, analyzer-not-yet-run a distinct absence tile, OTel a live enable link). Plain-language labels (A1 pay-per-use legend; A3 List-price-equivalent multiple). ASCII-only console summary (cp1252). Output to OS temp dir like /status. No push without explicit OK. One step at a time; ask before big moves; long artifacts in fenced code blocks.
+
+---
+
+## Turn 2 — facilitator (proposal)
+*2026-06-07T07:30:37.504654+00:00 | confidence: 0.8*
+*tags: build-plan*
+
+Build plan (4 tasks):
+T1 (extract-method, A3 single-path): in scripts/telemetry/analyze_value.py extract a public read-only assemble_value_inputs(conn, *, pricing, project_root, since, subscription_path, otel_path) that does the input assembly + leverage/cross_check with NO init_db and NO print; refactor analyze_value() to call it. Rationale: dashboard cannot call analyze_value() (it calls init_db + prints, tripping the read-side-only + no-persistence acceptance tests), so to avoid forking a second A3 path (folded blocking finding 1) and to resolve rather than worsen the deferred A-ARCH1 private-cross-module smell, both CLI and dashboard call ONE read-only assembler.
+T2 (pure render, src/telemetry/dashboard.py): DashboardData dataclass (CostReport + cost_state; ranked failures + failures_state; LeverageResult + 2 DivergenceResults; generated_label injected for determinism), html.escape helpers, format helpers, module-level HTML template string, render_dashboard_html(data)->str (server-side escaping, textContent never raw innerHTML; absence as distinct dashed/icon containers not color-alone WCAG 1.4.1; true-zero vs not-run distinct; OTel live <a> link; A1 pay-per-use legend; A3 List-price-equivalent multiple label), render_console_summary(data)->list[str] ASCII-only.
+T3 (transport, scripts/telemetry/dashboard.py): assemble_dashboard_data(db_path, *, pricing, subscription_path, otel_path, project_root)->DashboardData — open DB file:...?mode=ro, build A1 via load_cost_rows+build_cost_report, A2 via load_failure_signals+rank_failures, A3 via assemble_value_inputs; classify cost_state/failures_state from table-presence + watermark (try/except sqlite3.OperationalError -> not_run); main() writes temp HTML, webbrowser.open, --no-open, prints ASCII summary; never prints/imports the ntfy slug.
+T4 (tests): assembly-seam fidelity (field-level vs build_cost_report/rank_failures/analyze_value), read-side-only/no-init_db, one-per honest-absence state, true-zero-vs-not-run, empty-DB first-run, parametrized escaping (signature via transcript tool-name + detail + reason + source_label), behavioral no-slug, parametrized ASCII summary, strong no-persistence (schema+rowcounts, ?mode=ro), plain-language framing.
+Layering note (deviation from spec component list, well-grounded): assemble_dashboard_data lives in scripts/telemetry/ (transport) not src/, because the package __init__ states I/O orchestration belongs in scripts/telemetry/ and src/ must not import scripts/ (correct layer direction). The pure/coverage-counted render + escaping stays in src/telemetry/. Signature + name from R5a preserved exactly. Checkpoint: architecture + security on T2/T3.
+
+---
+
+## Turn 3 — architecture-consultant (critique)
+*2026-06-07T07:40:07.515686+00:00 | confidence: 0.93*
+*tags: checkpoint, task-2, task-3*
+
+APPROVE (0.93). Layering decision CORRECT: assemble_dashboard_data opens a sqlite connection + reads transcripts = transport IO, so it belongs in scripts/telemetry/ per the established boundary (load_cost_rows/load_failure_signals/analyze_value all live in scripts/); the spec Affected-Components note placing it in src/ was imprecise and the build resolved toward the rule. Single-path A3 CORRECT: assemble_value_inputs is one read-only path shared by the CLI and dashboard; a1_report passthrough makes the cost figure a single source of truth (A1 panel and A3 leverage cannot diverge); resolves rather than worsens A-ARCH1. Aligns with ADR-0013/0020 compute-don't-store. Minor (deferred): dict return type (pre-existing, A-ARCH1 owns it). Low: confirm empty-cost path shows honest absence not a 0.00x multiple -> addressed via comment + the empty-DB acceptance test.
+
+---
+
+## Turn 4 — security-specialist (critique)
+*2026-06-07T07:40:07.603159+00:00 | confidence: 0.96*
+*tags: checkpoint, task-2, task-3*
+
+APPROVE (0.96). C6 escaping complete + consistent: _esc() = html.escape(str(value), quote=True) is the single seam covering attribute + body contexts. Every transcript-shaped field escaped at its emission point: FailureSignal signature/detail/failure_type/tier (failures panel), DivergenceResult reason via _esc_reason->_absence_tile _esc, source_label, leverage reason/note, generated_label. action_html injected unescaped per documented contract but every call site builds it from _code()/_otel_link() which escape internally; OTEL_DOCS_URL is a module constant (no open-redirect). Read-only enforced at driver level (file:...?mode=ro, uri=True, finally close, no init_db import, no DDL/INSERT). Missing tables -> sqlite3.OperationalError -> STATE_NOT_RUN (2 sites). _watermark_present parameterized; _query_exists fixed literal. NO os.environ, NO notify import, error path prints only DB_PATH + sqlite msg -> slug leak impossible. Low (non-blocking): lev.note raw at assignment to basis, escaped at emission -> added clarifying comment.
+
+---
+
+## Turn 5 — facilitator (synthesis)
+*2026-06-07T07:53:36.313681+00:00 | confidence: 0.8*
+*tags: build-summary, blocking:0, advisory:3*
+
+Build complete: 4 tasks (A3 extract-method single-path; pure src/telemetry/dashboard.py render+escape+ASCII; transport scripts/telemetry/dashboard.py assemble+main; 31 dashboard tests). 1 checkpoint fired (architecture+security, both APPROVE 0.93/0.96), 0 unresolved concerns; 3 advisories all addressed in-build (basis-escape comment, empty-cost honest-absence comment, layering confirmed). Quality gate 7/7; coverage 98% on the new pure module; 140 telemetry tests pass. Live smoke on real data matches A1/A2/A3 ($666.26/100%, 1 failure, fee-not-configured + OTel-not-yet-active absence). Honest-absence verified clean (no fabricated $0 in the all-absent page). Reviewability artifacts: 3 fixture-state HTML samples in docs/reviews/artifacts/ (PNG-capture boundary declared).
+
+---

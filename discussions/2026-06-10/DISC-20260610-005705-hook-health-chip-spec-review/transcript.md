@@ -1,0 +1,59 @@
+---
+discussion_id: DISC-20260610-005705-hook-health-chip-spec-review
+started: 2026-06-10T00:57:16.229595+00:00
+ended: 2026-06-10T01:03:17.690524+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist]
+total_turns: 5
+---
+
+# Discussion: DISC-20260610-005705-hook-health-chip-spec-review
+
+## Turn 1 — facilitator (evidence)
+*2026-06-10T00:57:16.229595+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Supervised headless continuation per the rolling handoff: build Phase 4 Unit 4.1 of the Layer B live dashboard — a hook-health status chip in the live shell. Developer directive 2026-06-09: run Phases 3-5 to completion autonomously, one bounded unit per session.
+- **Files/scope**: NEW src/telemetry/hooks_health.py (pure check); src/telemetry/dashboard.py (chip renderer + render_live_fragment additive param); scripts/telemetry/dashboard_server.py (read-only transport loader); tests/test_telemetry.py + tests/test_dashboard_server.py; regression ledger. Spec: SPEC-20260610-005602.
+- **Developer-stated motivation**: Phase 4 self-monitoring per SPEC-20260607-183136 R6 — the gatekeeper should see at a glance whether the framework's enforcement hooks are wired, from the same dashboard that shows cost/failures/value.
+- **Explicit constraints**: READ-ONLY — never execute or mutate hooks or settings.json (AC1/AC3 no-inject invariant, called load-bearing in the handoff); pure/transport split (R14); weekly_panel_html render precedent; ADR-0020 honesty (one activity signal must not be presented as all-hooks-firing); NO push to any remote.
+
+---
+
+## Turn 2 — architecture-consultant (critique)
+*2026-06-10T01:01:26.926951+00:00 | confidence: 0.86*
+*tags: spec-review, architecture*
+
+APPROVE-WITH-CHANGES (0.86). Boundaries correct: R14 pure/transport split mirrors drift.py precedent; R15 single render path held; AC1/AC3 + ADR-0013/0020 honored. F1 MED: parse_hook_script_refs tuple-of-(tuple,int) return loses naming - define frozen dataclass HookConfigParse(script_refs, hook_count) per project dataclass standard. F2 LOW: assess_hook_health 4-arg list shrinks to (parsed, missing, last_gate_run) once F1 lands. F3 LOW: loader should be PUBLIC load_hook_health to match load_weekly_trends precedent (direct unit tests + route consumer) - do not half-do private-name-with-direct-tests. F4 MED: log tail read must be bounded (seek last ~4KB, scan forward) - quality_gate_log.jsonl grows monotonically; naive read_text makes the per-poll cost claim unsupported. F5 LOW: label map named _HOOK_HEALTH_STATUS_LABEL co-located with _LANE_STATUS_LABEL in dashboard.py; status constants stay in hooks_health.py (model owns vocabulary, render owns copy). F6 INFO: hook_health_chip_html is the SECOND additive param on render_live_fragment - Rule of Three triggers if Unit 4.2 adds a third HTML extra (fold into a LiveFragmentExtras shape then, not now). Strengths: text-not-path parse input; AC-U6 unit-level byte-unchanged belt-and-braces; narrow recency labelling; refusing the .state-files trap.
+
+---
+
+## Turn 3 — security-specialist (critique)
+*2026-06-10T01:01:40.294269+00:00 | confidence: 0.87*
+*tags: spec-review, security*
+
+APPROVE-WITH-CHANGES (0.87). Threat model: loopback read-only dashboard now reads developer security config and renders derived facts. F1 HIGH (A02 disclosure): spec does not explicitly prohibit rendering command field values - settings.json commands can embed flags/paths/tokens in derived projects; MUST extract only the file BASENAME after .claude/hooks/ from each command; full command string never stored or returned; AC-U1 test passes a command containing a mock token and asserts it appears in no output. F2 MED (A03/A01 traversal): a crafted command like bash .claude/hooks/../../../etc/x.sh must not stat outside .claude/hooks/ nor surface a traversal string - loader resolves hooks_dir / Path(ref).name (basename only) before is_file(); add traversal test. F3 LOW: pre-rendered-HTML seam contract implicit - document in render_live_fragment docstring that callers MUST pass only helper-produced HTML; injection round-trip asserted INSIDE render_hook_health_chip. F4 LOW (DoS): bound the gate-log tail read with a fixed-size byte seek (last ~4KB), not full read_text. F5 LOW/INFO: AC3(a) allowlist - state whether the import-allowlist test needs an intentional update for src.telemetry.hooks_health so widening is visible, plus a direct purity test. Strengths: no-execute discipline three-layer guard; narrow gate-log labelling prevents false confidence; malformed JSON to not_configured honest failure mode; additive default param; compute-dont-store.
+
+---
+
+## Turn 4 — qa-specialist (critique)
+*2026-06-10T01:01:53.055206+00:00 | confidence: 0.88*
+*tags: spec-review, qa*
+
+APPROVE-WITH-CHANGES (0.88). F1 BLOCKING: real settings.json has statusLine as a TOP-LEVEL SIBLING of the hooks key, not inside it; spec must state explicitly whether statusLine counts toward hooks_configured and whether the parser walks only settings[hooks] - a casual fixture nesting statusLine inside hooks would pass tests while production silently differs. F2 BLOCKING: two command forms exist in production - bash .claude/hooks/x.sh AND powershell -ExecutionPolicy Bypass -File .claude/hooks/y.ps1; a token-split extractor passes bash-only fixtures and breaks on -File form; AC-U1 must include a powershell sub-case or the spec must pin a path-pattern (regex substring) extraction strategy. F3 HIGH: AC-U7 "new read path exercised" is ambiguous - the AC3(b) stub fixture has no hooks content so the loader returns not_configured and the byte-unchanged test passes vacuously; require the /fragments/live response to contain chip markup (count form) confirming the loader ran. F4 HIGH: gate-log timestamp contract underspecified - pin tz-aware datetime; define well-formed as valid JSON with parseable ISO timestamp; replace per-implementation-choice with definite fall-back-to-last-well-formed-entry; test with 3 trailing malformed lines. F5 HIGH: duplicate refs to one absent script - pin deduplicated scripts_missing (name appears once) while hooks_configured counts commands. F6 MED: add a direct purity test for src.telemetry.hooks_health (sys.modules delta stdlib-only) matching the failures/drift/live/weekly precedent. F7 MED: exactly-once chip assertion must use count()==1 form, not in. F8 LOW: hooks:null sub-case maps to not_configured without raising.
+
+---
+
+## Turn 5 — facilitator (synthesis)
+*2026-06-10T01:03:17.690524+00:00 | confidence: 0.87*
+
+## Request Context
+- **What was requested**: Supervised headless continuation per the rolling handoff: build Phase 4 Unit 4.1 of the Layer B live dashboard - a read-only hook-health status chip. Developer directive 2026-06-09: run Phases 3-5 to completion autonomously.
+- **Files/scope**: SPEC-20260610-005602; NEW src/telemetry/hooks_health.py, src/telemetry/dashboard.py, scripts/telemetry/dashboard_server.py, two test files, ledger.
+- **Developer-stated motivation**: SPEC-20260607-183136 R6 self-monitoring surface for the gatekeeper dashboard.
+- **Explicit constraints**: AC1/AC3 no-inject load-bearing; read-only; pure/transport split; ADR-0020 honesty; NO push.
+
+## Synthesis
+3-specialist ensemble: arch 0.86 + security 0.87 + qa 0.88, all APPROVE-WITH-CHANGES. 2 BLOCKING (qa F1 statusLine is a top-level sibling of the hooks key - resolved by EXPLICIT intentional exclusion of statusLine from the health claim, scope pinned to the hooks block; qa F2 dual command forms bash vs powershell -File - resolved by pinning a path-pattern regex extraction strategy + a powershell AC sub-case). All HIGHs folded into the spec: security F1 basename-only minimum disclosure with mock-token non-propagation test; qa F3 AC-U7 now requires chip marker count==1 in the live fragment response; qa F4 tz-aware datetime + definite fall-back-to-last-well-formed contract + only-malformed-window to None; qa F5 deduplicated scripts_missing. MED/LOW folded: arch F1 HookConfigParse frozen dataclass; arch F2 3-arg assess signature; arch F3 public load_hook_health; arch F4 + security F4 bounded 4KB tail read as named constant; arch F5 _HOOK_HEALTH_STATUS_LABEL co-located in dashboard.py; security F2 basename re-normalization at the stat site + traversal test; security F3 caller-contract docstring + escape-inside-renderer assertion; security F5 + qa F6 explicit allowlist update + direct purity test AC-U9; qa F7 count==1 assertion form; qa F8 hooks:null sub-case. arch F6 INFO recorded as a Rule-of-Three watchpoint in Constraints (second additive fragment param; fold on the third, not now). Spec status -> reviewed; 9 acceptance criteria. Developer approval is pre-authorized by the 2026-06-09 autonomous directive (Phases 3-5); proceeding to /build_module.
+
+---

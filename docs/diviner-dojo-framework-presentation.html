@@ -1,4 +1,12 @@
 <!DOCTYPE html>
+<!--
+  Framework overview deck for the AI-Native Agentic Development Framework.
+  Revised 2026-06-14 (round-2 accuracy/consistency pass; reviewed REV-20260614-023301):
+  principles 8->9 (added #9, the 95% clarify gate); hooks 7->9; skills ->21; commands tree
+  ->24; slide-7 "16 Core Commands" + subtitle noting 24 total. Counts: 12 agents / 24 commands
+  / 21 skills / 9 hooks / 4 rules / 9 principles. Keep in sync with .claude/ — see the
+  syncing-framework-docs skill and docs/proposals/doc-sync-count-drift-check.md.
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1159,7 +1167,7 @@ h3 {
   <div class="slide" data-slide="3">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Foundation</p>
-      <h2 class="anim-fade-up-d1">8 Non-Negotiable Principles</h2>
+      <h2 class="anim-fade-up-d1">9 Non-Negotiable Principles</h2>
       <p class="subtitle anim-fade-up-d2" style="margin-top:-16px;">Click any principle to expand.</p>
       <div class="principles-list anim-fade-up-d3" id="principlesList">
         <div class="principle-item" onclick="togglePrinciple(this)">
@@ -1225,6 +1233,14 @@ h3 {
             <span class="layer-expand-icon">▼</span>
           </div>
           <div class="principle-detail">Prefer prompt changes → command changes → agent changes → architecture changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. <strong>Why:</strong> Don't restructure when a prompt tweak will do.</div>
+        </div>
+        <div class="principle-item" onclick="togglePrinciple(this)">
+          <div class="principle-header">
+            <span class="principle-num">9</span>
+            <span class="principle-title">Clarify before acting (the 95% rule).</span>
+            <span class="layer-expand-icon">▼</span>
+          </div>
+          <div class="principle-detail">Before producing a plan, writing code, or taking any substantive action, ask questions until you're ≥95% confident of both intent <em>and</em> scope. Mandatory unless the developer explicitly overrides; micro-fixes are exempt. <strong>Why:</strong> A wrong assumption acted on costs far more than the question that would have prevented it.</div>
         </div>
       </div>
     </div>
@@ -1548,7 +1564,8 @@ h3 {
   <div class="slide" data-slide="7">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Workflow</p>
-      <h2 class="anim-fade-up-d1">16 Commands That Drive the Workflow</h2>
+      <h2 class="anim-fade-up-d1">16 Core Commands That Drive the Workflow</h2>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-16px; font-size:0.95rem;">24 commands in all &mdash; these are the ones you&rsquo;ll reach for most.</p>
       <div class="two-col anim-fade-up-d2">
         <div>
           <div class="cmd-group">
@@ -1622,7 +1639,7 @@ h3 {
   <div class="slide" data-slide="8">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Safety</p>
-      <h2 class="anim-fade-up-d1">7 Hooks — Automated Guardrails</h2>
+      <h2 class="anim-fade-up-d1">9 Hooks — Automated Guardrails</h2>
       <p class="subtitle anim-fade-up-d2" style="margin-top:-16px;">Safety is enforced at the tooling layer, not by asking the AI to behave.</p>
       <div class="two-col anim-fade-up-d3">
         <div>
@@ -1899,19 +1916,19 @@ h3 {
                 </div>
               </div>
               <div class="tree-folder" onclick="toggleTree(event, this)">
-                <div class="tree-label"><span class="tree-toggle">▸</span> commands/ <span class="tree-comment">— 17 slash commands</span></div>
+                <div class="tree-label"><span class="tree-toggle">▸</span> commands/ <span class="tree-comment">— 24 slash commands</span></div>
                 <div class="tree-children">
                   <div class="tree-file">  review.md</div>
                   <div class="tree-file">  deliberate.md</div>
                   <div class="tree-file">  build_module.md</div>
                   <div class="tree-file">  analyze-project.md</div>
-                  <div class="tree-file">  ... (13 more)</div>
+                  <div class="tree-file">  ... (20 more)</div>
                 </div>
               </div>
               <div class="tree-file">  custodian/ <span class="tree-comment">— Lineage tracking</span></div>
-              <div class="tree-file">  hooks/ <span class="tree-comment">— 7 lifecycle hooks</span></div>
+              <div class="tree-file">  hooks/ <span class="tree-comment">— 9 lifecycle hooks</span></div>
               <div class="tree-file">  rules/ <span class="tree-comment">— 4 context-loaded standards (rest are on-demand skills)</span></div>
-              <div class="tree-file">  skills/ <span class="tree-comment">— 19 on-demand skills (playbooks + relocated protocols, ADR-0016/ADR-0019)</span></div>
+              <div class="tree-file">  skills/ <span class="tree-comment">— 21 on-demand skills (playbooks + relocated protocols, ADR-0016/ADR-0019)</span></div>
             </div>
           </div>
 
@@ -2033,7 +2050,7 @@ h3 {
         <div class="comparison-row">
           <span class="comp-before"><span style="color:var(--red);">✗</span> Unstructured ad-hoc sessions</span>
           <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> 16 structured commands with auto-capture</span>
+          <span class="comp-after"><span style="color:var(--green);">✓</span> 24 structured commands with auto-capture</span>
         </div>
         <div class="comparison-row">
           <span class="comp-before"><span style="color:var(--red);">✗</span> Knowledge lost between sessions</span>

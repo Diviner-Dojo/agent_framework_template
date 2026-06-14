@@ -1,0 +1,101 @@
+---
+discussion_id: DISC-20260610-015835-build-model-cost-donut
+started: 2026-06-10T01:58:59.375115+00:00
+ended: 2026-06-10T02:25:28.712036+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist, ux-evaluator]
+total_turns: 11
+---
+
+# Discussion: DISC-20260610-015835-build-model-cost-donut
+
+## Turn 1 — facilitator (evidence)
+*2026-06-10T01:58:59.375115+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Build Phase 4 Unit 4.2 (model-cost donut) against SPEC-20260610-015114 (status: reviewed; arch+qa+sec panel, 2 BLOCKING + 9 advisory all folded into the spec). Chart.js doughnut of corpus cost split by model tier on the live dashboard; third chart consumer; discharges the recorded Rule-of-Three fold of render_live_fragment's pre-rendered-HTML params.
+- **Files/scope**: src/telemetry/dashboard.py (renderer + LiveFragmentPanels), scripts/telemetry/dashboard.py (load_cost_report), scripts/telemetry/dashboard_server.py (route), src/telemetry/static/dashboard-chart.js (+SHA-384 re-pin in README + test pin), tests/test_telemetry_donut.py (new) + touched composition tests.
+- **Developer-stated motivation**: dashboard is the oversight north star (2026-06-09 directive: run Phases 3-5 autonomously, one bounded unit per session).
+- **Explicit constraints**: ADR-0020 uncosted never $0 (caption resolution ratified at spec review); no CSP change; renderer purity; read-only DB; no push.
+
+---
+
+## Turn 2 — facilitator (proposal)
+*2026-06-10T01:58:59.492856+00:00 | confidence: 0.8*
+*tags: build-plan*
+
+Build plan (6 tasks from SPEC-20260610-015114): T1 transport loader load_cost_report in scripts/telemetry/dashboard.py (4-state matrix incl. DB-file-absent; tuple rationale + lockstep docstring pins). T2 pure render layer in src/telemetry/dashboard.py: _DonutSlice TypedDict, id constants, render_model_cost_donut_panel (absence / nothing-priced / data states; uncosted caption; static aria-label), LiveFragmentPanels frozen dataclass (additive-only pin) + render_live_fragment signature fold (donut LAST). T3 server route wiring in dashboard_server.py (/fragments/live passes LiveFragmentPanels). T4 JS renderModelCostDonut in dashboard-chart.js (doughnut over priced slices, tier-color reuse, hasOwnProperty guard, per-chart fallback, destroy-before-recreate) + SHA-384 re-pin lockstep README + _DASHBOARD_CHART_JS_SHA384_PIN. T5 tests: new tests/test_telemetry_donut.py + server loader/route/id-pin tests + six-position composition chain + signature-fold call-site updates. T6 regression-ledger entry. Checkpoints: CP1 after T2 (architecture choice: signature fold) arch+qa; CP2 after T4 (security-relevant static asset) security+ux.
+
+---
+
+## Turn 3 — architecture-consultant (critique)
+*2026-06-10T02:05:12.442414+00:00 | confidence: 0.93*
+*tags: checkpoint, task-2, revise*
+
+CP1 (T1-T3) verdict: REVISE (0.93). One MED defect: the nothing-priced data-tile body embeds a literal &mdash; entity then routes the whole body through _esc, double-escaping it to &amp;mdash; (visible corruption). Fix: Unicode em dash inside the escaped string, or split static HTML out of the _esc call. Otherwise: fold faithfully discharges R4 (frozen dataclass, additive-only pin, caller contract, server wires all three fields); 4-state loader contract fully implemented with bidirectional lockstep comments; _donut_slices ordering spec-faithful; aria-label fully static; composition order chip->runway->lanes->stream->per-turn->weekly->donut correct; _DonutSlice pins schema evolution; render purity + dependency direction clean; sort-key or-0.0 verified sound (priced list pre-filtered is-not-None).
+
+---
+
+## Turn 4 — qa-specialist (critique)
+*2026-06-10T02:05:12.583096+00:00 | confidence: 0.93*
+*tags: checkpoint, task-2, approve*
+
+CP1 (T1-T3) verdict: APPROVE (0.93). Exception scoping in load_cost_report exactly matches the 4-state AC10 matrix (outer except = connect-time DB-absent; inner = table-missing; _watermark_present swallows its own OperationalError so the has_run line cannot raise). 3 LOW observations: (1) or-0.0 sort-key guard is unreachable dead code (priced pre-filtered not-None); -0.0==0.0 keeps ordering stable regardless; suggest a comment. (2) Same &mdash; double-escape in the nothing-priced body as arch found — cosmetic, fix + assert em-dash renders. (3) The has_run=True/empty-by_tier true-zero branch needs reachability verification at test time (build_cost_report over empty rows) — assert-or-document per spec R3. JSON path safe for AC2: cost_usd None -> JSON null; no $0 string constructible for uncosted.
+
+---
+
+## Turn 5 — architecture-consultant (critique)
+*2026-06-10T02:05:51.583297+00:00 | confidence: 0.97*
+*tags: checkpoint, task-2, approve, round-2*
+
+CP1 Round 2 verdict: APPROVE (0.97). Fix verified: nothing-priced body strings now carry only plain Unicode text through _esc (em dash literal, no entities); chart-tile branch's static &mdash; entities remain in raw template literals outside _esc. REVISE resolved.
+
+---
+
+## Turn 6 — security-specialist (critique)
+*2026-06-10T02:10:55.945749+00:00 | confidence: 0.97*
+*tags: checkpoint, task-4, approve*
+
+CP2 (T4) verdict: APPROVE (0.97). Pin triple-lock verified (computed digest == README row == test constant). buildDonutSlices clean per sec F2: three parallel arrays, no payload-keyed plain-object write; only keyed lookup is tierColor's hasOwnProperty-guarded read. CHART_STATES registry keys are the three first-party canvas-id constants only — no untrusted key reaches it. Refactor equivalence preserved: shouldSkipRender/destroyChart match prior singleton-pair semantics, lastCanvas cleared in lockstep, per-chart fallback isolation (REV-20260608-053507 ux F1) intact, htmx target.id filter unchanged. Defensive bails correct incl. all-uncosted payload -> loading state, never an empty ring. No XSS surface: tooltips are canvas fillText. No findings.
+
+---
+
+## Turn 7 — ux-evaluator (critique)
+*2026-06-10T02:10:56.069335+00:00 | confidence: 0.88*
+*tags: checkpoint, task-4, revise*
+
+CP2 (T2+T4) verdict: REVISE (0.88). F1 HIGH plain-language: absence tile's 'Run scripts/telemetry/analyze_cost.py' + nothing-priced tile's 'add the missing tiers to config/model_pricing.yaml' are engineer imperatives in gatekeeper-facing copy (dead end for a non-engineer); legend uses 'stored corpus' + undefined 'API-equivalent'. Remediate: developer-can-run framing; 'all captured sessions'; explain the unit inline; drop ADR number from user copy. F2 MED advisory (WCAG 1.4.1): donut has color+1px-border but no shape channel; bottom legend is the safety net; acceptable at 400px — track, consider in-slice data labels if canvas shrinks. F3 LOW optional: donut fallback copy identical to weekly's — differentiate to 'Per-tier cost totals...'. Strengths: honesty preserved end-to-end at every layer; static aria-label correct; per-chart fallback isolation correct; one voice across chart panels.
+
+---
+
+## Turn 8 — ux-evaluator (critique)
+*2026-06-10T02:12:06.171174+00:00 | confidence: 0.97*
+*tags: checkpoint, task-4, approve, round-2*
+
+CP2 Round 2 verdict: APPROVE (0.97). All four copy folds verified in source: absence tile developer-action framing; nothing-priced imperative softened + ADR ref removed from user copy; legend unit explained inline with 'all captured sessions'; JS donut fallback differentiated (SHA re-pinned in lockstep). F2 WCAG shape-channel tracked as advisory per remediation note. REVISE resolved.
+
+---
+
+## Turn 9 — facilitator (synthesis)
+*2026-06-10T02:24:14.722312+00:00 | confidence: 0.8*
+*tags: build-summary, blocking:0, advisory:5*
+
+Build complete: 6 tasks, 2 checkpoints fired (CP1 arch+qa after T2 render layer: arch REVISE em-dash entity double-escape -> fixed -> Round 2 APPROVE 0.97, qa APPROVE 0.93; CP2 sec+ux after T4 JS+pin: sec APPROVE 0.97, ux REVISE gatekeeper plain-language copy -> 4 folds incl. JS fallback differentiation + SHA re-pin -> Round 2 APPROVE 0.97), 0 unresolved concerns. Two Rule-of-Three folds discharged: LiveFragmentPanels dataclass (render_live_fragment params) + CHART_STATES per-canvas-id registry & shared parseJsonArray (dashboard-chart.js). BUILD DEFECT (recurred from session 22): PostToolUse auto-format hook stripped imports added before consumers existed — twice (dashboard_server.py NameError 500s caught by route tests; scripts/telemetry/dashboard.py CostReport F821 caught by ruff); both re-added after consumers. 26 new tests (18 in new tests/test_telemetry_donut.py + 6 loader/route in test_dashboard_server.py + id-pin extension + 2 call-site folds). Quality gate 7/7 (ledger 46 guards).
+
+---
+
+## Turn 10 — architecture-consultant (reflection)
+*2026-06-10T02:25:28.594122+00:00 | confidence: 0.88*
+*tags: reflection*
+
+What I missed: caught the &mdash; double-escape but reviewed the seam in isolation — did not scan sibling caption helpers for entity-in-static-string recurrence. Candidate rule: render modules with a single _esc emission seam must not embed HTML character entities in strings routed through it; use the Unicode code point directly; optionally pin with a source-grep assertion. Calibration: Round 1 0.82 MED + Round 2 0.90 both appropriate; Delta +0.0 (verdicts correct; gap was thoroughness, not calibration).
+
+---
+
+## Turn 11 — ux-evaluator (reflection)
+*2026-06-10T02:25:28.712036+00:00 | confidence: 0.82*
+*tags: reflection*
+
+What I missed: approved Round 2 verifying only the flagged tiles — did not enumerate ALL zero/edge-state tiles of the same type for sibling engineer-facing copy. Candidate rule: a microcopy REVISE re-review must enumerate every slot of the same type, not only flagged instances — a spot-fix with unaudited siblings is incomplete remediation. Calibration: Round 1 appropriate; Round 2 slightly overconfident given unaudited siblings. Delta -0.1.
+
+---

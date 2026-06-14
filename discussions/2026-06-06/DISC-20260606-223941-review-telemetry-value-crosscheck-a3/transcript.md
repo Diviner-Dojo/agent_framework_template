@@ -1,0 +1,86 @@
+---
+discussion_id: DISC-20260606-223941-review-telemetry-value-crosscheck-a3
+started: 2026-06-06T22:39:57.784399+00:00
+ended: 2026-06-06T22:49:38.046390+00:00
+agents: [architecture-consultant, facilitator, independent-perspective, qa-specialist, security-specialist]
+total_turns: 7
+---
+
+# Discussion: DISC-20260606-223941-review-telemetry-value-crosscheck-a3
+
+## Turn 1 — facilitator (evidence)
+*2026-06-06T22:39:57.784399+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Multi-agent review of the Telemetry Layer A3 build (UNCOMMITTED, branch fix/c-gate-log-integrity) before the education gate + commit. Two LOCAL honesty metrics feeding the north-star Layer B dashboard.
+- **Files/scope**: src/telemetry/value.py (pure leverage+cross_check), src/telemetry/__init__.py (exports), scripts/telemetry/analyze_value.py (transport/CLI + OTel ingest), config/subscription.yaml.example, .gitignore, scripts/quality_gate.py (advisory staged-fee check), tests/test_telemetry.py (+A3 tests), docs/adr/ADR-0020 (A3 note), memory/projects/_self.md, memory/bugs/regression-ledger.md.
+- **Developer-stated motivation**: Understand-your-AI-use; A3 turns A1's bottom-up cost into value (leverage) + a trust-calibration cross-check. Subscription+individual account ⇒ no billing API. Steward APPROVE 0.88 (5 binding conditions). Spec SPEC-20260606-211429.
+- **Explicit constraints**: compute-don't-store inviolable (regression guard); typed honest absence (available:bool + divergence_pct None, never 0.0); leverage time-basis labelled (no silent cumulative/one-month); OTel ingest hardened (fixed path + containment + size cap + tolerant reader + parameterized + token inputs only); reuse-not-fork A1's cost path; scope A3 only. quality gate 7/7; value.py 100% cov, analyze_value.py 89%. Developer AFK — do NOT commit.
+
+---
+
+## Turn 2 — qa-specialist (proposal)
+*2026-06-06T22:48:39.984959+00:00 | confidence: 0.88*
+*tags: review, qa, approve-with-changes, blocking:0*
+
+Verdict: APPROVE-WITH-CHANGES (0.88). 0 blocking; 6 findings, all test-completeness (no code bug). F1 (High, missing-test): negative OTel cost flows to cross_check — present=True/cost<0 -> correctly absent downstream, but no end-to-end test -> ADDED test_otel_estimate_negative_cost_flows_to_absent. F2 (Med, missing-test): window_months=0 boundary (configured=True, per_month None) untested -> ADDED test_leverage_zero_window_sets_note_not_reason. F3 (Med, missing-test): _baseline_estimate empty-messages absent path untested -> ADDED test_baseline_estimate_empty_messages_is_absent. F4 (Low, weak-assertion): test_cross_check_unusable_independent only asserted available False -> ADDED divergence_pct is None assertion. F5 (Low): all-timestamps-None window path (MessageRecord.timestamp is non-optional -> defensive only; not added, logged). F6 (Low/info): compute-don't-store guard is DB-scoped (correct per ADR-0013); would not catch a file-cache (none exists). Strengths: parametrized invalid-fee incl bool(float(True)=1.0) guard; zero-denominator test asserts all 3 (available/divergence_pct/independent surfaced); compute-don't-store before/after snapshot is a real guard.
+
+---
+
+## Turn 3 — security-specialist (proposal)
+*2026-06-06T22:48:45.930618+00:00 | confidence: 0.92*
+*tags: review, security, approve, blocking:0*
+
+Verdict: APPROVE (0.92). NO blocking. Read-only, compute-don't-store, no network/SQL-write/credential. F1 (Med, A01): _otel_estimate containment is to the whole data/ subtree, not the single fixed filename — any readable JSONL inside data/ is accepted via --otel. Exception applies (intentional: --otel supports alternate JSONL within data/ for testing; tests rely on monkeypatched DATA_DIR + path inside it). Accepted + documented; not blocking (local tool). F2 (Low, A01): --subscription has no path containment (unlike --otel). yaml.safe_load + only a float extracted -> no RCE/inj; local self-attack. Accepted as documented low-risk (containment to config/ would break the tmp-path test-injection pattern). F3 (Low, TOCTOU): _is_within->exists->stat->open window; Windows (deployment platform) needs privilege for symlinks -> academic. No change. F4 (Low, A02): staged-fee advisory reads working-tree file for the value but checks staged for presence -> cosmetic message mismatch; gate always warns when staged + never crashes. No bypass. Strengths: _is_within BEFORE exists (no existence oracle); yaml.safe_load throughout; bool-reject in _coerce_fee + OTel value; 100MB cap; saw_cost honest-absence; subprocess list-args; .gitignore covers both files + .example is 0.00 placeholder; no OTel string field reaches a sink (source_label is a constant).
+
+---
+
+## Turn 4 — architecture-consultant (proposal)
+*2026-06-06T22:49:03.082289+00:00 | confidence: 0.86*
+*tags: review, architecture, approve, blocking:0*
+
+Verdict: APPROVE (0.86). No structural concerns before merge. A3 cleanly extends the A1/A2 pure/transport split: no forked cost math (_load_a1_report = build_cost_report(load_cost_rows(conn), pricing) — A1's exact path); attribution baseline shares PricingTable via build_cost_report, differs ONLY in attribution (un-windowed); IndependentEstimate is one minimal frozen dataclass with a flaw_class discriminator, two producers, no registry (correct restraint for 2 callers). compute-don't-store honored (no writes, no new table). ADR-0020 A3 note verified accurate (no-table, 2 sources no registry, 3rd consumer of itu._ reused-not-promoted, live figures internally consistent). Dependency direction correct (src/telemetry imports nothing from scripts/). F2 (Low/advisory): FLAW_ATTRIBUTION/FLAW_PRICING were public in value.py but absent from package __all__ -> FIXED (added to __init__ exports). F1/F3 info (seam minimality is a strength; _window_months defensive None-guard on a non-optional field is harmless). Strengths: typed honest-absence (never 0.0); baseline genuinely shares the pricing path (makes the divergence an attribution-only signal); external ingest hardened at the boundary; _load_a1_report makes reuse-not-fork legible.
+
+---
+
+## Turn 5 — independent-perspective (proposal)
+*2026-06-06T22:49:07.763008+00:00 | confidence: 0.82*
+*tags: review, independent-perspective, blocking:1, blocking-fixed*
+
+Verdict: 1 BLOCKING + 4 advisory (0.82). Type-level honesty is excellent; the FRAMING had leaks. **BLOCKING (Scenario A, --since scope mismatch) — FIXED + regression test:** A1 loaded all-time from stored rows (ignores --since); baseline recomputed live WITH --since -> 'analyze_value --since X' compared all-time A1 vs filtered baseline = a numerically false divergence under an advertised flag, violating the same no-silent-window-mismatch condition the leverage path enforces. Fix: when since is set, attribution cross-check reports typed absence (available=False) with an explicit reason; regression test test_analyze_value_since_skips_attribution_crosscheck. **ADV B (flaw/implicates wording) — FIXED:** 'our estimate is 70% lower; implicates attribution' misreads as 'A1 is wrong by 70%' when it's actually COVERAGE (un-windowed activity, not an error). Reframed the attribution print to coverage: '66 attributed to captured discussions out of 282 total => discussions cover 29.2% of measured spend (the rest is activity outside any discussion window, not an error)'; signed-divergence frame kept ONLY for the pricing/OTel source. **ADV C (FLAGGED, developer decision):** leverage cumulative (printed first, always present, unbounded -> flatters) vs per-month (the apples-to-apples figure, printed second, fragile); + 'leverage/value' vs 'list-price-equivalent multiple' naming (API list price isn't the subscription-user's counterfactual). **ADV D (FLAGGED, Layer B):** OTel pricing cross-check ~always 'unavailable' -> perpetual-absence row becomes ignorable noise; present it as an 'enable OTel to activate' affordance on the dashboard, not a permanent 'unavailable' line. **ADV E (noted):** baseline scope_coverage_pct hardcoded 100 (scope-overlap sense is correct; baseline's own pricing-coverage is a different axis — left as-is). Consensus check: build verified mechanical honesty (typed absence) but skipped interpretive honesty (does the printed sentence mean what a tired gatekeeper thinks) — the word 'flaw' on a non-flaw number was the tell.
+
+---
+
+## Turn 6 — facilitator (critique)
+*2026-06-06T22:49:18.557108+00:00 | confidence: 0.8*
+*tags: finding-verification*
+
+Finding verification: 1 verified-blocking (fixed), 9 verified-advisory, 0 discarded. The BLOCKING --since scope mismatch (independent-perspective) was verified against analyze_value.py: a1_report=build_cost_report(load_cost_rows(conn)) reads ALL stored rows (no since filter); messages=itu._collect_messages(session_paths, since) DOES honor since -> confirmed real. Fixed: attribution baseline guarded to typed-absence when since is set + regression test; verified live (--since now prints 'unavailable' not a false number). qa F1-F4 verified (test gaps) -> 4 tests added. architecture F2 verified (FLAW_* not exported) -> fixed. security F1-F4 verified as Low local-tool advisories (own exceptions apply) -> accepted/documented. independent-perspective ADV B verified (misleading 'flaw/implicates' wording) -> reframed to coverage, verified live. No finding pointed to nonexistent code.
+
+---
+
+## Turn 7 — facilitator (synthesis)
+*2026-06-06T22:49:38.046390+00:00 | confidence: 0.88*
+*tags: blocking:1, advisory:9, speculative:0, model-tiers:qa-sonnet/security-sonnet/arch-sonnet/ip-sonnet*
+
+## Request Context
+- **What was requested**: Multi-agent review of the Telemetry Layer A3 build before education gate + commit; fix blocking in-session, flag the rest. Developer AFK.
+- **Files/scope**: src/telemetry/value.py, __init__.py, scripts/telemetry/analyze_value.py, config/subscription.yaml.example, .gitignore, scripts/quality_gate.py, tests/test_telemetry.py, docs/adr/ADR-0020, memory/projects/_self.md + regression-ledger.md.
+- **Developer-stated motivation**: Two LOCAL honesty metrics feeding the north-star Layer B dashboard; understand-your-AI-use.
+- **Explicit constraints**: compute-don't-store; typed honest absence; leverage time-basis; OTel ingest hardened; reuse-not-fork A1; scope A3 only; do NOT commit.
+
+## Synthesis
+Verdict: **APPROVE-WITH-CHANGES**. Panel: qa 0.88 (0 blocking), security 0.92 (0 blocking), architecture 0.86 (0 blocking), independent-perspective 0.82 (**1 BLOCKING**). 1 blocking + 9 advisory; **blocking FIXED in-session** + all cheap advisories resolved; 3 framing/presentation advisories FLAGGED for developer/Layer-B.
+
+**BLOCKING (fixed):** --since scope mismatch — A1 loaded all-time from storage but the attribution baseline honored --since, so  printed a false divergence. Guarded to typed-absence when since is set + regression test; verified live.
+
+**Fixed in-session:** independent-perspective ADV-B (reframed the attribution print from misleading 'flaw/-70%/lower' to honest COVERAGE: 'discussions cover 29.2% of measured spend; the rest is outside any discussion window, not an error'); architecture F2 (FLAW_* added to package __all__); qa F1-F4 (4 test gaps closed: negative-OTel-cost, zero-window, empty-baseline, divergence_pct-None assertion).
+
+**Accepted as documented low-risk (security):** F1 --otel data/-subtree containment (intentional for test injection), F2 --subscription no containment (yaml.safe_load + float-only; local self-attack), F3 TOCTOU (Windows-academic), F4 staged-fee message cosmetic. All Low, security's own exceptions apply, not blocking.
+
+**FLAGGED for developer / Layer B (NOT changed — framing/design decisions):** ADV-C leverage naming ('leverage/value' vs 'list-price-equivalent multiple') + lead-with-per-month; ADV-D OTel perpetual-absence presentation (affordance vs permanent 'unavailable' row) — a Layer B concern; ADV-E baseline scope_coverage semantics (left as-is, scope-overlap sense correct).
+
+Post-fix: quality gate 7/7; value.py 100% cov, analyze_value.py 88%; 113 tests pass. Confidence annotation: 1 finding < 0.80 (none; lowest panelist 0.82). 0 unscored. Model tiers: qa-specialist:sonnet, security-specialist:sonnet, architecture-consultant:sonnet, independent-perspective:sonnet (facilitator:opus). Education gate: RECOMMENDED (medium risk, new module) — interactive walkthrough+quiz with the developer when back. Do NOT commit (education + developer pending).
+
+---

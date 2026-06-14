@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260523-195154-review-distribute-b1-floor",
+  "status": "complete",
+  "started_at": "2026-05-23T19:52:11.305633+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "high",
+  "collaboration_mode": "structured-dialogue",
+  "report_path": "docs/reviews/REV-20260523-125823.md"
+}

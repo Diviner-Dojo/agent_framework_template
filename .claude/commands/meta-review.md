@@ -193,7 +193,10 @@ For each protocol type (review, checkpoint, education_gate, quality_gate, retro)
 | retro | | | | | | |
 
 Query protocol_yield table (if available) or estimate from discussion transcripts.
-Also query quality_gate_log.jsonl for gate pass/fail trends.
+Also query quality_gate_log.jsonl for gate pass/fail trends. Note three `overall` values:
+`pass` (all checks ran and passed), `pass_with_skips` (≥1 check skipped via `--skip-*`),
+and `fail` (a check that ran failed). Count `pass_with_skips` **separately** — do not fold
+it into `pass`, or you will over-report clean gate runs.
 
 Assess:
 - **Redundancy**: Are multiple protocols catching the same issues? Which could be consolidated?

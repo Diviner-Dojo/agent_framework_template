@@ -69,6 +69,73 @@ ROBOT_TAGS = "robot"
 # Validated before interpolation into the poll URL (the value can come from argv).
 _SINCE_PATTERN = re.compile(r"^\d+[smhd]?$")
 
+# Single-poller coordination lockfile (ADR-0019 reliability fix). Records the
+# owning poller's PID and the CURRENT question's allow-list so that:
+#   1. only the newest poller stays alive (older pollers self-exit on PID change),
+#   2. a running poller always validates replies against the latest `ask`'s
+#      choices — never a stale answer-set (the reply-misfiling bug).
+# Lives at the project root, gitignored. Resolved at call time (not bound as a
+# default arg) so tests can monkeypatch ``LOCK_PATH``.
+LOCK_PATH = _PROJECT_ROOT / ".collab_loop.lock"
+
+
+def read_lock(path: Path | None = None) -> dict[str, Any] | None:
+    """Return the parsed coordination lockfile, or None if absent/corrupt.
+
+    Fails open (a missing or malformed lockfile is treated as "no lock"), so a
+    lockfile problem can never crash or wedge the loop.
+    """
+    path = path or LOCK_PATH
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_lock(pid: int | None, choices: list[str] | None, path: Path | None = None) -> None:
+    """Write the lockfile (owning PID + current allow-list) atomically. Never raises."""
+    path = path or LOCK_PATH
+    payload = {"pid": pid, "choices": [str(c) for c in (choices or [])], "ts": int(time.time())}
+    try:
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        # Best-effort: a lockfile write failure must not break the conversation loop.
+        pass
+
+
+def update_lock_choices(choices: list[str], path: Path | None = None) -> None:
+    """Retarget the lockfile at a new question's allow-list, preserving the owning PID.
+
+    Called by ``ask`` so a still-running poller adopts the latest question's
+    choices and can never validate a reply against a stale answer-set.
+    """
+    existing = read_lock(path) or {}
+    pid = existing.get("pid")
+    write_lock(pid if isinstance(pid, int) else None, choices, path)
+
+
+def claim_poll_lock(choices: list[str] | None, path: Path | None = None) -> None:
+    """Mark the current process as the sole active poller (overwrites any prior owner)."""
+    write_lock(os.getpid(), choices, path)
+
+
+def owns_poll_lock(path: Path | None = None) -> bool:
+    """True iff THIS process still owns the poll lock (a newer poller takes over)."""
+    data = read_lock(path)
+    return bool(data) and data.get("pid") == os.getpid()
+
+
+def lock_choices(default: list[str] | None, path: Path | None = None) -> list[str] | None:
+    """The current authoritative allow-list from the lockfile, else ``default``."""
+    data = read_lock(path)
+    choices = data.get("choices") if data else None
+    if isinstance(choices, list) and choices:
+        return [str(c) for c in choices]
+    return default
+
 
 def resolve_config(*, require_reply: bool = True) -> tuple[str, str, str, str | None]:
     """Resolve and validate ntfy configuration from the environment.
@@ -345,6 +412,9 @@ def ask(
     except Exception as exc:  # noqa: BLE001 — never leak the topic, never crash the run
         print(f"WARN ntfy {type(exc).__name__} (ask)", flush=True)
         return False
+    # Retarget any running poller at this question's allow-list so the reply is
+    # validated against the CURRENT choices, never a stale answer-set.
+    update_lock_choices(list(choices))
     print("asked OK", flush=True)
     return True
 
@@ -389,9 +459,18 @@ def poll(
     emit = emit_fn or _emit
     since, seen = str(int(time.time())), set()
     sources = ((reply_topic, False, "reply"), (topic, True, "main"))
+    # Claim sole ownership: any older poller will see a different PID and self-exit,
+    # so exactly one poller (the newest) is ever live on this topic.
+    claim_poll_lock(choices)
     print("INFO collab loop armed (reply buttons + main free-text)", flush=True)
     iterations = 0
     while True:
+        if not owns_poll_lock():
+            print("INFO collab loop superseded by a newer poller, exiting", flush=True)
+            return
+        # Validate against the lockfile's CURRENT choices (updated by each `ask`),
+        # falling back to the choices this poller was armed with.
+        active_choices = lock_choices(choices)
         for source_topic, require_empty_title, label in sources:
             emit(
                 server,
@@ -401,7 +480,7 @@ def poll(
                 require_empty_title=require_empty_title,
                 seen=seen,
                 label=label,
-                choices=choices,
+                choices=active_choices,
             )
         iterations += 1
         if max_iterations is not None and iterations >= max_iterations:

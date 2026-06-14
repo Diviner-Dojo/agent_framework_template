@@ -23,10 +23,13 @@ from scripts.ingest_token_usage import (
     MessageRecord,
     _aggregate_by_discussion,
     _attribute,
-    _collect_messages,
     _parse_message_line,
     _project_slug,
+    coerce_int,
+    collect_messages,
     ingest_token_usage,
+    load_discussion_windows,
+    parse_timestamp,
 )
 from scripts.init_db import init_db
 
@@ -155,10 +158,10 @@ class TestParseMessageLine:
         assert rec.output_tokens == 50
 
     def test_bool_input_tokens_returns_none(self, tmp_path: Path) -> None:
-        """A bool ``True`` in usage.input_tokens is rejected by _coerce_int.
+        """A bool ``True`` in usage.input_tokens is rejected by coerce_int.
 
         Python's ``bool`` is a subclass of ``int`` — the guard at the top of
-        ``_coerce_int`` exists specifically to reject this case so a JSON
+        ``coerce_int`` exists specifically to reject this case so a JSON
         ``true`` value cannot be silently coerced to 1.
         """
         line = _make_jsonl_line(
@@ -255,7 +258,7 @@ class TestAttribute:
 
 
 # ---------------------------------------------------------------------------
-# _collect_messages — first-wins dedup contract.
+# collect_messages — first-wins dedup contract.
 # ---------------------------------------------------------------------------
 
 
@@ -271,7 +274,7 @@ class TestCollectMessages:
         same ``msg_*`` id can appear in both the main session JSONL and a
         subagent JSONL, and we must not double-count tokens.
 
-        Establishes ``tmp_path`` as the trust root for ``_is_inside_projects_root``
+        Establishes ``tmp_path`` as the trust root for ``is_inside_projects_root``
         so the symlink-traversal guard doesn't reject the test fixtures.
         """
         monkeypatch.setattr("scripts.ingest_token_usage.CLAUDE_PROJECTS_ROOT", tmp_path)
@@ -293,7 +296,7 @@ class TestCollectMessages:
             encoding="utf-8",
         )
 
-        result = _collect_messages([path1, path2], since=None)
+        result = collect_messages([path1, path2], since=None)
         assert len(result) == 1
         assert "msg_dup" in result
         # path1 was iterated first, so its output_tokens (111) wins.
@@ -435,3 +438,55 @@ class TestIngestIdempotency:
         assert snap1 == snap2
         # Sanity: actually wrote sums (not all None).
         assert snap1 == (150, 275, 15)
+
+
+# ---------------------------------------------------------------------------
+# Public helper contract — these were promoted from private (Rule of Three:
+# reused by scripts/telemetry/analyze_cost.py + analyze_failures.py). Lock the
+# public names so a future re-privatization breaks loudly here, not silently at
+# a cross-module caller.
+# ---------------------------------------------------------------------------
+
+
+class TestPublicHelperContract:
+    """Verify the promoted helpers are public API and still behave."""
+
+    def test_coerce_int_accepts_int_rejects_bool_and_nonint(self) -> None:
+        """coerce_int keeps ints, excludes bool (an int subclass), rejects others."""
+        assert coerce_int(5) == 5
+        assert coerce_int(0) == 0
+        assert coerce_int(True) is None  # bool is an int subclass — excluded
+        assert coerce_int("5") is None
+        assert coerce_int(None) is None
+
+    def test_parse_timestamp_normalizes_z_suffix_to_utc(self) -> None:
+        """parse_timestamp maps a trailing 'Z' to a tz-aware UTC datetime."""
+        dt = parse_timestamp("2026-02-01T10:00:00Z")
+        assert dt == datetime(2026, 2, 1, 10, 0, 0, tzinfo=UTC)
+        assert parse_timestamp("") is None
+        assert parse_timestamp("not-a-date") is None
+
+    def test_load_discussion_windows_reads_open_and_closed(self, tmp_path: Path) -> None:
+        """load_discussion_windows reads windows; closed_at bounds a closed one."""
+        db_path = tmp_path / "evaluation.db"
+        init_db(db_path, quiet=True)  # also exercises the quiet=True path
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.executemany(
+                "INSERT INTO discussions (discussion_id, created_at, closed_at, "
+                "risk_level, collaboration_mode) VALUES (?, ?, ?, 'low', 'ensemble')",
+                [
+                    ("DISC-OPEN", "2026-02-01T10:00:00+00:00", None),
+                    ("DISC-CLOSED", "2026-02-02T10:00:00+00:00", "2026-02-02T11:00:00+00:00"),
+                ],
+            )
+            conn.commit()
+            windows = load_discussion_windows(conn, None)
+        finally:
+            conn.close()
+        by_id = {w.discussion_id: w for w in windows}
+        assert set(by_id) == {"DISC-OPEN", "DISC-CLOSED"}
+        # Open discussion: end defaults to ~now, so it is at/after its start.
+        assert by_id["DISC-OPEN"].end >= by_id["DISC-OPEN"].start
+        # Closed discussion: end is exactly its closed_at.
+        assert by_id["DISC-CLOSED"].end == datetime(2026, 2, 2, 11, 0, 0, tzinfo=UTC)

@@ -1,0 +1,18 @@
+{
+  "status": "in_progress",
+  "discussion_id": "DISC-20260611-182734-review-apply-framework-unification-commit",
+  "risk_level": "high",
+  "resume_note": "Turns 1-6 captured (context-brief, qa, security, architecture, independent-perspective, facilitator verification). BLOCKING sec-F1 ZWS consent fix FOLDED+VERIFIED in repo_safety_check.py. Remaining folds + synthesis + REV report + close: see docs/handoff/HANDOFF-20260611-185500.md in the MAIN checkout.",
+  "collaboration_mode": "structured-dialogue",
+  "started_at": "2026-06-11T18:27:34+00:00",
+  "current_phase": "folding_findings",
+  "command": "review",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "context_brief",
+    "specialist_dispatch",
+    "events_captured",
+    "finding_verification"
+  ]
+}

@@ -3,3 +3,9 @@
 # always win over the template's manifest (type: template).
 # See ADR-0003 for rationale.
 framework-lineage.yaml merge=ours
+
+# Vendored, SHA-384-pinned static assets must be byte-identical on every
+# platform. The integrity regression tests recompute the hash from raw bytes,
+# so CRLF conversion on checkout (autocrlf=true, the Windows default) would
+# fail them on any fresh clone. Never line-ending-convert these files.
+src/telemetry/static/** -text

@@ -136,3 +136,35 @@ target's local consent posture or tuning.
 - Steward gate: `DISC-20260523-191709-session-wrapup-steward-gate` (sealed)
 - Build: `DISC-20260523-192249-build-session-wrapup`
 - Spec: `docs/sprints/SPEC-20260523-110504-session-wrapup.md`
+
+## Amendment — 2026-06-07: auto-launch wedge + external supervisor (v2)
+
+**First real use of the consent-gated auto-launch failed**, confirming the limitation flagged
+above ("verify the exact `claude --print` invocation at first real use"). On Windows / CLI
+v2.1.143, `subprocess.Popen(["claude", "--print", prompt])` from inside a running session
+**wedged**: a headless run that needs tools (Read/Bash/Edit) **hangs forever on the first
+tool-permission request** — 0 CPU, 0 stdout — because in non-interactive mode there is no one
+to approve it. A trivial no-tool prompt returned fine, which masked the defect (a smoke-test
+fidelity gap). Worse, the parent session inferred success from an indirect signal (a poll-lock
+supersede) and **falsely reported "continuation is live"** when it had frozen.
+
+**Two root causes, both fixed:**
+1. **Missing permission flag.** Headless agentic runs require `--permission-mode
+   bypassPermissions` (verified: a real `Bash` tool then runs, `permission_denials:[]`, exit 0).
+   Do NOT add `--bare` — it forces `ANTHROPIC_API_KEY`-only auth (breaks an OAuth subscription)
+   AND skips the project's PreToolUse hooks. `bypassPermissions` does NOT skip hooks, so the
+   pre-push blocker / settings.json validator / pre-commit gate still enforce
+   no-push / no-settings-edit / review-before-commit.
+2. **An agent should not spawn its own successor from inside a dying session** (fragile). The
+   robust pattern is an **external supervisor** (`scripts/session_supervisor.py`): a plain
+   process with no LLM context that chains fresh `claude -p` runs via a rolling handoff, looping
+   until a `SUPERVISOR_DONE` sentinel. Real exit codes + JSON output + a progress log make
+   "did it make progress?" verifiable, not inferred — closing the false-positive failure mode.
+
+**Supersedes** the in-session `build_launch_command` + `Popen` self-spawn as the recommended
+mechanism. `build_launch_command` remains for reference; new autonomous continuation uses the
+supervisor. Safety: clean-git-tree preflight (`bypassPermissions` allows destructive local Bash
+the hooks don't block), `--max-sessions` / `--max-budget-usd` / `--per-session-timeout` caps,
+fail-closed unknown-sentinel-stop. Review: `REV-20260607-225506`
+(`DISC-20260607-225506-review-session-supervisor`). A full Steward gate + ADR for the supervisor
+as a first-class capability is owed (operate-then-formalize).

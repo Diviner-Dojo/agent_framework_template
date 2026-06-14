@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260606-195109-review-telemetry-a2-cleanups",
+  "status": "complete",
+  "started_at": "2026-06-06T19:51:16.066477+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "medium",
+  "collaboration_mode": "structured-dialogue",
+  "report_path": "docs/reviews/REV-20260606-200046-telemetry-a2-cleanups.md"
+}
