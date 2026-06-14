@@ -53,7 +53,7 @@ The gaps are three:
    refuses to print dollars because it aggregates across mixed model tiers.
 
 **External survey (this session).** Scouted `toolbeltross/rh-telemetry` +
-`rh-claude-framework` (Ross Beveridge's, the dashboard inspiration) and ~10 comparable
+`rh-claude-framework` (Ross Barbieri's, the dashboard inspiration) and ~10 comparable
 projects. Findings that shape this spec:
 - The high-value, portable pieces of rh-telemetry are three *derived* failure signals
   (retry-loop via tool+input hash; orphaned subagents; stop-hook forced-continuation
@@ -232,7 +232,7 @@ projects. Findings that shape this spec:
   parallel store, no parallel cost table.
 - **Attribution (Prime Objective / refuse-extraction, ADR-0015).** Patterns are
   *rebuilt in Python*, not lifted (Ross's repos are Node/JS). rh-telemetry is MIT —
-  credit Ross Beveridge in the ADR/source. **Do NOT bundle `Arize-ai/phoenix`** — it is
+  credit Ross Barbieri in the ADR/source. **Do NOT bundle `Arize-ai/phoenix`** — it is
   Elastic License 2.0 (redistribution-restricted) and this template is inherited by
   derived projects.
 - **Progressive disclosure (ADR-0016).** Do not bloat CLAUDE.md; component detail lives

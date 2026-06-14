@@ -13,7 +13,7 @@ related: [ADR-0020, SPEC-20260607-064958, DISC-20260607-063709]
 > Scout confidence 0.97. Capability-gap analysis against a concrete reference system
 > (not an abstract quality review). No specialist panel dispatched — the gap is
 > unambiguous from forensic reading. Goal: make our Layer B dashboard **at least as
-> functional and helpful** as Ross Beveridge's.
+> functional and helpful** as Ross Barbieri's.
 
 ## 1. Capability Inventory of Ross's System
 
@@ -259,7 +259,7 @@ when idle.
 **The private repo (rh-claude-framework)**
 - License: MIT (stated in README.md and packages/telemetry/LICENSE).
 - The private clone was provided for analysis only. We may not redistribute its code or submit PRs.
-- We CAN implement equivalent functionality in Python from scratch, with attribution to Ross Beveridge
+- We CAN implement equivalent functionality in Python from scratch, with attribution to Ross Barbieri
   in the ADR or analysis doc: "architectural patterns drawn from toolbeltross/rh-claude-framework."
   Ideas and patterns are not copyrightable; code implementations are.
 

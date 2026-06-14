@@ -15,7 +15,7 @@ completed_commit:
 Replace the shipped **static HTML** Layer B dashboard with a **live, localhost-only,
 user-launched persistent daemon** that renders the framework's telemetry (A1 cost / A2
 failure signals / A3 value) in real time during a session, and the durable retrospective
-views from history when no session is live. Reach functional parity with Ross Beveridge's
+views from history when no session is live. Reach functional parity with Ross Barbieri's
 reference live dashboard (live agent lanes, context-runway gauge, per-turn cost, failure
 intelligence, trends) **without** adopting its auto-inject-into-prompts mechanism or its
 Node/npm toolchain.

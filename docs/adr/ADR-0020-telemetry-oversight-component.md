@@ -23,7 +23,7 @@ agent effectiveness, quality-gate trends, findings/patterns) but it is **not vis
 ([efficiency_report.py](../../scripts/efficiency_report.py) deliberately refuses dollars
 because it aggregates across mixed model tiers).
 
-A session survey of `toolbeltross/rh-telemetry` + `rh-claude-framework` (Ross Beveridge)
+A session survey of `toolbeltross/rh-telemetry` + `rh-claude-framework` (Ross Barbieri)
 and ~10 comparable projects (`disler/...multi-agent-observability`, `phuryn/claude-usage`,
 `ColeMurray/claude-code-otel`, `confident-ai/deepeval`, Langfuse, Phoenix, ccusage, …)
 found a genuine white space: cost trackers ignore failures, eval frameworks ignore cost,
@@ -79,7 +79,7 @@ ratification + this amendment give a clean record that propagates to derived pro
 ### Attribution (Prime Objective / ADR-0015)
 
 Patterns are **rebuilt in Python**, not lifted (Ross's repos are Node/JS). `rh-telemetry`
-is MIT — **credit Ross Beveridge**. `Arize-ai/phoenix` is **excluded** (Elastic License
+is MIT — **credit Ross Barbieri**. `Arize-ai/phoenix` is **excluded** (Elastic License
 2.0, redistribution-restricted; this template is inherited by derived projects).
 
 ## Alternatives Considered
@@ -288,7 +288,7 @@ export mode (spec R4 / R15).
   ``analyze_value``) + two test files are updated. A contract test in
   ``tests/test_dashboard_server.py`` locks the public surface.
 
-**Re-affirmation (Ross Beveridge, MIT):** the rh-claude-framework reference
+**Re-affirmation (Ross Barbieri, MIT):** the rh-claude-framework reference
 that inspired the form-factor decision is attributed in
 ``docs/reviews/ANALYSIS-20260607-rh-oversight-deepdive.md``; no JS or fixture
 JSON from that repo is lifted (analysis §5 contamination guard). Error-class
