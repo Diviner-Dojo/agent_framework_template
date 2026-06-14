@@ -37,6 +37,7 @@ from scripts.distribute.assessment import (  # noqa: E402
     wrap_data_only,
 )
 from scripts.distribute.change_package import (  # noqa: E402
+    MAX_GREENFIELD_OFFER,
     ChangeItem,
     ChangePackage,
     OnDiskBaseline,
@@ -1156,10 +1157,19 @@ class TestGreenfieldFloor:
         assert b.divergence("anything") is None
         assert b.pinned_patterns == [] and b.accept_paths == [] and b.deny_paths == []
 
-    def test_offer_set_is_bounded_and_sorted(self) -> None:
-        offer = greenfield_offer_set(TEMPLATE_ROOT, cap=5)
-        assert len(offer) <= 5
+    def test_offer_set_clean_corpus_not_capped(self) -> None:
+        # ADR-0025: the hub corpus now respects .gitignore, so the real offer set is far
+        # under the cap (cap_hit == False) and includes scripts/ value that used to be buried.
+        offer = greenfield_offer_set(TEMPLATE_ROOT)
+        assert len(offer) < MAX_GREENFIELD_OFFER  # cap NOT hit
         assert offer == sorted(offer)
+        assert any(p.startswith("scripts/") for p in offer)
+
+    def test_offer_set_oversize_raises_not_truncates(self) -> None:
+        # ADR-0025 R4: an oversize corpus fails loud rather than silently truncating
+        # (silent truncation was the original bug — the cap absorbed pollution).
+        with pytest.raises(ValueError, match="exceeds the greenfield offer cap"):
+            greenfield_offer_set(TEMPLATE_ROOT, cap=5)
 
     def test_partial_route_floor_holds(self, greenfield_env: dict) -> None:
         # The partial route (framework files present, no lineage) runs the greenfield engine —
@@ -1567,3 +1577,75 @@ class TestCaptureContentFreeGreenfield:
         blob = str(pkg.counts()) + package_report(pkg)
         for body in ("HUB version", "own constitution", "brand new agent"):
             assert body not in blob
+
+
+# ── Corpus hygiene: cap guard + untracked warning + target-side (ADR-0025) ──
+
+
+class TestOfferSetCapGuard:
+    """R4 symmetric cap guard + R3 untracked-warning at the apply layer (ADR-0025)."""
+
+    def test_empty_corpus_warns(self, tmp_path: Path) -> None:
+        # A hub whose framework paths resolve to 0 files must warn, not silently offer nothing.
+        hub = tmp_path / "hub"
+        _init_repo(hub)
+        _write(hub, "README.md", "no framework files here")
+        _commit_all(hub, "init")
+        with pytest.warns(UserWarning, match="resolved to 0 files"):
+            offer = greenfield_offer_set(hub)
+        assert offer == []
+
+    def test_untracked_framework_file_warns_naming_it(self, tmp_path: Path) -> None:
+        # R3: framework work that won't propagate until committed is surfaced loudly.
+        hub = tmp_path / "hub"
+        _init_repo(hub)
+        _write(hub, "scripts/tracked.py", "committed")
+        _commit_all(hub, "init")
+        _write(hub, ".claude/skills/new/SKILL.md", "uncommitted framework work")
+        with pytest.warns(UserWarning, match=r"\.claude/skills/new/SKILL\.md"):
+            offer = greenfield_offer_set(hub)
+        assert "scripts/tracked.py" in offer
+
+    def test_no_warning_when_clean_and_committed(self, tmp_path: Path) -> None:
+        hub = tmp_path / "hub"
+        _init_repo(hub)
+        _write(hub, "scripts/a.py", "x")
+        _commit_all(hub, "init")
+        import warnings as _w
+
+        with _w.catch_warnings():
+            _w.simplefilter("error")  # any warning becomes an error
+            offer = greenfield_offer_set(hub)
+        assert offer == ["scripts/a.py"]
+
+
+class TestRouterExcludesTargetGitignore:
+    """R5(d): target-side enumeration (root = target) excludes the target's own gitignore."""
+
+    def test_target_gitignored_junk_not_counted_as_framework(self, tmp_path: Path) -> None:
+        # detect_route enumerates the TARGET; gitignored junk under .claude/ must not
+        # appear as a pre-existing framework file (and must not flip GREENFIELD -> PARTIAL).
+        target = tmp_path / "target"
+        _init_repo(target)
+        _write(target, ".gitignore", "__pycache__/\n")
+        _write(target, "README.md", "a normal project, no framework files")
+        _commit_all(target, "init")
+        _write(target, ".claude/__pycache__/cache.pyc", "ignored junk under .claude")
+
+        route = detect_route(target)
+        assert route.route == ROUTE_GREENFIELD
+        assert route.preexisting_framework_files == []
+
+    def test_target_real_framework_file_still_counted(self, tmp_path: Path) -> None:
+        # Control: a *tracked* framework file IS counted (the exclusion is junk-specific).
+        target = tmp_path / "target"
+        _init_repo(target)
+        _write(target, ".gitignore", "__pycache__/\n")
+        _write(target, ".claude/agents/real.md", "authored agent")
+        _write(target, ".claude/__pycache__/cache.pyc", "ignored")
+        _commit_all(target, "init")
+
+        route = detect_route(target)
+        assert route.route == ROUTE_PARTIAL
+        assert ".claude/agents/real.md" in route.preexisting_framework_files
+        assert not any("__pycache__" in p for p in route.preexisting_framework_files)

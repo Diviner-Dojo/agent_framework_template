@@ -52,6 +52,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import sys
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -61,7 +62,11 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from scripts.lineage._utils import collect_framework_files, hash_file  # noqa: E402
+from scripts.lineage._utils import (  # noqa: E402
+    collect_framework_files,
+    hash_file,
+    list_untracked_framework_files,
+)
 from scripts.lineage.drift import FileDrift, drift_scan  # noqa: E402
 from scripts.lineage.manifest import manifest_read  # noqa: E402
 
@@ -516,15 +521,47 @@ def greenfield_offer_set(
     APPLY route offers exactly this set — explicitly bounded and enumerated, never an implicit
     "everything" — so a pathological hub tree cannot turn an APPLY into an unbounded copy.
 
+    The corpus now respects ``.gitignore`` (ADR-0025), so the cap is a fail-loud bound on a
+    *legitimately*-large corpus — no longer a silent absorber of gitignored pollution. R4
+    makes both anomalous outcomes loud, and R3 surfaces framework work that won't propagate.
+
     Args:
         template_root: Hub (template) repository root.
         cap: Maximum number of files to offer (defaults to :data:`MAX_GREENFIELD_OFFER`).
 
     Returns:
-        A sorted, capped list of relative, forward-slash framework paths.
+        A sorted list of relative, forward-slash framework paths (at most ``cap``).
+
+    Raises:
+        ValueError: if the corpus exceeds ``cap`` — fail loud, never silently truncate (R4).
     """
-    files = sorted(collect_framework_files(Path(template_root)).keys())
-    return files[:cap]
+    root = Path(template_root)
+    files = sorted(collect_framework_files(root).keys())
+
+    if len(files) > cap:
+        raise ValueError(
+            f"framework corpus ({len(files)} files) exceeds the greenfield offer cap ({cap}); "
+            "refusing to silently truncate. Check for unexpected files under the framework "
+            "paths (e.g. gitignored clutter in a non-git hub, or a misconfigured root) — ADR-0025."
+        )
+    if not files:
+        warnings.warn(
+            "framework corpus resolved to 0 files — the hub may be misconfigured or git "
+            "enumeration returned nothing; no value would be offered (ADR-0025).",
+            stacklevel=2,
+        )
+
+    # R3: surface framework work that will NOT propagate until committed (commit-before-apply).
+    untracked = list_untracked_framework_files(root)
+    if untracked:
+        listed = "\n  ".join(untracked)
+        warnings.warn(
+            f"{len(untracked)} untracked file(s) under framework paths will NOT propagate via "
+            f"/apply-framework until committed (ADR-0025):\n  {listed}",
+            stacklevel=2,
+        )
+
+    return files
 
 
 def compute_greenfield_package(

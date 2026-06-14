@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260614-025336-review-corpus-respects-gitignore-code",
+  "status": "complete",
+  "started_at": "2026-06-14T02:53:48.014405+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "medium",
+  "collaboration_mode": "structured-dialogue",
+  "report_path": "docs/reviews/REV-20260614-030114.md"
+}

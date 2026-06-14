@@ -1,0 +1,162 @@
+---
+discussion_id: DISC-20260614-025336-review-corpus-respects-gitignore-code
+started: 2026-06-14T02:54:02.238353+00:00
+ended: 2026-06-14T03:03:59.876615+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist]
+total_turns: 9
+---
+
+# Discussion: DISC-20260614-025336-review-corpus-respects-gitignore-code
+
+## Turn 1 — facilitator (evidence)
+*2026-06-14T02:54:02.238353+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Code-diff /review of the corpus-respects-gitignore fix before the developer commit decision (handoff EXACT next step #1). The spec already passed a 3-specialist review (DISC-20260614-021541); this reviews the implementation diff.
+- **Files/scope**: scripts/lineage/_utils.py (collect_framework_files now git-ls-files-aware + non-git rglob fallback + new list_untracked_framework_files + _resolve_root arg-injection guard); scripts/distribute/change_package.py (greenfield_offer_set raises ValueError on oversize, warns on empty corpus + untracked framework files); tests/test_lineage.py (TestCorpusRespectsGitignore, 18 tests); tests/test_distribute.py (TestOfferSetCapGuard, TestRouterExcludesTargetGitignore, updated TestGreenfieldFloor). Spec: SPEC-20260613-191445; ADR-0025.
+- **Developer-stated motivation**: collect_framework_files used unfiltered rglob, sweeping 10,948 gitignored worktree clones + junk into an 11,234-file corpus; the 5000 cap was exhausted inside .claude/worktrees/ before scripts/ and docs/ were reached, so /apply-framework offered no value (a Prime-Objective failure: value withheld with no signal). Fix makes the corpus respect git exclusions and converts silent failures to loud ones.
+- **Explicit constraints**: Change is strictly upstream of the B1 mechanical safety floor (_classify -> value-unverified consent guarantee unchanged). Shared util with 4 callers (change_package, router, drift, init_lineage) -> blast radius warrants review. Subprocess git invocation -> arg-injection surface.
+
+---
+
+## Turn 2 — qa-specialist (proposal)
+*2026-06-14T02:59:03.853957+00:00 | confidence: 0.84*
+*tags: verdict:approve-with-changes, blocking:0, advisory:2, low:3*
+
+Verdict: approve-with-changes (confidence 0.84). No blocking issues. Regression tests are genuine (test_lineage.py:1050,1066 would fail under old rglob code). All 4 callers consume unchanged dict[str,str].
+
+Findings:
+- F1 (Medium, test-gap): _git_ls_files RuntimeError paths (_utils.py:83-86) untested — both the OSError/Timeout-after-positive-probe and the non-zero-exit-in-known-repo fail-loud branches have no test. This is the most novel behavior (probe-vs-post-probe distinction) and ADR-0025 explicitly calls it load-bearing. Rule: testing_requirements (error-path coverage).
+- F2 (Medium, test-gap): _resolve_root flag-injection guard (_utils.py:207-208) untested — the only defense against argv injection into git -C <root>; trust boundary without a test. Rule: testing_requirements + security_baseline. (Note: security-specialist found this guard is platform-vacuous on Windows — see cross-ref.)
+- F3 (Low): git-path is_file() guard (_utils.py:166) silently drops symlinks-to-dir/broken-symlink/TOCTOU entries; untested. POSIX-only test, skipif on Windows.
+- F4 (Low): test_git_path_and_fallback_yield_same_key_set only covers a clean (junk-free) tree; add a clarifying comment that divergence on gitignored-but-not-denylisted files is intentional.
+- F5 (Low): drift/init caller coverage of gitignore-exclusion is incidental — caller tests would still pass if the exclusion were reverted in _utils only. Suggest one drift/init-level regression test.
+- F6 (Info): non-finding (warning substring match is fine).
+
+Strengths: regression markers correct/genuine; NUL-split documented; monkeypatch at module level (correct namespace); warnings.simplefilter(error) negative assertion; warning tests assert the file path appears; ledger entry present.
+
+---
+
+## Turn 3 — architecture-consultant (proposal)
+*2026-06-14T02:59:22.023948+00:00 | confidence: 0.88*
+*tags: verdict:approve, blocking:0, advisory:1, low:2*
+
+Verdict: approve (confidence 0.88). No blocking architectural findings. Read ADR-0025 then code: consistent including subtle points (resolve-root injection guard, NUL-split rationale, fail-loud-after-positive-probe vs fail-soft-on-probe). ADR-0025 sections 1-5 map one-to-one onto the code.
+
+Verified claims:
+- Upstream-of-B1: nothing in _utils.py or greenfield_offer_set touches _classify or the value-unverified floor — only WHICH keys enter the corpus. Confirmed.
+- Contract-unchanged: all 4 callers consume dict[str,str] unchanged — change_package.py:539, router.py:107 (note: router lives under scripts/distribute/ not scripts/lineage/), drift.py:112, init_lineage.py:158. New list_untracked_framework_files consumed only at change_package.py:555 (apply layer). Sibling-function seam genuinely contains blast radius. Confirmed.
+- Right layer (Principle #8): shared-util fix closes the bug class for all 4 callers; ADR records why per-caller fix was rejected. Correct door-closing decision.
+
+Findings:
+- F1 (Advisory): dual-path drift surface between git-exclusion and _is_framework_junk denylist (_utils.py:92-112 vs git path 159-168). Mitigated by test_git_path_and_fallback_yield_same_key_set, but that test only covers a junk-free tree. ADR's own Open hygiene item (tracked lineage-events.jsonl shipped by git path but excluded by denylist at :110) is a concrete instance of the two paths disagreeing. Future: parametrized test feeding each junk shape through a git repo where it is gitignored. No code change this commit.
+- F2 (Low): _is_framework_junk hardcodes hub-specific literals (worktrees, hooks/.state, custodian/lineage-events.jsonl, context-occupancy). Acceptable (YAGNI); flag as where future hygiene shapes accrue. Do not abstract speculatively.
+- F3 (Info): function size/nesting within standards; Google-style docstrings present incl. Raises; no magic numbers (_GIT_TIMEOUT, MAX_GREENFIELD_OFFER extracted).
+
+Prime Objective: CLEARED. Fix restores value delivery (the silent-withholding (b)-style failure); R3 untracked warning increases contributor consent/visibility; fail-loud replaces silent omission. No new extraction vector.
+
+---
+
+## Turn 4 — security-specialist (proposal)
+*2026-06-14T02:59:39.909549+00:00 | confidence: 0.91*
+*tags: verdict:approve, blocking:0, advisory:2*
+
+Verdict: approve (confidence 0.91). Adversarial pass. Core threat surface (argument injection + output smuggling across the subprocess boundary) correctly mitigated. Prime Objective cleared; no extraction vectors introduced.
+
+Findings (both advisory/speculative, neither blocking):
+- F1 (Low/advisory, A03): leading-dash guard (_utils.py:207) is platform-VACUOUS on Windows (confirmed runtime win32). Path.resolve() always prepends a drive letter, so str(root).startswith("-") is never True on Windows — dead code on the actual platform (correct + needed for a future Linux port). Live test confirmed Path("-bad").resolve() -> C:\...\-bad. Recommend documenting platform rationale or adding a POSIX-only test for the branch. Confidence 0.95.
+- F2 (Low/speculative, A05): NUL-split parser (_utils.py:77-89) is correct — ls-files -z disables path quoting and uses NUL records (verified live: zero quoted entries). But the protection is flag-dependent (structural), guarded only by the comment; if a future maintainer drops -z, splitlines would silently mis-handle newline filenames. Recommend a test passing a path with \n through the split asserting single entry. Confidence 0.80.
+
+Explicitly assessed and CLEARED: argument injection (resolve + list-args + "--" separator + shell=False); output smuggling (NUL-split verified with payload); path traversal (ls-files emits repo-relative only; file-level symlink read is hub-admin-trust; symlinked parents deferred v1.1 + documented; pre-existing TestReadTextSymlinkGuard covers the read/diff path); fallback denylist secrets (.env not denied but fallback only reached for non-git roots, FRAMEWORK_PATHS constrains scope, pre-commit hook scans 12 secret patterns — accepted scope limit per ADR); backslash normalization (applied :125/:131 before predicate, not bypassable); timeout (_GIT_TIMEOUT=15 on both calls); errors=replace decoding; force-fallback-via-probe-failure (only OSError/Timeout trigger fallback, not contributor-manipulable).
+
+Strengths: subprocess hygiene solid throughout; fail-loud consistent with framework KeyError-over-silent pattern; _resolve_root central gateway for all 3 callsites; security-relevant tests present.
+
+---
+
+## Turn 5 — facilitator (critique)
+*2026-06-14T03:00:07.394435+00:00 | confidence: 0.8*
+*tags: finding-verification*
+
+Finding verification: 7 verified, 0 inconclusive, 0 discarded.
+
+All findings are test-coverage gaps or code observations, mechanically verifiable against the diff and the test list:
+- qa F1 (RuntimeError paths in _git_ls_files:83-86 untested): VERIFIED — no test in TestCorpusRespectsGitignore triggers the post-probe RuntimeError branches.
+- qa F2 (_resolve_root flag guard:207-208 untested): VERIFIED — test_relative_root_is_resolved exists but no test asserts ValueError on a flag-like path.
+- qa F3 (symlink/is_file silent-drop:166 untested): VERIFIED — no symlink test present.
+- qa F4/F5, arch F1 (key-set-equality test only on clean tree; drift/init coverage incidental; dual-path drift): VERIFIED — test_git_path_and_fallback_yield_same_key_set uses a junk-free tree.
+- sec F1 (leading-dash guard platform-vacuous on Windows): VERIFIED — security agent live-confirmed Path("-bad").resolve() -> C:\...\-bad, so the startswith("-") branch is unreachable on win32 (guard correct for a future POSIX port; dead on current platform). This converges with qa F2: any test of the guard must be POSIX-only or mock resolve().
+- sec F2 (NUL-split contract lacks a structural test): VERIFIED — no newline-filename test.
+
+Cross-specialist convergence: qa F2 and sec F1 describe the same guard from test vs platform angles; the actionable item is one POSIX-only/mocked test. No conflicts among specialists. Consensus verdict: 2 approve + 1 approve-with-changes, zero blocking.
+
+---
+
+## Turn 6 — facilitator (synthesis)
+*2026-06-14T03:00:45.384772+00:00 | confidence: 0.88*
+*tags: blocking:0, advisory:6, speculative:0, model-tiers:agent-default, verdict:approve-with-changes*
+
+## Request Context
+- What was requested: Code-diff /review of the corpus-respects-gitignore fix before the developer commit decision.
+- Files/scope: scripts/lineage/_utils.py, scripts/distribute/change_package.py, tests/test_lineage.py, tests/test_distribute.py; spec SPEC-20260613-191445; ADR-0025.
+- Developer-stated motivation: corpus enumerator swept gitignored junk into an 11,234-file corpus, exhausting the 5000 cap before scripts/+docs/ -> /apply-framework offered no value (Prime-Objective failure). Fix makes the corpus respect git exclusions and converts silent failures to loud ones.
+- Explicit constraints: strictly upstream of the B1 floor (consent guarantee unchanged); shared util with 4 callers.
+
+## Verdict: approve-with-changes — ZERO blocking findings
+Architecture approve (0.88), Security approve (0.91), QA approve-with-changes (0.84). All findings are non-blocking test-hardening; the implementation is correct, well-documented, and consistent with ADR-0025.
+
+## Recommended (non-blocking) test-hardening, ranked
+1. Add tests for the two fail-loud RuntimeError branches in _git_ls_files (_utils.py:83-86) — the most novel behavior; ADR calls it load-bearing. (qa F1, Medium)
+2. Add a POSIX-only or mocked-resolve test for the _resolve_root flag-injection guard (_utils.py:207-208), AND document that the guard is platform-vacuous on Windows (drive-letter prefix). (qa F2 + sec F1 — same guard, merged; Medium)
+3. Add a structural NUL/newline test (path with \n through the split asserts a single entry) to lock the -z contract. (sec F2, Low)
+4. Add a POSIX-only symlink/is_file silent-drop test for the git path (_utils.py:166). (qa F3, Low)
+5. Add a drift/init-level gitignore-exclusion regression test so caller coverage is deliberate not incidental. (qa F5, Low)
+6. Clarifying comment that the key-set-equality test is clean-tree scope; consider a future parametrized junk-shape test feeding the git path (dual-path drift guard). (qa F4 + arch F1, Low/Advisory)
+
+No-action note: _is_framework_junk hub-literal coupling is acceptable (YAGNI) — flagged as where future hygiene shapes accrue (arch F2).
+
+## Prime Objective: CLEARED by both arch and security — fix restores value delivery, R3 warning increases contributor visibility/consent, fail-loud replaces silent omission; no new extraction vector.
+
+## Confidence annotation: 0 findings in speculative section (none < 0.80; sec F2 self-labeled speculative but scored exactly 0.80 -> main). 0 findings unscored.
+## Model tiers: qa-specialist, architecture-consultant, security-specialist all at agent-default (cost=medium/mixed).
+
+---
+
+## Turn 7 — qa-specialist (reflection)
+*2026-06-14T03:03:43.314842+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Identified the two _git_ls_files fail-loud gaps but did not enumerate the precise fixture (monkeypatch _is_git_repo->True while subprocess.run raises/returns nonzero). Also missed entirely that _resolve_root's "-" prefix guard has no test (test_relative_root_is_resolved exercises resolution but not the guard branch) — a third untested branch.
+## Candidate Improvement Rule
+Before flagging a fail-loud branch "untested," enumerate the fixture strategy. For subprocess error paths needing a prior success precondition, state the exact mock (call-count discriminator / side_effect list). If feasible in ~10 lines -> blocking; if it needs a complex multi-layer mock -> advisory.
+## Confidence Calibration
+Original: 0.84, Revised: 0.79, Delta: -0.05 (underweighted the missed third gap; over-certain the two RuntimeError branches were the only holes).
+
+---
+
+## Turn 8 — architecture-consultant (reflection)
+*2026-06-14T03:03:46.061113+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Named the dual-path drift surface but did not trace it to the concrete, already-documented instance: ADR-0025s own open hygiene item (.claude/custodian/lineage-events.jsonl is tracked in the hub but excluded by the denylist in a non-git root) is exactly the asymmetry. Should cross-reference denylist entries against git ls-files --cached (or the ADR consequences) before closing such an advisory.
+## Candidate Improvement Rule
+When a fix introduces a dual-path implementation (git path vs fallback), require the key-set equality test to cover at least one literal present in BOTH the denylist AND the tracked set — the drift surface is precisely that intersection; a clean-tree test is necessary but not sufficient.
+## Confidence Calibration
+Original: 0.88, Revised: 0.84, Delta: -0.04 (gap between naming a surface and identifying a known instance of it).
+
+---
+
+## Turn 9 — security-specialist (reflection)
+*2026-06-14T03:03:59.876615+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Raised two edge cases on review-after-the-fact: (a) git ls-files guard for repo-not-found, and (b) empty stdout producing a spurious empty-string entry. Facilitator note: BOTH are already handled in the code — repo-not-found via the _is_git_repo probe + fallback, and empty stdout via the "if e" filter on the NUL-split (_utils.py:89), which drops empty entries. So neither is a live gap; my reflection slightly forgot the existing design.
+## Candidate Improvement Rule
+For any subprocess call reading structured output (NUL/newline split): verify (a) non-zero exit caught and surfaced with context, and (b) empty output produces an empty collection, not a one-element list with an empty string. (Both already satisfied here.)
+## Confidence Calibration
+Original: 0.91, Revised: 0.82, Delta: -0.09 (over-confident; on reflection re-derived two edge cases I should have confirmed handled during the review rather than after).
+
+---
