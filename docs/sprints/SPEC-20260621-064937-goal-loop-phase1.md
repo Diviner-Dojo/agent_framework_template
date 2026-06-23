@@ -2,13 +2,13 @@
 spec_id: SPEC-20260621-064937-goal-loop-phase1
 title: "Goal-Driven Loop Orchestration (`/goal-loop`) — Phase 1 MVP"
 type: spec
-status: draft
+status: complete
 risk_level: high
 intake_ids: []
 reviewed_by: [steward, architecture-consultant, independent-perspective, security-specialist, qa-specialist]
 discussion_id: DISC-20260621-065121-goal-loop-phase1-design
-completed_at:
-completed_commit:
+completed_at: 2026-06-23
+completed_commit: c195ba1
 revision: 2
 revision_note: >
   Rev 2 folds the DISC-20260621-065121 deliberation (verdict REVISE 0.83; Steward
