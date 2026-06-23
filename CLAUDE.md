@@ -33,6 +33,7 @@ The framework exists to serve contributors and users; its reasoning, memory, cap
 - **Small change** (1-2 files): implement → quality gate → `/review` → commit. Skip `/review` only for docs/config-only changes.
 - **"Proceed without asking" ≠ "proceed without reviewing."** Autonomous authorization runs the full workflow without pausing for per-step permission — it NEVER authorizes skipping `/plan`, `/review`, or capture. Detail: `.claude/rules/autonomous_workflow.md`.
 - **Confidence gate** — Principle #9 (clarify to ≥95% before acting) applied to building: if unsure on intent **and** scope, STOP and ask in-conversation (`AskUserQuestion`), or via the `notifying-the-developer` skill if the developer is AFK. Exemptions/overrides per Principle #9 (micro-fixes proceed — `handling-micro-fixes` skill). A formal confidence check also runs inside `/plan` and `/build_module`.
+- **Suggest `/goal-loop` when a task is loop-shaped** — it has (1) a verifiable done-state, (2) expected iterative build→verify→refine convergence, and (3) is not a micro-fix. **Suggest, never impose**; it never auto-starts, control flow is the deterministic `scripts/goal_loop.py`, and a human still approves the merge after `/review` + a required education walkthrough (ADR-0026; `authoring-goal-contracts` skill). A task that is **not** loop-shaped — subjective, exploratory, or verifiable only via a prohibited/irreversible action — routes to grill-me / `/plan` / `/deliberate` instead.
 
 ## Quality & Commit Gates
 - `python scripts/quality_gate.py` checks: formatting (ruff), lint, tests (pytest), coverage ≥80%, ADR completeness, review existence (code changes), regression ledger, BUILD_STATUS freshness (advisory). `--fix` auto-remediates; `--skip-*` bypasses a check. Each run logs to `metrics/quality_gate_log.jsonl`.
@@ -52,7 +53,8 @@ docs/{adr,reviews,sprints,templates}/ + AGENT_ARCHITECTURE.md, CAPTURE_PIPELINE.
 discussions/ — Layer 1 (immutable: events.jsonl + transcript.md, sealed on close)
 metrics/     — Layer 2 (evaluation.db + JSONL trend logs)
 memory/      — Layer 3 (curated: decisions, patterns, lessons, reflections, rules, bugs, projects, archive)
-scripts/     — capture pipeline, quality_gate, lineage/, notify, ask_developer
+scripts/     — capture pipeline, quality_gate, lineage/, notify, ask_developer, goal_loop
+loops/       — /goal-loop goal contracts + recipes: starter/ (CORE) · contracts/, local/ (SKIN); additive-merge, .state/ gitignored (ADR-0026)
 config/      — model_pricing.yaml (ADR-0013), model_context_profiles.yaml (ADR-0018)
 docs/handoff/ — auto-generated session handoff artifacts (gitignored, ADR-0018)
 src/ tests/  — application + test suite
@@ -92,6 +94,8 @@ Agent/rule/philosophy changes follow: facilitator observation → proposal → *
 - **recovering-from-failures** — the 8 named failure classes + recovery paths; consult on any hook block, gate/commit/push block, capture-pipeline error, or lost session state.
 - **selecting-review-gates** — risk tiers (low/med/high/critical), specialist-selection matrix, quality thresholds, advisory lifecycle; used by `/review`, `/ship`, `/retro`.
 - **running-build-checkpoints** — mid-build checkpoint triggers + 2-specialist dispatch; used by `/build_module`.
+- **authoring-goal-contracts** — grill-flavored interview that emits a valid `GOAL-…` contract and gatekeeps non-loop-shaped goals FIRST; used by `/goal-loop` (and `/plan` when emitting a `derived_from` contract). ADR-0026.
+- **orchestrating-goal-loops** — the model-facing per-tick craft (build a delta / judge as the independent checker / phrase a gate) that `scripts/goal_loop.py` invokes; holds NO control flow. ADR-0026.
 - **searching-prior-art** — grep prior art (solution paths, known-broken approaches, ADRs, patterns) before building; used by `/plan`, `/build_module`.
 - **cross-agent-dispatch** — specialist→facilitator dispatch requests (dispatch-request / dispatch-decision tags).
 - **multi-instance-dispatch** — parallel instance splits (max 3 per agent per review).

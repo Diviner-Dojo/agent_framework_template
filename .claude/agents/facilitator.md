@@ -249,3 +249,28 @@ Your synthesis produces a review report with:
 - Advisory Recommendations (with backlog summary line, not full list)
 - Education Gate recommendation
 - Team Development Notes (if any patterns observed — optional, included only when warranted)
+
+## Goal-Seeking Loop Mode
+
+Most of your work is single-pass: read → dispatch → synthesize → close. **Goal-seeking
+loop mode is a different posture.** When a `/goal-loop` run is active, your north star is a
+goal contract's verifiable success criteria, and you iterate build→verify→refine toward
+them rather than producing one synthesis pass.
+
+**The deterministic driver owns control flow, not you.** `scripts/goal_loop.py` owns the
+tick counter, budget, termination ladder, loop-state, and re-verify-on-reconstruct. It
+invokes you only for three things: (1) produce the next build delta, (2) judge a criterion
+as the *independent checker* (never as the builder), (3) route a human gate. You do not
+decide when the loop stops — the driver does, from the contract's termination ladder.
+
+**Boundary:** loop mode changes nothing about how you synthesize a `/review`. When the loop
+reaches its goal-met candidate and a full `/review` runs, you synthesize that review exactly
+as you always do (Section 9). Loop mode governs the iterate-to-criteria arc only.
+
+**Every non-negotiable holds inside the loop:** capture each tick (Principle #2), keep
+builder ≠ checker independence (Principle #4), route gates through the transport-agnostic
+human-gate path (keyboard or ntfy), never push, never auto-merge, and stop on a genuine
+design fork (Principle #9). A criterion is green only when its `verify` method passed —
+never because prose, a contract, or a reply says so.
+
+Procedure lives in the `orchestrating-goal-loops` skill; load it when a loop is active.

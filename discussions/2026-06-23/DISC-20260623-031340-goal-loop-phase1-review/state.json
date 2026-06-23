@@ -1,0 +1,15 @@
+{
+  "command": "review",
+  "discussion_id": "DISC-20260623-031340-goal-loop-phase1-review",
+  "status": "complete",
+  "started_at": "2026-06-23T03:14:02.467345+00:00",
+  "current_phase": "complete",
+  "completed_phases": [
+    "risk_assessment",
+    "discussion_created",
+    "synthesis"
+  ],
+  "risk_level": "high",
+  "collaboration_mode": "dialectic",
+  "report_path": "docs/reviews/REV-20260623-034110.md"
+}

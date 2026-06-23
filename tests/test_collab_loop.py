@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 from unittest.mock import patch
 
@@ -408,6 +409,48 @@ class TestPoll:
             emit_fn=fake_emit,
         )
         assert all(c == ["Approve"] for c in seen_choices)
+
+    @pytest.mark.regression
+    def test_poll_baselines_to_last_ask_timestamp_not_now(self) -> None:
+        # Regression (2026-06-22): poll() hard-coded since=now, dropping a reply sent
+        # between `ask` and arming the poller (the "tapped a button but no response"
+        # bug). It must baseline `since` to the lockfile's ask timestamp instead.
+        ts = int(time.time()) - 30
+        collab_loop.LOCK_PATH.write_text(
+            json.dumps({"pid": None, "choices": ["Subprocess", "Library"], "ts": ts}),
+            encoding="utf-8",
+        )
+        seen_since: list[str] = []
+
+        def fake_emit(
+            server, topic, since, token, *, require_empty_title, seen, label, choices=None
+        ):
+            seen_since.append(since)
+
+        collab_loop.poll(
+            "s", "t", "t-reply", None, sleep=lambda _s: None, max_iterations=1, emit_fn=fake_emit
+        )
+        assert seen_since and all(s == str(ts) for s in seen_since)
+
+    @pytest.mark.regression
+    def test_poll_ignores_stale_lock_beyond_cap(self) -> None:
+        # A lock older than the 24h cap must NOT replay ancient backlog -> baseline to now.
+        ts = int(time.time()) - (collab_loop._MAX_BACKLOG_SECONDS + 100)
+        collab_loop.LOCK_PATH.write_text(
+            json.dumps({"pid": None, "choices": [], "ts": ts}), encoding="utf-8"
+        )
+        seen_since: list[str] = []
+
+        def fake_emit(
+            server, topic, since, token, *, require_empty_title, seen, label, choices=None
+        ):
+            seen_since.append(since)
+
+        before = int(time.time())
+        collab_loop.poll(
+            "s", "t", "t-reply", None, sleep=lambda _s: None, max_iterations=1, emit_fn=fake_emit
+        )
+        assert seen_since and all(int(s) >= before for s in seen_since)
 
 
 # --------------------------------------------------------------------------- #

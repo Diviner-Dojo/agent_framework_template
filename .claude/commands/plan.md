@@ -235,3 +235,23 @@ Present the final spec to the developer for approval, including:
 Wait for explicit developer approval of the spec before proceeding to implementation.
 
 Tell the developer they can now use `/build_module` to implement against this spec.
+
+## Step 9 (optional): Emit a goal contract for `/goal-loop`
+
+`/plan` is the **upstream** path for a *loop-shaped* feature — one whose acceptance criteria are
+verifiable and expected to converge through build → verify → refine (ADR-0026, spec R10). After the
+spec is approved, offer to emit a `GOAL-…` goal contract derived from the spec's **Acceptance
+Criteria**:
+
+- Translate each verifiable AC into a `success_criteria` entry, mapping its check to a `verify`
+  method (a deterministic command / `quality_gate` → `verify_owner: gate`; an independent-checker
+  judgment → `llm-judge` + `verify_owner: checker`). Keep ≥1 deterministic anchor and the judge
+  fraction under `max_judge_fraction` — an all-judge contract is rejected.
+- Set `derived_from: <this SPEC id>` so each criterion traces back to a spec AC.
+- Author via the **`authoring-goal-contracts`** skill (it gatekeeps + validates) into
+  `loops/contracts/GOAL-…md`, then `python scripts/goal_loop.py loops/contracts/GOAL-….md
+  --validate-only`.
+
+**Suggest, never impose** — emit a contract only if the developer wants the loop; a non-loop-shaped
+spec (subjective or exploratory ACs) just proceeds to `/build_module`. The loop never pushes or
+auto-merges, and still halts at goal-met for `/review` + the required education walkthrough.
