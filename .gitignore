@@ -33,6 +33,10 @@ BUILD_STATUS.md
 .claude/hooks/.state/
 docs/handoff/
 
+# /goal-loop runtime loop-state (ADR-0026): the atomically-written per-goal tick record
+# is mutable runtime data (re-derived + untrusted on read), never a committed artifact.
+loops/.state/
+
 # Telemetry A3 (ADR-0020): the real subscription fee is personal financial
 # metadata — only config/subscription.yaml.example (a 0.00 placeholder) is
 # committed. The OTel export is local runtime data.

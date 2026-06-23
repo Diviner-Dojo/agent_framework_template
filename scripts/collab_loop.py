@@ -77,6 +77,9 @@ _SINCE_PATTERN = re.compile(r"^\d+[smhd]?$")
 # Lives at the project root, gitignored. Resolved at call time (not bound as a
 # default arg) so tests can monkeypatch ``LOCK_PATH``.
 LOCK_PATH = _PROJECT_ROOT / ".collab_loop.lock"
+# Cap on how far poll() replays backlog from the last ask's timestamp, so an ancient
+# stale lock cannot trigger an enormous re-fetch.
+_MAX_BACKLOG_SECONDS = 86_400  # 24h
 
 
 def read_lock(path: Path | None = None) -> dict[str, Any] | None:
@@ -443,10 +446,11 @@ def poll(
 ) -> None:
     """Stream developer answers forever (run under a persistent Monitor).
 
-    Baselines ``since=now`` at launch, so any answer sent while no monitor was
-    armed is invisible to it — always run :func:`check` first on resume (Lesson 1).
-    Watches both the REPLY topic (every message) and the MAIN topic (empty-title
-    free-text only). Each surfaced reply prints on its own line.
+    Baselines ``since`` to the most recent ask's timestamp (from the lockfile, capped
+    at 24h), so a reply sent in the gap between ``ask`` and arming this poller is
+    recovered automatically — the old manual ``check``-before-``poll`` step is no longer
+    required to avoid dropping that backlog. Watches both the REPLY topic (every message)
+    and the MAIN topic (empty-title free-text only). Each surfaced reply prints on its own line.
 
     Args:
         choices: The outstanding question's allow-list. When given, replies are
@@ -457,7 +461,16 @@ def poll(
         emit_fn: Per-topic fetch+emit function (defaults to :func:`_emit`; injected for testing).
     """
     emit = emit_fn or _emit
-    since, seen = str(int(time.time())), set()
+    # Backlog recovery (automated, Lesson 1): baseline `since` to the most recent ask's
+    # timestamp (recorded in the lockfile) instead of now, so a reply sent in the gap
+    # between `ask` and arming this poller is NOT dropped. Read BEFORE claim_poll_lock,
+    # which overwrites the lock ts. Capped by _MAX_BACKLOG_SECONDS so a stale lock can't
+    # replay an enormous window; `seen` still dedups across rounds.
+    _prior = read_lock()
+    _now = int(time.time())
+    _prior_ts = _prior.get("ts") if isinstance(_prior, dict) else None
+    _use_backlog = isinstance(_prior_ts, int) and 0 < (_now - _prior_ts) <= _MAX_BACKLOG_SECONDS
+    since, seen = (str(_prior_ts) if _use_backlog else str(_now)), set()
     sources = ((reply_topic, False, "reply"), (topic, True, "main"))
     # Claim sole ownership: any older poller will see a different PID and self-exit,
     # so exactly one poller (the newest) is ever live on this topic.

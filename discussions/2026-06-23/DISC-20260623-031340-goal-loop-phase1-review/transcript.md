@@ -1,0 +1,107 @@
+---
+discussion_id: DISC-20260623-031340-goal-loop-phase1-review
+started: 2026-06-23T03:13:55.858498+00:00
+ended: 2026-06-23T03:41:01.885855+00:00
+agents: [architecture-consultant, facilitator, independent-perspective, qa-specialist, security-specialist]
+total_turns: 7
+---
+
+# Discussion: DISC-20260623-031340-goal-loop-phase1-review
+
+## Turn 1 — facilitator (evidence)
+*2026-06-23T03:13:55.858498+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Review the /goal-loop Phase-1 build before commit: the new deterministic driver scripts/goal_loop.py, tests/test_goal_loop.py (63 tests), two new skills (orchestrating-goal-loops, authoring-goal-contracts), .claude/commands/goal-loop.md, and edits to CLAUDE.md + .claude/commands/plan.md. Autonomous build on feature/goal-loop-phase1.
+- **Files/scope**: scripts/goal_loop.py (NEW, ~600 LOC deterministic driver + IO seams); tests/test_goal_loop.py (NEW, 63 tests, 89% cov on the driver); .claude/skills/orchestrating-goal-loops/SKILL.md (NEW); .claude/skills/authoring-goal-contracts/SKILL.md (NEW); .claude/commands/goal-loop.md (NEW); CLAUDE.md (suggestion heuristic + loops/ Directory Layout + Rules Index); .claude/commands/plan.md (emit-contract step).
+- **Developer-stated motivation**: Adopt the 2026 loop-engineering pattern (build->verify->refine to a verifiable goal) built TO the framework non-negotiables. Headline design risk from the deliberation: verifier integrity / reward hacking (the loop gaming its own verifier). Decision: hybrid deterministic driver (control flow is code), model invoked only for build/judge/gate via claude -p subprocess (ADR-0026, SUBPROCESS).
+- **Explicit constraints**: NEVER push or auto-merge; capture every step; /review + required education walkthrough before merge; loop never elevates authority; fail-closed autonomy (R10); ntfy acts on matched label only, never raw text/slug. Spec SPEC-20260621-064937 rev2; ADR-0026 accepted.
+
+---
+
+## Turn 2 — security-specialist (proposal)
+*2026-06-23T03:20:37.842730+00:00 | confidence: 0.84*
+*tags: security, adversarial, blocking:2, reward-hacking*
+*risk flags: verifier-integrity, reward-hacking*
+
+Adversarial security review (opus). Verdict: REQUEST-CHANGES, conf 0.84.
+HIGH-1: Tamper tripwire blind to file DELETIONS/RENAMES — parse_unified_diff only reads '+++ b/' headers; a deletion renders '+++ /dev/null' and is dropped, so deleting tests/test_x.py (the check enforcing a criterion) passes the criterion AND evades the gate. Fix: also capture '--- a/' + rename paths / use git diff --name-status.
+HIGH-2: Goal-met re-verify judges the checker on an EMPTY delta (_verify_all(delta=Diff((),())) at the GOAL_MET branch) — an honest skeptic returns red on empty (livelock) or rubber-stamps (vacuous). Fix: re-verify against the cumulative working-tree delta, or corroborate judge greens via append-only checker events.
+MED-3: checker_greens_from_events corroboration not bound to tick/agent — any historical green:<id> tag corroborates a current claimed green.
+MED-4: --authorized-branch sourced from argv, not the real authorization block; bounded by Phase-1 manual launch + the main exclusion, becomes self-elevation once /goal-loop is model-driven.
+LOW-5: gate question built from contract text (bounded, list-args, no shell — not injection; social-eng of the human only). LOW-6: verify_command_targets stores raw tokens (no ./ or backslash normalization) vs normalized diff paths.
+STRENGTHS: no push/merge/commit-irreversible path in the driver; fail-closed verdict parsing; maker/checker distinct-by-construction; subprocess seam textbook (list args, bypassPermissions not --bare, shutil.which); anchor_context honestly delimited; all-judge rejected + judge-fraction capped.
+
+---
+
+## Turn 3 — qa-specialist (proposal)
+*2026-06-23T03:20:51.495965+00:00 | confidence: 0.91*
+*tags: qa, testing, blocking:2, coverage*
+*risk flags: untested-termination-semantics*
+
+QA review. Verdict: suite is genuinely good, 89% earned (not gamed); 2 BLOCKING + 4 HIGH test gaps, conf 0.91.
+BLOCKING-1: update_no_progress alternative branches (criterion-id-consecutive, fixed-red-set) are live selectable semantics with ZERO test coverage (lines 500-505).
+BLOCKING-2: verify_command_targets shlex.ValueError fallback (426-427) untested — it's inside the R5.1 tamper canary contract.
+HIGH-3: _parse_claude_json non-dict valid-JSON branch (963-964) untested. HIGH-4: _parse_claude_json non-int output_tokens guard (969-971) untested (budget accounting). HIGH-5: main() contract-load-error->exit-2 + validate-only/run branches (1312-1325) untested. HIGH-6: _extract_frontmatter unterminated (175) + non-mapping (179) branches untested (realistic authoring mistakes).
+MED-7: reverify token overshoot must not BUDGET-block goal-met. MED-8: AC2 critical-risk path (mandatory_full_review) has no driver-level test; the report doesn't surface it. MED-9: no_progress=1 boundary untested. MED-10: make->Makefile target resolution (428-429) untested — Makefile-tamper scenario. LOW-11: empty events file. LOW-12: approved-tamper capture ordering (builder->gate->checker).
+STRENGTHS: seam-injection lets tests exercise real logic; oscillation test non-vacuous; reconstruct corroboration test high-quality; capture-tag precision (green:J1 present, green:SC1 absent); regression-ledger entry comprehensive; subprocess fake asserts prompt args not just counts. No vacuous tests found.
+
+---
+
+## Turn 4 — architecture-consultant (proposal)
+*2026-06-23T03:21:04.564259+00:00 | confidence: 0.86*
+*tags: architecture, blocking:1, capture-integrity*
+*risk flags: unsealed-discussion*
+
+Architecture review. Verdict: strong implementation of ADR-0026, approve-with-changes, conf 0.86. ALL load-bearing decisions honored structurally: hybrid deterministic driver (control flow in code, skills hold NO control flow), surgical 1-agent change (only facilitator.md), conductor over primitives (reuses quality_gate/write_event/collab_loop, no /build_module invocation), CORE/SKIN loops split + gitignored .state, clean dependency direction (pure core imports only stdlib+Protocol seams).
+HIGH-1: The run discussion is created in _run but NEVER sealed — close_discussion is invoked nowhere (only asserted to EXIST in pre-flight). Spec R7 requires 'close_discussion at end'; plan.md treats unclosed discussions as corrupting the capture stack. Fix: try/finally close in _run, decide+document resume semantics.
+MED-2: CaptureSink seam has no close()/seal() — sealing responsibility lives outside the seam that owns the trail, which is why it's easy to forget; add close() so the lifecycle is cohesive AND the 'exactly one sealed discussion' AC7 assertion becomes testable.
+LOW-3: no_progress_definition accepts 'fixed-red-set' but update_no_progress silently aliases it to net-progress (named-but-unimplemented door) — implement distinctly or drop from valid set.
+INFO-4: run_goal_loop ~120 lines but NOT flagged for decomposition — irreducible cohesive control loop, splitting would scatter safety-critical flow (length justified by cohesion).
+Phase-1 scope discipline clean (no triggers/L3/cost-telemetry leakage). Strengths: 6 narrow Protocol seams each isolating one dependency; R5 verifier-integrity in pure code; R7 untrusted-on-read genuinely defended; gate-binding abstraction; specific error taxonomy, no bare excepts.
+
+---
+
+## Turn 5 — independent-perspective (proposal)
+*2026-06-23T03:21:19.040956+00:00 | confidence: 0.82*
+*tags: independent, anti-groupthink, blocking:1, second-blind-spot*
+*risk flags: empty-delta-reverify, cumulative-diff, unsealed-discussion*
+
+Independent / anti-groupthink (independent-analyst). Verdict: deterministic core strong, but the live --run path hides blind spots the unit tests structurally cannot see, conf 0.82.
+SCENARIO-A (the suspected SECOND blind spot, HIGH): goal-met re-verify re-judges every llm-judge criterion against an EMPTY delta -> honest skeptic returns red (denial-of-completion: loop bounces off goal-met until backstop) OR rubber-stamps (the reward-hacking hole the feature exists to close). Independently converges with security HIGH-2. Best fix: at goal-met re-run deterministic verifiers + trust judge greens via append-only checker-event corroboration (reuse checker_greens_from_events), OR pass the real cumulative delta.
+SCENARIO-B (MED): cumulative git-diff-HEAD means once a tick touches tests/, EVERY later tick re-trips the tamper gate (sticky) — the coverage-raise example the skill cites as legitimate would page the human per-tick or park as NO_PROGRESS. Document as Phase-1 limitation or track a per-run approved-sensitive-path set.
+SCENARIO-C (MED): _run never calls close_discussion (converges with architecture HIGH-1). SCENARIO-D (MED): parse_unified_diff misses renames/deletes (converges with security HIGH-1). SCENARIO-E (LOW): no_progress advances on a rejected tamper gate -> park report says 'no progress' when truth is 'blocked at a gate'.
+META: the recommended-answer pattern the team fixed in grills now lives in authoring-goal-contracts (a dev authoring a high-risk contract under recommended answers may ratify a gameable verify) — add a coaching line to defend gameable verify methods.
+ASSUMPTION #4: 'never-skippable education' is enforced only in PROSE (no code gate/state flag) — honest for Phase-1 (driver never merges) but the language overstates the code guarantee; document.
+STRENGTHS: deterministic/seam split well-executed; fail-closed real not decorative; verdict parser fail-closed; integrity+untrusted-on-read sound; Windows shutil.which gotcha handled with institutional-memory comment.
+
+---
+
+## Turn 6 — facilitator (critique)
+*2026-06-23T03:40:41.906435+00:00 | confidence: 0.8*
+*tags: finding-verification, folds:6, tests-added:18*
+
+Finding verification (facilitator pass against the code): all panel findings VERIFIED true against scripts/goal_loop.py. 0 discarded. Convergence: the empty-delta goal-met re-verify was independently found by security (HIGH-2) AND independent-perspective (Scenario-A 'second blind spot') — the strongest signal. close_discussion-never-called found by architecture (HIGH-1) + independent (Scenario-C). delete/rename tripwire blind spot found by security (HIGH-1) + independent (Scenario-D). FOLDED IN-SESSION (all blocking + the cheap highs): (1) goal-met re-verify now runs against diff_source.tick_diff() not Diff((),()); (2) CaptureSink.close() added + sink.close() called on every terminal path incl. integrity-park, RealCaptureSink seals via close_discussion; (3) parse_unified_diff captures --- a/ deletions + rename lines (a/ b/-prefix-guarded), GitDiffSource adds --name-status authoritative paths; (4) fixed-red-set dropped from valid no_progress_definition (was a silent net-progress alias); (5) verify_command_targets normalizes ./ + backslash; (6) mandatory_full_review surfaced in the goal-met report. +18 new tests (criterion-id-consecutive, make/Makefile tamper, shlex fallback, _parse_claude_json non-dict + non-int, main() exit codes, frontmatter edge cases, reverify overshoot, capture sealing + approved-tamper ordering, deletion/rename parsing). Coverage 89%->95%, 85 tests green, gate 7/7. DEFERRED to Phase 2 (advisory, documented in goal-loop.md): cumulative-diff sticky tamper gate; checker-corroboration not tick/agent-bound (goal-met re-verify protects the exit); --authorized-branch from argv (main-excluded; manual launch); no_progress-on-rejected-gate park-report wording.
+
+---
+
+## Turn 7 — facilitator (synthesis)
+*2026-06-23T03:41:01.885855+00:00 | confidence: 0.86*
+*tags: blocking:5, advisory:4, speculative:0, model-tiers:security-opus+qa-sonnet+arch-sonnet+indep-sonnet, verdict:approve-with-changes*
+
+## Request Context
+- What was requested: pre-commit /review of the /goal-loop Phase-1 build (deterministic driver + skills + command + doc edits).
+- Files/scope: scripts/goal_loop.py, tests/test_goal_loop.py, 2 skills, goal-loop command, CLAUDE.md + plan.md edits.
+- Developer-stated motivation: a build->verify->refine loop that cannot game its own verifier (ADR-0026, SUBPROCESS).
+- Explicit constraints: never push/auto-merge; fail-closed autonomy; capture; required education before merge.
+
+VERDICT: approve-with-changes -> APPROVE post-fold. Weighted confidence ~0.86 (security 0.84, qa 0.91, architecture 0.86, independent 0.82). Risk: HIGH. Mode: dialectic.
+The deterministic-driver architecture is sound and unusually well-tested; all blocking findings were specific boundary-check defects, not design problems, and all were folded in-session.
+BLOCKING (folded): (B1) goal-met re-verify judged the checker on an EMPTY delta [security HIGH-2 + independent Scenario-A, converged] -> now re-verifies against the cumulative working-tree delta. (B2) the run discussion was never sealed [architecture HIGH-1 + independent Scenario-C] -> CaptureSink.close() + sink.close() on every terminal path; RealCaptureSink seals via close_discussion. (B3) tamper tripwire blind to file deletions/renames [security HIGH-1 + independent Scenario-D] -> parse_unified_diff captures --- a/ + rename paths, GitDiffSource adds --name-status authoritative paths. (B4) update_no_progress alt-branches untested + fixed-red-set silent alias [qa BLOCKING-1 + arch LOW-3] -> fixed-red-set rejected; criterion-id-consecutive tested. (B5) shlex fallback untested canary [qa BLOCKING-2] -> tested.
+ALSO FOLDED (high/cheap): _parse_claude_json non-dict + non-int guards, main() exit-code paths, frontmatter edge cases, make/Makefile tamper, ./-normalized verify targets, reverify-overshoot, mandatory_full_review surfaced, capture sealing + approved-tamper ordering. +18 tests; coverage 89%->95%; gate 7/7.
+DEFERRED-ADVISORY (Phase-2, documented in goal-loop.md Known Limitations): cumulative-diff makes the tamper gate sticky for test-touching goals; checker-green corroboration not bound to tick/agent (goal-met re-verify protects the exit); --authorized-branch sourced from argv (main hard-excluded + Phase-1 manual launch); no_progress advances on a rejected gate (park-report wording).
+Confidence annotation: 0 findings <0.80; 0 unscored. Model tiers: security-specialist:opus, qa-specialist:sonnet, architecture-consultant:sonnet, independent-perspective:sonnet, facilitator:opus.
+STRENGTHS (panel consensus): no push/merge/commit-irreversible path in the driver; fail-closed verdict parsing; maker/checker distinct-by-construction; subprocess seam textbook (list args, bypassPermissions not --bare, shutil.which); R7 untrusted-on-read genuinely defended; six narrow Protocol seams; honest anchor delimiting; all-judge rejected + judge-fraction capped.
+
+---
