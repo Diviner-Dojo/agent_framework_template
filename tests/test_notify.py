@@ -374,3 +374,66 @@ class TestEnsureAsciiTitle:
         title_header = req.get_header("Title")
         title_header.encode("latin-1")  # the regression assertion: must not raise
         assert "✅" not in title_header
+
+
+class TestSendNotificationBindShape:
+    """ADR-0028 (2a): lock send_notification's BODY-FIRST signature + its caller shape.
+
+    VerificationPortal flipped notify.py to title-first and broke its own callers (B1). The
+    hub stays body-first; these tests fail loudly if a future change reorders the parameters
+    or makes a caller pass the message by an incompatible binding -- catching the VP-style
+    divergence at test time instead of in production.
+    """
+
+    @pytest.mark.regression
+    def test_send_notification_is_body_first_message_positional(self) -> None:
+        """`message` is the first positional parameter; `title` is keyword-only."""
+        import inspect
+
+        from notify import send_notification
+
+        params = list(inspect.signature(send_notification).parameters.values())
+        # message is the FIRST parameter and bindable positionally (not keyword-only)
+        assert params[0].name == "message"
+        assert params[0].kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+        # title exists and is keyword-only (so a title-first positional call cannot bind it)
+        title = inspect.signature(send_notification).parameters["title"]
+        assert title.kind is inspect.Parameter.KEYWORD_ONLY
+
+    @pytest.mark.regression
+    def test_send_notification_rejects_title_first_positional(self) -> None:
+        """A title-first positional call (VP's B1 shape) must NOT bind silently.
+
+        Binding two positionals against the body-first signature would assign the 2nd to
+        `message`-then-error (only `message` is positional), so the VP-style
+        ``send_notification(title, body)`` two-positional call is a TypeError here.
+        """
+        import inspect
+
+        from notify import send_notification
+
+        sig = inspect.signature(send_notification)
+        with pytest.raises(TypeError):
+            sig.bind("a-title", "a-body")  # two positionals -> no valid bind (body-first)
+
+    @pytest.mark.regression
+    def test_collab_loop_say_calls_send_notification_body_first(self) -> None:
+        """The collab_loop.say caller passes the body positionally and title by keyword.
+
+        Locks the caller shape so a body-first/title-first mismatch between notify.py and
+        its callers (VP's B1 root cause) is caught.
+        """
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from unittest.mock import patch as _patch
+
+        with _patch("scripts.collab_loop.send_notification", return_value=True) as mock_send:
+            from scripts.collab_loop import say
+
+            assert say("My Title", "the body text") is True
+        # body is the first POSITIONAL arg; title rides as a keyword (body-first contract)
+        args, kwargs = mock_send.call_args
+        assert args[0] == "the body text"
+        assert kwargs.get("title") == "My Title"

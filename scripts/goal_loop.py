@@ -116,6 +116,11 @@ class GoalContract:
     autonomy_level: str = "L1"
     mandatory_full_review: bool = False
     derived_from: str | None = None
+    # Author-declared fixture / baseline / golden paths the criteria read (the "answer key").
+    # A tick touching one (edit, rename, or delete) trips ``tamper_tripwire``, so the loop
+    # cannot quietly weaken its own ground truth (ADR-0028 "tripwire must guard the answer
+    # key, not just code"). Normalised + non-empty-validated at load time (load_contract).
+    protected_paths: tuple[str, ...] = ()
 
 
 def load_contract(path: Path) -> GoalContract:
@@ -153,12 +158,44 @@ def load_contract(path: Path) -> GoalContract:
             autonomy_level=str(fm.get("autonomy_level", "L1")).upper(),
             mandatory_full_review=bool(fm.get("mandatory_full_review", False)),
             derived_from=(str(fm["derived_from"]) if fm.get("derived_from") else None),
+            protected_paths=_parse_protected_paths(fm.get("protected_paths", []) or []),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ContractError(f"malformed goal contract {path.name}: {exc}") from exc
 
     validate_contract(contract)
     return contract
+
+
+def _parse_protected_paths(raw: object) -> tuple[str, ...]:
+    """Parse + validate the ``protected_paths`` answer-key list (ADR-0028; hardened past VP).
+
+    Each entry is normalised via :func:`_normalize_path` (the SAME rule the tamper tripwire
+    applies to diff paths) so a declared answer-key path and its diff path compare
+    identically. An entry that normalises to empty -- e.g. ``"/"`` or ``"./"`` alone, the
+    leading-slash form VP's A2 silently let fail open -- is REJECTED rather than tolerated,
+    because an empty protected prefix would either match everything or nothing. The original
+    author strings are preserved in the returned tuple (tamper_tripwire re-normalises them);
+    this function only validates.
+
+    Args:
+        raw: The frontmatter ``protected_paths`` value (expected to be a list of strings).
+
+    Returns:
+        The author-supplied paths as a tuple, unchanged in form.
+
+    Raises:
+        ContractError: if any entry normalises to an empty path.
+    """
+    paths = tuple(str(p) for p in raw)
+    for p in paths:
+        if not _normalize_path(p):
+            raise ContractError(
+                f"protected_paths entry {p!r} normalises to an empty path "
+                "(a bare '/' or './' is rejected -- it would match every path or none; "
+                "declare a concrete fixture/baseline path)"
+            )
+    return paths
 
 
 def _extract_frontmatter(text: str) -> dict:
@@ -212,6 +249,20 @@ def validate_contract(contract: GoalContract) -> None:
         raise ContractError(
             "all-judge contract rejected: at least one deterministic / quality_gate "
             "criterion is required (a loop must not be sole judge of its own work)"
+        )
+    # H1 (ADR-0028): a quality_gate-ONLY contract (every deterministic criterion is
+    # quality_gate AND there are no judges) grades itself with a single boolean that no
+    # independent checker reads -- and quality_gate runs over all of src/, a surface the
+    # tamper tripwire's filename allow-list cannot fully protect, so the loop could green
+    # the gate by weakening a non-test src/ file. Require at least one non-quality_gate
+    # deterministic command or an llm-judge skeptic in that shape.
+    non_qg_deterministic = [c for c in deterministic if not c.is_quality_gate]
+    if not non_qg_deterministic and not judges:
+        raise ContractError(
+            "quality_gate-only contract rejected: add at least one llm-judge skeptic or a "
+            "non-quality_gate deterministic criterion (quality_gate alone is self-graded over "
+            "an src/ surface the tamper tripwire cannot fully protect -- an independent check "
+            "must read the goal-met candidate)"
         )
     fraction = len(judges) / len(crits)
     if fraction > contract.max_judge_fraction + 1e-9:
@@ -411,10 +462,33 @@ class NullCaptureSink:
 # --------------------------------------------------------------------------- #
 _SENSITIVE_PATH_RE = re.compile(
     r"(^|/)(tests?/|conftest\.py$|test_[^/]*\.py$|pyproject\.toml$|\.coveragerc$"
-    r"|tox\.ini$|setup\.cfg$|scripts/quality_gate\.py$|scripts/goal_loop\.py$)"
+    r"|tox\.ini$|setup\.cfg$|setup\.py$|pytest\.ini$|\.pytest\.ini$|noxfile\.py$"
+    r"|scripts/quality_gate\.py$|scripts/goal_loop\.py$)"
 )
 _COVERAGE_PRAGMA_RE = re.compile(r"#\s*pragma:\s*no\s*cover", re.IGNORECASE)
 _SCRIPT_SUFFIXES = (".py", ".sh", ".bash", ".ps1", ".bat")
+
+
+def _normalize_path(path: str) -> str:
+    """Canonicalise a path for tamper/verify matching (single shared rule, R5.1).
+
+    Backslashes become forward slashes, leading ``./`` and ``/`` segments are stripped,
+    and a trailing ``/`` is removed -- so a declared protected path, a criterion's verify
+    target, and a diff path all normalise identically and compare correctly regardless of
+    OS separator or leading-slash form (Steward advisory 5; closes VP's A2 leading-slash
+    fail-open). ``_normalize_path("/answer/key.json")`` and ``"answer/key.json"`` collapse
+    to the same value, so an answer-key entry can never silently miss its diff path.
+
+    Args:
+        path: A raw path from a contract field, a verify command token, or a diff.
+
+    Returns:
+        The normalised path (may be empty if ``path`` was only slashes / ``./``).
+    """
+    norm = path.replace("\\", "/")
+    while norm.startswith(("./", "/")):
+        norm = norm[2:] if norm.startswith("./") else norm[1:]
+    return norm.rstrip("/")
 
 
 def verify_command_targets(contract: GoalContract) -> set[str]:
@@ -435,10 +509,11 @@ def verify_command_targets(contract: GoalContract) -> set[str]:
         if tokens and tokens[0] == "make":
             targets.update({"Makefile", "makefile"})
         for tok in tokens:
-            # Normalise identically to how tamper_tripwire normalises diff paths
-            # (backslash->slash, strip leading ./) so a `bash ./check.sh` target still
-            # matches a diff path of `check.sh` (review: security LOW-6).
-            norm = tok.replace("\\", "/").removeprefix("./")
+            # Normalise identically to how tamper_tripwire normalises diff paths (shared
+            # _normalize_path: backslash->slash, strip leading ./ and /) so a `bash
+            # ./check.sh` target still matches a diff path of `check.sh` (review: security
+            # LOW-6; Steward advisory 5).
+            norm = _normalize_path(tok)
             if "/" in norm or norm.endswith(_SCRIPT_SUFFIXES):
                 targets.add(norm)
     return targets
@@ -452,11 +527,20 @@ def tamper_tripwire(diff: Diff, contract: GoalContract) -> bool:
     coverage pragmas, or a criterion's own verify command.
     """
     command_targets = verify_command_targets(contract)
+    # Author-declared answer-key paths, normalised via the SAME helper as diff paths so the
+    # prefix comparison is separator- and leading-slash-agnostic (load_contract already
+    # rejected any entry that normalises empty, so none of these is "").
+    protected = tuple(_normalize_path(pp) for pp in contract.protected_paths if pp)
     for p in diff.paths:
-        norm = p.replace("\\", "/")
+        norm = _normalize_path(p)
         if _SENSITIVE_PATH_RE.search(norm):
             return True
         if norm in command_targets:
+            return True
+        # A tick touching a declared fixture/baseline (edit, rename, or delete -- all surface
+        # via --name-status) forces the human gate: the loop must not quietly weaken its own
+        # ground truth (ADR-0028). Prefix match so a whole protected directory is covered.
+        if any(norm == pp or norm.startswith(pp + "/") for pp in protected):
             return True
     for line in diff.added_lines:
         if _COVERAGE_PRAGMA_RE.search(line):
@@ -479,12 +563,34 @@ class Outcome(StrEnum):
 def evaluate_termination(state: LoopState, contract: GoalContract) -> Outcome:
     """Pure ladder evaluation. goal_met is the GOOD exit; the rest are backstops.
 
-    The good exit here is only a *candidate*: the caller re-verifies ALL criteria
-    before declaring goal_met for real (R5.4), so no stale green carries the exit.
+    The good exit here is only a *candidate*: the caller re-verifies ALL criteria AND runs
+    an independent goal-met skeptic before declaring goal_met for real (R5.4 + ADR-0028), so
+    no stale green -- and no fully self-graded candidate -- carries the exit.
     """
     total = len(contract.success_criteria)
     if state.green_count() >= total:
         return Outcome.GOAL_MET
+    return _backstop_only(state, contract)
+
+
+def _backstop_only(state: LoopState, contract: GoalContract) -> Outcome:
+    """The non-goal-met rung of the ladder (max_iterations / no_progress / budget), or CONTINUE.
+
+    Consulted directly when the independent goal-met skeptic VETOES the candidate (ADR-0028,
+    developer decision: RETRY, not immediate PARK). All criteria are green, so
+    :func:`evaluate_termination` would short-circuit to GOAL_MET on every tick and spin forever
+    on a persistent veto. The caller instead advances the tick and net-progress counters and
+    asks THIS ladder whether to park or retry the skeptic:
+
+    * ``CONTINUE`` -- the ladder still has room, so re-verify all criteria and re-run the
+      skeptic next tick; a FLUKE red clears (skeptic greens -> normal GOAL_MET exit).
+    * a terminal rung (``NO_PROGRESS`` / ``MAX_ITERATIONS`` / ``BUDGET``) -- a PERSISTENT veto
+      has exhausted the ladder, so the caller parks with a report naming the veto.
+
+    Convergence is guaranteed: at goal-met the green count is already maximal and no build runs
+    on the veto path (there is no red target), so the green count cannot rise -- ``no_progress``
+    therefore climbs by one every veto-retry and reaches its bound in a finite number of ticks
+    (``max_iterations`` is a second, independent bound). No livelock is possible."""
     if state.iteration >= contract.termination.max_iterations:
         return Outcome.MAX_ITERATIONS
     if state.no_progress_counter >= contract.termination.no_progress:
@@ -679,6 +785,51 @@ def _verify_all(
     return tokens, tuple(verifications)
 
 
+# The synthetic criterion the always-on goal-met skeptic judges (ADR-0028 / R5.4). Its
+# ``verify`` is ``llm-judge`` so it is routed through ``model.judge`` -- the INDEPENDENT
+# checker subprocess, never the builder's authored verify command -- and its ``text`` is the
+# contract goal, so the skeptic judges whether the cumulative delta genuinely meets the goal.
+_GOAL_MET_SKEPTIC_ID = "__goal_met_skeptic__"
+
+
+def _goal_met_skeptic_criterion(contract: GoalContract) -> Criterion:
+    """Build the synthetic ``llm-judge`` criterion the goal-met skeptic judges (ADR-0028)."""
+    return Criterion(
+        id=_GOAL_MET_SKEPTIC_ID,
+        text=f"The cumulative delta genuinely and fully achieves the goal: {contract.goal}",
+        verify=JUDGE_METHOD,
+        verify_owner="checker",
+    )
+
+
+def run_goal_met_skeptic(
+    contract: GoalContract,
+    *,
+    model: ModelInvoker,
+    delta: Diff,
+) -> JudgeResult:
+    """Run an INDEPENDENT skeptic over the goal-met candidate, regardless of contract shape.
+
+    ADR-0028 (implements ADR-0026 R5.4): the goal-met re-verify confirms each criterion, but a
+    contract with no ``llm-judge`` criterion -- e.g. the reward-hack sibling ``[quality_gate,
+    "pytest tests/test_x.py"]`` -- would otherwise re-confirm only the builder's OWN authored
+    checks, with no independent reader of the candidate. This always routes a final skeptic
+    pass through ``model.judge`` (the independent checker subprocess, distinct from the
+    builder) on the cumulative ``delta``, judging it against the goal. A red verdict vetoes the
+    goal-met exit; the builder never marks itself done. The skeptic NEVER runs the builder's
+    verify command -- it is the same delta-only, default-to-red checker the loop already uses.
+
+    Args:
+        contract: The active goal contract (its ``goal`` is the thing judged).
+        model: The model seam; ``judge`` spawns the independent checker.
+        delta: The cumulative working-tree delta the candidate is built from.
+
+    Returns:
+        The checker's :class:`JudgeResult` (``green=False`` vetoes the exit, fail-closed).
+    """
+    return model.judge(_goal_met_skeptic_criterion(contract), delta)
+
+
 def _tick_context(contract: GoalContract, state: LoopState) -> str:
     red = [c.id for c in contract.success_criteria if not state.criteria[c.id].green]
     return (
@@ -776,6 +927,9 @@ def run_goal_loop(
     for crit in contract.success_criteria:
         state.criteria.setdefault(crit.id, CriterionStatus(id=crit.id))
 
+    # Count consecutive independent-skeptic vetoes at the goal-met candidate, so a persistent
+    # veto's PARK report can name how many times the checker rejected the goal (ADR-0028).
+    skeptic_veto_count = 0
     while True:
         # R10: re-read authorization each tick; an L2 grant revoked mid-run -> park.
         if l2_active and not auth.affirm_l2(branch):
@@ -792,20 +946,72 @@ def run_goal_loop(
             # re-judged on the same artifact it greened -- an empty delta would make an honest
             # skeptic checker return red (livelock) or rubber-stamp (vacuous re-verify); both
             # defeat R5.4 (review: security HIGH-2 / independent Scenario-A).
+            reverify_delta = diff_source.tick_diff()
             reverify_tokens, verifications = _verify_all(
-                contract, state, verifier=verifier, model=model, delta=diff_source.tick_diff()
+                contract, state, verifier=verifier, model=model, delta=reverify_delta
             )
             state.output_tokens_spent += reverify_tokens
             sink.checker_turn(state.iteration, verifications)
-            if state.green_count() >= len(contract.success_criteria):
+            if state.green_count() < len(contract.success_criteria):
+                write_loop_state(loop_state_path, state)  # stale green flipped red -> keep going
+                continue
+            # ADR-0028 (implements ADR-0026 R5.4): every criterion re-verified green, but a
+            # contract with no llm-judge criterion would have re-confirmed only the builder's
+            # OWN authored checks. ALWAYS run an INDEPENDENT skeptic on the goal-met candidate,
+            # regardless of contract shape, so the reward-hack sibling [quality_gate, "pytest
+            # test_x.py"] cannot self-green. The skeptic is model.judge (the independent checker
+            # subprocess), never the builder's verify command. A red skeptic vetoes the exit and
+            # PARKS for a human (never silently continues -- a green author-criteria set the
+            # independent checker rejects is exactly a human decision; B3).
+            skeptic = run_goal_met_skeptic(contract, model=model, delta=reverify_delta)
+            state.output_tokens_spent += skeptic.output_tokens
+            sink.checker_turn(
+                state.iteration,
+                (
+                    Verification(
+                        criterion_id=_GOAL_MET_SKEPTIC_ID,
+                        green=skeptic.green,
+                        is_judge=True,
+                        verified_by_agent=skeptic.agent_id if skeptic.green else None,
+                    ),
+                ),
+            )
+            if not skeptic.green:
+                # ADR-0028 (developer decision: RETRY, not immediate PARK). An llm-judge is
+                # stochastic, so a single FLUKE red must not terminally strand a
+                # legitimately-complete run. Consult the termination ladder's backstop rung
+                # (_backstop_only) instead of parking outright: because all criteria are green,
+                # evaluate_termination would short-circuit to GOAL_MET on every tick and the
+                # driver would spin forever on a persistent veto. To make the retry a real,
+                # BOUNDED tick, advance the tick and net-progress counters FIRST -- at goal-met
+                # the green count is already maximal and NO build runs on this path (the build
+                # below is never reached; there is no red target), so the green count cannot
+                # rise. update_no_progress therefore increments no_progress on every veto-retry,
+                # so the run PARKS after `no_progress` consecutive vetoes (with max_iterations as
+                # a second, independent bound). A fluke red clears on the next re-verify: the
+                # skeptic greens and the loop takes the normal GOAL_MET exit below.
+                skeptic_veto_count += 1
+                state.iteration += 1
+                update_no_progress(state, contract)
+                backstop = _backstop_only(state, contract)
                 write_loop_state(loop_state_path, state)
-                gate_note = " (mandatory_full_review)" if contract.mandatory_full_review else ""
+                if backstop is Outcome.CONTINUE:
+                    continue
                 return _finish(
-                    Outcome.GOAL_MET,
-                    "goal met; awaiting /review + required education + human approval" + gate_note,
+                    backstop,
+                    f"PARKED ({backstop.value}): independent goal-met skeptic vetoed the "
+                    f"goal-met candidate {skeptic_veto_count} consecutive time(s); all author "
+                    "criteria are green but the independent checker persistently rejects the "
+                    f"goal as met. Last veto reason: {skeptic.reason or 'no reason given'}. "
+                    "Handing back for a human decision (no self-green, no push, no auto-merge; "
+                    "ADR-0028).",
                 )
-            write_loop_state(loop_state_path, state)  # stale green flipped red -> keep going
-            continue
+            write_loop_state(loop_state_path, state)
+            gate_note = " (mandatory_full_review)" if contract.mandatory_full_review else ""
+            return _finish(
+                Outcome.GOAL_MET,
+                "goal met; awaiting /review + required education + human approval" + gate_note,
+            )
         if candidate is not Outcome.CONTINUE:
             write_loop_state(loop_state_path, state)
             return _finish(candidate, _park_report(candidate, contract, state))
@@ -1200,16 +1406,49 @@ class SubprocessModelInvoker:
         return JudgeResult(green=green, output_tokens=tokens, agent_id=session_id, reason=reason)
 
 
+# Branches L2 (commit-capable) autonomy must NEVER affirm, regardless of the authorized
+# set (H2, ADR-0028): the original guard blocked only an exact ``"main"`` string, so
+# ``master``/``develop``/``trunk`` -- and any case or ``refs/heads/`` variant of ``main``
+# -- slipped through. These are the canonical long-lived integration branches.
+_PROTECTED_BRANCHES = frozenset({"main", "master", "develop", "trunk"})
+
+
+def _is_protected_branch(branch: str) -> bool:
+    """Return True if ``branch`` is a protected integration branch (H2, ADR-0028).
+
+    Normalises before membership so a case variant (``Main``/``MAIN``) or a fully
+    qualified ref (``refs/heads/main``) cannot evade the protection. Used both to filter
+    the authorized set on construction and as a defense-in-depth re-check inside
+    ``affirm_l2``.
+
+    Args:
+        branch: The branch name (or ``refs/heads/<name>`` ref) to test.
+
+    Returns:
+        True if the normalised branch is in :data:`_PROTECTED_BRANCHES`.
+    """
+    return branch.strip().casefold().removeprefix("refs/heads/") in _PROTECTED_BRANCHES
+
+
 class FailClosedAuthAffirmer:
     """Fail-closed L2 affirmation (R10/AC10). Affirms L2 only on an explicitly authorized
-    feature branch -- NEVER on ``main`` (filtered out on construction). Constructed per run
+    feature branch -- NEVER on a protected integration branch (``main``/``master``/
+    ``develop``/``trunk``, in any case or ``refs/heads/`` form), which are filtered out on
+    construction AND re-checked in ``affirm_l2`` (defense in depth, H2). Constructed per run
     from the Autonomous Execution Authorization scope; the driver re-calls ``affirm_l2``
     every tick so a Phase-2 live affirmer can revoke mid-run."""
 
     def __init__(self, authorized_branches: frozenset[str]) -> None:
-        self._authorized = frozenset(b for b in authorized_branches if b and b != "main")
+        self._authorized = frozenset(
+            b for b in authorized_branches if b and not _is_protected_branch(b)
+        )
 
     def affirm_l2(self, branch: str) -> bool:
+        # Defense in depth (H2): even if a protected branch somehow reached the authorized
+        # set, never affirm L2 on it -- the membership check below would also miss a
+        # ``refs/heads/`` or case variant that the construction filter normalised away.
+        if _is_protected_branch(branch):
+            return False
         return branch in self._authorized
 
 
@@ -1281,28 +1520,97 @@ def default_loop_state_path(repo_root: Path, goal_id: str) -> Path:
     return repo_root / "loops" / ".state" / f"{safe}.json"
 
 
-def _ntfy_gate_transport(question: str, choices: tuple[str, ...], token: str) -> str | None:
-    """Route one gate over ntfy (collab_loop): push the question + labels, then poll once
-    for a matching reply. Returns the matched LABEL or ``None`` on timeout / no match. The
-    topic slug is never printed (collab_loop enforces this); a non-match is no action."""
-    # pragma: no cover - real ntfy IO; the binding logic it feeds is unit-tested
-    import subprocess  # noqa: PLC0415
+# How long to keep the bounded `poll` open waiting for a tap-to-answer reply before
+# giving up (NO_ACTION). `poll` streams forever, so we bound it with a subprocess timeout
+# and read whatever it flushed; the binding layer treats a timeout as no-action.
+_NTFY_GATE_POLL_SECONDS = 3600  # 1h, matching the developer-reply SLA in CLAUDE.md
 
-    subprocess.run(
-        [sys.executable, "scripts/collab_loop.py", "ask", question, *choices],
-        capture_output=True,
-        text=True,
-    )
-    proc = subprocess.run(
-        [sys.executable, "scripts/collab_loop.py", "check", "1h", *choices],
-        capture_output=True,
-        text=True,
-    )
-    for line in proc.stdout.splitlines():
+
+def _match_from_poll_stdout(stdout: str, choices: tuple[str, ...]) -> str | None:
+    """Return the first allow-listed label from a ``poll``-shaped stdout, or ``None``.
+
+    ``collab_loop.py poll`` prints a matched reply as ``REPLY-MATCH: <label>`` (one per
+    line). ``check`` instead prints ``ANSWER-MATCH`` -- which this parser deliberately does
+    NOT accept, so the seam can only be fed by ``poll`` (seam-2b: the old ``check``-based
+    transport produced ``ANSWER-MATCH`` and this parser dropped every approval). The label
+    must still be in ``choices`` (act on the allow-list label, never raw text; R8).
+
+    Args:
+        stdout: Captured stdout from a ``poll`` subprocess (may be partial on timeout).
+        choices: The gate's fixed allow-list.
+
+    Returns:
+        The matched canonical label, or ``None`` on no match.
+    """
+    for line in stdout.splitlines():
         if line.startswith("REPLY-MATCH:"):
             label = line.split(":", 1)[1].strip()
             return label if label in choices else None
     return None
+
+
+def _ntfy_gate_transport(
+    question: str,
+    choices: tuple[str, ...],
+    token: str,
+    *,
+    runner: Callable[..., object] | None = None,
+) -> str | None:
+    """Route one gate over ntfy (collab_loop): push the question + labels, then drive a
+    BOUNDED ``poll`` for a matching reply. Returns the matched LABEL or ``None`` on timeout /
+    no match. The topic slug is never printed (collab_loop enforces this); a non-match is no
+    action.
+
+    seam-2b (ADR-0028): the transport polls via ``collab_loop.py poll`` (which prints
+    ``REPLY-MATCH``), NOT ``check`` (which prints ``ANSWER-MATCH`` and was silently dropped by
+    the ``REPLY-MATCH`` parser, so every AFK approval was lost). It passes ``--exit-on-match``
+    so ``poll`` RETURNS as soon as a matching reply lands (a clean exit), and the answer is read
+    from the normal ``proc.stdout`` -- the subprocess ``timeout`` becomes the overall give-up
+    SLA (``_NTFY_GATE_POLL_SECONDS``), not the per-gate wait, and the ``TimeoutExpired`` branch
+    is only the backstop for the no-answer case. ``poll`` also avoids ``check``'s 1h stale-replay
+    lookback, so a reply to an OLD gate cannot satisfy this one.
+
+    Poll-lock ownership (Finding 4): this ``poll`` claims the single-poller coordination lock
+    (``collab_loop`` LOCK_PATH) for the gate's duration. During an autonomous goal-loop run the
+    driver therefore OWNS the ntfy poll channel at each gate; no separate standing developer
+    poll-monitor may be armed concurrently, or the two pollers would contend over the one lock
+    and a reply could route to the wrong poller (silent re-park). This matches the always-on
+    single-poller discipline (exactly one live poller per topic; ADR-0019).
+
+    Args:
+        question: The gate question to push.
+        choices: The fixed allow-list of answer labels.
+        token: The per-gate nonce (binding is handled by BoundGateRouter, not here).
+        runner: Injectable subprocess runner (defaults to ``subprocess.run``) so the
+            transport is unit-testable without real ntfy IO.
+
+    Returns:
+        The matched canonical label, or ``None`` on timeout / no match.
+    """
+    import subprocess  # noqa: PLC0415
+
+    run = runner or subprocess.run
+    run(
+        [sys.executable, "scripts/collab_loop.py", "ask", question, *choices],
+        capture_output=True,
+        text=True,
+    )
+    poll_cmd = [sys.executable, "scripts/collab_loop.py", "poll", "--exit-on-match", *choices]
+    try:
+        proc = run(
+            poll_cmd,
+            capture_output=True,
+            text=True,
+            timeout=_NTFY_GATE_POLL_SECONDS,
+        )
+        stdout = getattr(proc, "stdout", "") or ""
+    except subprocess.TimeoutExpired as exc:
+        # Backstop only: `--exit-on-match` makes `poll` return promptly once a reply lands, so
+        # the happy path reads `proc.stdout` above. We reach here only if NO match arrived within
+        # the SLA window; read whatever `poll` flushed (typically nothing to match). `exc.stdout`
+        # is str under `text=True`.
+        stdout = exc.stdout or ""
+    return _match_from_poll_stdout(stdout, choices)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
