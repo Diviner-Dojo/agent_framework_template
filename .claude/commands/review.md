@@ -190,6 +190,39 @@ print(f'ELIGIBLE: PR #{pr[\"number\"]}')
 
 Read the files identified by scope detection (or specified by the user). Understand what the code does, what changed (if reviewing a diff), and what risks are present.
 
+## Step 1.5: Prior Findings on These Files
+
+Before risk assessment, check what prior reviews already flagged on these files. This surfaces
+recurring issues and prevents duplication. Uses the `severity-calibration` skill definitions
+for interpreting severity labels.
+
+```python
+import sqlite3, pathlib, sys
+# Replace <SCOPE_FILES> with the file-path list from Step 0, e.g. ['src/foo.py', 'scripts/bar.py']
+files = [pathlib.Path(f).name for f in <SCOPE_FILES>]  # basenames only
+try:
+    conn = sqlite3.connect("metrics/evaluation.db")
+    rows = conn.execute("""
+        SELECT severity, category, summary, discussion_id
+        FROM findings
+        WHERE is_noise = 0
+          AND (""" + " OR ".join("raw_excerpt LIKE ? OR summary LIKE ?" for _ in files) + """)
+        ORDER BY created_at DESC LIMIT 10
+    """, [v for f in files for v in (f"%{f}%", f"%{f}%")]).fetchall()
+    conn.close()
+    if rows:
+        print(f"[prior findings — {len(rows)} matches]")
+        for r in rows:
+            print(f"  [{r[0]}] {r[1]}: {r[2]}  ({r[3]})")
+    else:
+        print("[prior findings — none]")
+except sqlite3.OperationalError:
+    print("[prior findings — DB/table/column not available, skipping]")
+```
+
+If matches are found, include them in the context brief to specialists so they can note
+whether a finding is recurring. If the DB is absent, skip silently and continue.
+
 ## Step 2: Risk Assessment
 
 Assess the risk level of the changes:
@@ -324,6 +357,11 @@ Select specialists based on what's being reviewed:
 - **Deep mode** (`--deep`): history-analyst (git history context)
 
 ## Step 5: Dispatch Specialists
+
+For severity calibration guidance, consult `.claude/skills/severity-calibration/SKILL.md` and
+include a brief reminder in each specialist prompt: state an explicit `Severity: <tier>` marker
+for each finding so the capture pipeline can parse it correctly. See the severity-calibration
+skill for tier definitions, one-sentence scope tests, and examples.
 
 For each specialist, use the Task tool with the code content and review context. If REVIEW.md was found in Step 3.7, inject its content into EVERY specialist prompt:
 
