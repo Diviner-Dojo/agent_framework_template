@@ -46,6 +46,27 @@ If you are about to commit without having run `/review`, **STOP**. Run `/review`
 
 If you are about to implement a multi-file feature without `/plan`, **STOP**. The cost of catching a bad design after implementation is far higher than catching it at spec review time.
 
+## Calibration Loop (closes the audit→tighten loop — ADR-0024)
+
+The framework *computes* a calibration signal (`agent_effectiveness.confidence_calibration`)
+and classifies findings (severity/category/is_noise) but historically never read those signals
+back to tighten its classifier — it only clustered post-hoc. `scripts/audit_calibration.py`
+closes that loop, a back-flow pattern from `dan_research_karpathy_wiki` (SPEC-20260610-205507 D2).
+
+- **When to run:** periodically (e.g. at `/retro`/`/meta-review` time, or after a batch of
+  reviews), not on every commit. It is **advisory — never a gate-blocking step**; the quality
+  gate's pass/fail meaning is unaffected.
+- **What it does:** reads `metrics/evaluation.db` read-only, surfaces drift signals (per-agent
+  calibration error, category is_noise rate, heuristic-vs-recorded severity disagreement), and
+  writes **proposals** to `memory/calibration-proposals/CALIB-<ts>.md` (append-only) plus a line
+  to `metrics/calibration_log.jsonl`.
+- **Human gate (non-negotiable):** proposals are `status: pending` **communication** artifacts,
+  not instruction files. Tightening a classifier surface (`scripts/extract_findings.py` patterns
+  → full `/review`; `.claude/skills/severity-calibration/SKILL.md` → Steward gate) is a
+  **developer action**. The agent must **never** edit a classifier surface off a proposal — that
+  would be self-modification (Principle #7; Prime Objective human-mediated enforcement). The
+  `confidence_calibration` metric is a rough proxy; treat single-signal proposals as low-confidence.
+
 ## Relationship to Other Rules
 
 - `committing-changes` skill — defines the commit sequence (quality gate → review → education gate → commit)
