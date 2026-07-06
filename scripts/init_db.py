@@ -14,8 +14,14 @@ DB_PATH = Path(__file__).parent.parent / "metrics" / "evaluation.db"
 # identifiers (`?` is values-only), so they are interpolated — these sets make
 # the safety explicit and fail loudly if a future entry ever sources an
 # identifier from config/input (security review B1).
-_MIGRATION_ALLOWED_TABLES = {"discussions", "turns"}
-_MIGRATION_ALLOWED_TYPES = {"TEXT", "REAL", "INTEGER", "TEXT DEFAULT '[]'"}
+_MIGRATION_ALLOWED_TABLES = {"discussions", "turns", "findings"}
+_MIGRATION_ALLOWED_TYPES = {
+    "TEXT",
+    "REAL",
+    "INTEGER",
+    "TEXT DEFAULT '[]'",
+    "INTEGER NOT NULL DEFAULT 0",
+}
 _MIGRATION_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -149,6 +155,10 @@ def init_db(db_path: Path = DB_PATH, *, quiet: bool = False) -> None:
             summary         TEXT NOT NULL,
             raw_excerpt     TEXT,
             resolved        BOOLEAN NOT NULL DEFAULT 0,
+            -- Noise rows (is_noise=1) carry an UNMAINTAINED severity — never
+            -- aggregate severity without WHERE is_noise = 0 (ADR-0022; Steward
+            -- condition 1, DISC-20260613-000652).
+            is_noise        INTEGER NOT NULL DEFAULT 0,
             created_at      DATETIME NOT NULL
         );
 
@@ -397,6 +407,9 @@ def init_db(db_path: Path = DB_PATH, *, quiet: bool = False) -> None:
         ("discussions", "total_tokens_in", "INTEGER"),
         ("discussions", "total_tokens_out", "INTEGER"),
         ("discussions", "total_cache_tokens", "INTEGER"),
+        # ADR-0022: knowledge-loop revival — noise flag for findings (T4-A).
+        # NOT NULL DEFAULT 0 is safe for ALTER TABLE (constant default, no table rewrite).
+        ("findings", "is_noise", "INTEGER NOT NULL DEFAULT 0"),
     ]
     # DDL identifiers are interpolated (SQLite can't bind them); the allowlist
     # guard fails loudly if a future entry is ever non-literal (security B1; the
@@ -408,6 +421,12 @@ def init_db(db_path: Path = DB_PATH, *, quiet: bool = False) -> None:
             conn.commit()
         except sqlite3.OperationalError:
             pass  # Column already exists
+
+    # This index targets a migrated column, so it must come AFTER the migration
+    # loop — in the main index block it fails on any pre-ADR-0022 database
+    # (table exists without is_noise, CREATE TABLE IF NOT EXISTS skips it).
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_findings_is_noise ON findings(is_noise)")
+    conn.commit()
 
     conn.close()
     if not quiet:
