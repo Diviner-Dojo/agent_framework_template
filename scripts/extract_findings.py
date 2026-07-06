@@ -19,20 +19,63 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "metrics" / "evaluation.db"
 DISCUSSIONS_DIR = PROJECT_ROOT / "discussions"
 
-# Severity keywords used for heuristic classification
+# Severity patterns for heuristic classification (scanned against the topical
+# summary, not the full body — prevents body-mention pollution of critical tier).
+# Qualified phrases required for critical; bare terms map to high/medium.
+# Word-boundary matches (\\b) prevent substring-only false positives.
+# See ADR-0022 and severity-calibration skill for tier definitions.
 _SEVERITY_PATTERNS: dict[str, list[str]] = {
-    "critical": ["security vulnerability", "data loss", "injection", "authentication bypass"],
-    "high": [
-        "breaking change",
-        "race condition",
-        "memory leak",
-        "unhandled error",
-        "sql injection",
+    "critical": [
+        r"\binjection vulnerability\b",
+        r"\bsql injection\b",
+        r"\bcommand injection\b",
+        r"\bcode injection\b",
+        r"\bsecurity vulnerability\b",
+        r"\bdata loss\b",
+        r"\bauthentication bypass\b",
+        r"\bremote code execution\b",
+        r"\bprivilege escalation\b",
     ],
-    "medium": ["missing validation", "missing test", "error handling", "performance"],
-    "low": ["style", "naming", "documentation", "readability", "typo"],
-    "info": ["suggestion", "consider", "nice to have", "optional", "minor"],
+    "high": [
+        r"\bbreaking change\b",
+        r"\brace condition\b",
+        r"\bmemory leak\b",
+        r"\bunhandled error\b",
+        r"\binjection\b",
+        r"\bauth\b",
+        r"\bcorruption\b",
+        r"\bdata integrity\b",
+    ],
+    "medium": [
+        r"\bmissing validation\b",
+        r"\bmissing test\b",
+        r"\berror handling\b",
+        r"\bperformance\b",
+        r"\bsecurity\b",
+    ],
+    "low": [r"\bstyle\b", r"\bnaming\b", r"\bdocumentation\b", r"\breadability\b", r"\btypo\b"],
+    "info": [
+        r"\bsuggestion\b",
+        r"\bconsider\b",
+        r"\bnice to have\b",
+        r"\boptional\b",
+        r"\bminor\b",
+    ],
 }
+
+# Explicit severity marker — parse and trust over keyword heuristics.
+# Matches "Severity: HIGH", "[CRITICAL]", "**HIGH**:", "(severity: medium)",
+# "Severity: high," etc. The closing class accepts common trailing punctuation
+# so a sentence-final tier word still parses (REV DISC-20260612-144008 fold:
+# the prior class rejected ')' '.' ',' — "(severity: medium)" was documented
+# here as supported but silently fell through to keyword heuristics).
+_EXPLICIT_SEVERITY_RE = re.compile(
+    r"(?:severity\s*[:=]\s*|"  # "Severity: X" or "Severity=X"
+    r"\[|\*{1,2})"  # "[X]" or "**X**" or "*X*"
+    r"(critical|high|medium|low|info)"
+    r"(?:\]|\*{0,2}(?:[:\s.,;)]|$))",  # closing: ], or stars then punct/space/EOL
+    re.IGNORECASE,
+)
 
 # Category keywords for classification
 _CATEGORY_PATTERNS: dict[str, list[str]] = {
@@ -46,7 +89,7 @@ _CATEGORY_PATTERNS: dict[str, list[str]] = {
 }
 
 
-# Verdict / round-marker boilerplate patterns (ADR-pending F2, BUILD_STATUS 2026-05-28).
+# Verdict / round-marker boilerplate patterns (ADR-0022, BUILD_STATUS 2026-05-28).
 # Synthesis verdict headers and round/confidence markers are NOT code findings. When they
 # leak into the findings table their summaries pollute the severity histogram and the token
 # sets fed to mine_patterns (pattern_hash consumes the summary), producing phantom
@@ -74,16 +117,40 @@ _BARE_VERDICT_RE = re.compile(
     r"\s*[.:]?\s*$",
     re.IGNORECASE,
 )
+# (a) Markdown section headers that are pure review scaffolding — no content of their own.
+# Verified not to match "Missing validation…" or "pass" as ordinary English (anchor+word-boundary).
+_SCAFFOLD_HEADER_RE = re.compile(
+    r"^\s*#{1,6}\s*"
+    r"(findings|verdict|summary|recommendations?|blocking|advisori?e?s?)\s*$",
+    re.IGNORECASE,
+)
+# (b) Finding-count summary lines, e.g. "8 findings (1 HIGH blocking…)", "3 findings".
+_FINDING_COUNT_RE = re.compile(r"^\s*\d+\s+findings?\b", re.IGNORECASE)
+# (c) Per-agent review header lines, e.g. "Security Review: 5 findings", "QA Review (0.91):".
+_AGENT_REVIEW_HEADER_RE = re.compile(
+    r"^\s*(qa|security|architecture|performance|ux|docs?|independent[- ]perspective)"
+    r"[\w /\-]*\breview\b\s*[:(]",
+    re.IGNORECASE,
+)
+# (d) Process-scaffold lines. Anchored with start-of-line to avoid matching ordinary prose
+# containing "validation" (e.g. "Missing validation on the…" starts with "Missing", not these).
+_PROCESS_SCAFFOLD_RE = re.compile(
+    r"^\s*(validation pass complete|guided walkthrough\b|walkthrough for\b|scan complete\b"
+    r"|scanning\b|analysis complete\b)",
+    re.IGNORECASE,
+)
 
 
 def _is_verdict_boilerplate(summary: str) -> bool:
-    """Return True if a summary is a synthesis verdict / round marker, not a real finding.
+    """Return True if a summary is scaffold boilerplate rather than a real finding.
+
+    Intentionally imported by ``scripts/backfill_finding_noise.py`` (single source of truth).
 
     Args:
         summary: The extracted summary (first line/sentence of finding content).
 
     Returns:
-        True if the summary is verdict/round/confidence boilerplate that should not be
+        True if the summary is verdict/round/confidence/scaffold boilerplate that should not be
         recorded as a finding.
     """
     return bool(
@@ -91,15 +158,41 @@ def _is_verdict_boilerplate(summary: str) -> bool:
         or _ROUND_MARKER_RE.match(summary)
         or _CONFIDENCE_ONLY_RE.match(summary)
         or _BARE_VERDICT_RE.match(summary)
+        or _SCAFFOLD_HEADER_RE.match(summary)
+        or _FINDING_COUNT_RE.match(summary)
+        or _AGENT_REVIEW_HEADER_RE.match(summary)
+        or _PROCESS_SCAFFOLD_RE.match(summary)
     )
 
 
-def _classify_severity(content: str) -> str:
-    """Classify finding severity based on content keywords."""
-    content_lower = content.lower()
-    for severity, patterns in _SEVERITY_PATTERNS.items():
-        if any(p in content_lower for p in patterns):
-            return severity
+def _classify_severity(content: str, summary: str | None = None) -> str:
+    """Classify finding severity based on content keywords.
+
+    Intentionally imported by ``scripts/backfill_finding_noise.py`` (single source of truth).
+
+    Args:
+        content: Full event body; scanned for explicit severity markers.
+        summary: Topical first sentence. Keyword heuristics scan this instead of the
+            full body to prevent body-mention pollution. Derived from *content* if absent.
+
+    Returns:
+        Severity string: 'critical', 'high', 'medium', 'low', or 'info'.
+    """
+    # (1) Explicit marker wins — specialist-stated severity is authoritative.
+    match = _EXPLICIT_SEVERITY_RE.search(content)
+    if match:
+        return match.group(1).lower()
+
+    # (2) Keyword heuristics on the topical summary only (not the full body), using
+    # word-boundary regex matches. Scan all tiers in severity order; return the
+    # highest tier that matches (first-match in severity order == highest-tier-wins).
+    scan_text = (summary if summary is not None else _extract_summary(content)).lower()
+    _TIER_ORDER = ("critical", "high", "medium", "low", "info")
+    for tier in _TIER_ORDER:
+        if any(re.search(p, scan_text) for p in _SEVERITY_PATTERNS.get(tier, [])):
+            return tier
+
+    # (3) Default medium when nothing matches.
     return "medium"
 
 
@@ -196,7 +289,7 @@ def extract_findings(discussion_id: str) -> int:
         if not summary or _is_verdict_boilerplate(summary):
             continue
 
-        severity = _classify_severity(content)
+        severity = _classify_severity(content, summary)
         category = _classify_category(content)
 
         # Extract a raw excerpt (first 500 chars)

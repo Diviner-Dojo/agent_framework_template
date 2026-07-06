@@ -49,20 +49,21 @@ def mine_patterns(discussion_id: str | None = None) -> int:
     conn.execute("PRAGMA foreign_keys=ON")
     now = datetime.now(UTC).isoformat()
 
-    # Get findings to process
+    # Get findings to process — exclude noise rows from both query branches (ADR-0022).
     if discussion_id:
         findings = conn.execute(
-            "SELECT id, discussion_id, category, summary FROM findings WHERE discussion_id = ?",
+            """SELECT id, discussion_id, category, summary FROM findings
+               WHERE discussion_id = ? AND is_noise = 0""",
             (discussion_id,),
         ).fetchall()
     else:
-        # Get all findings not yet associated with a pattern sighting
+        # Get all non-noise findings not yet associated with a pattern sighting
         findings = conn.execute(
             """SELECT f.id, f.discussion_id, f.category, f.summary
                FROM findings f
                LEFT JOIN pattern_sightings ps
                    ON ps.discussion_id = f.discussion_id AND ps.category = f.category
-               WHERE ps.id IS NULL""",
+               WHERE ps.id IS NULL AND f.is_noise = 0""",
         ).fetchall()
 
     if not findings:
