@@ -43,6 +43,48 @@ grep -ri "<pattern keyword>" memory/patterns/
 ```
 Check if a promoted pattern addresses this need.
 
+### 5. Captured Findings (metrics/evaluation.db)
+Query non-noise findings by category or keyword to surface what prior reviews flagged:
+
+```python
+import sqlite3
+conn = sqlite3.connect("metrics/evaluation.db")
+try:
+    rows = conn.execute("""
+        SELECT severity, category, summary, discussion_id
+        FROM findings
+        WHERE is_noise = 0
+          AND (category LIKE '%<keyword>%' OR summary LIKE '%<keyword>%')
+        ORDER BY created_at DESC
+        LIMIT 20
+    """).fetchall()
+    for r in rows:
+        print(f"[{r[0]}] {r[1]}: {r[2]}  ({r[3]})")
+except sqlite3.OperationalError:
+    # is_noise column absent (pre-migration DB) — retry without filter
+    try:
+        rows = conn.execute("""
+            SELECT severity, category, summary, discussion_id
+            FROM findings
+            WHERE category LIKE '%<keyword>%' OR summary LIKE '%<keyword>%'
+            ORDER BY created_at DESC LIMIT 20
+        """).fetchall()
+        for r in rows:
+            print(f"[{r[0]}] {r[1]}: {r[2]}  ({r[3]})")
+    except sqlite3.OperationalError:
+        print("[info] findings table not available — skip")
+conn.close()
+```
+
+### 6. Discussion Transcripts (discussions/)
+Full-text search across all sealed discussion transcripts:
+
+```bash
+grep -ril "<keyword>" discussions/*/transcript.md
+```
+
+This surfaces discussions where the topic was debated, even if no finding was extracted.
+
 ## How to Use Results
 
 - **Solution path found**: Reference it in your plan or build. Explain why you're following or diverging from the documented path.

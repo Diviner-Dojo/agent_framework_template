@@ -55,15 +55,20 @@ import sqlite3
 conn = sqlite3.connect('metrics/evaluation.db')
 try:
     rows = conn.execute('''
-        SELECT id, finding_pattern, category, sighting_count, first_seen, last_seen
-        FROM promotion_candidates WHERE promoted = 0
-        ORDER BY sighting_count DESC, first_seen
+        SELECT pc.id, pc.category, pc.sighting_count, pc.first_seen, pc.last_seen,
+               (SELECT ps.summary FROM pattern_sightings ps
+                WHERE ps.pattern_hash = pc.finding_pattern
+                ORDER BY ps.id LIMIT 1) AS summary
+        FROM promotion_candidates pc
+        WHERE pc.promoted = 0
+        ORDER BY pc.sighting_count DESC, pc.first_seen
     ''').fetchall()
     if rows:
         print(f'=== {len(rows)} Pending Promotion Candidates ===')
-        for i, (cid, fp, cat, sightings, first, last) in enumerate(rows, 1):
-            print(f'  {i}. [{cat}] pattern_hash={fp[:12]}…')
-            print(f'     Sightings: {sightings} | First: {first[:10]} | Last: {last[:10]}')
+        for i, (cid, cat, sightings, first, last, summary) in enumerate(rows, 1):
+            label = summary[:80] if summary else '(no summary)'
+            print(f'  {i}. [{cat}] \"{label}\"')
+            print(f'     Sightings: {sightings} | First: {first[:10]} | Last: {last[:10]} | id={cid}')
     else:
         print('No pending promotion candidates in the queue.')
 except sqlite3.OperationalError:

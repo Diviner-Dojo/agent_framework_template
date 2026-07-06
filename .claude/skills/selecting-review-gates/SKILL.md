@@ -5,6 +5,13 @@ description: Risk tiers (low/medium/high/critical), the specialist-selection mat
 
 # Review Gates
 
+## Severity Calibration
+
+For consistent severity classification, use the `.claude/skills/severity-calibration/SKILL.md`
+rubric. Specialists must state an explicit `Severity: <tier>` marker on each finding so the
+capture pipeline can parse it. When in doubt, default down (see the skill for the default-down
+rule and concrete tier examples).
+
 ## Minimum Quality Thresholds
 - Test coverage >= 80% for new and modified code
 - No critical or high-severity security findings left unaddressed
