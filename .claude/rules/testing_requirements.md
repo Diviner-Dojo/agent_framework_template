@@ -47,3 +47,18 @@ paths:
 - Regression test names should describe the bug being prevented: `test_speed_setting_persists_across_audio_source_changes`
 - When modifying a file that has existing regression tests, verify they still pass and still test the right behavior
 - Regression tests must NOT be deleted or weakened without explicit developer approval
+
+## Safety-Critical Capabilities (ship the proof with the capability)
+- A new **control-flow or safety-critical capability** — a driver/loop, an autonomy gate, a
+  verifier-integrity mechanism, anything whose value proposition is *provable reliability under
+  pressure* — MUST ship its tests in the **same change** that introduces it. The proof is never
+  deferred to a follow-up.
+- Each safety invariant (fail-closed path, tamper/integrity guard, gate binding, authorization
+  filter) must have a test that would **fail if the guard were removed or weakened**.
+- Rationale: the aggregate repo coverage floor (>= 80%) can hide a 0%-covered safety core inside an
+  otherwise-covered repo — so a safety-critical module carries this obligation **independently of the
+  aggregate number**. A capability sold on reliability cannot defer the proof.
+- Human-enforced at `/review` (Principle #4); a mechanical "safety-critical module lacks a paired
+  test" check is a scoped follow-on. First named after the goal-loop first-use backflow (ADR-0028),
+  where the loop's `tests/test_goal_loop.py` was cited as AC1–AC12 but dropped in a derived copy,
+  letting transport + integrity defects ship unguarded.

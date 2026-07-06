@@ -14,7 +14,16 @@ example** drawn from `loops/starter/` — the grill-me cadence.
 > Never hand-fill the template from blank. The interview exists because the *shape* of "done" is
 > where loops succeed or fail. If the developer is at a fork, **stop and ask** (Principle #9).
 
-## Step 0 — Gatekeeper: is this even loop-shaped? (run BEFORE authoring)
+## Step 0 — Lead with the goal (state it plainly, clarify up front)
+
+Before any field-by-field interview, **say the goal back in one plain-language sentence** and **ask
+the clarifying questions up front** — each with a *recommended answer* — until you and the developer
+agree on what "done" means and what is in / out of scope. Batch the questions; do not trickle them.
+This single step was the biggest contributor to a sound design in the first real loop (VP, ADR-0028):
+naming the goal and resolving the open forks *before* filling fields prevents a crisp-looking contract
+that verifies the wrong thing. Only once the goal is agreed do you gatekeep, then interview.
+
+## Step 1 — Gatekeeper: is this even loop-shaped? (run before authoring)
 
 A goal-loop iterates **build → verify → refine** to a *verifiable* bar. If "done" cannot be decided
 by a machine or an independent checker, it is the wrong tool. Refuse, and route:
@@ -31,7 +40,7 @@ candidate, and a human reviews every milestone. Refusing them would just push th
 
 If the goal passes the gate, say so in one line and start the interview.
 
-## Step 1 — The guided interview (one field at a time)
+## Step 2 — The guided interview (one field at a time)
 
 For each field: ask **one** question, propose a **recommended answer**, show a **worked example**,
 and confirm before moving on. Order matters — `success_criteria` + `verify` + `termination` are the
@@ -56,6 +65,15 @@ and confirm before moving on. Order matters — `success_criteria` + `verify` + 
    the work*?" A `verify` with a good answer to that question is the one to keep. (This counters the
    recommended-answer cadence pre-loading ratification — the same lesson the design grill learned.)
 
+   **Coaching — fixtures are the answer key; they must be captured, not hand-authored.** If a criterion
+   verifies a capability against captured fixtures / golden files, those fixtures must carry
+   **provenance** proving they came from a real run, not hand-written to match — a hand-authored answer
+   key makes the capability self-grading. Declare such paths in **`protected_paths`** so a tick that
+   touches one (edit / rename / delete) trips the tamper tripwire and gates. And a fixture-verified goal
+   is only a *candidate* at goal-met: require a **mandatory live confirm** (a fresh real run + the
+   independent checker) before declaring done — the loop proves *capability against captured truth*, it
+   never establishes truth itself (ADR-0028, the keystone an adversarial pass caught).
+
 3. **`termination`** — "When should it stop trying?" Recommended defaults: `max_iterations: 8`,
    `no_progress: 2`, `no_progress_definition: net-progress` (oscillation-proof),
    `budget_output_tokens: 200000`. Lower them for a tight, cheap goal (see `docs-sweep`: 6 / 2 / 120k).
@@ -70,12 +88,12 @@ and confirm before moving on. Order matters — `success_criteria` + `verify` + 
 
 7. **`autonomy_level`** — `L1` (report-only, always allowed) or `L2` (assisted; requires the
    Autonomous Execution Authorization ACTIVE on an in-scope feature branch, never `main`). Critical-
-   risk → force `L1` + `mandatory_full_review: true` (Step 0).
+   risk → force `L1` + `mandatory_full_review: true` (Step 1).
 
 8. **`derived_from`** — a `SPEC-…` id when `/plan` emitted this from a spec's acceptance criteria;
    `null` for a small goal authored directly.
 
-## Step 2 — Validate before you run
+## Step 3 — Validate before you run
 
 The interview front-loads exactly what the driver enforces — confirm all of it, then prove it
 mechanically:
@@ -83,6 +101,11 @@ mechanically:
 - **load-bearing trio present** (`success_criteria` + `verify` + `termination`);
 - **≥1 deterministic / `quality_gate` criterion** — an **all-judge contract is rejected** (a loop
   must never be the sole judge of its own work, R5.3);
+- **not `quality_gate`-only** — a contract whose only deterministic checks are `quality_gate` (no
+  independent `llm-judge` skeptic) is rejected: `quality_gate` runs over all of `src/`, a surface the
+  tamper tripwire's filename allow-list cannot fully protect, so an independent checker must read the
+  goal-met candidate (ADR-0028). Regardless of shape, the driver **always runs an independent skeptic
+  on the goal-met candidate** before declaring done (R5.4) — you cannot opt out of that re-verify;
 - **judge fraction ≤ `max_judge_fraction`**;
 - every **`llm-judge`** criterion is **`verify_owner: checker`**;
 - **unique criterion ids**; a known `no_progress_definition`.

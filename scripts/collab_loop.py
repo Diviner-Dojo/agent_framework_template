@@ -360,7 +360,7 @@ def _emit(
     seen: set[str],
     label: str,
     choices: list[str] | None = None,
-) -> None:
+) -> bool:
     """Fetch one topic's new messages and print each surfaced reply (one per line).
 
     When ``choices`` is given, replies are validated against the allow-list at this
@@ -368,14 +368,23 @@ def _emit(
     ``REPLY-INVALID: ...`` (the raw text is never surfaced). Without choices it is
     an open free-text question and prints ``REPLY: <text>`` (still untrusted — the
     consuming agent must honour the allow-list mandate).
+
+    Returns:
+        True iff at least one allow-list MATCH was surfaced (a ``REPLY-MATCH`` line), so a
+        caller polling with ``exit_on_match`` can stop as soon as a valid answer lands. The
+        whole fetch is still printed before returning (streaming semantics are unchanged).
     """
     text = _http_get(server, topic, since, token, label)
     if text is None:
-        return
+        return False
+    matched = False
     for msg in _iter_replies(text, require_empty_title=require_empty_title, seen=seen):
         kind, payload = _classify_reply_payload(parse_reply_text(msg), choices)
         prefix = f"REPLY-{kind}" if kind else "REPLY"
         print(f"{prefix}: {payload}", flush=True)
+        if kind == "MATCH":
+            matched = True
+    return matched
 
 
 def ask(
@@ -442,7 +451,8 @@ def poll(
     choices: list[str] | None = None,
     sleep: Callable[[float], None] = time.sleep,
     max_iterations: int | None = None,
-    emit_fn: Callable[..., None] | None = None,
+    emit_fn: Callable[..., object] | None = None,
+    exit_on_match: bool = False,
 ) -> None:
     """Stream developer answers forever (run under a persistent Monitor).
 
@@ -459,6 +469,10 @@ def poll(
         sleep: Sleep function (injected for testing).
         max_iterations: Stop after N poll rounds (None = unbounded; injected for testing).
         emit_fn: Per-topic fetch+emit function (defaults to :func:`_emit`; injected for testing).
+        exit_on_match: When True, RETURN (clean exit) as soon as a poll round surfaces a
+            ``REPLY-MATCH`` (a valid allow-listed answer). Used by the goal-loop gate transport
+            so a gate resolves promptly instead of streaming for the full SLA window; the
+            default (False) preserves the forever-streaming behavior other callers rely on.
     """
     emit = emit_fn or _emit
     # Backlog recovery (automated, Lesson 1): baseline `since` to the most recent ask's
@@ -484,8 +498,9 @@ def poll(
         # Validate against the lockfile's CURRENT choices (updated by each `ask`),
         # falling back to the choices this poller was armed with.
         active_choices = lock_choices(choices)
+        matched = False
         for source_topic, require_empty_title, label in sources:
-            emit(
+            if emit(
                 server,
                 source_topic,
                 since,
@@ -494,7 +509,13 @@ def poll(
                 seen=seen,
                 label=label,
                 choices=active_choices,
-            )
+            ):
+                matched = True
+        if exit_on_match and matched:
+            # A valid allow-listed answer landed this round; return promptly (seam-2b) so a
+            # goal-loop gate does not block for the full SLA. The whole round was still emitted.
+            print("INFO collab loop exiting on match", flush=True)
+            return
         iterations += 1
         if max_iterations is not None and iterations >= max_iterations:
             return
@@ -566,8 +587,12 @@ def main(argv: list[str] | None = None) -> int:
             window = args[1] if len(args) > 1 else "1d"
             check(server, topic, reply_topic, token, window, choices=args[2:] or None)
             return 0
-        # poll [choiceA choiceB ...] — trailing args arm the allow-list at the boundary.
-        poll(server, topic, reply_topic, token, choices=args[1:] or None)
+        # poll [--exit-on-match] [choiceA choiceB ...] — trailing args arm the allow-list at the
+        # boundary; --exit-on-match makes poll return on the first valid reply (goal-loop gate).
+        poll_args = args[1:]
+        exit_on_match = "--exit-on-match" in poll_args
+        choices = [a for a in poll_args if a != "--exit-on-match"] or None
+        poll(server, topic, reply_topic, token, choices=choices, exit_on_match=exit_on_match)
         return 0
     except RuntimeError as exc:
         # Config/validation failure — the message is topic-safe by construction.

@@ -30,7 +30,7 @@ termination:
   no_progress: 2
   # net-progress (default, oscillation-proof): the no_progress counter increments when
   # the count of GREEN criteria did not increase this tick; resets when it does.
-  no_progress_definition: net-progress    # net-progress | criterion-id-consecutive | fixed-red-set
+  no_progress_definition: net-progress    # net-progress | criterion-id-consecutive
   budget_output_tokens: 200000            # checked AFTER each complete tick
 
 # Judge governance (R5.3): at least one deterministic/quality_gate criterion is required
@@ -46,6 +46,12 @@ non_goals:
 # passed, never because anchor/prose says so.
 anchor_context:
   - "[path to spec / ADR / relevant files]"
+
+# Author-declared fixture/baseline/golden paths the criteria read (the "answer key"). A tick that
+# touches one — edit, rename, or delete — trips the tamper tripwire and forces the human gate, so the
+# loop cannot quietly weaken its own ground truth. Paths normalize like diff paths; a leading-slash or
+# empty entry is rejected by validate_contract (fail closed). Omit/empty if no criterion reads fixtures.
+protected_paths: []
 
 # L1 report-only (always allowed) | L2 assisted (requires the Autonomous Execution
 # Authorization block ACTIVE on an in-scope branch). L3 + triggers are Phase 2.

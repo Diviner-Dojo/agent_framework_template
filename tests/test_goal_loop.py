@@ -1020,3 +1020,374 @@ def test_real_capture_sink_close_calls_closer():
     sink = gl.RealCaptureSink("DISC-T", writer=lambda *a, **k: 1, closer=closed.append)
     sink.close()
     assert closed == ["DISC-T"]
+
+
+# --------------------------------------------------------------------------- #
+# ADR-0028 H1 — quality_gate-only contract rejected (must carry a skeptic)
+# --------------------------------------------------------------------------- #
+def test_quality_gate_only_rejected():
+    # A contract whose ONLY deterministic criterion(s) are quality_gate and which has no
+    # llm-judge grades itself with one boolean no independent checker reads; rejected (H1).
+    with pytest.raises(gl.ContractError, match="quality_gate-only"):
+        gl.validate_contract(make_contract([det("SC1", verify="quality_gate")]))
+
+
+def test_quality_gate_only_multiple_still_rejected():
+    # Even several quality_gate criteria are still self-graded over the same src/ surface.
+    crits = [det("SC1", verify="quality_gate"), det("SC2", verify="quality_gate")]
+    with pytest.raises(gl.ContractError, match="quality_gate-only"):
+        gl.validate_contract(make_contract(crits))
+
+
+def test_quality_gate_plus_command_is_allowed():
+    # quality_gate + a non-quality_gate deterministic command is a legitimate shape (H1
+    # rejects only the qg-ONLY case; the always-skeptic guards this shape at runtime).
+    crits = [det("SC1", verify="quality_gate"), det("SC2", verify="pytest tests/test_x.py")]
+    gl.validate_contract(make_contract(crits))  # does not raise
+
+
+def test_quality_gate_plus_judge_is_allowed():
+    # A quality_gate criterion paired with an independent llm-judge is a legitimate shape:
+    # the judge is a distinct, independent reader of the candidate, so H1 does not fire.
+    crits = [det("SC1", verify="quality_gate"), judge("J1")]
+    gl.validate_contract(make_contract(crits))  # does not raise
+
+
+# --------------------------------------------------------------------------- #
+# ADR-0028 regex — added config files trip the tamper tripwire
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("path", ["setup.py", "pytest.ini", ".pytest.ini", "noxfile.py"])
+def test_added_config_files_trip(path):
+    # These gate/config surfaces were missing from _SENSITIVE_PATH_RE; a tick editing one
+    # must trip the human gate (the loop must not weaken its own gate config).
+    contract = make_contract([det("SC1", verify="quality_gate"), judge("J1")])
+    assert gl.tamper_tripwire(gl.Diff((path,), ()), contract) is True
+
+
+@pytest.mark.parametrize("path", ["setup.py", "pytest.ini", ".pytest.ini", "noxfile.py"])
+def test_added_config_files_trip_in_subdir(path):
+    # The same files under a subdirectory still trip (the "/" branch of the regex).
+    contract = make_contract([det("SC1", verify="quality_gate"), judge("J1")])
+    assert gl.tamper_tripwire(gl.Diff((f"sub/{path}",), ()), contract) is True
+
+
+# --------------------------------------------------------------------------- #
+# ADR-0028 protected_paths — the answer key trips the tripwire
+# --------------------------------------------------------------------------- #
+def _contract_with_protected(paths):
+    base = make_contract([det("SC1", verify="quality_gate"), judge("J1")])
+    return dataclasses.replace(base, protected_paths=tuple(paths))
+
+
+@pytest.mark.parametrize(
+    "protected,touched,expected",
+    [
+        (("fixtures/golden.json",), "fixtures/golden.json", True),  # exact answer-key file
+        (("fixtures/golden.json",), "fixtures/other.json", False),  # unrelated file
+        (("fixtures/",), "fixtures/nested/key.json", True),  # whole protected dir (prefix)
+        (("fixtures",), "fixtures/nested/key.json", True),  # dir without trailing slash
+        (("fixtures/golden.json",), "fixtures\\golden.json", True),  # backslash diff path
+        (("./fixtures/golden.json",), "fixtures/golden.json", True),  # ./-prefixed entry
+    ],
+)
+def test_protected_answer_key_paths_trip(protected, touched, expected):
+    contract = _contract_with_protected(protected)
+    assert gl.tamper_tripwire(gl.Diff((touched,), ()), contract) is expected
+
+
+def test_protected_paths_partial_name_does_not_falsely_trip():
+    # A prefix match must be path-segment aware: "fixtures" must not match "fixtures_old/...".
+    contract = _contract_with_protected(("fixtures",))
+    assert gl.tamper_tripwire(gl.Diff(("fixtures_old/key.json",), ()), contract) is False
+
+
+def test_protected_paths_empty_after_normalize_rejected(tmp_path):
+    # Hardened past VP's A2 (which fails open on a leading-slash entry): a protected_paths
+    # entry that normalises to empty (a bare "/" or "./") is REJECTED at load time.
+    body = (
+        "---\n"
+        "goal_id: GOAL-x\n"
+        "goal: g\n"
+        "success_criteria:\n"
+        "  - id: SC1\n"
+        "    text: t\n"
+        "    verify: quality_gate\n"
+        "    verify_owner: gate\n"
+        "  - id: J1\n"
+        "    text: t\n"
+        "    verify: llm-judge\n"
+        "    verify_owner: checker\n"
+        "protected_paths:\n"
+        "  - '/'\n"
+        "---\n"
+    )
+    path = tmp_path / "GOAL-prot.md"
+    path.write_text(body, encoding="utf-8")
+    with pytest.raises(gl.ContractError, match="empty path"):
+        gl.load_contract(path)
+
+
+def test_protected_paths_parsed_from_contract_file(tmp_path):
+    body = (
+        "---\n"
+        "goal_id: GOAL-x\n"
+        "goal: g\n"
+        "success_criteria:\n"
+        "  - id: SC1\n"
+        "    text: t\n"
+        "    verify: quality_gate\n"
+        "    verify_owner: gate\n"
+        "  - id: J1\n"
+        "    text: t\n"
+        "    verify: llm-judge\n"
+        "    verify_owner: checker\n"
+        "protected_paths:\n"
+        "  - fixtures/golden.json\n"
+        "  - baselines/\n"
+        "---\n"
+    )
+    path = tmp_path / "GOAL-prot.md"
+    path.write_text(body, encoding="utf-8")
+    c = gl.load_contract(path)
+    assert c.protected_paths == ("fixtures/golden.json", "baselines/")
+    assert gl.tamper_tripwire(gl.Diff(("baselines/v1.txt",), ()), c) is True
+
+
+# --------------------------------------------------------------------------- #
+# ADR-0028 H2 — protected branches never affirm L2
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "branch", ["main", "master", "develop", "trunk", "Main", "MAIN", "refs/heads/main"]
+)
+def test_protected_branches_never_affirm(branch):
+    # H2: L2 must never affirm on a protected integration branch, in any case or ref form,
+    # even if it was (mistakenly) handed in as an authorized branch.
+    affirmer = gl.FailClosedAuthAffirmer(frozenset({branch, "feature/x"}))
+    assert affirmer.affirm_l2(branch) is False
+    assert affirmer.affirm_l2("feature/x") is True  # the legitimate branch still affirms
+
+
+def test_affirm_l2_rechecks_protected_branch_past_constructor_filter():
+    # H2 defense-in-depth (ADR-0028 item 5): the runtime re-check inside affirm_l2 must block a
+    # protected branch INDEPENDENTLY of the constructor filter. Inject "main" straight into
+    # _authorized (bypassing __init__'s filter) to isolate the runtime guard — it must still
+    # refuse. Without the re-check this returns True, so this test proves the second layer is
+    # load-bearing on its own (review REV-20260628-024000, qa Medium: the constructor filter
+    # alone had been masking the runtime guard in every other branch-protection test).
+    affirmer = gl.FailClosedAuthAffirmer(frozenset())
+    object.__setattr__(affirmer, "_authorized", frozenset({"main"}))
+    assert affirmer.affirm_l2("main") is False
+
+
+@pytest.mark.parametrize(
+    "branch,expected",
+    [
+        ("main", True),
+        ("MAIN", True),
+        ("refs/heads/develop", True),
+        ("  trunk  ", True),
+        ("feature/x", False),
+        ("mainline", False),  # not an exact protected name
+    ],
+)
+def test_is_protected_branch_normalizes(branch, expected):
+    assert gl._is_protected_branch(branch) is expected
+
+
+# --------------------------------------------------------------------------- #
+# ADR-0028 seam-2b — ntfy gate transport drives `poll` (REPLY-MATCH), not `check`
+# --------------------------------------------------------------------------- #
+class _ArgvKeyedRunner:
+    """A fake subprocess runner keyed on the collab_loop subcommand, so the SAME test
+    distinguishes the fixed `poll`-driven transport from the old `check`-driven one:
+    `poll` yields REPLY-MATCH (what poll really prints); `check` yields ANSWER-MATCH
+    (what check really prints). The transport only accepts REPLY-MATCH."""
+
+    def __init__(self, *, poll_stdout="", check_stdout="", ask_stdout="asked OK\n"):
+        self._poll = poll_stdout
+        self._check = check_stdout
+        self._ask = ask_stdout
+        self.commands = []
+
+    def __call__(self, cmd, **kwargs):
+        self.commands.append(cmd)
+        mode = cmd[2] if len(cmd) > 2 else ""
+        stdout = {"poll": self._poll, "check": self._check, "ask": self._ask}.get(mode, "")
+        return _FakeProc(stdout)
+
+
+def test_ntfy_gate_transport_accepts_poll_reply_match():
+    # seam-2b: a poll-shaped REPLY-MATCH line resolves to the matched label.
+    runner = _ArgvKeyedRunner(poll_stdout="REPLY-MATCH: Approve\n")
+    label = gl._ntfy_gate_transport("allow it?", ("Approve", "Reject"), "tok", runner=runner)
+    assert label == "Approve"
+    # the transport drove `poll`, never `check` (the bug source), and in ask-then-poll order
+    modes = [c[2] for c in runner.commands]
+    assert "poll" in modes and "check" not in modes
+    assert modes == ["ask", "poll"]  # push the question first, then bound-poll for the reply
+    poll_cmd = next(c for c in runner.commands if c[2] == "poll")
+    assert "--exit-on-match" in poll_cmd  # bounded poll returns on the first match (seam-2b)
+
+
+def test_ntfy_gate_transport_ignores_answer_match_only():
+    # A `check`-style ANSWER-MATCH (no REPLY-MATCH) must NOT resolve — proves the transport
+    # accepts only the poll-shaped prefix, so an ANSWER-only stream is dropped (None).
+    runner = _ArgvKeyedRunner(poll_stdout="ANSWER-MATCH: Approve\n")
+    label = gl._ntfy_gate_transport("allow it?", ("Approve", "Reject"), "tok", runner=runner)
+    assert label is None
+
+
+def test_ntfy_gate_transport_non_allowlisted_label_is_none():
+    # A REPLY-MATCH whose label is not in the fixed choices is no action (act on the
+    # allow-list label, never raw text; R8).
+    runner = _ArgvKeyedRunner(poll_stdout="REPLY-MATCH: Banana\n")
+    label = gl._ntfy_gate_transport("allow it?", ("Approve", "Reject"), "tok", runner=runner)
+    assert label is None
+
+
+def test_ntfy_gate_transport_timeout_reads_partial_stdout():
+    # `poll` streams forever, so the transport bounds it; on timeout the partial stdout (the
+    # buffered REPLY-MATCH) is still read from the TimeoutExpired exception.
+    import subprocess
+
+    def runner(cmd, **kwargs):
+        if cmd[2] == "poll":
+            raise subprocess.TimeoutExpired(cmd, 1, output="REPLY-MATCH: Reject\n")
+        return _FakeProc("asked OK\n")
+
+    label = gl._ntfy_gate_transport("allow it?", ("Approve", "Reject"), "tok", runner=runner)
+    assert label == "Reject"
+
+
+def test_match_from_poll_stdout_pure():
+    assert gl._match_from_poll_stdout("REPLY-MATCH: Approve\n", ("Approve",)) == "Approve"
+    assert gl._match_from_poll_stdout("ANSWER-MATCH: Approve\n", ("Approve",)) is None
+    assert gl._match_from_poll_stdout("REPLY-MATCH: Nope\n", ("Approve",)) is None
+    assert gl._match_from_poll_stdout("", ("Approve",)) is None
+
+
+def test_real_poll_reply_match_binds_to_gate_parser(tmp_path, monkeypatch, capsys):
+    # F3 (cross-module contract): drive the REAL collab_loop.poll/_emit emitter with a synthetic
+    # ntfy reply that matches a choice, then assert goal_loop's gate parser
+    # (_match_from_poll_stdout) extracts the label from the ACTUALLY-produced REPLY-MATCH line.
+    # This binds the parser to the emitter, so a future prefix / `poll`-CLI drift fails HERE
+    # instead of silently dropping approvals in production (seam-2b / Lesson-2 drift class). It
+    # also exercises exit_on_match end-to-end: the poll returns after the matching round.
+    from scripts import collab_loop
+
+    monkeypatch.setattr(collab_loop, "LOCK_PATH", tmp_path / ".collab_loop.lock")
+    # A developer reply lands on the REPLY topic (require_empty_title=False) matching "Approve".
+    reply_stream = json.dumps({"event": "message", "id": "r1", "message": "approve"}) + "\n"
+    http_calls = {"n": 0}
+
+    def fake_http_get(server, topic, since, token, label):
+        http_calls["n"] += 1
+        return reply_stream if label == "reply" else None  # only the reply topic carries it
+
+    monkeypatch.setattr(collab_loop, "_http_get", fake_http_get)
+    collab_loop.poll(
+        "s",
+        "t",
+        "t-reply",
+        None,
+        choices=["Approve", "Reject"],
+        sleep=lambda _s: None,
+        max_iterations=3,  # safety bound; exit_on_match should return well before this
+        exit_on_match=True,
+    )
+    stdout = capsys.readouterr().out
+    # The real emitter printed a REPLY-MATCH line...
+    assert "REPLY-MATCH: Approve" in stdout
+    # ...the gate's parser extracts exactly that label from the real emitter output...
+    assert gl._match_from_poll_stdout(stdout, ("Approve", "Reject")) == "Approve"
+    # ...and exit_on_match returned after exactly one round (reply+main = 2 fetches), not 3.
+    assert http_calls["n"] == 2
+
+
+# --------------------------------------------------------------------------- #
+# ADR-0028 B3 — independent goal-met skeptic vetoes a self-graded green (PARK)
+# --------------------------------------------------------------------------- #
+class FlipVerifier:
+    """A verifier whose deterministic checks all pass (the builder-authored green), so the
+    only thing that can reject the goal-met candidate is the INDEPENDENT skeptic."""
+
+    def run_quality_gate(self) -> bool:
+        return True
+
+    def run_command(self, command: str) -> bool:
+        return True
+
+
+def test_goal_met_skeptic_persistent_veto_parks_via_backstop(tmp_path):
+    # B3 + ADR-0028 (RETRY semantics): a deterministic-only contract (no llm-judge among
+    # success_criteria) whose criteria all pass the builder's OWN checks is NOT goal-met if the
+    # independent skeptic flips RED. A PERSISTENT veto (judge_green=False forever) must not
+    # livelock: the driver consults the backstop ladder each veto-retry, advancing no_progress
+    # (the green count is maximal and no build runs on this path, so it cannot rise), and PARKS
+    # in a BOUNDED number of ticks. max_iterations=99 removes MAX_ITERATIONS as a confounder, so
+    # NO_PROGRESS (default no_progress=2) is the binding rung. That this test RETURNS at all is
+    # the no-hang / no-infinite-loop proof.
+    crits = [det("SC1", verify="quality_gate"), det("SC2", verify="pytest tests/test_x.py")]
+    model = FakeModel(judge_green=False, build_agent="builder-1", judge_agent="checker-1")
+    res = run(
+        make_contract(crits, max_iterations=99),
+        tmp_path / "s.json",
+        verifier=FlipVerifier(),
+        model=model,
+    )
+    assert res.outcome is gl.Outcome.NO_PROGRESS  # a backstop rung, not a hang
+    assert "skeptic" in res.report.lower()
+    assert "consecutive" in res.report.lower()  # the report names how many times the veto fired
+    assert len(model.judges) >= 2  # the skeptic kept vetoing across retries, then parked
+    # both author criteria were green (the veto, not a red criterion, halted the run)
+    assert set(res.green) == {"SC1", "SC2"}
+
+
+def test_goal_met_skeptic_fluke_veto_then_green_reaches_goal_met(tmp_path):
+    # ADR-0028 (RETRY semantics, the fluke case): a SINGLE stochastic red from the skeptic must
+    # NOT terminally strand a legitimately-complete run. The skeptic reds once (fluke), the
+    # driver finds the backstop ladder still has room (CONTINUE), re-verifies, and re-runs the
+    # skeptic -> it greens -> the normal GOAL_MET exit. Contrast the persistent-veto test above,
+    # which exhausts the ladder and PARKS.
+    crits = [det("SC1", verify="quality_gate"), det("SC2", verify="pytest tests/test_x.py")]
+    calls = {"n": 0}
+
+    def flaky_skeptic(_criterion):
+        calls["n"] += 1
+        return calls["n"] > 1  # red on the first judge call, green thereafter (fluke recovered)
+
+    model = FakeModel(judge_green=flaky_skeptic, judge_agent="checker-1")
+    res = run(
+        make_contract(crits, max_iterations=99),  # room to retry; no MAX_ITERATIONS confounder
+        tmp_path / "s.json",
+        verifier=FlipVerifier(),
+        model=model,
+    )
+    assert res.outcome is gl.Outcome.GOAL_MET
+    assert len(model.judges) >= 2  # skeptic ran at least twice (fluke red, then confirming green)
+
+
+def test_goal_met_skeptic_green_allows_exit(tmp_path):
+    # The mirror: when the independent skeptic agrees, the deterministic-only candidate is
+    # genuinely goal-met (the skeptic is additive, not a permanent blocker).
+    crits = [det("SC1", verify="quality_gate"), det("SC2", verify="pytest tests/test_x.py")]
+    model = FakeModel(judge_green=True, judge_agent="checker-1")
+    res = run(
+        make_contract(crits),
+        tmp_path / "s.json",
+        verifier=FlipVerifier(),
+        model=model,
+    )
+    assert res.outcome is gl.Outcome.GOAL_MET
+    assert model.judges  # the skeptic still ran (always-on, regardless of contract shape)
+
+
+def test_goal_met_skeptic_independent_of_builder_verify_command():
+    # The skeptic judges the GOAL via model.judge (the independent checker), never the
+    # builder's authored verify command: its synthetic criterion is an llm-judge owned by
+    # the checker, carrying the contract goal as its text.
+    contract = make_contract([det("SC1", verify="quality_gate"), det("SC2", verify="cmd")])
+    skeptic = gl._goal_met_skeptic_criterion(contract)
+    assert skeptic.is_judge  # routed through model.judge, not verifier.run_command
+    assert skeptic.verify_owner == "checker"
+    assert contract.goal in skeptic.text
