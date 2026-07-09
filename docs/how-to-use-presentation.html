@@ -1,10 +1,13 @@
 <!DOCTYPE html>
 <!--
   How-to-use deck for the AI-Native Agentic Development Framework.
-  Revised 2026-06-14 (DISC-20260614-012649 deliberation + round-2 developer feedback;
-  reviewed REV-20260614-023301). 18 slides. Counts: 12 agents / 24 commands / 21 skills /
+  Revised 2026-07-09 (round-3 accuracy pass, ADR-0020..0028 era). 19 slides (added a
+  dedicated /goal-loop slide after the async-autonomy slide). Counts refreshed: commands
+  24->25, skills 21->25. Added /goal-loop + /handoff to the "What Do I Do When" and
+  cheat-sheet slides, grill-yourself to the skill sheet, cross-linked the What-It-Is deck,
+  and reconciled the /quiz Bloom-levels wording. Counts: 12 agents / 25 commands / 25 skills /
   9 hooks / 4 rules / 9 principles. Keep counts in sync with .claude/ — see the
-  syncing-framework-docs skill and docs/proposals/doc-sync-count-drift-check.md.
+  syncing-framework-docs skill.
 -->
 <html lang="en">
 <head>
@@ -278,7 +281,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
       </div>
 
       <div class="card anim-fade-up-d4" style="border-left:3px solid var(--blue);">
-        <p style="font-size:13px; margin:0;"><span style="color:var(--blue); font-weight:600;">Who it&rsquo;s for:</span> anyone using Claude Code to build real software who wants independent review, a record of decisions, and guardrails &mdash; without writing that machinery themselves. <span style="color:var(--text-muted);">Not sure yet? Slide&nbsp;9 (&ldquo;What Do I Do When&hellip;&rdquo;) maps common situations straight to a command.</span></p>
+        <p style="font-size:13px; margin:0;"><span style="color:var(--blue); font-weight:600;">Who it&rsquo;s for:</span> anyone using Claude Code to build real software who wants independent review, a record of decisions, and guardrails &mdash; without writing that machinery themselves. <span style="color:var(--text-muted);">Not sure yet? Slide&nbsp;9 (&ldquo;What Do I Do When&hellip;&rdquo;) maps common situations straight to a command. Want the architecture and the "why" first? See the <a href="diviner-dojo-framework-presentation.html" style="color:var(--blue); text-decoration:none;">What It Is</a> deck.</span></p>
       </div>
     </div>
   </div>
@@ -387,7 +390,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           </div>
           <div class="card" style="margin-bottom:12px;">
             <h3>What You Get</h3>
-            <p style="margin-top:6px;">A ready-made team of AI specialists (security, architecture, QA, UX, and more), the commands that coordinate them, and automatic capture of every decision and review. <span style="color:var(--text-muted);">Under the hood: 12 agents, 24 commands, 21 on-demand skills, 9 hooks, and the four-layer capture stack.</span></p>
+            <p style="margin-top:6px;">A ready-made team of AI specialists (security, architecture, QA, UX, and more), the commands that coordinate them, and automatic capture of every decision and review. <span style="color:var(--text-muted);">Under the hood: 12 agents, 25 commands, 25 on-demand skills, 9 hooks, and the four-layer capture stack.</span></p>
           </div>
           <div class="card" style="margin-bottom:12px; border-left:3px solid var(--teal);">
             <h3>Make It Yours</h3>
@@ -657,6 +660,14 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           <h3 style="font-size:14px;">&ldquo;The sprint is over &mdash; what now?&rdquo;</h3>
           <p style="margin-top:6px;"><code style="color:var(--green);">/retro</code> analyzes all discussions, surfaces recurring patterns, and proposes process improvements. Run <code style="color:var(--blue);">/batch-evaluate</code> to audit pending adoptions.</p>
         </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--gold);">
+          <h3 style="font-size:14px;">&ldquo;I have a clear goal with verifiable done-criteria&rdquo;</h3>
+          <p style="margin-top:6px;"><code style="color:var(--gold);">/goal-loop</code> &mdash; the <code style="color:var(--accent-light);">authoring-goal-contracts</code> interview turns a fuzzy goal into a contract first, then the agent iterates build &rarr; verify &rarr; refine until it&rsquo;s met. Suggested, never imposed; you still approve the merge.</p>
+        </div>
+        <div class="card" style="padding:18px; border-left: 3px solid var(--blue);">
+          <h3 style="font-size:14px;">&ldquo;My session is running long / I need to stop mid-task&rdquo;</h3>
+          <p style="margin-top:6px;"><code style="color:var(--blue);">/handoff</code> checkpoints the session and writes a <strong style="color:var(--text-primary);">paste-ready handoff prompt</strong> (plus an artifact) so the next session resumes cleanly &mdash; nothing in-flight is lost.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -676,7 +687,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </div>
         <div class="card" style="border-left: 3px solid var(--gold);">
           <h3>/quiz <span class="badge badge-gold" style="font-size:10px;">assessment</span></h3>
-          <p style="margin-top:8px;">Bloom's taxonomy quiz on code you're about to ship. Tests understanding at 4 levels: recall, application, analysis, and evaluation. Includes debug scenarios and change-impact questions.</p>
+          <p style="margin-top:8px;">Bloom's taxonomy quiz on code you're about to ship. Tests understanding across up to six Bloom's levels &mdash; recall through create &mdash; weighted toward Apply/Analyze. Includes debug scenarios and change-impact questions.</p>
           <div class="code-block ctx in-claude" style="margin-top:12px; padding:12px 16px; padding-top:36px;">
             <div><span class="cmd">/quiz</span> <span class="file">src/routes.py</span></div>
           </div>
@@ -892,8 +903,57 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 14: LINEAGE & SHIP ==================== -->
+  <!-- ==================== SLIDE 14: GOAL-LOOP ==================== -->
   <div class="slide" data-slide="14">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Goal-Seeking</p>
+      <h2 class="anim-fade-up-d1">/goal-loop &mdash; Iterate Until a Goal Is Met</h2>
+      <p class="subtitle anim-fade-up-d2">When a task has a <em>verifiable</em> done-state and you expect a build&rarr;verify&rarr;refine grind to get there, <code style="color:var(--gold);">/goal-loop</code> runs that grind for you &mdash; safely. It&rsquo;s <strong style="color:var(--text-primary);">suggested, never imposed</strong>, and a human still approves the merge.</p>
+      <div class="two-col anim-fade-up-d3">
+        <div>
+          <div class="step-list">
+            <div class="step-item">
+              <div class="step-num" style="background:var(--gold-dim); color:var(--gold);">1</div>
+              <div class="step-info">
+                <h3>You author a goal contract</h3>
+                <p>The <code>authoring-goal-contracts</code> interview turns a fuzzy goal into a contract with <strong>verifiable criteria</strong> and at least one <strong>deterministic anchor</strong> (a check a machine can run). Non-loop-shaped goals &mdash; subjective, exploratory, or unsafe to verify &mdash; are refused and routed to <code>/plan</code> or <code>/deliberate</code> instead.</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--blue-dim); color:var(--blue);">2</div>
+              <div class="step-info">
+                <h3>The tick loop runs</h3>
+                <p>A deterministic driver (<code>scripts/goal_loop.py</code>) owns control flow: each tick the model produces a <strong>build delta</strong>, then an <strong>independent judge</strong> checks it against a criterion. The builder is never its own judge (Principle&nbsp;#4).</p>
+              </div>
+            </div>
+            <div class="step-item">
+              <div class="step-num" style="background:var(--green-dim); color:var(--green);">3</div>
+              <div class="step-info">
+                <h3>It halts for you</h3>
+                <p>When criteria are met, it stops for <code style="color:var(--blue);">/review</code> + a required education walkthrough. It <strong style="color:var(--text-primary);">never pushes and never auto-merges</strong> &mdash; you render the final verdict.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="margin-bottom:12px; border-left:3px solid var(--gold);">
+            <h3>What the human does</h3>
+            <p style="margin-top:6px;">Author the contract, answer the gates the loop surfaces, and approve the merge after review + walkthrough. Everything between is the driver&rsquo;s job &mdash; you stay the decision-maker at the edges, not the babysitter in the middle.</p>
+          </div>
+          <div class="card" style="margin-bottom:12px; border-left:3px solid var(--accent);">
+            <h3>Why builder &ne; judge matters</h3>
+            <p style="margin-top:6px;">Autonomous iteration is where an AI is most tempted to grade its own homework. Splitting build from judge &mdash; and running the judge on the delta only &mdash; keeps the independence guarantee even when no human is watching each tick.</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--blue);">
+            <p style="font-size:13px;">Loop-shaped? <strong style="color:var(--text-primary);">Verifiable done-state + expected build/verify convergence + not a micro-fix.</strong> If not, use <code>/plan</code>, <code>/deliberate</code>, or grill-me instead.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 15: LINEAGE & SHIP ==================== -->
+  <div class="slide" data-slide="15">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Release &amp; Lineage</p>
       <h2 class="anim-fade-up-d1">Shipping and Tracking Your Fork</h2>
@@ -936,8 +996,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 15: CHEAT SHEET ==================== -->
-  <div class="slide" data-slide="15">
+  <!-- ==================== SLIDE 16: CHEAT SHEET ==================== -->
+  <div class="slide" data-slide="16">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Reference</p>
       <h2 class="anim-fade-up-d1">Command Cheat Sheet</h2>
@@ -949,12 +1009,14 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
             <div><span class="cmd">/review</span> <span class="file">src/</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Code review</span></div>
             <div><span class="cmd">/walkthrough</span> <span class="file">src/file.py</span> <span class="comment">&nbsp;# Explain code</span></div>
             <div><span class="cmd">/quiz</span> <span class="file">src/file.py</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Test understanding</span></div>
+            <div><span class="cmd">/handoff</span> <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Wrap up a long session</span></div>
           </div>
           <h3 style="margin-bottom:10px; color:var(--accent-light);">Building Features</h3>
           <div class="code-block" style="margin-bottom:16px; line-height:2.2;">
             <div><span class="cmd">/plan</span> "description" <span class="comment">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Create spec</span></div>
             <div><span class="cmd">/build_module</span> <span class="file">spec.md</span> <span class="comment">&nbsp;&nbsp;# Build from spec</span></div>
             <div><span class="cmd">/deliberate</span> "question" <span class="comment">&nbsp;# Discuss trade-offs</span></div>
+            <div><span class="cmd">/goal-loop</span> <span class="file">contract</span> <span class="comment">&nbsp;# Iterate to done-criteria</span></div>
           </div>
           <h3 style="margin-bottom:10px; color:var(--accent-light);">Quality <span style="color:var(--text-muted); font-weight:400; font-size:0.8em;">(terminal)</span></h3>
           <div class="code-block" style="line-height:2.2;">
@@ -987,18 +1049,19 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 16: SKILL CHEAT SHEET (NEW — round 2) ==================== -->
-  <div class="slide" data-slide="16">
+  <!-- ==================== SLIDE 17: SKILL CHEAT SHEET (NEW — round 2) ==================== -->
+  <div class="slide" data-slide="17">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Reference</p>
       <h2 class="anim-fade-up-d1">Skill Cheat Sheet</h2>
-      <p class="subtitle anim-fade-up-d2" style="font-size:0.95rem;">Skills are on-demand <em>playbooks</em> &mdash; the agent loads one automatically when the situation matches, so you rarely type them. A few (like <code style="color:var(--accent-light);">grill-me</code>) you can also invoke by name. There are <strong style="color:var(--text-primary);">21</strong> in <code>.claude/skills/</code>, plus Claude Code built-ins like <code style="color:var(--blue);">deep-research</code>; here are the ones worth knowing.</p>
+      <p class="subtitle anim-fade-up-d2" style="font-size:0.95rem;">Skills are on-demand <em>playbooks</em> &mdash; the agent loads one automatically when the situation matches, so you rarely type them. A few (like <code style="color:var(--accent-light);">grill-me</code>) you can also invoke by name. There are <strong style="color:var(--text-primary);">25</strong> in <code>.claude/skills/</code>, plus Claude Code built-ins like <code style="color:var(--blue);">deep-research</code>; here are the ones worth knowing.</p>
       <div class="two-col anim-fade-up-d3" style="gap:20px;">
         <div style="display:flex; flex-direction:column; gap:12px;">
           <div class="card" style="padding:16px; border-left:3px solid var(--accent);">
             <h3 style="font-size:14px;">Think &amp; Research</h3>
             <div style="margin-top:6px; font-size:12.5px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px;">
               <div><code style="color:var(--accent-light);">grill-me</code> &mdash; relentless one-question-at-a-time interview to stress-test an idea or design.</div>
+              <div><code style="color:var(--accent-light);">grill-yourself</code> &mdash; inverted grill: the model ghost-writes the hard questions in your voice and answers each with a recommendation, so your job shrinks to rendering verdicts.</div>
               <div><code style="color:var(--blue);">deep-research</code> <span style="color:var(--text-muted);">(built-in)</span> &mdash; fan-out, multi-source, fact-checked research report.</div>
               <div><code style="color:var(--accent-light);">searching-prior-art</code> &mdash; grep for existing solutions / known-broken approaches before you build.</div>
             </div>
@@ -1036,12 +1099,12 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           </div>
         </div>
       </div>
-      <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">Not shown: domain playbooks (<code>python-project-patterns</code>, <code>testing-playbook</code>, <code>security-checklist</code>, <code>performance-playbook</code>), dispatch internals (<code>cross-agent-dispatch</code>, <code>multi-instance-dispatch</code>, <code>orchestrating-lean-dispatch</code>), <code>running-build-checkpoints</code>, and <code>feature-status-registry</code>.</p>
+      <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">Not shown: domain playbooks (<code>python-project-patterns</code>, <code>testing-playbook</code>, <code>security-checklist</code>, <code>performance-playbook</code>), dispatch internals (<code>cross-agent-dispatch</code>, <code>multi-instance-dispatch</code>, <code>orchestrating-lean-dispatch</code>), goal-loop internals (<code>authoring-goal-contracts</code>, <code>orchestrating-goal-loops</code>), <code>severity-calibration</code>, <code>running-build-checkpoints</code>, and <code>feature-status-registry</code>.</p>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 17: GETTING THE MOST OUT OF IT ==================== -->
-  <div class="slide" data-slide="17">
+  <!-- ==================== SLIDE 18: GETTING THE MOST OUT OF IT ==================== -->
+  <div class="slide" data-slide="18">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Avoid These Traps</p>
       <h2 class="anim-fade-up-d1">Getting the Most Out of It</h2>
@@ -1083,8 +1146,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 18: GET STARTED ==================== -->
-  <div class="slide" data-slide="18">
+  <!-- ==================== SLIDE 19: GET STARTED ==================== -->
+  <div class="slide" data-slide="19">
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up" style="width:80px; height:80px;">
@@ -1134,17 +1197,17 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
   </div>
   <div class="nav-controls">
     <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
-    <span class="slide-counter" id="slideCounter">1 / 18</span>
+    <span class="slide-counter" id="slideCounter">1 / 19</span>
     <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">&#8594;</button>
   </div>
 </div>
 
-<div class="progress-bar" id="progressBar" style="width: 5.56%;"></div>
+<div class="progress-bar" id="progressBar" style="width: 5.26%;"></div>
 
 <script>
 // ===== SLIDE NAVIGATION =====
 let currentSlide = 1;
-const totalSlides = 18;
+const totalSlides = 19;
 
 function showSlide(n) {
   if (n < 1 || n > totalSlides) return;

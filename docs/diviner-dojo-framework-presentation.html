@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <!--
   Framework overview deck for the AI-Native Agentic Development Framework.
-  Revised 2026-06-14 (round-2 accuracy/consistency pass; reviewed REV-20260614-023301):
-  principles 8->9 (added #9, the 95% clarify gate); hooks 7->9; skills ->21; commands tree
-  ->24; slide-7 "16 Core Commands" + subtitle noting 24 total. Counts: 12 agents / 24 commands
-  / 21 skills / 9 hooks / 4 rules / 9 principles. Keep in sync with .claude/ — see the
-  syncing-framework-docs skill and docs/proposals/doc-sync-count-drift-check.md.
+  Revised 2026-07-09 (round-3 accuracy pass, ADR-0020..0028 era): commands 24->25,
+  skills 21->25; added the Prime Objective (ADR-0015) to slide 3, /goal-loop builder!=judge
+  (ADR-0026/0028) to slides 7+9, Telemetry & Oversight (ADR-0020) to slide 13; refreshed
+  slide-11 adoption stats (as of May 2026) and cross-linked the how-to deck. Counts:
+  12 agents / 25 commands / 25 skills / 9 hooks / 4 rules / 9 principles. Hooks slide counts
+  enumerated protections (validator splits into 3); the one-shot Stop hook (ADR-0023) is
+  designed but parked (not wired in settings.json on upstream) so it is intentionally not
+  shown. Keep in sync with .claude/ — see the syncing-framework-docs skill.
 -->
 <html lang="en">
 <head>
@@ -1167,8 +1170,12 @@ h3 {
   <div class="slide" data-slide="3">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Foundation</p>
-      <h2 class="anim-fade-up-d1">9 Non-Negotiable Principles</h2>
-      <p class="subtitle anim-fade-up-d2" style="margin-top:-16px;">Click any principle to expand.</p>
+      <h2 class="anim-fade-up-d1">The Prime Objective + 9 Non-Negotiable Principles</h2>
+      <div class="card anim-fade-up-d2" style="border-left:3px solid var(--gold); margin-top:-8px;">
+        <h3 style="color:var(--gold);">Prime Objective &mdash; Refuse Extraction <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">ADR-0015</span></h3>
+        <p style="margin-top:6px;">Above the nine principles sits a declared ethic: the framework must serve contributors and users and <strong style="color:var(--text-primary);">never accumulate value at their expense.</strong> A design refuses extraction only if every contributor retains attribution, no one performs labor whose benefit accrues to a third party without consent, and evolution never accumulates value from derivatives without per-instance human assent. Enforcement is <strong style="color:var(--text-primary);">human-mediated at every gate</strong> &mdash; the framework provides the gates; the human renders the verdict. The nine principles below are operational expressions of this objective.</p>
+      </div>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:0;">Click any principle to expand.</p>
       <div class="principles-list anim-fade-up-d3" id="principlesList">
         <div class="principle-item" onclick="togglePrinciple(this)">
           <div class="principle-header">
@@ -1564,8 +1571,8 @@ h3 {
   <div class="slide" data-slide="7">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Workflow</p>
-      <h2 class="anim-fade-up-d1">16 Core Commands That Drive the Workflow</h2>
-      <p class="subtitle anim-fade-up-d2" style="margin-top:-16px; font-size:0.95rem;">24 commands in all &mdash; these are the ones you&rsquo;ll reach for most.</p>
+      <h2 class="anim-fade-up-d1">18 Core Commands That Drive the Workflow</h2>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-16px; font-size:0.95rem;">25 commands in all &mdash; these are the ones you&rsquo;ll reach for most.</p>
       <div class="two-col anim-fade-up-d2">
         <div>
           <div class="cmd-group">
@@ -1575,6 +1582,7 @@ h3 {
               <span class="cmd-chip">/deliberate <span class="cmd-desc">Structured discussion</span></span>
               <span class="cmd-chip">/build_module <span class="cmd-desc">Spec-driven construction</span></span>
               <span class="cmd-chip">/plan <span class="cmd-desc">Feature planning</span></span>
+              <span class="cmd-chip">/goal-loop <span class="cmd-desc">Iterate to a goal contract</span></span>
             </div>
           </div>
           <div class="cmd-group">
@@ -1595,6 +1603,7 @@ h3 {
               <span class="cmd-chip">/walkthrough <span class="cmd-desc">Code explanation</span></span>
               <span class="cmd-chip">/knowledge-health <span class="cmd-desc">Pipeline health check</span></span>
               <span class="cmd-chip">/batch-evaluate <span class="cmd-desc">Audit adoptions</span></span>
+              <span class="cmd-chip">/handoff <span class="cmd-desc">Session wrap-up + handoff</span></span>
             </div>
           </div>
           <div class="cmd-group">
@@ -1772,6 +1781,10 @@ h3 {
             <h3 style="color:var(--accent-light);">Double-Loop Learning</h3>
             <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;"><strong>Single-loop:</strong> tune thresholds within existing rules. <strong>Double-loop:</strong> change what counts as "good" based on accumulated evidence. The framework doesn't just follow rules — it evolves them.</p>
           </div>
+          <div class="card" style="border-left: 3px solid var(--gold); margin-top:12px;">
+            <h3 style="color:var(--gold);">Goal-Seeking Loop &mdash; <code style="color:var(--gold);">/goal-loop</code> <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">ADR-0026/0028</span></h3>
+            <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;">You author a <strong>verifiable goal contract</strong>; a deterministic driver (<code>scripts/goal_loop.py</code>) owns control flow and iterates build &rarr; judge &rarr; refine until the criteria are met. The model only builds, judges, or phrases a gate &mdash; and the <strong style="color:var(--text-primary);">builder is never its own judge</strong> (Principle #4, extended to autonomous iteration). It never pushes, never auto-merges, and halts for <code>/review</code> + an education walkthrough before a human approves the merge.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -1874,15 +1887,16 @@ h3 {
           </div>
         </div>
         <div>
-          <h3 style="margin-bottom:12px;">Framework's Own Evolution</h3>
+          <h3 style="margin-bottom:4px;">Framework's Own Evolution</h3>
+          <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">From <code>memory/lessons/adoption-log.md</code> &mdash; as of May 2026.</p>
           <div class="stats-row" style="margin-bottom:16px;">
-            <div class="stat-card"><div class="stat-number">8</div><div class="stat-label">Projects Analyzed</div></div>
-            <div class="stat-card"><div class="stat-number">77</div><div class="stat-label">Patterns Evaluated</div></div>
+            <div class="stat-card"><div class="stat-number">18</div><div class="stat-label">Analyses Run</div></div>
+            <div class="stat-card"><div class="stat-number">165</div><div class="stat-label">Patterns Evaluated</div></div>
           </div>
           <div class="stats-row" style="margin-bottom:16px;">
-            <div class="stat-card" style="border-color:rgba(16,185,129,0.2);"><div class="stat-number" style="color:var(--green);">42</div><div class="stat-label">Adopted</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:var(--gold);">20</div><div class="stat-label">Deferred</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:var(--text-muted);">20</div><div class="stat-label">Rejected</div></div>
+            <div class="stat-card" style="border-color:rgba(16,185,129,0.2);"><div class="stat-number" style="color:var(--green);">62</div><div class="stat-label">Adopted</div></div>
+            <div class="stat-card"><div class="stat-number" style="color:var(--gold);">42</div><div class="stat-label">Deferred</div></div>
+            <div class="stat-card"><div class="stat-number" style="color:var(--text-muted);">33</div><div class="stat-label">Rejected</div></div>
           </div>
           <div class="card" style="border-left: 3px solid var(--green);">
             <p style="font-size:13px;"><strong>4 patterns</strong> achieved Rule of Three status — validated across 3+ independent projects. The framework practices what it preaches: its own evolution follows the structured analysis pipeline.</p>
@@ -1916,19 +1930,19 @@ h3 {
                 </div>
               </div>
               <div class="tree-folder" onclick="toggleTree(event, this)">
-                <div class="tree-label"><span class="tree-toggle">▸</span> commands/ <span class="tree-comment">— 24 slash commands</span></div>
+                <div class="tree-label"><span class="tree-toggle">▸</span> commands/ <span class="tree-comment">— 25 slash commands</span></div>
                 <div class="tree-children">
                   <div class="tree-file">  review.md</div>
                   <div class="tree-file">  deliberate.md</div>
                   <div class="tree-file">  build_module.md</div>
                   <div class="tree-file">  analyze-project.md</div>
-                  <div class="tree-file">  ... (20 more)</div>
+                  <div class="tree-file">  ... (21 more)</div>
                 </div>
               </div>
               <div class="tree-file">  custodian/ <span class="tree-comment">— Lineage tracking</span></div>
               <div class="tree-file">  hooks/ <span class="tree-comment">— 9 lifecycle hooks</span></div>
               <div class="tree-file">  rules/ <span class="tree-comment">— 4 context-loaded standards (rest are on-demand skills)</span></div>
-              <div class="tree-file">  skills/ <span class="tree-comment">— 21 on-demand skills (playbooks + relocated protocols, ADR-0016/ADR-0019)</span></div>
+              <div class="tree-file">  skills/ <span class="tree-comment">— 25 on-demand skills (playbooks + relocated protocols, ADR-0016/ADR-0019/ADR-0026)</span></div>
             </div>
           </div>
 
@@ -1999,7 +2013,7 @@ h3 {
       <h2 class="anim-fade-up-d1">Automated Quality Enforcement</h2>
       <div class="two-col anim-fade-up-d2">
         <div>
-          <p class="subtitle" style="margin-bottom:20px;">Every commit must pass the quality gate. No exceptions. No --no-verify.</p>
+          <p class="subtitle" style="margin-bottom:20px;">Every commit must pass the quality gate. Bypassing it isn&rsquo;t a silent flag &mdash; it takes an explicit, documented developer override.</p>
           <div class="checklist">
             <div class="check-item"><span class="check-icon check-pass">✓</span><span class="check-label">Formatting — ruff format</span></div>
             <div class="check-item"><span class="check-icon check-pass">✓</span><span class="check-label">Linting — ruff check</span></div>
@@ -2022,9 +2036,13 @@ h3 {
             <h3>Two-Gate Commit Protocol</h3>
             <p style="font-size:13px; margin-top:6px;"><strong>Gate 1:</strong> Quality gate (automated). <strong>Gate 2:</strong> Multi-agent code review via /review (agent-assisted). Both must pass before code is committed.</p>
           </div>
-          <div class="card">
+          <div class="card" style="margin-bottom:12px;">
             <h3>Auto-Fix Available</h3>
             <p style="font-size:13px; margin-top:6px;">Run the quality gate with <code style="color:var(--green);">--fix</code> to automatically remediate formatting and lint issues. Tests and coverage still require manual attention.</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--blue);">
+            <h3>Telemetry &amp; Oversight <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">ADR-0020</span></h3>
+            <p style="font-size:13px; margin-top:6px;">Beyond pass/fail, the framework watches its own use: <strong>cost</strong> tracking per discussion, <strong>failure/waste</strong> signals, and a <strong>value-vs-subscription</strong> lens &mdash; surfaced in a live local dashboard so you can see where the AI helps and where it burns tokens.</p>
           </div>
         </div>
       </div>
@@ -2050,7 +2068,7 @@ h3 {
         <div class="comparison-row">
           <span class="comp-before"><span style="color:var(--red);">✗</span> Unstructured ad-hoc sessions</span>
           <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> 24 structured commands with auto-capture</span>
+          <span class="comp-after"><span style="color:var(--green);">✓</span> 25 structured commands with auto-capture</span>
         </div>
         <div class="comparison-row">
           <span class="comp-before"><span style="color:var(--red);">✗</span> Knowledge lost between sessions</span>
@@ -2096,9 +2114,12 @@ h3 {
         <div><span class="cmd">/walkthrough src/</span> <span class="comment"># Guided code walkthrough</span></div>
         <div><span class="cmd">/quiz src/</span> <span class="comment"># Comprehension assessment</span></div>
       </div>
-      <div class="anim-fade-up-d3" style="margin-top:28px;">
+      <div class="anim-fade-up-d3" style="margin-top:28px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
         <a href="https://github.com/Diviner-Dojo/agent_framework_template" target="_blank" class="cta-btn">
           View on GitHub →
+        </a>
+        <a href="how-to-use-presentation.html" class="cta-btn" style="background:var(--bg-card); border:1px solid var(--border-hover); color:var(--text-primary);">
+          How to Use it →
         </a>
       </div>
       <p class="anim-fade-up-d4" style="margin-top:24px; color:var(--text-muted); font-size:13px;">
