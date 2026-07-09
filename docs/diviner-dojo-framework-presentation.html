@@ -78,7 +78,7 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   padding: 60px 80px;
   opacity: 0;
@@ -105,6 +105,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 32px;
+  /* safe centering: short slides center, tall slides scroll from the top
+     (justify-content:center clips overflow-top unreachably) */
+  margin: auto 0;
 }
 
 /* ===== NAVIGATION ===== */
