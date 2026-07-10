@@ -3,13 +3,13 @@ title: "AI-Native Agentic Development Framework — Full Specification"
 version: "3.5"
 status: living-document
 created: "2026-02-18"
-last_updated: "2026-05-16"
+last_updated: "2026-07-09"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
-external_analyses: 8
-patterns_evaluated: 77
-patterns_adopted: 42
+external_analyses: 18
+patterns_evaluated: 165
+patterns_adopted: 62
 ---
 
 # AI-Native Agentic Development Framework v3.5
@@ -89,9 +89,9 @@ Full provenance details are in [Appendix A](#appendix-a--external-project-proven
 
 ## 2. Foundational Principles
 
-Above the eight principles sits a **Prime Objective** (added in ADR-0015, 2026-05-16): the framework must serve contributors and users and never accumulate value at their expense. Each of the eight principles below is an operational expression of this objective — capture, independence, education, immutability, simplicity are not arbitrary engineering preferences but specific structural refusals of extraction patterns. The Prime Objective's three-part test (attribution preservation, consent of labor, consent of evolution) is the named instrument specialists apply to designs that touch value-flow questions. Enforcement is human-mediated at every gate; the framework provides the gates, the human provides the verdict.
+Above the nine principles sits a **Prime Objective** (added in ADR-0015, 2026-05-16): the framework must serve contributors and users and never accumulate value at their expense. Each of the nine principles below is an operational expression of this objective — capture, independence, education, immutability, simplicity are not arbitrary engineering preferences but specific structural refusals of extraction patterns. The Prime Objective's three-part test (attribution preservation, consent of labor, consent of evolution) is the named instrument specialists apply to designs that touch value-flow questions. Enforcement is human-mediated at every gate; the framework provides the gates, the human provides the verdict.
 
-The framework is governed by 8 non-negotiable principles, codified in [`CLAUDE.md`](../CLAUDE.md). The original research defined principles 1–7; Principle 8 was adopted from external analysis.
+The framework is governed by 9 non-negotiable principles, codified in [`CLAUDE.md`](../CLAUDE.md). The original research defined principles 1–7; Principle 8 was adopted from external analysis; Principle 9 (the 95% clarify gate) was added later.
 
 ### Principle 1: Reasoning is the Primary Artifact
 > Code is output. Deliberation, trade-offs, and decision lineage are the durable assets. Every significant decision must be traceable to the discussion that produced it.
@@ -132,6 +132,11 @@ The framework is governed by 8 non-negotiable principles, codified in [`CLAUDE.m
 > When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate.
 
 **Implementation**: Codified in [`CLAUDE.md`](../CLAUDE.md) Principle #8 and referenced in [`architecture-consultant`](../.claude/agents/architecture-consultant.md) anti-patterns. *Adopted from* ***self-improving-coding-agent*** *(MaximeRobeyns, Score: 22/25,* [*ANALYSIS-20260219-043657*](reviews/ANALYSIS-20260219-043657-self-improving-coding-agent.md)*).*
+
+### Principle 9: Clarify Before Acting (the 95% Rule)
+> Before producing a plan, writing code, or taking any substantive action, ask until ≥95% confident of both intent *and* scope. A wrong assumption acted on costs far more than the question that would have prevented it.
+
+**Implementation**: Mandatory unless the developer explicitly overrides ("proceed" / "just do it"); micro-fixes are exempt (see the [`handling-micro-fixes`](../.claude/skills/handling-micro-fixes/SKILL.md) skill). A formal confidence check also runs inside [`/plan`](../.claude/commands/plan.md) and [`/build_module`](../.claude/commands/build_module.md); when the developer is AFK the question routes to their phone via the [`notifying-the-developer`](../.claude/skills/notifying-the-developer/SKILL.md) skill.
 
 ---
 
@@ -438,7 +443,7 @@ All agent definitions include "Anti-patterns to avoid" sections with 5 domain-sp
 
 ## 6. Command Reference
 
-The framework provides **17 slash commands** in [`.claude/commands/`](../.claude/commands/). All commands include pre-flight checks that verify prerequisites before execution.
+The framework provides **25 slash commands** in [`.claude/commands/`](../.claude/commands/). All commands include pre-flight checks that verify prerequisites before execution. (The commands documented individually below are the most-used; the remainder — `/seed`, `/spawn-project`, `/conversation`, `/status`, `/evaluate-repo-security`, and the deprecated `/distribute` alias — are summarized in the group tables and the Post-May additions section.)
 
 ### Core Workflow Commands
 
@@ -546,6 +551,27 @@ Invokes the educator agent for comprehension assessment.
 
 Invokes the educator agent for step-by-step code explanation.
 
+### Goal-Driven & Session Commands
+
+#### `/goal-loop` — Goal-Driven Iteration
+**File**: [`.claude/commands/goal-loop.md`](../.claude/commands/goal-loop.md) (ADR-0026, hardened by ADR-0028)
+
+Pursues a developer-authored **goal contract** by iterating build → verify → refine until its verifiable criteria are met, then halts for `/review` + a required education walkthrough. Control flow is owned by the deterministic driver [`scripts/goal_loop.py`](../scripts/goal_loop.py); the model is invoked only for build / judge / gate steps, and the **builder is never its own judge** (Principle #4 extended to autonomous iteration). Never pushes, never auto-merges. Contract authoring and loop-shape gatekeeping run through the [`authoring-goal-contracts`](../.claude/skills/authoring-goal-contracts/SKILL.md) skill; per-tick craft lives in [`orchestrating-goal-loops`](../.claude/skills/orchestrating-goal-loops/SKILL.md).
+
+#### `/handoff` — Session Wrap-Up & Handoff
+**File**: [`.claude/commands/handoff.md`](../.claude/commands/handoff.md) (ADR-0018)
+
+Cleanly wraps up a long session and writes a paste-ready handoff prompt (plus a `docs/handoff/` artifact) so the next session resumes without loss. The deterministic entry point for the [`wrapping-up-sessions`](../.claude/skills/wrapping-up-sessions/SKILL.md) skill; an optional consent-gated continuation launch is depth-capped and inherits every prohibited action (no push, no auto-merge, no skipped `/review`).
+
+### Setup & Application Commands
+
+#### `/apply-framework` — Apply or Update the Framework on a Project
+**File**: [`.claude/commands/apply-framework.md`](../.claude/commands/apply-framework.md) (ADR-0021)
+
+Detects framework presence, shows a value/risk assessment **first**, then — only on an explicit, clean-tree-gated deploy — stages the framework onto a dedicated back-out branch. Never pushes, never auto-merges, one target at a time. Unifies greenfield application and in-place update via presence routing (a two-baseline floor). `/distribute` remains as a **deprecated alias**. For a deep takeover afterward it offers `/onboard`.
+
+Other setup commands: `/seed` and `/spawn-project` (bootstrap a project into the framework), `/conversation` (cross-project message exchange via shared-memory), `/status` (browser-based repo status map), and `/evaluate-repo-security` (adversarial security-first evaluation of an external repo).
+
 ### Cross-Cutting Command Features
 
 All commands incorporate two patterns adopted from external projects:
@@ -558,7 +584,9 @@ All commands incorporate two patterns adopted from external projects:
 
 ## 7. Hook System — Safety & Automation
 
-The framework uses **7 logical hooks** (implemented in **10 files**) within Claude Code's hook system. Hooks provide automated safety enforcement and quality automation.
+The framework uses **8 logical hooks** (implemented in **13 files**) across 5 Claude Code hook events (PreToolUse, PostToolUse, UserPromptSubmit, PreCompact, SessionStart). Hooks provide automated safety enforcement and quality automation.
+
+> **Designed but parked (ADR-0023):** a one-shot, silent-by-default Stop hook (`scripts/stop_hook.py`) is fully specified but its `.claude/settings.json` Stop block is a manual developer opt-in — the PreToolUse validator denies agent edits to `settings.json` by design — so it is **not wired in the shipped configuration**.
 
 ### PreToolUse Hooks (Before file writes, git operations)
 
@@ -624,6 +652,14 @@ Prompts the agent to update [`BUILD_STATUS.md`](../BUILD_STATUS.md) with current
 Prompts the agent to read `BUILD_STATUS.md` to restore working context.
 
 *Session continuity hooks achieved* ***Rule of Three*** *status with 3 independent sightings: ContractorVerification (as "Session Initialization Protocol"), CritInsight, claude-agentic-framework. Score: 21/25 + 2 Rule of Three bonus = 23/25. Originally adopted from* ***CritInsight*** *(*[*ANALYSIS-20260219-033023*](reviews/ANALYSIS-20260219-033023-critinsight.md)*).*
+
+### UserPromptSubmit Hook
+
+#### 8. Context Guard
+**Files**: [`.claude/hooks/context-guard.sh`](../.claude/hooks/context-guard.sh) → [`.claude/hooks/context_guard.py`](../.claude/hooks/context_guard.py) (paired with the `context-statusline` sensor)
+**Trigger**: Every user prompt submission
+
+Monitors context occupancy and, at a model-specific threshold, nudges the agent to run the `wrapping-up-sessions` skill / `/handoff` so a long session checkpoints before quality degrades or auto-compaction hits (ADR-0018).
 
 ### Hook Runtime State
 
@@ -959,7 +995,7 @@ Five steps:
 
 ### Analysis Track Record
 
-As of 2026-03-08, 8 projects analyzed → 77 patterns evaluated → 42 adopted. Four patterns achieved Rule of Three:
+As of 2026-05-20, 18 analyses → 165 patterns evaluated → 62 adopted (42 deferred, 33 rejected). Multiple patterns have achieved Rule of Three; two representative examples:
 
 | Pattern | Sightings | Projects | Final Score |
 |---------|-----------|----------|-------------|
@@ -1023,7 +1059,7 @@ Per ADR-0016 (progressive disclosure), only **4 rule files** reach context: `aut
 
 ### Skill Reference Documents
 
-**19 on-demand skills** in [`.claude/skills/`](../.claude/skills/) — loaded by description match, not always-resident. 6 reference playbooks plus 12 protocol skills relocated from `.claude/rules/` per ADR-0016, plus `collaborating-async` (ADR-0019):
+**25 on-demand skills** in [`.claude/skills/`](../.claude/skills/) — loaded by description match, not always-resident. 6 reference playbooks, 12 protocol skills relocated from `.claude/rules/` per ADR-0016, `collaborating-async` (ADR-0019), the two goal-loop skills (ADR-0026), and the interview/wrap-up/calibration additions:
 
 | Skill | Scope |
 |-------|-------|
@@ -1045,6 +1081,13 @@ Per ADR-0016 (progressive disclosure), only **4 rule files** reach context: `aut
 | multi-instance-dispatch | Parallel instance splits *(was multi_instance_protocol)* |
 | handling-micro-fixes | Cosmetic-change sizing + two-strike escalation *(was micro_fix_protocol)* |
 | collaborating-async | Two-way ntfy loop (ADR-0019): ask/poll/check/say modes, MAIN + REPLY topic model, untrusted-reply allow-list, AFK-safe gating decisions |
+| authoring-goal-contracts | Grill-flavored interview that emits a valid goal contract and gatekeeps non-loop-shaped goals first (ADR-0026) |
+| orchestrating-goal-loops | Model-facing per-tick craft (build delta / independent judge / gate phrasing) invoked by `scripts/goal_loop.py`; holds no control flow (ADR-0026) |
+| grill-me | Relentless one-question-at-a-time interview to stress-test a plan or decision; checkpoints to `brainstorms/` |
+| grill-yourself | Inverted grill — the model interrogates its own plan in the user's voice and answers each with a recommendation |
+| wrapping-up-sessions | Model-aware context wrap-up + handoff artifact; consent-gated continuation launch (ADR-0018) |
+| severity-calibration | Shared severity rubric so specialist findings are honest at the source for the ADR-0022 explicit-marker parse |
+| orchestrating-lean-dispatch | Push delegable tokens down to cheaper models / deterministic tools while a top-tier session orchestrates |
 
 ### Push Notifications & Async Collaboration (ADR-0019)
 
@@ -1079,8 +1122,8 @@ The framework supports two-way async communication with the developer via ntfy.s
 | Layer 1 capture pipeline (create → write → generate → close) | `scripts/create_discussion.py`, `write_event.py`, `generate_transcript.py`, `close_discussion.py` | 10 discussions captured, 24+ tests |
 | Layer 2 SQLite indexing | `scripts/init_db.py`, `ingest_events.py`, `record_education.py` | 5 tables, 10 indexes, tested |
 | 12 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns + Values + Domain Lens |
-| 17 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
-| 7 hooks (10 files) | `.claude/hooks/*` | File locking, secret detection, auto-format, session continuity |
+| 25 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
+| 8 hooks (13 files) | `.claude/hooks/*` | File locking, secret detection, auto-format, session continuity, context-guard |
 | Quality gate (5 checks) | `scripts/quality_gate.py` + pre-commit hook | Runs on every commit |
 | Application source directory (`src/`) | `src/__init__.py` | Empty in template — add your code here |
 | Dual-layer secret detection (write-time + read-time) | `validate_tool_use.py` + `redact_secrets.py` | 12 + 15 patterns, tested |
@@ -1088,10 +1131,10 @@ The framework supports two-way async communication with the developer via ntfy.s
 | Session continuity | `pre-compact.ps1`, `session-start.ps1`, `BUILD_STATUS.md` | Hooks configured |
 | Structured exception hierarchy (pattern documented) | See coding standards + error handling in CLAUDE.md | Add to `src/` when building your app |
 | LLM-gated test markers | `pyproject.toml` marker registration | `--run-llm`, `--run-slow` |
-| Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 77 patterns tracked |
-| 19 on-demand skills | `.claude/skills/*/SKILL.md` | 6 reference playbooks + 12 protocol skills relocated from rules (ADR-0016) + `collaborating-async` (ADR-0019) |
+| Adoption audit lifecycle | `memory/lessons/adoption-log.md` | 165 patterns tracked (as of May 2026) |
+| 25 on-demand skills | `.claude/skills/*/SKILL.md` | 6 reference playbooks + 12 protocol skills (ADR-0016) + `collaborating-async` (ADR-0019) + goal-loop/interview/wrap-up/calibration additions |
 | 4 context-loaded rule files | `.claude/rules/*.md` | autonomous_workflow (always) + coding/testing/security (path-scoped) per ADR-0016 |
-| 6 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review, project profile |
+| 9 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review, project profile, and others |
 | Steward agent + lineage tracking | `.claude/agents/steward.md`, `scripts/lineage/`, `framework-lineage.yaml`, `.claude/custodian/` | ADR-0002 accepted, Phase 1 operational |
 | UX evaluator agent | `.claude/agents/ux-evaluator.md` | Interaction flow, accessibility, platform conventions |
 | Build review protocol | `.claude/skills/running-build-checkpoints/SKILL.md` | Mid-build checkpoint reviews, Principle #4 |
@@ -1099,6 +1142,22 @@ The framework supports two-way async communication with the developer via ntfy.s
 | Lineage test suite | `tests/test_lineage.py` | Manifest parsing, drift detection |
 | Education gate workflow | `.claude/commands/walkthrough.md`, `.claude/commands/quiz.md` | Generated per-session by educator agent |
 | Review Blueprint v2.1 adoption (revised by ADR-0009) | `.claude/agents/history-analyst.md`, `REVIEW.md`, `.claude/commands/review.md` | Scope detection, confidence annotation, facilitator finding verification, REVIEW.md rule injection into all specialists, self-healing docs, --cost/--deep flags (ADR-0006, ADR-0009) |
+
+### Post-May 2026 Additions (ADR-0018 through ADR-0028)
+
+Landed after the previous substantive refresh; all present on the public template.
+
+| ADR | Feature | Files |
+|-----|---------|-------|
+| ADR-0018 | Model-aware session wrap-up + handoff; `UserPromptSubmit` context-guard nudge; consent-gated auto-launch continuation | `.claude/commands/handoff.md`, `.claude/skills/wrapping-up-sessions/`, `.claude/hooks/context-guard.sh` + `context_guard.py`, `docs/handoff/` |
+| ADR-0020 | Telemetry & Oversight component — cost (A1), failure/waste signals (A2), value-vs-subscription (A3), + a live Layer B dashboard daemon; per-tier cost amendment to ADR-0013 | `src/telemetry/*`, `scripts/telemetry/*` (incl. `dashboard_server.py`) |
+| ADR-0021 | `/apply-framework` apply-or-update unification — presence routing, two-baseline floor, APPLY consent inversion; `/distribute` kept as deprecated alias | `.claude/commands/apply-framework.md`, `.claude/commands/distribute.md` |
+| ADR-0022 | `findings.is_noise` flag + severity reclassification — closes the write-only knowledge loop; paired `severity-calibration` skill | `scripts/extract_findings.py`, `.claude/skills/severity-calibration/` |
+| ADR-0023 | One-shot, silent-by-default Stop hook — **designed; settings.json Stop block is a manual opt-in, not wired by default** | `scripts/stop_hook.py` |
+| ADR-0024 | Confidence-calibration loop — audit-to-tighten feedback via a **human-gated** proposal queue (advisory, never gate-blocking) | `scripts/audit_calibration.py`, `memory/calibration-proposals/` |
+| ADR-0025 | Framework corpus builder respects `.gitignore` — `git ls-files` enumeration, non-git fallback, fail-loud cap | corpus builder |
+| ADR-0026 / ADR-0028 | Goal-driven loop orchestration (`/goal-loop`) + first-real-use reliability hardening; deterministic driver, builder≠judge, human-approved merge | `scripts/goal_loop.py`, `.claude/commands/goal-loop.md`, `loops/`, `.claude/skills/authoring-goal-contracts/` + `orchestrating-goal-loops/` |
+| ADR-0027 | Suchness invariant — names the source-canonical / provenance-tether property in `PHILOSOPHY.md` | `PHILOSOPHY.md` |
 
 ### Implemented but Unused / Under-Tested
 
@@ -1147,7 +1206,7 @@ The framework supports two-way async communication with the developer via ntfy.s
 
 ## Appendix A — External Project Provenance Table
 
-Complete record of all 77 patterns evaluated across 8 external project analyses, grouped by source project. Status: **ADOPTED** / **DEFERRED** / **REJECTED**.
+Record of the **seed cohort** — the first 77 patterns evaluated across the original 8 external project analyses (Feb 2026), grouped by source project. Status: **ADOPTED** / **DEFERRED** / **REJECTED**. The running totals (165 patterns across 18 analyses as of May 2026) live in [`memory/lessons/adoption-log.md`](../memory/lessons/adoption-log.md); this appendix is not re-expanded per analysis.
 
 ### 1. ContractorVerification (SDD-Centric) — [ANALYSIS-20260219-010900](reviews/ANALYSIS-20260219-010900-contractor-verification.md)
 
@@ -1199,7 +1258,7 @@ Complete record of all 77 patterns evaluated across 8 external project analyses,
 | "Use When" Activation Triggers | 23/25 | **ADOPTED** (PENDING) | All agent description fields |
 | CRITICAL BEHAVIORAL RULES Framing | 21/25 | **ADOPTED** (PENDING) | `review.md`, `deliberate.md`, `analyze-project.md`, `build_module.md` |
 | State-Persistent Multi-Phase Workflows | 20/25 | **ADOPTED** (PENDING) | `review.md`, `deliberate.md`, `analyze-project.md` (state.json) |
-| Pre-Flight Checks for Commands | 20/25 | **ADOPTED** (PENDING) | All 17 commands |
+| Pre-Flight Checks for Commands | 20/25 | **ADOPTED** (PENDING) | All commands |
 | Model-Tier Agent Assignment *(4th sighting)* | — | ADOPTED | (Already adopted) |
 | `inherit` Model Tier | 18/25 | DEFERRED | Needs per-agent minimum tier guardrails |
 | ACH Methodology for Independent Perspective | 18/25 | DEFERRED | Unproven in AI agent context |
@@ -1246,7 +1305,7 @@ Complete record of all 77 patterns evaluated across 8 external project analyses,
 | Save-Last Artifact Persistence | 16/25 | DEFERRED | Already implicitly followed |
 | CORRECT/INCORRECT Verdict Protocol | 14/25 | REJECTED | Binary verdicts too simplistic for our outputs |
 
-### Summary Statistics
+### Summary Statistics (seed cohort — first 8 analyses)
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
@@ -1327,7 +1386,7 @@ agent_framework_template/
 │   │   ├── ux-evaluator.md           #   sonnet — the user in the room, accessibility
 │   │   └── history-analyst.md        #   sonnet — git history context (--deep only)
 │   │
-│   ├── commands/                      # 17 slash commands
+│   ├── commands/                      # 25 slash commands
 │   │   ├── analyze-project.md         #   External project analysis
 │   │   ├── batch-evaluate.md          #   Batch adoption evaluation
 │   │   ├── build_module.md            #   Spec-driven module building
@@ -1345,7 +1404,7 @@ agent_framework_template/
 │   │   ├── ship.md                    #   Full release workflow
 │   │   └── walkthrough.md             #   Guided code walkthrough
 │   │
-│   ├── hooks/                         # 10 files implementing 7 logical hooks
+│   ├── hooks/                         # 13 files implementing 8 logical hooks
 │   │   ├── pre-tool-use-validator.sh  #   Router for PreToolUse validation
 │   │   ├── validate_tool_use.py       #   File locking + secret detection + protected files
 │   │   ├── pre-commit-gate.sh         #   Quality gate reminder on commit
@@ -1367,7 +1426,7 @@ agent_framework_template/
 │   │   ├── security_baseline.md      #   path-scoped src/**, scripts/**
 │   │   └── testing_requirements.md   #   path-scoped tests/**
 │   │
-│   └── skills/                        # 19 on-demand skills (6 playbooks + 12 relocated protocols + collaborating-async, ADR-0016/ADR-0019)
+│   └── skills/                        # 25 on-demand skills (playbooks + relocated protocols + goal-loop/interview/wrap-up, ADR-0016/ADR-0019/ADR-0026)
 │       ├── adr-writing/SKILL.md
 │       ├── performance-playbook/SKILL.md
 │       ├── python-project-patterns/SKILL.md
@@ -1495,3 +1554,4 @@ agent_framework_template/
 | 2026-05-12 | Sourced-assertion memory substrate (ADR-0014, Phase 4) — `assertion_store/Substrate` class + `mcp_server/` FastMCP transport. Three primitives: `assert_fact`, `search_semantic`, `get_source`. SQLite + sqlite-vec + sentence-transformers. Suchness preservation as first-class architectural action (get_source returns the original passage at a project:// URI line range). Substrate is transport-agnostic; MCP is one transport. Phase 4 mods: per-assertion project_id, portable `project://<id>/<path>#L<a>-L<b>` URI, scope parameter reserved for future cross-project layer (local-only this round). |
 | 2026-05-16 | v3.5: Prime Objective above the eight principles (ADR-0015) — the framework's first principle is named as serving contributors and users and refusing extraction patterns. The eight Non-Negotiable Principles are recast as operational expressions of the Prime Objective. Three-part test (attribution preservation, consent of labor, consent of evolution) named as a specialist instrument. PHILOSOPHY.md extended with positive moral frame and the model-provider limit acknowledged. REVIEW.md cues specialists to apply the test on designs touching attribution, consent of labor, value flow, or framework evolution. Cross-instance propagation via `~/.claude/shared-memory/FRAMEWORK_CHANGELOG.md`. |
 | 2026-05-26 | ADR-0019: Async human-in-the-loop collaboration loop — `scripts/collab_loop.py` (ask/poll/check/say, two-topic ntfy model), `ask_developer.py` refactored as thin shim, `notify.py` ASCII-safe titles, `collaborating-async` on-demand skill. Skill count: 17 → 18. Untrusted-reply allow-list and never-print-topic promoted to CLAUDE.md always-on invariants. |
+| 2026-07-09 | Targeted delta refresh for the ADR-0018..0028 era (counts + new features; not a rewrite). Added Principle 9 (95% clarify gate); commands 17→25 (`/goal-loop`, `/handoff`, `/apply-framework` + `/distribute` alias, `/conversation`, `/status`, `/evaluate-repo-security`, `/seed`, `/spawn-project`); hooks 7→8 logical / 10→13 files (UserPromptSubmit context-guard, ADR-0018); skills 19→25 (goal-loop, grill-me/grill-yourself, wrapping-up-sessions, severity-calibration, orchestrating-lean-dispatch); templates 6→9. New "Post-May 2026 Additions" table: Telemetry & Oversight (ADR-0020), apply-framework unification (ADR-0021), findings.is_noise + severity reclassification (ADR-0022), designed-but-parked one-shot Stop hook (ADR-0023), confidence-calibration loop (ADR-0024), corpus-respects-gitignore (ADR-0025), goal-driven loop + hardening (ADR-0026/0028), suchness invariant (ADR-0027). Adoption stats refreshed to 18 analyses / 165 patterns / 62 adopted (as of May 2026); Appendix A reframed as the seed cohort. |
