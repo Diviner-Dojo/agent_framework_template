@@ -48,3 +48,7 @@ data/otel_export.jsonl
 # redirects the conventional filename into the working tree — it must not be
 # committed (it carries personal cost/fee figures).
 telemetry_dashboard.html
+
+# Calibration loop runtime artifacts (ADR-0024) — per-run proposals + run log
+memory/calibration-proposals/
+metrics/calibration_log.jsonl

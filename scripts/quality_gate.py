@@ -452,6 +452,75 @@ def check_subscription_fee_not_staged() -> bool:
     return True
 
 
+_PROMOTION_BACKLOG_THRESHOLD = 5  # Pending candidates that trigger a warning.
+_PROMOTION_STALE_DAYS = 30  # Days without promotion/retro activity that triggers a warning.
+
+
+def check_promotion_backlog() -> bool:
+    """Advisory: warn when the /promote backlog is large or stale (ADR-0022, R3.2).
+
+    Warns when pending promotion_candidates > _PROMOTION_BACKLOG_THRESHOLD OR the
+    freshest promotion/retro signal is older than _PROMOTION_STALE_DAYS days.
+    Degrades silently if the DB or tables are absent.
+    Always returns True (advisory — never blocks the gate).
+    """
+    db_path = PROJECT_ROOT / "metrics" / "evaluation.db"
+    if not db_path.exists():
+        return True
+
+    try:
+        import sqlite3
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            pending = conn.execute(
+                "SELECT COUNT(*) FROM promotion_candidates WHERE promoted = 0"
+            ).fetchone()[0]
+
+            # Freshest signal: most recent promoted_at or reflection created_at.
+            last_activity_row = conn.execute(
+                """SELECT MAX(ts) FROM (
+                       SELECT MAX(promoted_at) AS ts FROM promotion_candidates
+                       UNION ALL
+                       SELECT MAX(created_at) AS ts FROM reflections
+                   )"""
+            ).fetchone()
+            last_activity = last_activity_row[0] if last_activity_row else None
+        finally:
+            conn.close()
+    except Exception:
+        return True
+
+    # Count-trigger: backlog too large.
+    if pending > _PROMOTION_BACKLOG_THRESHOLD:
+        _warn(
+            f"Promotion backlog: {pending} pending candidates (>{_PROMOTION_BACKLOG_THRESHOLD}) "
+            "— consider running /promote to review pattern sightings"
+        )
+        return True
+
+    # Staleness-trigger: only warn when there is activity to go stale.
+    if last_activity and pending > 0:
+        from datetime import UTC, datetime
+
+        try:
+            last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
+            # Normalize naive datetimes (no TZ stored) to UTC to avoid TypeError.
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=UTC)
+        except (ValueError, AttributeError):
+            return True
+        age_days = (datetime.now(UTC) - last_dt).days
+        if age_days > _PROMOTION_STALE_DAYS:
+            _warn(
+                f"Promotion backlog: {pending} pending candidate(s), "
+                f"last activity {age_days} days ago (>{_PROMOTION_STALE_DAYS}) "
+                "— consider running /promote"
+            )
+
+    return True
+
+
 _CHECK_NAMES = ["format", "lint", "tests", "coverage", "adrs", "reviews", "regression"]
 # The argparse ``--skip-*`` flag attribute for each check, in _CHECK_NAMES order.
 # Derived from _CHECK_NAMES so a new check is added in exactly one place.
@@ -714,6 +783,10 @@ def main() -> int:
     # Advisory: warn if a real subscription fee (telemetry A3) is staged.
     # Always passes — only warns. Not counted in pass/fail totals.
     check_subscription_fee_not_staged()
+
+    # Advisory: warn if the /promote backlog is large or stale (ADR-0022).
+    # Always passes — only warns. Not counted in pass/fail totals.
+    check_promotion_backlog()
 
     # Summary
     passed = sum(results)

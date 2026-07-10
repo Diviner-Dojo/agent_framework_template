@@ -94,21 +94,28 @@ def generate_dashboard(output_json: bool = False) -> dict:
             "total_turns": turns_count,
         }
 
-        # Knowledge pipeline tables
+        # Knowledge pipeline tables — non-noise rows only (ADR-0022).
         try:
-            findings_count = conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0]
+            findings_count = conn.execute(
+                "SELECT COUNT(*) FROM findings WHERE is_noise = 0"
+            ).fetchone()[0]
             findings_by_severity = dict(
                 conn.execute(
-                    "SELECT severity, COUNT(*) FROM findings GROUP BY severity"
+                    "SELECT severity, COUNT(*) FROM findings WHERE is_noise = 0 GROUP BY severity"
                 ).fetchall()
             )
+            noise_count = conn.execute(
+                "SELECT COUNT(*) FROM findings WHERE is_noise = 1"
+            ).fetchone()[0]
         except sqlite3.OperationalError:
             findings_count = 0
             findings_by_severity = {}
+            noise_count = 0
 
         dashboard["layers"]["findings"] = {
             "total": findings_count,
             "by_severity": findings_by_severity,
+            "noise": noise_count,
         }
 
         try:
@@ -195,9 +202,10 @@ def generate_dashboard(output_json: bool = False) -> dict:
 
         findings = dashboard["layers"].get("findings", {})
         print(f"\n{CYAN}Findings Pipeline{RESET}")
-        print(f"  Total findings: {findings.get('total', 0)}")
+        print(f"  Total findings (non-noise): {findings.get('total', 0)}")
         for sev, count in findings.get("by_severity", {}).items():
             print(f"    {sev}: {count}")
+        print(f"  Noise rows (excluded): {findings.get('noise', 0)}")
 
         ps = dashboard["layers"].get("pattern_sightings", {})
         print(f"\n{CYAN}Pattern Sightings{RESET}")
