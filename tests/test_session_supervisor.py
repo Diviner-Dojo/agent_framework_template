@@ -341,3 +341,256 @@ class TestSupervise:
         # The progress log is the evidence trail the developer asked for.
         text = log.read_text(encoding="utf-8")
         assert "session 1" in text and "DONE" in text
+
+
+# --------------------------------------------------------------------------- #
+# Turn-budget prompt (work item 2b)
+# --------------------------------------------------------------------------- #
+class TestTurnBudgetPrompt:
+    @pytest.mark.regression
+    def test_prompt_names_cap_and_checkpoint_turn(self, tmp_path) -> None:
+        # Regression (2026-06-12 07:09): an 80-turn clip killed a session with
+        # no chance to emit a sentinel -> no-sentinel chain stop. The prompt
+        # must name the cap and a checkpoint turn ~10 before it.
+        prompt = sup.build_prompt(tmp_path / "h.md", max_turns=80)
+        assert "80" in prompt and "70" in prompt
+        assert sup.SENTINEL_ROLL in prompt
+
+    def test_prompt_without_cap_omits_budget_clause(self, tmp_path) -> None:
+        prompt = sup.build_prompt(tmp_path / "h.md")
+        assert "TURN BUDGET" not in prompt
+
+    def test_checkpoint_turn_floors_at_one(self, tmp_path) -> None:
+        prompt = sup.build_prompt(tmp_path / "h.md", max_turns=5)
+        assert "by turn 1" in prompt
+
+
+# --------------------------------------------------------------------------- #
+# MODEL: tiering (work item 2c)
+# --------------------------------------------------------------------------- #
+class TestModelTiering:
+    def test_parse_handoff_model_finds_header_line(self) -> None:
+        text = "# NEXT RUN: Run 3 (manifests)\nMODEL: sonnet\n\nDo the things."
+        assert sup.parse_handoff_model(text) == "sonnet"
+
+    def test_parse_handoff_model_absent_is_none(self) -> None:
+        assert sup.parse_handoff_model("# NEXT RUN\nno tier here") is None
+
+    def test_parse_handoff_model_ignores_inline_mentions(self) -> None:
+        # Only a line-start "MODEL:" declares the tier; prose mentions don't.
+        assert sup.parse_handoff_model("the MODEL: sonnet idea is nice") is None
+
+    def test_parse_handoff_model_rejects_argv_smuggling(self) -> None:
+        # A value with spaces/flags must not match (charset-restricted group).
+        assert sup.parse_handoff_model("MODEL: sonnet --dangerously-skip") is None
+
+    def test_parse_handoff_model_rejects_leading_hyphen_or_dot(self) -> None:
+        # sec F2 fold (DISC-20260612-190124): "MODEL: -h" would reach argv as
+        # "--model -h"; first char must be alphanumeric.
+        assert sup.parse_handoff_model("MODEL: -h") is None
+        assert sup.parse_handoff_model("MODEL: ..evil") is None
+
+    def test_build_command_carries_model(self) -> None:
+        cmd = sup.build_command("p", model="fable")
+        assert cmd[cmd.index("--model") + 1] == "fable"
+
+    def test_build_command_omits_model_when_none(self) -> None:
+        assert "--model" not in sup.build_command("p", model=None)
+
+    def test_supervise_passes_handoff_model_to_command(self, tmp_path) -> None:
+        hp = tmp_path / "h.md"
+        hp.write_text("# NEXT RUN\nMODEL: sonnet\nwork", encoding="utf-8")
+        runner = _ScriptedRunner([(0, _result_json(text="SUPERVISOR_DONE"), "")])
+        sup.supervise(hp, runner=runner, progress_log=tmp_path / "p.md", cwd=tmp_path)
+        cmd = runner.calls[0][0]
+        assert cmd[cmd.index("--model") + 1] == "sonnet"
+
+    def test_supervise_rereads_model_each_session(self, tmp_path) -> None:
+        # The rolling handoff is updated in place between runs; a tier change
+        # in the NEXT RUN header must take effect on the next spawn.
+        hp = tmp_path / "h.md"
+        hp.write_text("MODEL: sonnet\nwork", encoding="utf-8")
+        calls: list[list[str]] = []
+
+        def _runner(cmd, cwd, timeout):
+            calls.append(cmd)
+            hp.write_text("MODEL: fable\nmore work", encoding="utf-8")
+            text = "SUPERVISOR_DONE" if len(calls) > 1 else "SUPERVISOR_ROLL"
+            return (0, _result_json(text=text), "")
+
+        sup.supervise(hp, runner=_runner, progress_log=tmp_path / "p.md", cwd=tmp_path)
+        assert calls[0][calls[0].index("--model") + 1] == "sonnet"
+        assert calls[1][calls[1].index("--model") + 1] == "fable"
+
+
+# --------------------------------------------------------------------------- #
+# Usage-limit detection + sleep-until-reset (work item 2a)
+# --------------------------------------------------------------------------- #
+# The real kill line as recorded in .supervisor-progress.md (2026-06-11 17:47,
+# 2026-06-12 07:46) — interpunct arrives mojibake'd through the cp1252 console.
+_LIMIT_TEXT = "You've hit your session limit Â· resets 10pm (America/Los_Angeles)"
+
+
+def _local_epoch(hour: int, minute: int = 0) -> float:
+    """Epoch seconds for today at hour:minute local time."""
+    import time as _time
+
+    lt = _time.localtime()
+    return _time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hour, minute, 0, 0, 0, -1))
+
+
+class TestUsageLimitDetection:
+    def test_detects_in_result_text(self) -> None:
+        parsed = {"result": _LIMIT_TEXT, "is_error": True}
+        assert sup.detect_usage_limit(parsed, "", "") == _LIMIT_TEXT
+
+    def test_detects_in_stderr(self) -> None:
+        assert sup.detect_usage_limit(None, "", _LIMIT_TEXT) == _LIMIT_TEXT
+
+    def test_plain_error_is_none(self) -> None:
+        assert sup.detect_usage_limit({"result": "boom"}, "", "traceback") is None
+
+    def test_reset_seconds_future_same_day(self) -> None:
+        # now=17:47, resets 10pm -> 4h13m + 5min slack
+        secs = sup.parse_reset_seconds(_LIMIT_TEXT, now=_local_epoch(17, 47))
+        assert secs == (4 * 3600 + 13 * 60) + 300
+
+    def test_reset_seconds_past_rolls_to_tomorrow(self) -> None:
+        # now=23:00, resets 10pm -> tomorrow 22:00
+        secs = sup.parse_reset_seconds(_LIMIT_TEXT, now=_local_epoch(23, 0))
+        assert secs == 23 * 3600 + 300
+
+    def test_reset_seconds_parses_minutes_and_noon_midnight(self) -> None:
+        secs = sup.parse_reset_seconds("resets 3:30pm", now=_local_epoch(15, 0))
+        assert secs == 30 * 60 + 300
+        secs = sup.parse_reset_seconds("resets 12am", now=_local_epoch(23, 0))
+        assert secs == 3600 + 300
+        secs = sup.parse_reset_seconds("resets 12pm", now=_local_epoch(11, 0))
+        assert secs == 3600 + 300
+
+    def test_unparseable_reset_is_none(self) -> None:
+        assert sup.parse_reset_seconds("hit your session limit, try later") is None
+
+    def test_detects_in_stdout(self) -> None:
+        # qa F2 fold (DISC-20260612-190124): the third candidate slot.
+        assert sup.detect_usage_limit(None, _LIMIT_TEXT, "") == _LIMIT_TEXT
+
+    def test_reset_seconds_at_exact_reset_time_rolls_to_tomorrow(self) -> None:
+        # qa F1 fold (DISC-20260612-190124): pins the <= operator — a reset
+        # advertised for exactly `now` was just consumed; wait a full day.
+        secs = sup.parse_reset_seconds(_LIMIT_TEXT, now=_local_epoch(22, 0))
+        assert secs == 24 * 3600 + 300
+
+
+class TestSuperviseUsageLimitRetry:
+    @pytest.mark.regression
+    def test_limit_kill_sleeps_and_retries(self, tmp_path) -> None:
+        # Regression (2026-06-11 17:47 + 2026-06-12 07:46): the supervisor
+        # treated a usage-limit kill as a hard error and stopped the chain,
+        # wasting the post-reset night. It must sleep until reset and retry.
+        hp = tmp_path / "h.md"
+        hp.write_text("x", encoding="utf-8")
+        runner = _ScriptedRunner(
+            [
+                (1, _result_json(text=_LIMIT_TEXT, is_error=True, cost=4.6), ""),
+                (0, _result_json(text="SUPERVISOR_DONE", cost=1.0), ""),
+            ]
+        )
+        naps: list[float] = []
+        out = sup.supervise(
+            hp,
+            runner=runner,
+            progress_log=tmp_path / "p.md",
+            cwd=tmp_path,
+            sleeper=naps.append,
+        )
+        assert out["outcome"] == "done" and out["sessions"] == 2
+        assert out["cost_usd"] == pytest.approx(5.6)
+        assert len(naps) == 1 and naps[0] > 0
+
+    def test_unparseable_reset_uses_fallback_sleep(self, tmp_path) -> None:
+        hp = tmp_path / "h.md"
+        hp.write_text("x", encoding="utf-8")
+        runner = _ScriptedRunner(
+            [
+                (1, "", "You've hit your session limit, no time given"),
+                (0, _result_json(text="SUPERVISOR_DONE"), ""),
+            ]
+        )
+        naps: list[float] = []
+        out = sup.supervise(
+            hp, runner=runner, progress_log=tmp_path / "p.md", cwd=tmp_path, sleeper=naps.append
+        )
+        assert out["outcome"] == "done"
+        assert naps == [sup.DEFAULT_LIMIT_FALLBACK_SLEEP]
+
+    def test_retries_capped_then_usage_limit_outcome(self, tmp_path) -> None:
+        hp = tmp_path / "h.md"
+        hp.write_text("x", encoding="utf-8")
+        runner = _always((1, _result_json(text=_LIMIT_TEXT, is_error=True), ""))
+        naps: list[float] = []
+        out = sup.supervise(
+            hp,
+            runner=runner,
+            max_limit_retries=2,
+            max_sessions=10,
+            progress_log=tmp_path / "p.md",
+            cwd=tmp_path,
+            sleeper=naps.append,
+        )
+        assert out["outcome"] == "usage-limit"
+        assert out["sessions"] == 3  # initial + 2 retries
+        assert len(naps) == 2
+
+    def test_non_limit_error_still_stops_without_sleep(self, tmp_path) -> None:
+        hp = tmp_path / "h.md"
+        hp.write_text("x", encoding="utf-8")
+        runner = _always((1, "", "boom"))
+
+        def _no_sleep(_s: float) -> None:
+            raise AssertionError("must not sleep on a non-limit error")
+
+        out = sup.supervise(
+            hp, runner=runner, progress_log=tmp_path / "p.md", cwd=tmp_path, sleeper=_no_sleep
+        )
+        assert out["outcome"] == "error" and out["sessions"] == 1
+
+    def test_limit_kill_at_session_cap_skips_sleep_and_labels_cause(self, tmp_path) -> None:
+        # sec F1 + qa F3 fold (DISC-20260612-190124): a limit kill with no
+        # session slot left must not sleep, and the outcome must name the
+        # usage limit, not masquerade as a normal max-sessions expiry.
+        hp = tmp_path / "h.md"
+        hp.write_text("x", encoding="utf-8")
+        runner = _always((1, _result_json(text=_LIMIT_TEXT, is_error=True), ""))
+
+        def _no_sleep(_s: float) -> None:
+            raise AssertionError("must not sleep when no session slot remains")
+
+        out = sup.supervise(
+            hp,
+            runner=runner,
+            max_sessions=1,
+            progress_log=tmp_path / "p.md",
+            cwd=tmp_path,
+            sleeper=_no_sleep,
+        )
+        assert out["outcome"] == "usage-limit" and out["sessions"] == 1
+
+    def test_budget_exhausted_blocks_limit_retry(self, tmp_path) -> None:
+        # A retry spawns another costly session; an exhausted budget must win.
+        hp = tmp_path / "h.md"
+        hp.write_text("x", encoding="utf-8")
+        runner = _always((1, _result_json(text=_LIMIT_TEXT, is_error=True, cost=6.0), ""))
+
+        def _no_sleep(_s: float) -> None:
+            raise AssertionError("must not sleep when the budget is exhausted")
+
+        out = sup.supervise(
+            hp,
+            runner=runner,
+            max_budget_usd=5.0,
+            progress_log=tmp_path / "p.md",
+            cwd=tmp_path,
+            sleeper=_no_sleep,
+        )
+        assert out["outcome"] == "budget" and out["sessions"] == 1

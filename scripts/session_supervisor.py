@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -57,22 +58,43 @@ DEFAULT_PER_SESSION_TIMEOUT = 2400  # seconds (40 min)
 DEFAULT_MAX_TURNS = 80
 DEFAULT_PROGRESS_LOG = "docs/handoff/.supervisor-progress.md"
 
+# Subscription usage-limit kill (observed 2026-06-11/12): the run dies rc=1 with
+# "You've hit your session limit · resets 10pm (America/Los_Angeles)". The
+# interpunct arrives mojibake'd through the cp1252 console, so detection keys on
+# ASCII substrings only.
+USAGE_LIMIT_MARKER = "hit your session limit"
+DEFAULT_MAX_LIMIT_RETRIES = 3
+DEFAULT_LIMIT_FALLBACK_SLEEP = 3600  # seconds, when the reset time is unparseable
+LIMIT_SLACK_SECONDS = 300  # wake 5 min after the advertised reset
+
+_RESET_RE = re.compile(r"resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", re.IGNORECASE)
+# Per-run model tier, declared in the rolling handoff's NEXT RUN header as a
+# line like "MODEL: sonnet" (convention: keep it in that header so it rolls
+# forward with the handoff). Charset is restricted so the value is safe as a
+# discrete argv element.
+_MODEL_RE = re.compile(r"^MODEL:\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*$", re.MULTILINE)
+
 # (returncode, stdout, stderr)
 RunResult = tuple[int, str, str]
 Runner = Callable[[list[str], Path, int], RunResult]
 
 
-def build_prompt(handoff_path: Path) -> str:
+def build_prompt(handoff_path: Path, *, max_turns: int | None = None) -> str:
     """Build the per-session prompt seeding the rolling handoff (pure).
 
     Only the validated, absolute handoff path is interpolated — no untrusted
     text — and the command runs with ``shell=False``, so this is injection-safe.
     A defensive guard rejects control characters in the path (a path containing
     a newline + a sentinel string could otherwise spoof DONE/ROLL).
+
+    When ``max_turns`` is set, the prompt names the hard turn cap and instructs
+    the session to checkpoint + emit the roll sentinel ~10 turns before it, so
+    a session never runs silently into the cap (the 2026-06-12 07:09 80-turn
+    clip produced a no-sentinel stop that killed the chain).
     """
     if any(c in str(handoff_path) for c in "\n\r\x00"):
         raise ValueError("handoff path contains control characters")
-    return (
+    prompt = (
         f"Read the session handoff at {handoff_path} and continue the work it "
         "describes. You inherit the full CLAUDE.md and rules: run /review before "
         "any commit, never bypass capture, never push or auto-merge, and stop on "
@@ -83,6 +105,77 @@ def build_prompt(handoff_path: Path) -> str:
         f"'{SENTINEL_DONE}' if the entire task is complete, otherwise "
         f"'{SENTINEL_ROLL}' to continue in a fresh full-context session."
     )
+    if max_turns is not None:
+        checkpoint_turn = max(max_turns - 10, 1)
+        prompt += (
+            f" HARD TURN BUDGET: this session is capped at {max_turns} agentic "
+            f"turns and is killed at the cap with NO chance to emit a sentinel. "
+            f"Track your spend; by turn {checkpoint_turn} at the latest, if work "
+            "remains, STOP starting new work, update the handoff in place, and "
+            f"end with '{SENTINEL_ROLL}'."
+        )
+    return prompt
+
+
+def parse_handoff_model(handoff_text: str) -> str | None:
+    """Extract the per-run model tier from a rolling-handoff body (pure).
+
+    Returns the value of the first line matching ``MODEL: <tier>`` (e.g.
+    ``sonnet``, ``fable``, or a full model id), or None when absent — None means
+    "let the CLI use its default". The regex restricts the charset, so the value
+    cannot smuggle flags or control characters into the argv.
+    """
+    m = _MODEL_RE.search(handoff_text)
+    return m.group(1) if m else None
+
+
+def detect_usage_limit(parsed: dict | None, stdout: str, stderr: str) -> str | None:
+    """Return the usage-limit message if this run died on the session limit (pure).
+
+    Checks the parsed result text first (where the json output format carries
+    it), then stderr/stdout. Returns the matching text so the caller can parse
+    the advertised reset time, or None when this is not a usage-limit kill.
+    """
+    candidates = (str((parsed or {}).get("result") or ""), stderr, stdout)
+    for text in candidates:
+        if USAGE_LIMIT_MARKER in text:
+            return text
+    return None
+
+
+def parse_reset_seconds(
+    message: str,
+    *,
+    now: float | None = None,
+    slack_seconds: int = LIMIT_SLACK_SECONDS,
+) -> int | None:
+    """Seconds to sleep until the advertised reset time + slack (pure-ish).
+
+    Parses ``resets 10pm`` / ``resets 3:30pm`` from a usage-limit message and
+    computes the delta from ``now`` (epoch seconds; defaults to the real clock)
+    to the NEXT local occurrence of that wall-clock time, plus ``slack_seconds``.
+    Assumes the advertised timezone matches the local clock (true for this
+    machine; the message prints the account's display zone). Returns None when
+    no reset time can be parsed — callers should fall back to
+    ``DEFAULT_LIMIT_FALLBACK_SLEEP``.
+    """
+    m = _RESET_RE.search(message)
+    if m is None:
+        return None
+    hour = int(m.group(1)) % 12
+    if m.group(3).lower() == "pm":
+        hour += 12
+    minute = int(m.group(2) or 0)
+    now_ts = time.time() if now is None else now
+    lt = time.localtime(now_ts)
+    candidate = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hour, minute, 0, 0, 0, -1))
+    if candidate <= now_ts:
+        # Re-derive tomorrow's wall-clock time via mktime's mday normalization
+        # (DST-correct) rather than adding raw 86400 s (off by 1 h on the two
+        # DST transition days). A reset advertised for exactly `now` rolls
+        # forward — that slot was just consumed.
+        candidate = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + 1, hour, minute, 0, 0, 0, -1))
+    return int(candidate - now_ts) + slack_seconds
 
 
 def build_command(
@@ -92,12 +185,15 @@ def build_command(
     output_format: str = "json",
     max_turns: int | None = DEFAULT_MAX_TURNS,
     max_budget_usd: float | None = None,
+    model: str | None = None,
 ) -> list[str]:
     """Build the headless ``claude -p`` argv (pure).
 
     NOTE: deliberately omits ``--bare`` — that flag forces ANTHROPIC_API_KEY-only
     auth (breaking an OAuth subscription) AND skips the project's safety hooks.
     The prompt is a discrete argv element; run with ``shell=False``.
+    ``model`` (from the handoff's ``MODEL:`` header via ``parse_handoff_model``)
+    selects the orchestrator tier per run; None lets the CLI default apply.
     """
     cmd = [
         "claude",
@@ -112,6 +208,8 @@ def build_command(
         cmd += ["--max-turns", str(max_turns)]
     if max_budget_usd is not None:
         cmd += ["--max-budget-usd", str(max_budget_usd)]
+    if model is not None:
+        cmd += ["--model", model]
     return cmd
 
 
@@ -223,6 +321,14 @@ def _append_progress(log_path: Path, line: str) -> None:
         sys.stderr.write(f"WARN: progress log unwritable ({type(exc).__name__}): {log_path}\n")
 
 
+def _read_handoff_model(handoff_path: Path) -> str | None:
+    """Read the handoff and extract its ``MODEL:`` tier (best-effort I/O seam)."""
+    try:
+        return parse_handoff_model(handoff_path.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+
+
 def supervise(
     handoff_path: Path,
     *,
@@ -230,22 +336,34 @@ def supervise(
     max_budget_usd: float | None = None,
     per_session_timeout: int = DEFAULT_PER_SESSION_TIMEOUT,
     max_turns: int | None = DEFAULT_MAX_TURNS,
+    max_limit_retries: int = DEFAULT_MAX_LIMIT_RETRIES,
     progress_log: Path | None = None,
     cwd: Path | None = None,
     runner: Runner = _default_runner,
     dry_run: bool = False,
     allow_dirty: bool = False,
     tree_checker: Callable[[Path], bool] = _is_clean_tree,
+    sleeper: Callable[[float], None] = time.sleep,
 ) -> dict:
     """Chain fresh sessions until DONE, a cap is hit, or a run stops the loop.
 
     Returns a summary dict: ``{"sessions": N, "outcome": str, "cost_usd": float}``.
-    ``outcome`` is one of done / max-sessions / budget / error / unknown-stop /
-    handoff-missing / dirty-tree / dry-run.
+    ``outcome`` is one of done / max-sessions / budget / error / usage-limit /
+    unknown-stop / handoff-missing / dirty-tree / dry-run.
 
     Safety preflight: unless ``allow_dirty`` is set, a dirty git working tree
     aborts the run (``dirty-tree``) so a ``bypassPermissions`` session can't
     destroy uncommitted work irrecoverably.
+
+    Resilience: a run killed by the subscription usage limit ("hit your session
+    limit · resets <time>") is NOT a hard error — the supervisor sleeps until
+    the advertised reset (+5 min; 1 h fallback when unparseable) and retries,
+    up to ``max_limit_retries`` per chain (then outcome ``usage-limit``). Each
+    retry still counts toward ``max_sessions`` and its cost toward the budget.
+
+    Tiering: each iteration re-reads the rolling handoff for a ``MODEL: <tier>``
+    line (see ``parse_handoff_model``) so the NEXT RUN header can switch the
+    orchestrator tier per run.
     """
     cwd = cwd or Path.cwd()
     log = progress_log or (cwd / DEFAULT_PROGRESS_LOG)
@@ -257,18 +375,23 @@ def supervise(
         return {"sessions": 0, "outcome": "dirty-tree", "cost_usd": 0.0}
 
     spent = 0.0
-    for i in range(1, max_sessions + 1):
-        prompt = build_prompt(handoff_path.resolve())
+    limit_retries = 0
+    i = 0
+    while i < max_sessions:
+        i += 1
+        model = _read_handoff_model(handoff_path)
+        prompt = build_prompt(handoff_path.resolve(), max_turns=max_turns)
         cmd = build_command(
             prompt,
             max_turns=max_turns,
             max_budget_usd=max_budget_usd,
+            model=model,
         )
         if dry_run:
             _append_progress(log, f"DRY-RUN session {i}: {' '.join(cmd[:6])} ...")
             return {"sessions": 0, "outcome": "dry-run", "cost_usd": 0.0}
 
-        _append_progress(log, f"session {i}/{max_sessions} START")
+        _append_progress(log, f"session {i}/{max_sessions} START model={model or 'default'}")
         rc, out, err = runner(cmd, cwd, per_session_timeout)
         parsed = parse_result(out)
         action = classify_result(parsed)
@@ -283,7 +406,42 @@ def supervise(
         )
 
         if action == "error" or rc != 0:
-            return {"sessions": i, "outcome": "error", "cost_usd": spent}
+            limit_msg = detect_usage_limit(parsed, out, err)
+            if limit_msg is None:
+                return {"sessions": i, "outcome": "error", "cost_usd": spent}
+            if max_budget_usd is not None and spent >= max_budget_usd:
+                _append_progress(log, f"STOP: budget ${spent:.4f} >= ${max_budget_usd}")
+                return {"sessions": i, "outcome": "budget", "cost_usd": spent}
+            if limit_retries >= max_limit_retries:
+                _append_progress(log, f"STOP: usage-limit retries exhausted ({max_limit_retries})")
+                return {"sessions": i, "outcome": "usage-limit", "cost_usd": spent}
+            if i >= max_sessions:
+                # No session slot remains for the retry — sleeping would be pure
+                # waste, and a "max-sessions" label would mask the real cause of
+                # the stop (sec F1 / qa F3 fold, DISC-20260612-190124).
+                _append_progress(
+                    log,
+                    "STOP: usage-limit kill with no session slots remaining "
+                    f"(max-sessions={max_sessions})",
+                )
+                return {"sessions": i, "outcome": "usage-limit", "cost_usd": spent}
+            limit_retries += 1
+            delay = parse_reset_seconds(limit_msg)
+            if delay is None:
+                delay = DEFAULT_LIMIT_FALLBACK_SLEEP
+                _append_progress(
+                    log,
+                    f"usage-limit kill; reset time unparseable — sleeping fallback "
+                    f"{delay}s then retry {limit_retries}/{max_limit_retries}",
+                )
+            else:
+                _append_progress(
+                    log,
+                    f"usage-limit kill; sleeping {delay}s until advertised reset "
+                    f"then retry {limit_retries}/{max_limit_retries}",
+                )
+            sleeper(delay)
+            continue
         if action == "done":
             _append_progress(log, f"DONE after {i} session(s), ${spent:.4f}")
             return {"sessions": i, "outcome": "done", "cost_usd": spent}
@@ -307,6 +465,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-budget-usd", type=float, default=None)
     p.add_argument("--per-session-timeout", type=int, default=DEFAULT_PER_SESSION_TIMEOUT)
     p.add_argument("--max-turns", type=int, default=DEFAULT_MAX_TURNS)
+    p.add_argument(
+        "--max-limit-retries",
+        type=int,
+        default=DEFAULT_MAX_LIMIT_RETRIES,
+        help="Sleep-until-reset retries per chain when a run dies on the usage limit.",
+    )
     p.add_argument("--progress-log", default=DEFAULT_PROGRESS_LOG)
     p.add_argument("--dry-run", action="store_true")
     p.add_argument(
@@ -322,6 +486,7 @@ def main(argv: list[str] | None = None) -> int:
         max_budget_usd=args.max_budget_usd,
         per_session_timeout=args.per_session_timeout,
         max_turns=args.max_turns,
+        max_limit_retries=args.max_limit_retries,
         progress_log=Path(args.progress_log),
         dry_run=args.dry_run,
         allow_dirty=args.allow_dirty,

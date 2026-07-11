@@ -91,6 +91,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/stop_hook.py",
+            "timeout": 660
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,0 +1,39 @@
+# DRAFT settings.json change — DEVELOPER APPLIES MANUALLY (ADR-0023)
+#
+# The PreToolUse validator denies agent edits to .claude/settings.json by design.
+# This is the exact Stop-hook wiring for the one-shot stop hook (back-flow pattern 1,
+# dan_research_karpathy_wiki origin). Apply by adding the "Stop" key to the existing
+# "hooks" object in .claude/settings.json (sibling of "PreToolUse", "PostToolUse", ...).
+#
+# timeout 660 covers the margin budget: WAIT_TIMEOUT_CAP (600) + one send (10s HTTP
+# timeout) + one in-flight final poll (15s HTTP timeout) + process-spawn slack
+# (REV-20260613 security finding 4). Without a queued intent the hook exits in
+# milliseconds.
+
+--- a/.claude/settings.json
++++ b/.claude/settings.json
+@@ hooks @@
+     "SessionStart": [
+       {
+         "matcher": "resume|compact",
+         "hooks": [
+           {
+             "type": "command",
+             "command": "powershell -ExecutionPolicy Bypass -File .claude/hooks/session-start.ps1"
+           }
+         ]
+       }
+-    ]
++    ],
++    "Stop": [
++      {
++        "matcher": "",
++        "hooks": [
++          {
++            "type": "command",
++            "command": "python scripts/stop_hook.py",
++            "timeout": 660
++          }
++        ]
++      }
++    ]

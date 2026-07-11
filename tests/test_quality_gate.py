@@ -296,3 +296,219 @@ class TestFormatSummary:
         assert "not a complete pass" in _format_summary(6, 6, 1)
         assert "skipped" in _format_summary(6, 6, 1)
         assert "not a complete pass" not in _format_summary(7, 7, 0)
+
+
+# ---------------------------------------------------------------------------
+# AC8 — check_promotion_backlog advisory (ADR-0022, R3.2)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckPromotionBacklog:
+    """check_promotion_backlog is advisory: always returns True, warns on count trigger,
+    is silent on a fresh/empty DB, and its return value is NOT appended to results."""
+
+    def _make_db(self, tmp_path: Path) -> Path:
+        """Create a minimal evaluation.db with promotion_candidates + reflections tables."""
+        import sqlite3
+
+        (tmp_path / "metrics").mkdir(exist_ok=True)
+        db_path = tmp_path / "metrics" / "evaluation.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS promotion_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                finding_pattern TEXT NOT NULL,
+                category TEXT NOT NULL,
+                sighting_count INTEGER NOT NULL DEFAULT 1,
+                first_seen DATETIME NOT NULL,
+                last_seen DATETIME NOT NULL,
+                promoted BOOLEAN NOT NULL DEFAULT 0,
+                promoted_at DATETIME,
+                promoted_to TEXT,
+                evidence_ids TEXT NOT NULL DEFAULT '[]'
+            );
+            CREATE TABLE IF NOT EXISTS reflections (
+                reflection_id TEXT PRIMARY KEY,
+                discussion_id TEXT NOT NULL,
+                agent TEXT NOT NULL,
+                missed_signal TEXT,
+                improvement_rule TEXT,
+                confidence_delta REAL,
+                promoted BOOLEAN NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL
+            );
+        """)
+        conn.commit()
+        conn.close()
+        return db_path
+
+    def _insert_candidates(self, db_path: Path, count: int, promoted: bool = False) -> None:
+        import sqlite3
+
+        conn = sqlite3.connect(str(db_path))
+        for i in range(count):
+            conn.execute(
+                "INSERT INTO promotion_candidates "
+                "(finding_pattern, category, sighting_count, first_seen, last_seen, promoted) "
+                "VALUES (?, 'testing', 1, '2026-06-01T00:00:00', '2026-06-01T00:00:00', ?)",
+                (f"hash{i:04}", 1 if promoted else 0),
+            )
+        conn.commit()
+        conn.close()
+
+    def test_always_returns_true(self, tmp_path: Path) -> None:
+        """AC8: check_promotion_backlog always returns True (advisory, never blocks)."""
+        sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+        from unittest.mock import patch
+
+        db_path = self._make_db(tmp_path)
+        self._insert_candidates(db_path, 10)  # Over threshold
+        with patch("quality_gate.PROJECT_ROOT", tmp_path):
+            # Patch DB_PATH inside the function via PROJECT_ROOT
+            from quality_gate import check_promotion_backlog
+
+            # Patch the db_path reference inside the function
+            with patch("quality_gate.PROJECT_ROOT", tmp_path):
+                result = check_promotion_backlog()
+        assert result is True
+
+    def test_warns_when_pending_exceeds_threshold(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """AC8: warns when pending candidates > _PROMOTION_BACKLOG_THRESHOLD (5)."""
+        sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+        from unittest.mock import patch
+
+        db_path = self._make_db(tmp_path)
+        self._insert_candidates(db_path, 6)  # 6 > threshold of 5
+        with patch("quality_gate.PROJECT_ROOT", tmp_path):
+            from quality_gate import check_promotion_backlog
+
+            check_promotion_backlog()
+        captured = capsys.readouterr()
+        assert "backlog" in captured.out.lower() or "promotion" in captured.out.lower()
+
+    def test_silent_on_empty_db(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+        """AC8: no warning when DB is empty (fresh repo)."""
+        sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+        from unittest.mock import patch
+
+        self._make_db(tmp_path)  # Empty tables — DB path matters, not the return value
+        with patch("quality_gate.PROJECT_ROOT", tmp_path):
+            from quality_gate import check_promotion_backlog
+
+            result = check_promotion_backlog()
+        assert result is True
+
+    def test_gate_exit_code_zero_when_backlog_warned(self, tmp_path: Path) -> None:
+        """AC8: gate exit code is 0 even when promotion backlog warning fires."""
+        from unittest.mock import patch
+
+        sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+
+        db_path = self._make_db(tmp_path)
+        self._insert_candidates(db_path, 6)
+        with patch("quality_gate.PROJECT_ROOT", tmp_path):
+            from quality_gate import check_promotion_backlog
+
+            result = check_promotion_backlog()
+        # Gate always returns True — caller never receives False to flip exit code.
+        assert result is True
+
+    def test_staleness_warn_with_stale_reflection(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Staleness trigger: 1 pending candidate + stale reflection warns without crashing.
+
+        Regression guard for the naive-datetime TypeError (HIGH finding, ADR-0022):
+        fromisoformat on a timezone-aware string must not crash when subtracted from
+        datetime.now(UTC). Uses a past date well beyond _PROMOTION_STALE_DAYS (30).
+        """
+        import sqlite3
+        from unittest.mock import patch
+
+        sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+
+        db_path = self._make_db(tmp_path)
+        # 1 pending candidate (below count-threshold of 5) with a stale last_seen.
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "INSERT INTO promotion_candidates "
+            "(finding_pattern, category, sighting_count, first_seen, last_seen, promoted) "
+            "VALUES ('hash_stale', 'testing', 1, '2025-01-01T00:00:00+00:00', "
+            "'2025-01-01T00:00:00+00:00', 0)"
+        )
+        # Stale reflection — timezone-aware ISO string.
+        conn.execute(
+            "INSERT INTO reflections "
+            "(reflection_id, discussion_id, agent, created_at) "
+            "VALUES ('REFL-stale', 'DISC-stale', 'qa-specialist', '2025-01-01T00:00:00+00:00')"
+        )
+        conn.commit()
+        conn.close()
+
+        with patch("quality_gate.PROJECT_ROOT", tmp_path):
+            from quality_gate import check_promotion_backlog
+
+            result = check_promotion_backlog()
+
+        assert result is True  # Advisory — never blocks
+        captured = capsys.readouterr()
+        # Staleness warning fires (>30 days ago).
+        assert "backlog" in captured.out.lower() or "promote" in captured.out.lower()
+
+    @pytest.mark.regression
+    def test_staleness_with_naive_datetime_does_not_crash(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """qa HIGH fold (DISC-20260612-144008): the actual TypeError repro.
+
+        Rows inserted with bare ISO strings (no timezone offset) made
+        fromisoformat return a naive datetime; subtracting it from
+        datetime.now(UTC) raised 'TypeError: can't subtract offset-naive and
+        offset-aware datetimes' and crashed the advisory check. The fix
+        normalizes naive values to UTC. The aware-string sibling test above
+        cannot catch this — only a naive string exercises the branch.
+        """
+        import sqlite3
+        from unittest.mock import patch
+
+        sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+
+        db_path = self._make_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "INSERT INTO promotion_candidates "
+            "(finding_pattern, category, sighting_count, first_seen, last_seen, promoted) "
+            "VALUES ('hash_naive', 'testing', 1, '2025-01-01T00:00:00', "
+            "'2025-01-01T00:00:00', 0)"
+        )
+        # Stale reflection with a NAIVE ISO string — the crash trigger.
+        conn.execute(
+            "INSERT INTO reflections "
+            "(reflection_id, discussion_id, agent, created_at) "
+            "VALUES ('REFL-naive', 'DISC-naive', 'qa-specialist', '2025-01-01T00:00:00')"
+        )
+        conn.commit()
+        conn.close()
+
+        with patch("quality_gate.PROJECT_ROOT", tmp_path):
+            from quality_gate import check_promotion_backlog
+
+            result = check_promotion_backlog()  # Must not raise
+
+        assert result is True
+        captured = capsys.readouterr()
+        assert "promote" in captured.out.lower() or "backlog" in captured.out.lower()
+
+    def test_promotion_backlog_not_wired_into_results_list(self) -> None:
+        """qa LOW fold (DISC-20260612-144008): AC8 source pin.
+
+        check_promotion_backlog is advisory — main() must call it standalone,
+        never results.append(...) it (which would let it flip the gate verdict).
+        """
+        source = (Path(__file__).parent.parent / "scripts" / "quality_gate.py").read_text(
+            encoding="utf-8"
+        )
+        assert "check_promotion_backlog()" in source
+        assert "results.append(check_promotion_backlog" not in source
