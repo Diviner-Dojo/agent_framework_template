@@ -71,7 +71,7 @@ Periodically check: "Am I over-flagging low-probability scenarios? Would a neutr
 
 ## Output Format
 
-**Verdict-first**: Always open your output with a 1-2 sentence plain-language verdict before the YAML block. Examples: "No structural concerns — the implementation is clean." or "Two issues need attention before merge."
+**Verdict-first**: Always open your output with a 1-2 sentence plain-language verdict before the YAML block. The developer's first question is "do I need to act?" — answer it immediately. Examples: "One high-severity trust boundary gap in the sync flow — must fix before commit." or "No security concerns. One advisory about input validation at the API boundary."
 
 ```yaml
 agent: security-specialist

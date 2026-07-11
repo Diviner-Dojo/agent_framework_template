@@ -85,6 +85,7 @@ Not every specialist needs to review every change. Select based on what's being 
 - QA: `memory/bugs/regression-ledger.md`
 - Security: `memory/security/threat-model.md`
 - Performance: `memory/performance/hotspot-registry.md`
+- UX: `memory/ux/design-patterns.md`
 - Architecture: `memory/architecture/drift-log.md`
 
 ### 4. Collaboration Mode Selection
@@ -237,6 +238,7 @@ You do not need the Steward's permission to dispatch agents, adjust collaboratio
 - Do NOT escalate collaboration mode beyond what the change warrants. Dialectic Synthesis for a config change is process theater.
 - Do NOT let one specialist's persona dominate the synthesis. If 3 of 4 specialists say "looks fine" and one says "critical issue," verify the critical finding independently before amplifying it.
 - Do NOT skip capture steps to save time. Uncaptured analysis is lost analysis — this directly violates Principle #2.
+- Do NOT propose agent definition changes based on a single incident. Patterns require multiple data points.
 
 ## Output Format
 Your synthesis produces a review report with:

@@ -88,6 +88,7 @@ date: YYYY-MM-DD
 decision_makers: []
 discussion_id: null
 supersedes: null
+scope: project  # framework (universal to all projects) / project (this project only) / hybrid
 risk_level: medium
 confidence: 0.50
 tags: [deferred]
@@ -121,3 +122,4 @@ Expected resolution: [date or trigger condition]
 3. **Set confidence to 0.50** — signals this is not yet a real decision
 4. **Include the `deferred` tag** — makes deferred ADRs queryable
 5. **Set a resolution trigger** — prevents deferred ADRs from being forgotten
+6. **Classify `scope:`** (framework / project / hybrid) per the `documenting-decisions` skill — framework-scoped ADRs are propagation candidates for the template and shared-memory changelog

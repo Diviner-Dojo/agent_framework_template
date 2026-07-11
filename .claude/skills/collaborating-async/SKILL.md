@@ -68,6 +68,14 @@ when this skill is loaded. This skill only maps them onto the tooling:
 
 ## Loop mechanics (resume safely)
 
+- **An armed ntfy loop ALWAYS means a BACKGROUND LISTENER.** When you arm or resume the loop
+  (or work while the developer is AFK), run `collab_loop.py poll <choices>` as a **detached
+  background process** — e.g. `Bash(run_in_background=true)` under a persistent Monitor with a
+  long wait — so it survives across turns and **re-invokes you the instant the developer
+  replies**. RE-ARM it each time it exits (on reply or timeout). A one-shot poll only reads
+  while you are mid-turn; between turns you are idle and never poll, so taps go unread.
+  (Developer-set rule, 2026-06-14, after this failure mode occurred twice in a derived project.)
+  Record the listener in the resume anchor's `monitor:` field.
 - **Run `check <window>` BEFORE arming `poll` on every resume.** `poll` baselines `since=now`,
   so any answer sent while no monitor was armed is invisible to it. Skipping `check` silently
   drops backlog — the #1 cause of "the agent ignored my reply".
