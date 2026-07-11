@@ -584,9 +584,9 @@ All commands incorporate two patterns adopted from external projects:
 
 ## 7. Hook System — Safety & Automation
 
-The framework uses **8 logical hooks** (implemented in **13 files**) across 5 Claude Code hook events (PreToolUse, PostToolUse, UserPromptSubmit, PreCompact, SessionStart). Hooks provide automated safety enforcement and quality automation.
+The framework uses **9 logical hooks** (implemented in **13 files** in `.claude/hooks/` plus `scripts/stop_hook.py`) across 6 Claude Code hook events (PreToolUse, PostToolUse, UserPromptSubmit, PreCompact, SessionStart, Stop). Hooks provide automated safety enforcement and quality automation.
 
-> **Designed but parked (ADR-0023):** a one-shot, silent-by-default Stop hook (`scripts/stop_hook.py`) is fully specified but its `.claude/settings.json` Stop block is a manual developer opt-in — the PreToolUse validator denies agent edits to `settings.json` by design — so it is **not wired in the shipped configuration**.
+> **Wired as of 2026-07-10 (ADR-0023):** the one-shot, silent-by-default Stop hook (`scripts/stop_hook.py`) runs on session end via the `.claude/settings.json` Stop block. It originally shipped unwired as a manual developer opt-in and was promoted into the default configuration after a month of production use. The PreToolUse validator still denies *agent* edits to `settings.json` by design.
 
 ### PreToolUse Hooks (Before file writes, git operations)
 
@@ -1404,7 +1404,7 @@ agent_framework_template/
 │   │   ├── ship.md                    #   Full release workflow
 │   │   └── walkthrough.md             #   Guided code walkthrough
 │   │
-│   ├── hooks/                         # 13 files implementing 8 logical hooks
+│   ├── hooks/                         # 13 files (+ scripts/stop_hook.py) implementing 9 logical hooks
 │   │   ├── pre-tool-use-validator.sh  #   Router for PreToolUse validation
 │   │   ├── validate_tool_use.py       #   File locking + secret detection + protected files
 │   │   ├── pre-commit-gate.sh         #   Quality gate reminder on commit

@@ -5,10 +5,10 @@
   skills 21->25; added the Prime Objective (ADR-0015) to slide 3, /goal-loop builder!=judge
   (ADR-0026/0028) to slides 7+9, Telemetry & Oversight (ADR-0020) to slide 13; refreshed
   slide-11 adoption stats (as of May 2026) and cross-linked the how-to deck. Counts:
-  12 agents / 25 commands / 25 skills / 9 hooks / 4 rules / 9 principles. Hooks slide counts
-  enumerated protections (validator splits into 3); the one-shot Stop hook (ADR-0023) is
-  designed but parked (not wired in settings.json on upstream) so it is intentionally not
-  shown. Keep in sync with .claude/ — see the syncing-framework-docs skill.
+  12 agents / 25 commands / 25 skills / 10 hooks / 4 rules / 9 principles. Hooks slide counts
+  enumerated protections (validator splits into 3); the one-shot Stop hook (ADR-0023) was
+  wired into the shipped settings.json on 2026-07-10 and is shown under Session Lifecycle.
+  Keep in sync with .claude/ — see the syncing-framework-docs skill.
 -->
 <html lang="en">
 <head>
@@ -1651,7 +1651,7 @@ h3 {
   <div class="slide" data-slide="8">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Safety</p>
-      <h2 class="anim-fade-up-d1">9 Hooks — Automated Guardrails</h2>
+      <h2 class="anim-fade-up-d1">10 Hooks — Automated Guardrails</h2>
       <p class="subtitle anim-fade-up-d2" style="margin-top:-16px;">Safety is enforced at the tooling layer, not by asking the AI to behave.</p>
       <div class="two-col anim-fade-up-d3">
         <div>
@@ -1726,6 +1726,13 @@ h3 {
               <div class="hook-info">
                 <h3>Context Restore</h3>
                 <p>Reads BUILD_STATUS.md on session resume to restore working context</p>
+              </div>
+            </div>
+            <div class="hook-item">
+              <span class="hook-phase session">Stop</span>
+              <div class="hook-info">
+                <h3>One-Shot Stop Hook</h3>
+                <p>Fires once when a session ends — queues a completion notification without nagging (ADR-0023)</p>
               </div>
             </div>
           </div>

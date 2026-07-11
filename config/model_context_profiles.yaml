@@ -28,7 +28,7 @@
 #     "context rot" / "lost in the middle".
 #   - Harness auto-compaction default ~83% is the floor we stay above.
 
-last_updated: 2026-05-23
+last_updated: 2026-07-03
 unit: tokens
 schema_version: 1
 
@@ -84,6 +84,7 @@ profiles:
 # Full model ID -> profile. Unlisted IDs fall back to `defaults.profile`.
 # Verify the window at add-time when a new model lands.
 models:
+  claude-fable-5:    opus_1m        # 1M window (default AND max) verified against Anthropic model docs at add-time 2026-07-03; Fable sits above Opus in capability, so the least-conservative caps apply. Fixes the sensor resolving Fable to the haiku_200k floor (root cause of the 07-03 early-wrap-up/demotion labeling).
   claude-opus-4-7:   opus_1m
   claude-opus-4-6:   opus_1m
   claude-opus-4:     opus_1m        # historically 200K — re-check at add-time.
