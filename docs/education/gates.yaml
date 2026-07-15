@@ -1,0 +1,98 @@
+version: 1
+# Structured education-gate registry (ADR-0029, Principle #6).
+# Machine-readable home for gate deferrals — previously BUILD_STATUS.md prose only.
+# Managed by scripts/education/gate_registry.py; flipped by
+# scripts/education/ingest_walkthrough_session.py when a walkthrough session
+# meets the gate-cleared rule (narration + quiz avg >= threshold + explain-back).
+# Seeded 2026-07-15 from BUILD_STATUS.md deferral archaeology.
+gates:
+  - gate_id: GATE-0001
+    title: Telemetry dashboard cohort (Units 3.x, 4.1-4.4, 5.1)
+    created_at: "2026-06-10T00:00:00+00:00"
+    origin: build
+    scope:
+      files:
+        - src/telemetry/hooks_health.py
+        - src/telemetry/dashboard.py
+        - scripts/telemetry/dashboard_server.py
+        - src/telemetry/static/dashboard-pip.js
+      adrs:
+        - ADR-0020
+      spec: SPEC-20260610-035920
+    reason_deferred: >-
+      Autonomous dashboard build sessions (2026-06-10) deferred /walkthrough +
+      /quiz per unit; cohort accumulated across Units 3.x, 4.1 (hook-health
+      chip), 4.2 (model-cost donut), 4.3 (CLI summary), 4.4 (PiP pop-out),
+      5.1 (--render-static). Scope details in each REV's Education Gate section
+      (REV-20260610-012629 / -022610 / -030010 / -034610 / -043121).
+    status: open
+    deferrals:
+      - date: "2026-06-10T00:00:00+00:00"
+        reason: Autonomous session; education gates require the developer interactive.
+    attempts: []
+    cleared_by: null
+    cleared_at: null
+    discussion_id: null
+  - gate_id: GATE-0002
+    title: /apply-framework unification + distribute B1 floor (D1 merge)
+    created_at: "2026-06-11T00:00:00+00:00"
+    origin: build
+    scope:
+      files:
+        - scripts/distribute
+      adrs:
+        - ADR-0021
+      spec: null
+    reason_deferred: >-
+      D1 merge of feat/distribute-b1-floor (2026-06-11) landed with "education
+      gate deferred (cohort grows by this build)". Review REV-20260611-200830.
+    status: open
+    deferrals:
+      - date: "2026-06-11T00:00:00+00:00"
+        reason: Merged on explicit consent with education deferred to the growing cohort.
+    attempts: []
+    cleared_by: null
+    cleared_at: null
+    discussion_id: null
+  - gate_id: GATE-0003
+    title: D2 backflow patterns — explain-back owed
+    created_at: "2026-06-27T00:00:00+00:00"
+    origin: retro
+    scope:
+      files:
+        - scripts/audit_calibration.py
+        - docs/education/WALKTHROUGH-20260627-d2-backflow-patterns.md
+      adrs:
+        - ADR-0024
+      spec: SPEC-20260610-205507
+    reason_deferred: >-
+      Walkthrough delivered as a written artifact for leisure reading
+      (WALKTHROUGH-20260627-d2-backflow-patterns.md); the 5-minute explain-back
+      that closes the gate (Principle #6) is still owed.
+    status: open
+    deferrals:
+      - date: "2026-06-27T00:00:00+00:00"
+        reason: Walkthrough shipped as a document; explain-back deferred to an interactive session.
+    attempts: []
+    cleared_by: null
+    cleared_at: null
+    discussion_id: null
+  - gate_id: GATE-0004
+    title: Full-repo fresh walkthrough (RepoCademy curriculum, start to finish)
+    created_at: "2026-07-15T06:22:07+00:00"
+    origin: manual
+    scope:
+      files: []
+      adrs: []
+      spec: SPEC-20260715-062207
+    reason_deferred: >-
+      Developer requested (2026-07-15) a comprehensive fresh walkthrough of the
+      entire repo — high-level concepts start to finish — to be completed by
+      voice via RepoCademy. Open until the full curriculum's chapters are each
+      walked + quizzed + explained back (or formally re-deferred).
+    status: open
+    deferrals: []
+    attempts: []
+    cleared_by: null
+    cleared_at: null
+    discussion_id: null

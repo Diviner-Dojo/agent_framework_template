@@ -1,0 +1,49 @@
+---
+discussion_id: DISC-20260715-062334-build-repocademy-gate-plumbing
+started: 2026-07-15T06:23:44.210429+00:00
+ended: 2026-07-15T06:34:58.271299+00:00
+agents: [architecture-consultant, facilitator, orchestrator, qa-specialist]
+total_turns: 5
+---
+
+# Discussion: DISC-20260715-062334-build-repocademy-gate-plumbing
+
+## Turn 1 — facilitator (proposal)
+*2026-07-15T06:23:44.210429+00:00 | confidence: 0.95*
+*tags: context-brief, repocademy, education*
+
+Context brief — Request: developer wants voice-cleared education gates via the RepoCademy module (insight_journal client). This build delivers the repo-side plumbing per SPEC-20260715-062207 (developer-approved plan + 9-question grill): (1) docs/education/gates.yaml structured registry seeded from BUILD_STATUS deferral archaeology; (2) scripts/education/gate_registry.py load/validate/save + CLI; (3) scripts/education/ingest_walkthrough_session.py — untrusted transcript JSON v1 -> validate-then-write -> discussion + events + education_results + registry flip, idempotent; (4) docs/education/CONTRACTS.md transcript/chapter/note contracts; (5) ADR-0029; (6) tests same-change (safety-relevant boundary). Scope constraint: no client code, no Supabase, no watcher handler here.
+
+---
+
+## Turn 2 — orchestrator (evidence)
+*2026-07-15T06:31:44.140229+00:00 | confidence: 0.9*
+*tags: build, checkpoint-pending*
+
+Build complete: scripts/education/{__init__,gate_registry,ingest_walkthrough_session}.py, docs/education/{gates.yaml,CONTRACTS.md}, docs/adr/ADR-0029, docs/sprints/SPEC-20260715-062207, tests/{test_gate_registry,test_ingest_walkthrough_session}.py. 59 tests pass; new-code coverage 91% (gate_registry 93%, ingest 90%); ruff clean. Verification: synthetic end-to-end gate-mode ingest asserts events.jsonl mapping, 4 education_results rows, registry flip w/ evidence pointers, idempotent re-run, no-partial-write on reject. Dispatching new-module checkpoint (architecture-consultant + qa-specialist).
+
+---
+
+## Turn 3 — architecture-consultant (critique)
+*2026-07-15T06:33:42.742131+00:00 | confidence: 0.9*
+*tags: checkpoint, task-1, architecture*
+
+CHECKPOINT (new-module) APPROVE. Boundary sound: one ingest chokepoint, contract-as-integration-point, gate_registry sole writer of gate state; capture-pipeline reuse as libraries upholds Principle #2; record_education positional order verified. Advisory (non-blocking): mixed import strategies — package-style for 3 siblings but a forced lazy flat-import seam for close_discussion (inherited debt: close_discussion.py itself uses flat sibling imports); correctly localized + commented; clean fix (make close_discussion package-importable) out of scope.
+
+---
+
+## Turn 4 — qa-specialist (critique)
+*2026-07-15T06:33:42.773259+00:00 | confidence: 0.88*
+*tags: checkpoint, task-1, qa*
+
+CHECKPOINT (new-module) REVISE. Suite strong (91%, validate-then-write/idempotency/no-partial-write covered; isolation sound). Two safety-boundary guards lack paired tests (testing_requirements ship-the-proof rule): (1) duplicate qid on quiz_question (ingest:156-159) — no test submits two quiz_questions sharing a qid; (2) boolean-score bypass (_require_score isinstance(score,bool) clause) — no test sends score:true; removing the clause would silently pass booleans since isinstance(True,int). Advisory: MAX_EVENTS boundary + negative-score (-0.1) untested.
+
+---
+
+## Turn 5 — qa-specialist (critique)
+*2026-07-15T06:34:58.271299+00:00 | confidence: 0.95*
+*tags: checkpoint, task-1, qa, round-2*
+
+CHECKPOINT Round 2 APPROVE. All four added tests verified: each would fail if its guard were removed/weakened (duplicate-qid branch, bool-exclusion clause in _require_score, negative boundary, MAX_EVENTS off-by-one); all assert specific rejection messages, pure unit tests, no isolation concerns.
+
+---
