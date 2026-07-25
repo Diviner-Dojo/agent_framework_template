@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<!--
+  Diviner Dojo — "The Framework" overview page.
+  Rebuilt 2026-07-25 from docs/diviner-dojo-framework-presentation.html (which now
+  redirects here). Scrollable microsite, shared design system in assets/site.css.
+
+  Counts stated on this page — keep in sync with .claude/ per the
+  syncing-framework-docs skill:
+    12 agents · 25 commands · 25 skills · 4 always/path-scoped rules · 10 hooks
+    9 principles · 28 ADRs · framework v3.5
+-->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Framework — AI-Native Agentic Development Framework v3.5</title>
+<meta name="description" content="A development framework for Claude Code where the agent that writes the code never signs off on it. 12 specialist agents, enforced gates, and a four-layer capture stack that makes every decision traceable.">
+<meta name="color-scheme" content="dark light">
+<meta property="og:type" content="website">
+<meta property="og:title" content="AI-Native Agentic Development Framework v3.5">
+<meta property="og:description" content="The agent that writes the code never signs off on it. 12 specialist agents, enforced gates, and a capture stack that makes every decision traceable.">
+<meta property="og:url" content="https://diviner-dojo.github.io/agent_framework_template/docs/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="https://avatars.githubusercontent.com/u/242870738?s=64&v=4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<script>
+  // Set the theme before first paint so there is no flash.
+  (function () {
+    try {
+      var s = localStorage.getItem('dd-theme');
+      if (s !== 'light' && s !== 'dark') s = 'dark'; // brand default; toggle persists a choice
+      document.documentElement.setAttribute('data-theme', s);
+    } catch (e) { /* storage blocked — keep the dark default */ }
+  })();
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 9.2 8 11 4.6-1.8 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3.2"/><path d="M22 20v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.6a4 4 0 0 1 0 7"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19z"/><path d="M12 9v5"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="m7 9.5 3 2.5-3 2.5M13 15h4"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"/><path d="M4 17.2h16"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"/><path d="M3 21v-5h5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2.2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-grad" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 10 5-10 5L2 8z"/><path d="M6 10.5V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-5.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-ghost" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-7 7v11l3-2 2 2 2-2 2 2 2-2 3 2V10a7 7 0 0 0-7-7z"/><circle cx="9.5" cy="10" r=".9" fill="currentColor"/><circle cx="14.5" cy="10" r=".9" fill="currentColor"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .6a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 1.8 2.7 1.3 3.4 1 .1-.7.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.3 11.3 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .6z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M22 12h-2.4M4.4 12H2M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7M19.1 19.1l-1.7-1.7M6.6 6.6 4.9 4.9"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
+</defs></svg>
+
+<header class="site-head">
+  <div class="site-head__in">
+    <a class="brand" href="index.html">
+      <img class="brand__mark" src="https://avatars.githubusercontent.com/u/242870738?s=96&v=4" alt="" width="26" height="26">
+      <span class="brand__name">Diviner&nbsp;Dojo</span>
+      <span class="brand__ver">v3.5</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="index.html" aria-current="page">Framework</a>
+      <a href="how-to.html">How to use it</a>
+      <a href="proof.html">Proof</a>
+    </nav>
+    <button class="icon-btn theme-btn" type="button" aria-label="Switch to light theme">
+      <svg class="sun" aria-hidden="true"><use href="#i-sun"/></svg>
+      <svg class="moon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+    <a class="icon-btn" href="https://github.com/Diviner-Dojo/agent_framework_template" aria-label="View on GitHub">
+      <svg aria-hidden="true"><use href="#i-gh"/></svg>
+    </a>
+    <div class="progress" aria-hidden="true"></div>
+  </div>
+</header>
+
+<!-- ============================== HERO ============================== -->
+<section class="wrap hero">
+  <span class="hero__kicker"><b>v3.5</b> · Apache-2.0 · built for Claude&nbsp;Code</span>
+  <h1>The agent that writes the code <em>never</em> signs off on it.</h1>
+  <p class="hero__sub">
+    An opinionated development framework that turns AI-assisted coding from a series of
+    lucky sessions into a <strong>repeatable engineering process</strong> — with independent
+    review, gates that actually block your commit, and a capture stack that makes every
+    decision traceable six months later.
+  </p>
+  <div class="hero__cta">
+    <a class="btn btn--primary" href="how-to.html">Get started<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+    <a class="btn btn--ghost" href="proof.html"><svg aria-hidden="true"><use href="#i-search"/></svg>See what it caught</a>
+    <a class="btn btn--ghost" href="https://github.com/Diviner-Dojo/agent_framework_template"><svg aria-hidden="true"><use href="#i-gh"/></svg>Repository</a>
+  </div>
+</section>
+
+<div class="wrap reveal" style="padding-bottom:8px">
+  <div class="stats">
+    <div class="stat stat--accent"><span class="stat__n">159</span><span class="stat__l">Architecture Decision Records</span><span class="stat__s">never deleted, only superseded</span></div>
+    <div class="stat"><span class="stat__n">527</span><span class="stat__l">Multi-agent review reports</span><span class="stat__s">docs/reviews/</span></div>
+    <div class="stat"><span class="stat__n">1,051</span><span class="stat__l">Captured discussions</span><span class="stat__s">immutable, sealed on close</span></div>
+    <div class="stat"><span class="stat__n">1,702</span><span class="stat__l">Quality-gate runs logged</span><span class="stat__s">metrics/quality_gate_log.jsonl</span></div>
+    <div class="stat"><span class="stat__n">295</span><span class="stat__l">Regression-ledger entries</span><span class="stat__s">each with a guard test</span></div>
+  </div>
+  <p class="xsmall muted mono" style="margin-top:10px">
+    Counted 2026-07-25 across the three codebases running this framework — the template itself,
+    a Flutter app, and a Python verification platform. <a href="proof.html">See the evidence →</a>
+  </p>
+</div>
+
+<!-- ============================== BODY ============================== -->
+<div class="wrap">
+<div class="layout">
+
+  <nav class="rail" aria-label="On this page">
+    <p class="rail__label">On this page</p>
+    <a href="#problem">The problem</a>
+    <a href="#thesis">The thesis</a>
+    <a href="#principles">Principles</a>
+    <a href="#loop">How a change moves</a>
+    <a href="#agents">The specialist team</a>
+    <a href="#capture">Capture stack</a>
+    <a href="#enforcement">What actually blocks you</a>
+    <a href="#learning">How it improves itself</a>
+    <a href="#education">The education gate</a>
+    <a href="#maturity">Solid vs. moving</a>
+    <a href="#start">Get started</a>
+  </nav>
+
+  <main class="doc" id="main">
+
+  <!-- 01 PROBLEM -->
+  <section class="section reveal" id="problem">
+    <p class="eyebrow">01 — The problem</p>
+    <h2>AI can write the code. It can't be trusted to grade its own homework.</h2>
+    <p class="lede">
+      Agentic coding tools got very good very fast. The bottleneck moved. It is no longer
+      <em>can the model write this</em> — it's <strong>can you trust what came out, and can you
+      explain it later</strong>. Four failure modes show up in every unstructured AI codebase.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card__ico card__ico--crit"><svg aria-hidden="true"><use href="#i-ghost"/></svg></div>
+        <h3>The reasoning evaporates</h3>
+        <p>An agent makes hundreds of judgement calls — boundaries, trade-offs, what to skip. The code survives. The <em>why</em> does not. Six months later nobody, human or model, can reconstruct the argument.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--crit"><svg aria-hidden="true"><use href="#i-loop"/></svg></div>
+        <h3>The author is the reviewer</h3>
+        <p>The same context that produced the bug evaluates the bug. Confirmation loops close in one turn. An agent that misunderstood the requirement will confidently confirm it met the requirement.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--warn"><svg aria-hidden="true"><use href="#i-alert"/></svg></div>
+        <h3>Quality is a coin flip</h3>
+        <p>Same model, same codebase, wildly different output depending on how the session went. Nothing is enforced, so nothing is consistent. Standards live in your head and erode under deadline.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--warn"><svg aria-hidden="true"><use href="#i-search"/></svg></div>
+        <h3>Every session starts from zero</h3>
+        <p>A dead end you burned two hours on last week gets rediscovered next Tuesday. Nothing accumulates. The project has no memory, so the same mistakes stay available forever.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 THESIS -->
+  <section class="section reveal" id="thesis">
+    <p class="eyebrow">02 — The thesis</p>
+    <h2>Treat the reasoning as the deliverable and the code as its exhaust.</h2>
+
+    <blockquote class="quote">
+      Reasoning is the primary artifact. Code is output.
+      <cite>Principle #1 — the load-bearing one</cite>
+    </blockquote>
+
+    <p>
+      Every mechanism in this framework follows from that inversion. If the reasoning is what
+      matters, then it has to be <strong>captured automatically</strong> (you can't opt out of
+      logging), <strong>evaluated independently</strong> (the author never grades itself),
+      and <strong>promoted deliberately</strong> (a human decides what becomes durable memory).
+    </p>
+
+    <div class="grid grid-3">
+      <div class="card card--lead">
+        <h3>Capture is not optional</h3>
+        <p>Enforced at the command and hook layer, not by asking the model nicely. <code>/review</code>, <code>/plan</code>, and <code>/build_module</code> each open a discussion and write every agent turn to an append-only log.</p>
+      </div>
+      <div class="card card--lead">
+        <h3>Independence is structural</h3>
+        <p>At least one specialist who did not participate in generation must review the result. It's not a suggestion in a prompt — it's the shape of the workflow.</p>
+      </div>
+      <div class="card card--lead">
+        <h3>The human holds the gates</h3>
+        <p>Nothing is promoted to durable memory, merged, or pushed without a person. Autonomy removes the permission prompts, never the checkpoints.</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-shield"/></svg>Prime Objective — refuse extraction <span class="tag tag--accent">ADR-0015</span></p>
+      <p>
+        Above the nine principles sits a declared ethic: the framework must serve its contributors
+        and users and <strong>never accumulate value at their expense</strong>. A design refuses
+        extraction only if every contributor keeps attribution, nobody performs labour whose benefit
+        accrues to a third party without consent, and evolution never harvests value from derivatives
+        without per-instance human assent. Enforcement is <strong>human-mediated at every gate</strong> —
+        the framework supplies the gate; a person renders the verdict.
+      </p>
+    </div>
+  </section>
+
+  <!-- 03 PRINCIPLES -->
+  <section class="section reveal" id="principles">
+    <p class="eyebrow">03 — Foundation</p>
+    <h2>Nine principles that are allowed to say no.</h2>
+    <p class="lede">These are not aspirations in a README. Each one has a mechanism behind it, and several of them can stop your commit.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:34px">#</th><th>Principle</th><th>Enforced by</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">01</td><td><strong>Reasoning is the primary artifact</strong><br><span class="small">Every significant decision traces to the discussion that produced it.</span></td><td class="mono small">Capture pipeline · ADRs</td></tr>
+          <tr><td class="mono">02</td><td><strong>Capture must be automatic</strong><br><span class="small">The model cannot opt out of logging.</span></td><td class="mono small">Command + hook layer</td></tr>
+          <tr><td class="mono">03</td><td><strong>Collaboration precedes adversarial rigor</strong><br><span class="small">Red-teaming is scoped to security, fault injection, anti-groupthink — not the default.</span></td><td class="mono small">Collaboration modes</td></tr>
+          <tr><td class="mono">04</td><td><strong>Independence prevents confirmation loops</strong><br><span class="small">The generating agent is never the sole evaluator.</span></td><td class="mono small"><code>/review</code> · build checkpoints</td></tr>
+          <tr><td class="mono">05</td><td><strong>ADRs are never deleted</strong><br><span class="small">Only superseded, with a reference to the replacement.</span></td><td class="mono small">Quality gate — ADR check</td></tr>
+          <tr><td class="mono">06</td><td><strong>Education gates before merge</strong><br><span class="small">Walkthrough → quiz → explain-back → merge.</span></td><td class="mono small"><code>/walkthrough</code> · <code>/quiz</code></td></tr>
+          <tr><td class="mono">07</td><td><strong>Layer 3 promotion requires human approval</strong><br><span class="small">No insight becomes durable memory automatically.</span></td><td class="mono small"><code>/promote</code> — human gate</td></tr>
+          <tr><td class="mono">08</td><td><strong>Least-complex intervention first</strong><br><span class="small">Prompt &lt; command &lt; agent definition &lt; architecture.</span></td><td class="mono small">Steward gate</td></tr>
+          <tr><td class="mono">09</td><td><strong>Clarify before acting — the 95% rule</strong><br><span class="small">Ask until ≥95% confident on intent <em>and</em> scope. A wrong assumption costs more than a question.</span></td><td class="mono small">Confidence gate in <code>/plan</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 04 THE LOOP -->
+  <section class="section reveal" id="loop">
+    <p class="eyebrow">04 — Mechanics</p>
+    <h2>What actually happens when you change a file.</h2>
+    <p class="lede">The framework doesn't change how you write code. It changes what has to be true before that code is allowed to land.</p>
+
+    <div class="flow" style="margin-bottom:8px">
+      <span class="flow__n">Write</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--accent">/review</span><span class="flow__a">→</span>
+      <span class="flow__n">Fix blocking findings</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--warn">Quality gate</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--good">Commit</span><span class="flow__a">→</span>
+      <span class="flow__n">Captured</span>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="card step">
+        <span class="step__n">01</span>
+        <h3>Risk is assessed before the panel is picked</h3>
+        <p>The <strong>facilitator</strong> — the only agent that orchestrates others — sizes the change against a risk matrix and assembles the specialists that matter. A theme tweak gets two reviewers in ensemble mode. An auth change gets an adversarial panel of five or six.</p>
+      </div>
+      <div class="card step">
+        <span class="step__n">02</span>
+        <h3>Specialists run in parallel, in isolation</h3>
+        <p>Each gets its own context window and its own domain lens. They do not see each other's drafts in ensemble mode — that's the point. Findings are graded blocking or advisory, and the facilitator re-reads the code at each reported location before it believes a claim.</p>
+      </div>
+      <div class="card step">
+        <span class="step__n">03</span>
+        <h3>The gate runs whether you remember it or not</h3>
+        <p>A pre-commit hook runs <code>quality_gate.py</code>: formatting, lint, tests, coverage, ADR completeness, review existence, and the regression ledger. Fail any of them and git refuses the commit. Every run is appended to a JSONL log you can trend later.</p>
+      </div>
+      <div class="card step">
+        <span class="step__n">04</span>
+        <h3>The argument outlives the session</h3>
+        <p>The whole review — every turn, every dissent, every verdict — is sealed into an immutable discussion, indexed into SQLite, and mined for recurring patterns. Next month's agent can grep what this month's agent already learned.</p>
+      </div>
+    </div>
+
+    <div class="term">
+      <div class="term__bar term__bar--claude"><span class="term__dot"></span>Claude Code</div>
+      <div class="term__body">
+<div><span class="c-cmd">/review</span> <span class="c-path">src/batch/processor.py</span></div>
+<div><span class="c-com">  risk: high (batch mutation + external portals) · mode: structured dialogue</span></div>
+<div><span class="c-com">  panel: qa · architecture · security · independent-perspective</span></div>
+<div>&nbsp;</div>
+<div><span class="c-bad">  ✗ BLOCKING</span>  <span class="c-hi">cascade ignores bulk_config.store == "unified"</span></div>
+<div><span class="c-bad">  ✗ BLOCKING</span>  <span class="c-hi">expired license normalises to Active — negation guard missing</span></div>
+<div><span class="c-flag">  ⚑ ADVISORY</span>  <span class="c-dim">per-adapter timeout budget unbounded</span></div>
+<div>&nbsp;</div>
+<div><span class="c-com">  verdict: request-changes → docs/reviews/REV-20260616-191949.md</span></div>
+<div><span class="c-com">  captured: discussions/2026-06-16/DISC-20260616-191949-…/ (sealed)</span></div>
+      </div>
+    </div>
+    <p class="xsmall muted">Abridged from a real review. The two blocking findings above became regression-ledger entries with guard tests — <a href="proof.html#vp">the full story</a>.</p>
+  </section>
+
+  <!-- 05 AGENTS -->
+  <section class="section reveal" id="agents">
+    <p class="eyebrow">05 — The team</p>
+    <h2>Twelve agents. One orchestrator. No agent reviews its own work.</h2>
+    <p class="lede">
+      Each specialist carries a <strong>values block</strong> (what it believes and won't trade away)
+      and a <strong>domain lens</strong> (the reasoning sequence it runs before analysing anything).
+      They are equal in standing and different in strength.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Agent</th><th class="nowrap">Tier</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td class="mono"><strong>facilitator</strong></td><td><span class="tag tag--accent">opus</span></td><td>Team lead. The <em>sole</em> orchestrator of every multi-agent workflow — sizes risk, assembles the panel, verifies findings, synthesises the verdict.</td></tr>
+          <tr><td class="mono"><strong>steward</strong></td><td><span class="tag tag--accent">opus</span></td><td>Framework philosopher-guardian. Activated only for framework evolution and lineage — judges proposed changes against <code>PHILOSOPHY.md</code>. Cannot dispatch anyone.</td></tr>
+          <tr><td class="mono">architecture-consultant</td><td><span class="tag tag--accent">opus</span></td><td>Structural integrity, component boundaries, ADR validation, drift.</td></tr>
+          <tr><td class="mono">independent-perspective</td><td><span class="tag tag--accent">opus</span></td><td>Anti-groupthink. Splits into up to three parallel instances — analyst, observer, research scout, process critic.</td></tr>
+          <tr><td class="mono">security-specialist</td><td><span class="tag">sonnet</span></td><td>Vulnerabilities, auth patterns, threat modelling, trust boundaries.</td></tr>
+          <tr><td class="mono">qa-specialist</td><td><span class="tag">sonnet</span></td><td>Coverage, edge cases, reliability, regression prevention.</td></tr>
+          <tr><td class="mono">performance-analyst</td><td><span class="tag">sonnet</span></td><td>Latency, resource efficiency, scalability, cost.</td></tr>
+          <tr><td class="mono">docs-knowledge</td><td><span class="tag">sonnet</span></td><td>Team historian — decision traceability and knowledge flow.</td></tr>
+          <tr><td class="mono">ux-evaluator</td><td><span class="tag">sonnet</span></td><td>The user in the room — friction, state feedback, accessibility.</td></tr>
+          <tr><td class="mono">educator</td><td><span class="tag">sonnet</span></td><td>The coach — walkthroughs, Bloom's-taxonomy quizzes, mastery tracking.</td></tr>
+          <tr><td class="mono">project-analyst</td><td><span class="tag">sonnet</span></td><td>External project analysis. The one specialist allowed to dispatch others.</td></tr>
+          <tr><td class="mono">history-analyst</td><td><span class="tag">sonnet</span></td><td>Git archaeology — churn, reverts, repeated fixes. <code>--deep</code> only.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card__ico card__ico--teal"><svg aria-hidden="true"><use href="#i-users"/></svg></div>
+        <h3>Five collaboration modes</h3>
+        <p><strong>Ensemble</strong> — independent, no exchange. <strong>Yes-And</strong> — each builds on the last. <strong>Structured dialogue</strong> — multi-round coopetition, the default for significant changes. <strong>Dialectic synthesis</strong> — thesis/antithesis with an ACH matrix. <strong>Adversarial</strong> — red team, deliberately scoped to security, fault injection, and anti-groupthink only.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--teal"><svg aria-hidden="true"><use href="#i-loop"/></svg></div>
+        <h3>Specialists can ask for help</h3>
+        <p>Any specialist can file a <code>dispatch_request</code> for another agent's expertise, or a <code>split_request</code> to run as parallel instances. Requests go through the facilitator, and both the request and the decision are captured — so you can later ask which collaborations actually produced value.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 CAPTURE -->
+  <section class="section reveal" id="capture">
+    <p class="eyebrow">06 — Memory</p>
+    <h2>Four layers, from raw transcript to curated law.</h2>
+    <p class="lede">Knowledge moves up the stack only through a human gate. Nothing promotes itself.</p>
+
+    <div class="layers">
+      <div class="layer" style="--lc:var(--info)">
+        <div class="layer__id">Layer 1<br>Immutable</div>
+        <div>
+          <h3>Every turn, written as it happens</h3>
+          <p><code>discussions/</code> — append-only <code>events.jsonl</code> plus a generated transcript. Sealed read-only when the discussion closes. This is the raw record: who said what, when, with what dissent.</p>
+          <div class="layer__meta"><span class="tag">1,051 discussions</span><span class="tag">write-once</span></div>
+        </div>
+      </div>
+      <div class="layer" style="--lc:var(--teal)">
+        <div class="layer__id">Layer 2<br>Relational</div>
+        <div>
+          <h3>Queryable index and metrics</h3>
+          <p><code>metrics/evaluation.db</code> — SQLite. Turns, findings, agent effectiveness, protocol yield, pattern sightings. This is where "which agent actually finds real bugs?" becomes an answerable question instead of a vibe.</p>
+          <div class="layer__meta"><span class="tag">findings</span><span class="tag">agent_effectiveness</span><span class="tag">v_rule_of_three</span></div>
+        </div>
+      </div>
+      <div class="layer" style="--lc:var(--accent)">
+        <div class="layer__id">Layer 3<br>Curated</div>
+        <div>
+          <h3>What the project has decided to remember</h3>
+          <p><code>memory/</code> — promoted decisions, patterns, lessons, the regression ledger, solution paths. Entry requires <code>/promote</code> and a human approval. A forgetting curve flags knowledge at 90 days and archives it at 180 so this never rots into folklore.</p>
+          <div class="layer__meta"><span class="tag tag--accent">human gate</span><span class="tag">295 ledger entries</span></div>
+        </div>
+      </div>
+      <div class="layer" style="--lc:var(--ink-3)">
+        <div class="layer__id">Layer 4<br>Optional</div>
+        <div>
+          <h3>Vector search — only when it's earned</h3>
+          <p>Deliberately not turned on by default. A vector index is added when the corpus is genuinely too large to grep, not because it's fashionable. Principle #8: least-complex intervention first.</p>
+          <div class="layer__meta"><span class="tag">off by default</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 ENFORCEMENT -->
+  <section class="section reveal" id="enforcement">
+    <p class="eyebrow">07 — Enforcement</p>
+    <h2>The parts that say no.</h2>
+    <p class="lede">
+      A framework nobody follows under pressure is decoration. These run at the tooling layer,
+      where forgetting isn't an option.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card__ico card__ico--warn"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
+        <h3>Ten hooks around the session</h3>
+        <p><strong>Before a write:</strong> atomic file locks so parallel agents can't clobber each other, a 12-pattern secret scanner, and a protected-file deny-list (<code>.env</code>, <code>.git/</code>, the metrics DB, <code>settings.json</code>).<br>
+        <strong>Before a commit:</strong> the quality gate. <strong>Before a push:</strong> a main-branch blocker.<br>
+        <strong>Around the session:</strong> auto-format, lock release, context-occupancy monitoring, compaction checkpointing, and a session-start state restore.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--warn"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
+        <h3>Eight checks in the quality gate</h3>
+        <p>Formatting · lint · tests · coverage floor · <strong>ADR completeness</strong> · <strong>review existence</strong> (code staged with no review from today = blocked) · <strong>regression ledger</strong> (known bugs must still have guard tests) · session-state freshness. <code>--fix</code> auto-remediates; every run is logged.</p>
+      </div>
+    </div>
+
+    <div class="note note--warn">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-alert"/></svg>"Proceed without asking" ≠ "proceed without reviewing"</p>
+      <p>
+        The framework supports genuinely autonomous execution — a scoped authorization block lets an
+        agent run the full workflow overnight without a permission prompt at every step. It explicitly
+        does <strong>not</strong> authorise skipping steps. Never <code>/plan</code>. Never
+        <code>/review</code>. Never capture. Never a push. That distinction is written into a rule
+        loaded on every turn, because a derived project once shipped seven workstreams without a
+        single independent evaluation and it took a rule to stop it happening twice.
+      </p>
+    </div>
+  </section>
+
+  <!-- 08 LEARNING -->
+  <section class="section reveal" id="learning">
+    <p class="eyebrow">08 — Compounding</p>
+    <h2>Three nested loops, and one that closes.</h2>
+
+    <div class="grid grid-3">
+      <div class="card">
+        <h3>Micro — per change</h3>
+        <p>Review findings become fixes. Fixes become regression tests. The test becomes a ledger entry naming the <em>root-cause class</em>, so the next similar bug is recognised, not rediscovered.</p>
+      </div>
+      <div class="card">
+        <h3>Meso — per sprint</h3>
+        <p><code>/retro</code> reads every discussion from the sprint, clusters what went wrong, and proposes process adjustments. Recurring findings get surfaced by the Rule of Three: seen in three independent contexts, it graduates.</p>
+      </div>
+      <div class="card">
+        <h3>Macro — per quarter</h3>
+        <p><code>/meta-review</code> evaluates the framework itself — agent effectiveness, architectural drift, whether a rule is earning its context budget. Changes route through the steward and then a human.</p>
+      </div>
+    </div>
+
+    <div class="card card--lead">
+      <h3>The loop that closes on itself</h3>
+      <p style="margin-top:8px">
+        The framework grades its own findings — severity, category, noise. For a long time it never
+        read those grades back. <code>scripts/audit_calibration.py</code> now does: it reads the
+        metrics DB, measures per-agent calibration error and heuristic-vs-recorded severity
+        disagreement, and writes <em>proposals</em>. It is deliberately forbidden from acting on them.
+        Tightening a classifier is a human edit, because an agent that edits its own grading rubric
+        is not improving — it's drifting.
+      </p>
+      <p class="xsmall muted mono" style="margin-top:10px">ADR-0024 · advisory only, never gate-blocking</p>
+    </div>
+  </section>
+
+  <!-- 09 EDUCATION -->
+  <section class="section reveal" id="education">
+    <p class="eyebrow">09 — Ownership</p>
+    <h2>You do not merge code you cannot explain.</h2>
+    <p class="lede">
+      The failure mode nobody talks about: an AI-built codebase whose owner can't debug it at 2am.
+      The education gate exists to keep the human genuinely in the loop rather than nominally on the approval line.
+    </p>
+    <div class="grid grid-4">
+      <div class="card"><div class="card__ico"><svg aria-hidden="true"><use href="#i-book"/></svg></div><h3>Walkthrough</h3><p>The educator agent traces the change and the reasoning behind it, at the depth the change warrants.</p></div>
+      <div class="card"><div class="card__ico"><svg aria-hidden="true"><use href="#i-grad"/></svg></div><h3>Quiz</h3><p>Bloom's-mixed questions, 70% to pass. At least one debug scenario and one change-impact question.</p></div>
+      <div class="card"><div class="card__ico"><svg aria-hidden="true"><use href="#i-users"/></svg></div><h3>Explain back</h3><p>You articulate the design in your own words. This is the step that catches shallow understanding.</p></div>
+      <div class="card"><div class="card__ico card__ico--good"><svg aria-hidden="true"><use href="#i-check"/></svg></div><h3>Merge</h3><p>Deferrals are allowed — but logged, and owed before the next phase starts.</p></div>
+    </div>
+    <p class="small muted">Educational intensity adapts: as you demonstrate competence in an area, the scaffolding fades.</p>
+  </section>
+
+  <!-- 10 MATURITY -->
+  <section class="section reveal" id="maturity">
+    <p class="eyebrow">10 — Honest status</p>
+    <h2>What's load-bearing, and what's still moving.</h2>
+    <p class="lede">
+      This has been running daily since March 2026 across three codebases. Some of it is boring and
+      dependable. Some of it is a live experiment. Here is which is which.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card__ico card__ico--good"><svg aria-hidden="true"><use href="#i-check"/></svg></div>
+        <h3>Proven in daily use</h3>
+        <p>
+          The review panel and risk tiers · the quality gate and pre-commit enforcement ·
+          the four-layer capture stack · ADR discipline · the regression ledger and its guard tests ·
+          the hook set · autonomous execution with human gates · <code>/plan</code> → <code>/build_module</code>
+          → <code>/review</code> sequencing.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--warn"><svg aria-hidden="true"><use href="#i-alert"/></svg></div>
+        <h3>Proof-of-concept — expect movement</h3>
+        <p>
+          The sourced-assertion memory substrate (ADR-0014) · framework lineage and drift tracking ·
+          goal-driven loop orchestration (ADR-0026/0028) · telemetry and oversight dashboards
+          (ADR-0020) · the confidence-calibration back-flow (ADR-0024) · the progressive-disclosure
+          restructure of the constitution itself.
+        </p>
+      </div>
+    </div>
+
+    <div class="note">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-file"/></svg>Known limitations, stated up front</p>
+      <p>
+        The pre-commit hook can't pass <code>--skip-reviews</code> through, so the review-existence
+        check can't be bypassed from <code>git commit</code>. The gate's 5-minute verification cache
+        can silently suppress the regression-ledger reminder. Review-existence verifies that
+        <em>a</em> review from today exists — not that it covered the exact files you staged.
+        These are documented in <code>CLAUDE.md</code> rather than discovered by you.
+        <strong>Pin a version if you need stability</strong> — the framework changes weekly.
+      </p>
+    </div>
+  </section>
+
+  <!-- 11 CTA -->
+  <section class="section reveal" id="start">
+    <div class="cta">
+      <p class="eyebrow">Get started</p>
+      <h2>Clone it, or drop it onto a codebase you already have.</h2>
+      <p class="lede">
+        Two paths in. Both take about ten minutes to the first command, and neither one asks you to
+        rewrite anything you've already built.
+      </p>
+      <div class="term" style="margin-top:6px">
+        <div class="term__bar"><span class="term__dot"></span>shell</div>
+        <div class="term__body">
+<div><span class="c-cmd">git clone</span> <span class="c-path">https://github.com/Diviner-Dojo/agent_framework_template</span></div>
+<div><span class="c-cmd">cd</span> agent_framework_template <span class="c-com">&amp;&amp; python -m venv .venv</span></div>
+<div><span class="c-cmd">pip install -r</span> requirements.txt <span class="c-com">&amp;&amp; python scripts/init_db.py</span></div>
+<div><span class="c-cmd">claude</span> <span class="c-com"># launch Claude Code here, then:</span></div>
+<div><span class="c-cmd">/deliberate</span> <span class="c-str">"what should I build first?"</span></div>
+        </div>
+      </div>
+      <div class="hero__cta" style="margin-top:22px">
+        <a class="btn btn--primary" href="how-to.html">Read the full guide<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <a class="btn btn--ghost" href="proof.html"><svg aria-hidden="true"><use href="#i-search"/></svg>See what it caught in production</a>
+      </div>
+      <p class="small muted mono">Already have a codebase? Don't clone — run <code class="cmd">/apply-framework</code>. It assesses value and risk first, surfaces collisions, and only deploys onto a back-out branch with your go-ahead.</p>
+    </div>
+  </section>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-foot">
+  <div class="site-foot__in">
+    <span>AI-Native Agentic Development Framework · v3.5</span>
+    <span class="sep"><a href="how-to.html">How to use it</a></span>
+    <span><a href="proof.html">Proof</a></span>
+    <span><a href="https://github.com/Diviner-Dojo/agent_framework_template">GitHub</a></span>
+    <span><a href="../LICENSE">Apache-2.0</a></span>
+  </div>
+</footer>
+
+<script src="assets/site.js" defer></script>
+</body>
+</html>

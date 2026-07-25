@@ -20,29 +20,45 @@ This rule activates when any change touches framework-defining files:
 
 ## Documentation Artifacts to Sync
 
-When the trigger fires, review and update these three artifacts:
+When the trigger fires, review and update these four artifacts:
 
 | Artifact | Path | Purpose |
 |----------|------|---------|
 | Framework Specification | `docs/FRAMEWORK_SPECIFICATION.md` | Authoritative full specification |
-| Framework Presentation | `docs/diviner-dojo-framework-presentation.html` | Presentation deck for stakeholders |
-| How-to-Use Presentation | `docs/how-to-use-presentation.html` | Developer onboarding walkthrough |
+| Framework overview page | `docs/index.html` | Public "what it is" page (GitHub Pages entry point) |
+| How-to-use page | `docs/how-to.html` | Public developer guide |
+| Proof / case studies page | `docs/proof.html` | Evidence page — artifact counts + incident write-ups |
+
+The two `docs/*-presentation.html` files are **redirect stubs** retained so older links
+resolve. They carry no content and never need syncing.
 
 ## Sync Points
 
 This table maps framework elements to the specific locations in each artifact that reference them. When an element changes, check every listed location.
 
-| Framework Element | Specification | Presentation HTML | How-to-Use HTML |
-|-------------------|---------------|-------------------|-----------------|
-| **Version number** | Frontmatter `version`, title, executive summary, footer | `<title>`, version badge, footer | Footer |
-| **Agent count** | Section 5 heading, roster table, implementation status | Slide 5 heading, directory tree | Stats card |
-| **Agent model tiers** | Roster table, model-tier table, directory listing | Slide 5 agent cards (badge + tier class) | — |
-| **Leadership hierarchy** | Section 5 leadership subsection | Slide 5 heading and agent cards | — |
-| **Rule count** | Implementation status, directory listing | Directory tree slide | — |
-| **Command count** | Section 6, implementation status | — | Stats card, cheat sheet |
-| **Collaboration modes** | Section 4 | Slide 6 | — |
-| **Hook count** | Section 7, implementation status | Slide 8 | — |
-| **Principles** | Section 2 | Slide 3 | — |
+Each HTML page also carries an authoring comment at the top listing the counts it states —
+update that comment alongside the page so the next editor can diff intent against content.
+
+| Framework Element | Specification | `index.html` | `how-to.html` | `proof.html` |
+|-------------------|---------------|--------------|---------------|--------------|
+| **Version number** | Frontmatter `version`, title, executive summary, footer | `<title>`, `.brand__ver`, hero kicker, footer | `.brand__ver`, footer | `.brand__ver`, footer |
+| **Agent count** | Section 5 heading, roster table, implementation status | §05 heading + roster table | §01 "you get a team" card | — |
+| **Agent model tiers** | Roster table, model-tier table, directory listing | §05 roster table tier badges | — | — |
+| **Leadership hierarchy** | Section 5 leadership subsection | §05 heading + facilitator/steward rows | — | — |
+| **Rule count** | Implementation status, directory listing | header comment | header comment | — |
+| **Command count** | Section 6, implementation status | — | §11 heading + command tables | — |
+| **Skill count** | Implementation status | — | §12 heading + skill lists | — |
+| **Collaboration modes** | Section 4 | §05 "five collaboration modes" card | — | — |
+| **Hook count** | Section 7, implementation status | §07 hooks card | §01 "you get gates" card | — |
+| **Quality-gate checks** | Quality gate section | §07 gate card | §03 + §08 | — |
+| **Principles** | Section 2 | §03 principles table | — | — |
+| **Artifact counts** | — | hero stat strip | — | §01 record table |
+
+**Artifact counts** (the hero stat strip on `index.html` and the table on `proof.html`) are the
+one set of numbers that does *not* come from `.claude/`. They are file counts across the
+template and its derived projects, and they go stale silently. Re-count them at `/ship` time
+with the commands printed in the `proof.html` "How to reproduce these" callout, and update the
+"Counted &lt;date&gt;" line on both pages.
 
 ## Enforcement
 

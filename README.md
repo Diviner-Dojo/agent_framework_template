@@ -4,7 +4,11 @@
 
 A structured, multi-agent development framework for Claude Code that transforms AI-assisted development from unstructured "vibe coding" into a disciplined, self-improving engineering methodology.
 
-> **New here?** Start with the [Framework Presentation](https://diviner-dojo.github.io/agent_framework_template/docs/diviner-dojo-framework-presentation.html) for an overview, or the [How-To Guide](https://diviner-dojo.github.io/agent_framework_template/docs/how-to-use-presentation.html) to get started.
+> **New here?** Three pages, in the order most people want them:
+>
+> - **[The Framework](https://diviner-dojo.github.io/agent_framework_template/docs/)** — what it is, how a change moves through it, and what actually blocks you.
+> - **[How to Use It](https://diviner-dojo.github.io/agent_framework_template/docs/how-to.html)** — setup, the daily loop, the commands that matter, and what to do when something goes wrong.
+> - **[Proof](https://diviner-dojo.github.io/agent_framework_template/docs/proof.html)** — real incidents this framework caught in two production codebases, quoted from the committed artifacts.
 
 ## Prerequisites
 
@@ -14,7 +18,7 @@ Install these tools before using the framework:
 |------|----------|-------------|--------|
 | **Python 3.11+** | Yes | Runtime for the framework and your application | [python.org](https://www.python.org/downloads/) |
 | **Git** | Yes | Version control — the framework uses branches, hooks, and commit gates | [git-scm.com](https://git-scm.com/downloads) |
-| **Claude Code** | Yes | The CLI that runs all 11 agents and 16 commands | [claude.com/claude-code](https://claude.com/claude-code) |
+| **Claude Code** | Yes | The CLI that runs all 12 agents and 25 commands | [claude.com/claude-code](https://claude.com/claude-code) |
 | **VS Code** | Recommended | Editor with Claude Code integration | [code.visualstudio.com](https://code.visualstudio.com/) |
 | **GitHub CLI (`gh`)** | Optional | Used by `/discover-projects`, `/ship`, and PR workflows | [cli.github.com](https://cli.github.com/) |
 

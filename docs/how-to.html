@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<!--
+  Diviner Dojo — "How to use it" guide.
+  Rebuilt 2026-07-25 from docs/how-to-use-presentation.html (which now redirects here).
+
+  Counts stated here — keep in sync with .claude/ per the syncing-framework-docs skill:
+    12 agents · 25 commands · 25 skills · 10 hooks · 8 quality-gate checks
+-->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to use it — AI-Native Agentic Development Framework</title>
+<meta name="description" content="Setup, the daily loop, the commands that matter, and what to do when things go wrong. A practical guide to running the AI-Native Agentic Development Framework in Claude Code.">
+<meta name="color-scheme" content="dark light">
+<meta property="og:type" content="article">
+<meta property="og:title" content="How to use the AI-Native Agentic Development Framework">
+<meta property="og:description" content="From clone to first command, the daily loop, and the commands that matter — a practical guide.">
+<meta property="og:url" content="https://diviner-dojo.github.io/agent_framework_template/docs/how-to.html">
+<link rel="icon" href="https://avatars.githubusercontent.com/u/242870738?s=64&v=4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<script>
+  (function () {
+    try {
+      var s = localStorage.getItem('dd-theme');
+      if (s !== 'light' && s !== 'dark') s = 'dark'; // brand default; toggle persists a choice
+      document.documentElement.setAttribute('data-theme', s);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 9.2 8 11 4.6-1.8 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19z"/><path d="M12 9v5"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="m7 9.5 3 2.5-3 2.5M13 15h4"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z"/><path d="M4 17.2h16"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"/><path d="M3 21v-5h5"/></symbol>
+  <symbol id="i-grad" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 10 5-10 5L2 8z"/><path d="M6 10.5V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-5.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3.2"/><path d="M22 20v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.6a4 4 0 0 1 0 7"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .6a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 1.8 2.7 1.3 3.4 1 .1-.7.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.3 11.3 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .6z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M22 12h-2.4M4.4 12H2M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7M19.1 19.1l-1.7-1.7M6.6 6.6 4.9 4.9"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
+</defs></svg>
+
+<header class="site-head">
+  <div class="site-head__in">
+    <a class="brand" href="index.html">
+      <img class="brand__mark" src="https://avatars.githubusercontent.com/u/242870738?s=96&v=4" alt="" width="26" height="26">
+      <span class="brand__name">Diviner&nbsp;Dojo</span>
+      <span class="brand__ver">v3.5</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="index.html">Framework</a>
+      <a href="how-to.html" aria-current="page">How to use it</a>
+      <a href="proof.html">Proof</a>
+    </nav>
+    <button class="icon-btn theme-btn" type="button" aria-label="Switch to light theme">
+      <svg class="sun" aria-hidden="true"><use href="#i-sun"/></svg>
+      <svg class="moon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+    <a class="icon-btn" href="https://github.com/Diviner-Dojo/agent_framework_template" aria-label="View on GitHub">
+      <svg aria-hidden="true"><use href="#i-gh"/></svg>
+    </a>
+    <div class="progress" aria-hidden="true"></div>
+  </div>
+</header>
+
+<section class="wrap hero">
+  <span class="hero__kicker"><b>Guide</b> · about 15 minutes to your first review</span>
+  <h1>How to actually <em>use</em> this.</h1>
+  <p class="hero__sub">
+    Setup, the daily loop, the six commands that carry most of the weight, and what to do when
+    something blocks you. If you've used Claude Code before, you already know 90% of the mechanics —
+    <strong>the framework changes what happens after you write code, not how you write it.</strong>
+  </p>
+</section>
+
+<div class="wrap">
+<div class="layout">
+
+  <nav class="rail" aria-label="On this page">
+    <p class="rail__label">On this page</p>
+    <a href="#what">What this is</a>
+    <a href="#setup">Setup</a>
+    <a href="#loop">The daily loop</a>
+    <a href="#review">/review</a>
+    <a href="#plan">/plan + /build_module</a>
+    <a href="#deliberate">/deliberate</a>
+    <a href="#goal-loop">/goal-loop</a>
+    <a href="#when">When things go wrong</a>
+    <a href="#afk">Away from keyboard</a>
+    <a href="#evolve">Changing the framework</a>
+    <a href="#commands">Command reference</a>
+    <a href="#skills">Skill reference</a>
+    <a href="#habits">Habits that pay off</a>
+  </nav>
+
+  <main class="doc" id="main">
+
+  <!-- WHAT -->
+  <section class="section reveal" id="what" style="padding-top:24px">
+    <p class="eyebrow">01 — Orientation</p>
+    <h2>What you're installing, in plain terms.</h2>
+    <p class="lede">
+      It is not a library, a CLI, or a service. It is a <strong>directory of instructions that
+      Claude Code reads</strong> — agent definitions, slash commands, rules, hooks — plus a handful
+      of Python scripts that record what happened and enforce the gates.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card__ico"><svg aria-hidden="true"><use href="#i-users"/></svg></div>
+        <h3>You get a team</h3>
+        <p>Twelve specialist agents — security, architecture, QA, UX, performance, docs, education and more — coordinated by a facilitator that decides who is needed for a given change and synthesises what they find.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
+        <h3>You get gates</h3>
+        <p>A quality gate wired into a pre-commit hook, a review-existence check, a secret scanner, file locks for parallel agents, and a main-branch push blocker. They run whether you remember them or not.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico"><svg aria-hidden="true"><use href="#i-book"/></svg></div>
+        <h3>You get a memory</h3>
+        <p>Every review and planning session is captured to an immutable log, indexed into SQLite, and — with your approval — promoted into curated memory that future sessions read before building.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico"><svg aria-hidden="true"><use href="#i-term"/></svg></div>
+        <h3>You keep your workflow</h3>
+        <p>Your editor, your language, your git flow. Python is only needed for the framework's own scripts — the projects running it are Dart and Python respectively.</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-term"/></svg>Two places you'll be typing</p>
+      <p>
+        Throughout this guide, <strong>shell</strong> blocks are your normal terminal.
+        <strong>Claude Code</strong> blocks are typed at the Claude Code prompt after you run
+        <code>claude</code> in your project folder. Slash commands only work in the second one.
+      </p>
+    </div>
+  </section>
+
+  <!-- SETUP -->
+  <section class="section reveal" id="setup">
+    <p class="eyebrow">02 — Setup</p>
+    <h2>From nothing to your first command.</h2>
+
+    <div class="grid grid-2">
+      <div class="stack">
+        <div class="term">
+          <div class="term__bar"><span class="term__dot"></span>shell</div>
+          <div class="term__body">
+<div><span class="c-com"># 1 — clone and isolate</span></div>
+<div><span class="c-cmd">git clone</span> <span class="c-path">https://github.com/Diviner-Dojo/agent_framework_template</span></div>
+<div><span class="c-cmd">cd</span> agent_framework_template</div>
+<div><span class="c-cmd">python -m venv</span> .venv</div>
+<div><span class="c-com"># macOS/Linux: source .venv/bin/activate</span></div>
+<div><span class="c-com"># Windows:     .venv\Scripts\activate</span></div>
+<div>&nbsp;</div>
+<div><span class="c-com"># 2 — install and initialise</span></div>
+<div><span class="c-cmd">pip install -r</span> requirements.txt</div>
+<div><span class="c-cmd">cp</span> .env.example .env      <span class="c-com"># optional (phone push)</span></div>
+<div><span class="c-cmd">python</span> scripts/init_db.py</div>
+<div>&nbsp;</div>
+<div><span class="c-com"># 3 — verify</span></div>
+<div><span class="c-cmd">pytest</span> tests/ <span class="c-flag">-v</span></div>
+          </div>
+        </div>
+        <div class="term">
+          <div class="term__bar term__bar--claude"><span class="term__dot"></span>Claude Code</div>
+          <div class="term__body">
+<div><span class="c-com"># 4 — launch in this folder, sign in, then:</span></div>
+<div><span class="c-cmd">/deliberate</span> <span class="c-str">"what should I build first here?"</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <h3>Prerequisites</h3>
+          <div class="small stack" style="margin-top:8px">
+            <p><span class="tag tag--good">required</span> <strong>Python 3.11+</strong> and <strong>Git</strong>.</p>
+            <p><span class="tag tag--good">required</span> <strong>Claude Code</strong> — the CLI that runs the agents and slash commands.</p>
+            <p><span class="tag tag--warn">required</span> A <strong>paid Anthropic plan</strong> (Pro or Max). The agents will not run without it. Run <code>claude</code> once and sign in.</p>
+            <p><span class="tag">optional</span> VS Code, and the GitHub CLI for <code class="cmd">/discover-projects</code> and <code class="cmd">/ship</code>.</p>
+          </div>
+        </div>
+        <div class="card card--lead">
+          <h3>Then make it yours</h3>
+          <p>Open <code>CLAUDE.md</code> and fill in <strong>Project Identity</strong>, your stack, and any <strong>Domain Safety Constraints</strong>. This file is the project constitution — it loads on every turn. Keep it lean; detail belongs in path-scoped rules and on-demand skills.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:34px">Three ways in — pick one</h3>
+    <div class="grid grid-3">
+      <div class="card step">
+        <span class="step__n">A</span>
+        <h3>Try it in the template</h3>
+        <p>Just clone, as above. Good for a first look — you get the full framework with a small sample app to review.</p>
+      </div>
+      <div class="card step">
+        <span class="step__n">B</span>
+        <h3>Start a new project</h3>
+        <p>Run <code class="cmd">/spawn-project</code> inside Claude Code. It scaffolds a fresh project <em>from</em> the template in its own folder, then <code class="cmd">/seed</code> bootstraps its structures and first discussion.</p>
+      </div>
+      <div class="card step">
+        <span class="step__n">C</span>
+        <h3>Adopt an existing codebase</h3>
+        <p><strong>Don't clone.</strong> Run <code class="cmd">/apply-framework</code>. It assesses value and risk first, surfaces collisions, and only deploys onto a back-out branch once you say go.</p>
+      </div>
+    </div>
+    <p class="small muted">
+      After path C, <code class="cmd">/onboard</code> runs the deeper takeover — maps the codebase,
+      reverse-engineers ADRs for decisions already made, calibrates standards to what you actually
+      do, and builds a stabilisation plan and debt ledger.
+    </p>
+  </section>
+
+  <!-- LOOP -->
+  <section class="section reveal" id="loop">
+    <p class="eyebrow">03 — The daily loop</p>
+    <h2>The rhythm you'll be in most days.</h2>
+
+    <div class="flow" style="margin-bottom:4px">
+      <span class="flow__n">Write code</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--accent">/review</span><span class="flow__a">→</span>
+      <span class="flow__n">Fix blocking findings</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--warn">Quality gate</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--good">Commit</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:130px">Change size</th><th>Required sequence</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Micro-fix</strong><br><span class="xsmall muted">cosmetic only</span></td>
+            <td>Change → lint → verify visually. <strong>Skips <code class="cmd">/plan</code> and <code class="cmd">/build_module</code></strong>, not the quality gate. If it touches data flow, lifecycle, schemas, or platform channels it is <em>not</em> a micro-fix.</td>
+          </tr>
+          <tr>
+            <td><strong>Small</strong><br><span class="xsmall muted">1–2 files</span></td>
+            <td>Implement → quality gate → <code class="cmd">/review</code> → commit. Skip <code class="cmd">/review</code> only for docs- or config-only changes.</td>
+          </tr>
+          <tr>
+            <td><strong>Multi-file</strong><br><span class="xsmall muted">3+ files, or 2+ new modules</span></td>
+            <td><code class="cmd">/plan</code> → <code class="cmd">/build_module</code> → quality gate → <code class="cmd">/review</code> → fix blocking findings → commit.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note note--warn">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-alert"/></svg>The rule that catches everyone once</p>
+      <p>
+        If you are about to commit code without having run <code class="cmd">/review</code>,
+        <strong>stop and run it</strong>. The gate will block you anyway — the review-existence check
+        fails when code is staged and no review report from today exists. There is no deadline that
+        justifies skipping independent evaluation; that's Principle #4, and it's the whole point.
+      </p>
+    </div>
+  </section>
+
+  <!-- REVIEW -->
+  <section class="section reveal" id="review">
+    <p class="eyebrow">04 — Core command</p>
+    <h2><code class="cmd">/review</code> — the one you'll run most.</h2>
+    <p class="lede">Assesses risk, assembles the right specialists, verifies their claims, and writes a structured report with a verdict.</p>
+
+    <div class="grid grid-2">
+      <div class="stack">
+        <div class="term">
+          <div class="term__bar term__bar--claude"><span class="term__dot"></span>Claude Code</div>
+          <div class="term__body">
+<div><span class="c-com"># specific files</span></div>
+<div><span class="c-cmd">/review</span> <span class="c-path">src/routes.py src/models.py</span></div>
+<div>&nbsp;</div>
+<div><span class="c-com"># or let it auto-detect scope:</span></div>
+<div><span class="c-com"># PR diff → staged → unstaged → HEAD~1</span></div>
+<div><span class="c-cmd">/review</span></div>
+<div>&nbsp;</div>
+<div><span class="c-com"># cheaper / deeper / commented on the PR</span></div>
+<div><span class="c-cmd">/review</span> <span class="c-flag">--cost low</span></div>
+<div><span class="c-cmd">/review</span> <span class="c-flag">--deep</span>     <span class="c-com"># + git history analyst</span></div>
+<div><span class="c-cmd">/review</span> <span class="c-flag">--comment</span>  <span class="c-com"># post to the PR</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Reading the verdict</h3>
+          <div class="small stack" style="margin-top:8px">
+            <p><span class="tag tag--good">approve</span> ship it.</p>
+            <p><span class="tag tag--info">approve-with-changes</span> ship, but the advisories are owed.</p>
+            <p><span class="tag tag--warn">request-changes</span> blocking findings must be fixed first.</p>
+            <p><span class="tag tag--crit">reject</span> the approach itself is wrong — go back to <code class="cmd">/plan</code>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <h3>Risk decides the panel size</h3>
+          <div class="table-wrap" style="margin-top:10px;border:0">
+            <table style="min-width:0">
+              <thead><tr><th>Risk</th><th>Agents</th><th>Mode</th></tr></thead>
+              <tbody>
+                <tr><td>Low</td><td class="mono">2–3</td><td class="small">Ensemble</td></tr>
+                <tr><td>Medium</td><td class="mono">3–4</td><td class="small">Structured dialogue</td></tr>
+                <tr><td>High</td><td class="mono">4–5</td><td class="small">Dialectic / adversarial</td></tr>
+                <tr><td>Critical</td><td class="mono">5–6</td><td class="small">Full adversarial panel</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small muted" style="margin-top:10px">Default to the smaller panel. A five-agent review on a config change is pure cost — the risk tiers exist so you don't pay it.</p>
+        </div>
+        <div class="card card--lead">
+          <h3>Two things that make findings trustworthy</h3>
+          <p><strong>Verification.</strong> The facilitator re-reads the actual code at every reported location before accepting a claim — hallucinated line numbers get caught here.</p>
+          <p><strong>No suppression.</strong> Low-confidence findings are grouped into a "Speculative" section rather than dropped. You decide what's noise; the framework doesn't decide for you.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-file"/></svg>Advisories don't disappear</p>
+      <p>
+        Non-blocking findings are carried forward into the next review as <strong>open advisories</strong>
+        until resolved or formally accepted. An advisory seen in three independent reviews
+        <strong>escalates to blocking</strong> — the Rule of Three. That's how "we'll fix it later"
+        stops being permanent.
+      </p>
+    </div>
+  </section>
+
+  <!-- PLAN -->
+  <section class="section reveal" id="plan">
+    <p class="eyebrow">05 — Core commands</p>
+    <h2><code class="cmd">/plan</code> then <code class="cmd">/build_module</code> — for anything substantial.</h2>
+    <p class="lede">Design gets reviewed before code exists, because catching a wrong shape after implementation costs an order of magnitude more.</p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3><code class="cmd">/plan</code> — spec first</h3>
+        <div class="small stack" style="margin-top:9px">
+          <p><strong>1.</strong> A confidence check. If intent or scope is under ~95% clear, it asks rather than guesses.</p>
+          <p><strong>2.</strong> Prior-art lookup — greps solution paths, known-broken approaches, ADRs and promoted patterns <em>before</em> proposing anything.</p>
+          <p><strong>3.</strong> A structured spec with requirements and acceptance criteria.</p>
+          <p><strong>4.</strong> Specialist design review of the spec.</p>
+          <p><strong>5.</strong> Your approval. Nothing is built until you give it.</p>
+        </div>
+      </div>
+      <div class="card">
+        <h3><code class="cmd">/build_module</code> — build with checkpoints</h3>
+        <div class="small stack" style="margin-top:9px">
+          <p>Implements task by task. After each task, the facilitator checks it against <strong>trigger categories</strong> — new module, architecture choice, schema change, security-relevant code, external API, user-facing flow.</p>
+          <p>On a trigger, exactly <strong>two</strong> specialists review that task and answer <span class="tag tag--good">APPROVE</span> or <span class="tag tag--warn">REVISE</span> in under 200 words.</p>
+          <p>Hard cap of <strong>two rounds</strong>. Unresolved concerns are flagged <code>unresolved-checkpoint</code> and surfaced in the build summary — never silently dropped, never allowed to stall the build.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="note note--good">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-check"/></svg>Why checkpoints, not just a final review</p>
+      <p>
+        A review at the end finds problems when they're expensive. A checkpoint after the task that
+        chose the abstraction finds the same problem when it costs ten minutes. Two specialists, 200
+        words, two rounds maximum — small enough that you'll actually leave it on.
+      </p>
+    </div>
+  </section>
+
+  <!-- DELIBERATE -->
+  <section class="section reveal" id="deliberate">
+    <p class="eyebrow">06 — Core command</p>
+    <h2><code class="cmd">/deliberate</code> — when you don't know what to build.</h2>
+    <p class="lede">
+      A structured multi-agent discussion on any question. Use it before <code class="cmd">/plan</code>,
+      when you're stuck between two designs, or when you want the argument itself preserved.
+    </p>
+
+    <div class="term">
+      <div class="term__bar term__bar--claude"><span class="term__dot"></span>Claude Code</div>
+      <div class="term__body">
+<div><span class="c-cmd">/deliberate</span> <span class="c-str">"should batch processing be Celery or an in-process pool?"</span></div>
+<div><span class="c-com">  mode: dialectic synthesis · intensity: high</span></div>
+<div><span class="c-com">  → architecture-consultant, performance-analyst, independent-perspective</span></div>
+<div>&nbsp;</div>
+<div><span class="c-dim">  thesis      in-process pool — no broker, no ops surface</span></div>
+<div><span class="c-dim">  antithesis  Celery — retries and visibility are the actual requirement</span></div>
+<div><span class="c-ok">  synthesis   Celery, but the queue is an interface so it can be swapped</span></div>
+<div>&nbsp;</div>
+<div><span class="c-com">  captured → discussions/…/transcript.md · candidate ADR flagged</span></div>
+      </div>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="card"><h3>Also useful for</h3><p>Post-mortems, "is this worth building?", disagreeing with an earlier decision, and prising apart a requirement you only half understand.</p></div>
+      <div class="card"><h3>Two grilling modes</h3><p><code>grill-me</code> interviews <em>you</em>, one question at a time with a recommended answer, until every branch is resolved. <code>grill-yourself</code> inverts it — the model writes the hard questions on your behalf and answers each with a recommendation, so your job shrinks to verdicts.</p></div>
+      <div class="card"><h3>Everything is captured</h3><p>The full transcript, every dissent, and the synthesis are sealed into a discussion you can grep months later — which is the point.</p></div>
+    </div>
+  </section>
+
+  <!-- GOAL LOOP -->
+  <section class="section reveal" id="goal-loop">
+    <p class="eyebrow">07 — Advanced</p>
+    <h2><code class="cmd">/goal-loop</code> — iterate until a goal is provably met.</h2>
+    <p class="lede">
+      For work that is genuinely loop-shaped: it has a <strong>verifiable done-state</strong>, you
+      expect build → verify → refine convergence, and it isn't a micro-fix.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>The separation that makes it safe</h3>
+        <p>Control flow lives in <code>scripts/goal_loop.py</code> — a deterministic driver that owns ticks, budget, the termination ladder, and re-verification. The model is invoked only to build a delta, to judge a criterion, or to phrase a gate. <strong>The agent that builds is never the agent that judges.</strong></p>
+      </div>
+      <div class="card">
+        <h3>It is suggested, never imposed</h3>
+        <p>It never auto-starts. A goal that's subjective, exploratory, or only verifiable through a prohibited action is routed to <code>grill-me</code>, <code class="cmd">/plan</code>, or <code class="cmd">/deliberate</code> instead — the contract-authoring skill gatekeeps that <em>first</em>. On completion it halts for <code class="cmd">/review</code> plus a required education walkthrough. It never pushes and never auto-merges.</p>
+      </div>
+    </div>
+    <p class="small muted">Start with <code>authoring-goal-contracts</code>, which interviews you into a valid contract with at least one deterministic anchor. ADR-0026 / ADR-0028.</p>
+  </section>
+
+  <!-- WHEN -->
+  <section class="section reveal" id="when">
+    <p class="eyebrow">08 — Troubleshooting</p>
+    <h2>What do I do when…</h2>
+
+    <details class="acc">
+      <summary>…the quality gate blocks my commit</summary>
+      <div class="acc__body">
+        <p>Read which check failed — the output names it. Run <code>python scripts/quality_gate.py --fix</code> to auto-remediate formatting and lint. For a legitimate skip, use the matching <code>--skip-*</code> flag <strong>and put a one-line justification in the commit message</strong> (<code>skip-tests: docs-only change</code>). One project's retro found 85 unexplained coverage skips; the justification requirement is what made that visible.</p>
+        <p class="small muted">Full recovery paths for all eight failure classes: the <code>recovering-from-failures</code> skill.</p>
+      </div>
+    </details>
+
+    <details class="acc">
+      <summary>…a hook blocks my edit</summary>
+      <div class="acc__body">
+        <p>Three reasons, in order of likelihood. <strong>File lock</strong> — another agent is editing it; locks expire after 120 seconds. <strong>Secret detected</strong> — the content matched one of twelve secret patterns; move it to <code>.env</code>. <strong>Protected file</strong> — <code>.env</code>, <code>.git/</code>, the metrics DB, and <code>settings.json</code> are agent-immutable by design. You edit those by hand; that's the point.</p>
+      </div>
+    </details>
+
+    <details class="acc">
+      <summary>…the review found something I disagree with</summary>
+      <div class="acc__body">
+        <p>Say so, with reasoning. The verdict is advice, not a court order — you are the human gate. What you shouldn't do is silently ignore it: record the disagreement, because a declined advisory needs a one-sentence rationale to stop the knowledge being lost. If you're right and the pattern recurs, that's evidence the specialist's calibration needs adjusting, and <code>scripts/audit_calibration.py</code> is how that gets surfaced.</p>
+      </div>
+    </details>
+
+    <details class="acc">
+      <summary>…the same fix isn't working after two attempts</summary>
+      <div class="acc__body">
+        <p><strong>Stop writing code.</strong> Two failed attempts means your mental model is wrong, and no amount of coding fixes a wrong mental model — only evidence does. Add logging at every step of the pipeline, run it, read the actual runtime sequence, <em>then</em> diagnose. This two-strike rule exists because a project burned six deploys treating an architectural problem as cosmetic.</p>
+      </div>
+    </details>
+
+    <details class="acc">
+      <summary>…I'm not sure what to build, or the request is ambiguous</summary>
+      <div class="acc__body">
+        <p>That's Principle #9 territory — clarify to ≥95% confidence on <em>intent and scope</em> before acting. Use <code>grill-me</code> to be interviewed one question at a time, or <code class="cmd">/deliberate</code> to get the specialists arguing about it. Both checkpoint to disk, so an interrupted session resumes where it stopped.</p>
+      </div>
+    </details>
+
+    <details class="acc">
+      <summary>…my context is running out mid-task</summary>
+      <div class="acc__body">
+        <p>The session self-monitors context occupancy and nudges at a model-specific threshold. Run <code class="cmd">/handoff</code> (or let the <code>wrapping-up-sessions</code> skill fire): it checkpoints state, writes <code>docs/handoff/HANDOFF-&lt;timestamp&gt;.md</code>, and points to it from <code>BUILD_STATUS.md</code>. Paste that into a fresh session and continue. Wrap-up never pushes, never auto-merges, and never launches a continuation without explicit consent.</p>
+      </div>
+    </details>
+
+    <details class="acc">
+      <summary>…I'm about to build something that might already exist</summary>
+      <div class="acc__body">
+        <p>Grep first — the <code>searching-prior-art</code> skill is a checklist for exactly this. Check the regression ledger's <em>Known-Broken Approaches</em>, solution paths in <code>memory/projects/_self.md</code>, existing ADRs, and promoted patterns. Zero results is a normal outcome for novel work; the point is that two minutes of grep beats two hours of rediscovery.</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- AFK -->
+  <section class="section reveal" id="afk">
+    <p class="eyebrow">09 — Autonomy</p>
+    <h2>Working while you're away.</h2>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card__ico"><svg aria-hidden="true"><use href="#i-phone"/></svg></div>
+        <h3>It can reach your phone</h3>
+        <p>Set <code>NTFY_TOPIC</code> in <code>.env</code> and long-running work sends push notifications via ntfy.sh. Two-way: an agent can ask a gating question and wait for your one-tap answer, then keep going.</p>
+        <p class="small muted">Replies are treated as <strong>untrusted</strong> — validated against a fixed allow-list, and the framework acts on the matched choice label, never the raw text. The topic slug is the only authentication, so it lives in <code>.env</code> and is never printed.</p>
+      </div>
+      <div class="card">
+        <div class="card__ico"><svg aria-hidden="true"><use href="#i-shield"/></svg></div>
+        <h3>Autonomy is scoped in writing</h3>
+        <p>The <strong>Autonomous Execution Authorization</strong> block in <code>CLAUDE.md</code> names the branch scope, the effective date, the authorized actions, and — critically — the <strong>prohibited</strong> ones.</p>
+        <p class="small muted">The shipped defaults prohibit pushing to any remote, destructive git, editing <code>settings.json</code>, and auto-merging. Full workflow without permission prompts; never a skipped step.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- EVOLVE -->
+  <section class="section reveal" id="evolve">
+    <p class="eyebrow">10 — Evolution</p>
+    <h2>Changing the framework itself.</h2>
+    <p class="lede">You are expected to. There's just a path, so improvements are evidence-driven rather than vibes-driven.</p>
+
+    <div class="flow">
+      <span class="flow__n">Pattern across reviews</span><span class="flow__a">→</span>
+      <span class="flow__n">Proposal with evidence</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--accent">Steward gate</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--warn">Your approval</span><span class="flow__a">→</span>
+      <span class="flow__n">/review</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--good">Doc sync</span>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="card"><h3>A pattern, not an incident</h3><p>One bad review isn't evidence. The trigger is the same problem appearing across several — which is what the metrics layer exists to make visible.</p></div>
+      <div class="card"><h3>The steward judges fit</h3><p>Verdicts are APPROVE / REVISE / DEFER / DECLINE, measured against <code>PHILOSOPHY.md</code>. It's the one agent that can decline a change on principle rather than on correctness.</p></div>
+      <div class="card"><h3>Smallest change that works</h3><p>Principle #8: prompt before command, command before agent definition, agent definition before architecture. Escalate only when the cheaper intervention has demonstrably failed.</p></div>
+    </div>
+  </section>
+
+  <!-- COMMANDS -->
+  <section class="section reveal" id="commands">
+    <p class="eyebrow">11 — Reference</p>
+    <h2>All 25 commands.</h2>
+
+    <h3 style="margin-top:22px">Everyday</h3>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><td class="mono nowrap"><strong>/review</strong></td><td>Multi-agent code review. Auto-detects scope, assembles the panel by risk, produces a verdict and a report.</td></tr>
+          <tr><td class="mono nowrap"><strong>/plan</strong></td><td>Spec-driven planning — structured spec, prior-art lookup, specialist design review, your approval.</td></tr>
+          <tr><td class="mono nowrap"><strong>/build_module</strong></td><td>Build from a spec with mid-build checkpoint reviews, tests, and the education gate.</td></tr>
+          <tr><td class="mono nowrap"><strong>/deliberate</strong></td><td>Structured multi-agent discussion on any topic, fully captured.</td></tr>
+          <tr><td class="mono nowrap"><strong>/goal-loop</strong></td><td>Iterate build → verify → refine against a goal contract until its criteria are met.</td></tr>
+          <tr><td class="mono nowrap"><strong>/status</strong></td><td>Visual map of branches, sync state, and working-directory health.</td></tr>
+          <tr><td class="mono nowrap"><strong>/handoff</strong></td><td>Wrap up a session cleanly and write a paste-ready handoff prompt.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:26px">Learning &amp; knowledge</h3>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><td class="mono nowrap"><strong>/walkthrough</strong></td><td>Guided explanation of code. Education gate step 1.</td></tr>
+          <tr><td class="mono nowrap"><strong>/quiz</strong></td><td>Bloom's-taxonomy comprehension check. Education gate step 2.</td></tr>
+          <tr><td class="mono nowrap"><strong>/promote</strong></td><td>Promote a reflection, pattern, or lesson into curated memory. Human approval required.</td></tr>
+          <tr><td class="mono nowrap"><strong>/knowledge-health</strong></td><td>Health check across all five pipeline layers.</td></tr>
+          <tr><td class="mono nowrap"><strong>/retro</strong></td><td>Sprint retrospective — analyses the sprint's discussions and proposes process adjustments.</td></tr>
+          <tr><td class="mono nowrap"><strong>/meta-review</strong></td><td>Quarterly framework evaluation — agent effectiveness, drift, rule updates.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:26px">Setup &amp; distribution</h3>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><td class="mono nowrap"><strong>/apply-framework</strong></td><td>Apply or update the framework on one project. Value/risk assessment first, back-out branch, never pushes.</td></tr>
+          <tr><td class="mono nowrap"><strong>/spawn-project</strong></td><td>Create a new project from the template.</td></tr>
+          <tr><td class="mono nowrap"><strong>/seed</strong></td><td>Bootstrap a project into the framework — scaffolds structures, wires hooks, creates the first discussion.</td></tr>
+          <tr><td class="mono nowrap"><strong>/onboard</strong></td><td>Deep takeover of an existing codebase — mapping, reverse-engineered ADRs, stabilisation plan, debt ledger.</td></tr>
+          <tr><td class="mono nowrap"><strong>/ship</strong></td><td>Release workflow — quality gate, testing checklist, version bump, changelog, rollback strategy.</td></tr>
+          <tr><td class="mono nowrap"><strong>/lineage</strong></td><td>Framework lineage status, drift analysis, manifest validation.</td></tr>
+          <tr><td class="mono nowrap muted"><strong>/distribute</strong></td><td class="muted">Deprecated alias for <code>/apply-framework</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:26px">Looking outward</h3>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><td class="mono nowrap"><strong>/analyze-project</strong></td><td>Analyse an external project for patterns worth adopting. Scored on a 5-dimension rubric; only ≥20/25 is recommended.</td></tr>
+          <tr><td class="mono nowrap"><strong>/discover-projects</strong></td><td>Search GitHub for analysis candidates and rank them.</td></tr>
+          <tr><td class="mono nowrap"><strong>/evaluate-repo-security</strong></td><td>Adversarial security evaluation of an external repo — hooks, permissions, dependencies, secrets.</td></tr>
+          <tr><td class="mono nowrap"><strong>/batch-evaluate</strong></td><td>Batch-evaluate pending pattern adoptions from the adoption log.</td></tr>
+          <tr><td class="mono nowrap"><strong>/conversation</strong></td><td>Cross-project conversation — projects exchange messages through shared memory.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SKILLS -->
+  <section class="section reveal" id="skills">
+    <p class="eyebrow">12 — Reference</p>
+    <h2>All 25 skills.</h2>
+    <p class="lede">
+      Skills are reference knowledge loaded <strong>on demand</strong>, not on every turn — that's
+      how the constitution stays lean. You rarely invoke one directly; the agent pulls it when the
+      situation matches.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Process &amp; gates</h3>
+        <ul class="small" style="margin-top:9px;padding-left:18px;color:var(--ink-2);line-height:1.95">
+          <li><code>committing-changes</code> — the full commit protocol</li>
+          <li><code>selecting-review-gates</code> — risk tiers, panel selection, advisory lifecycle</li>
+          <li><code>running-build-checkpoints</code> — mid-build checkpoint triggers</li>
+          <li><code>severity-calibration</code> — the shared severity rubric</li>
+          <li><code>handling-micro-fixes</code> — sizing heuristic, two-strike escalation</li>
+          <li><code>recovering-from-failures</code> — the 8 named failure classes</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Knowledge &amp; documentation</h3>
+        <ul class="small" style="margin-top:9px;padding-left:18px;color:var(--ink-2);line-height:1.95">
+          <li><code>searching-prior-art</code> — grep before you build</li>
+          <li><code>documenting-decisions</code> — what to document, and where</li>
+          <li><code>adr-writing</code> — writing a decision record properly</li>
+          <li><code>syncing-framework-docs</code> — keeping these pages honest</li>
+          <li><code>feature-status-registry</code> — tracking feature status downstream</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Thinking &amp; orchestration</h3>
+        <ul class="small" style="margin-top:9px;padding-left:18px;color:var(--ink-2);line-height:1.95">
+          <li><code>grill-me</code> — get interrogated until the plan holds</li>
+          <li><code>grill-yourself</code> — the model writes your hard questions</li>
+          <li><code>cross-agent-dispatch</code> — specialist asks for another agent</li>
+          <li><code>multi-instance-dispatch</code> — one specialist, parallel instances</li>
+          <li><code>orchestrating-lean-dispatch</code> — top-tier quality, cheaper tokens</li>
+          <li><code>authoring-goal-contracts</code> · <code>orchestrating-goal-loops</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Sessions &amp; craft</h3>
+        <ul class="small" style="margin-top:9px;padding-left:18px;color:var(--ink-2);line-height:1.95">
+          <li><code>wrapping-up-sessions</code> — context-aware wrap-up and handoff</li>
+          <li><code>notifying-the-developer</code> — push notifications, untrusted replies</li>
+          <li><code>collaborating-async</code> — the two-way away-from-keyboard loop</li>
+          <li><code>testing-playbook</code> · <code>security-checklist</code></li>
+          <li><code>performance-playbook</code> · <code>python-project-patterns</code></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- HABITS -->
+  <section class="section reveal" id="habits">
+    <p class="eyebrow">13 — Practice</p>
+    <h2>Five habits that decide whether this works for you.</h2>
+
+    <div class="grid grid-2">
+      <div class="card step"><span class="step__n">01</span><h3>Right-size the panel</h3><p>Default to two agents. Reserve the full panel for security, architecture, data migration, and anything with a silent failure mode. A five-agent review on every change is the fastest way to resent the framework.</p></div>
+      <div class="card step"><span class="step__n">02</span><h3>Keep <code>CLAUDE.md</code> lean</h3><p>It loads on every turn, so every line costs. Detail belongs in path-scoped rules and on-demand skills. When a review comment says "you didn't know X" — that's the signal the constitution needs one more line, not ten.</p></div>
+      <div class="card step"><span class="step__n">03</span><h3>Write the ledger entry while it hurts</h3><p>Right after a fix, when the root cause is still vivid. Name the <strong>root-cause class</strong>, not just the symptom — that's what makes the second occurrence get diagnosed instead of rediscovered.</p></div>
+      <div class="card step"><span class="step__n">04</span><h3>Take the education gate seriously</h3><p>It's the easiest thing to defer and the most expensive to skip. Code you can't explain is code you can't debug at 2am, and the framework can't help you then.</p></div>
+      <div class="card step"><span class="step__n">05</span><h3>Run <code class="cmd">/retro</code> at milestones</h3><p>Not every phase — it's expensive. Batch a few sprints. Its job is to find the pattern you're too close to see, and patterns need a few data points.</p></div>
+      <div class="card step"><span class="step__n">06</span><h3>Let it argue with you</h3><p>The value isn't a compliant assistant. It's a specialist that says "this replaces a proven capability with an unproven one — what's the rollback plan?" and means it. If every review approves cleanly, your panel is too small or your risk tiers are wrong.</p></div>
+    </div>
+  </section>
+
+  <section class="section reveal">
+    <div class="cta">
+      <p class="eyebrow">Next</p>
+      <h2>Run your first review on code you already care about.</h2>
+      <p class="lede">That's the honest test. Point it at something real and read what comes back.</p>
+      <div class="hero__cta">
+        <a class="btn btn--primary" href="https://github.com/Diviner-Dojo/agent_framework_template"><svg aria-hidden="true"><use href="#i-gh"/></svg>Get the template</a>
+        <a class="btn btn--ghost" href="proof.html"><svg aria-hidden="true"><use href="#i-search"/></svg>See what it caught elsewhere</a>
+        <a class="btn btn--ghost" href="index.html">How it works<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </div>
+    </div>
+  </section>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-foot">
+  <div class="site-foot__in">
+    <span>AI-Native Agentic Development Framework · v3.5</span>
+    <span class="sep"><a href="index.html">Framework</a></span>
+    <span><a href="proof.html">Proof</a></span>
+    <span><a href="https://github.com/Diviner-Dojo/agent_framework_template">GitHub</a></span>
+    <span><a href="../LICENSE">Apache-2.0</a></span>
+  </div>
+</footer>
+
+<script src="assets/site.js" defer></script>
+</body>
+</html>

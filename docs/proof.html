@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<!--
+  Diviner Dojo — "Proof" page. New 2026-07-25.
+  Every number and quotation on this page is drawn from committed artifacts in the
+  three repositories named below. Where a figure is a file count, the counting
+  command is stated inline so a reader can reproduce it.
+-->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof — What the framework actually caught</title>
+<meta name="description" content="Real incidents from two production codebases running the AI-Native Agentic Development Framework: six correctness defects caught before activation, expired licences reported as valid, and a microphone leak that became a protocol.">
+<meta name="color-scheme" content="dark light">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Proof — what the framework actually caught">
+<meta property="og:description" content="Six correctness defects caught before a scorer wrote a single value. Expired licences reported as Active. A microphone leak that became a protocol. Real incidents, real artifacts.">
+<meta property="og:url" content="https://diviner-dojo.github.io/agent_framework_template/docs/proof.html">
+<link rel="icon" href="https://avatars.githubusercontent.com/u/242870738?s=64&v=4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<script>
+  (function () {
+    try {
+      var s = localStorage.getItem('dd-theme');
+      if (s !== 'light' && s !== 'dark') s = 'dark'; // brand default; toggle persists a choice
+      document.documentElement.setAttribute('data-theme', s);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 9.2 8 11 4.6-1.8 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19z"/><path d="M12 9v5"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-loop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"/><path d="M3 21v-5h5"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M7 21h10M3 8l4-4 4 4M3 8a4 4 0 0 0 8 0M13 8l4-4 4 4M13 8a4 4 0 0 0 8 0"/></symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .6a11.4 11.4 0 0 0-3.6 22.2c.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 1.8 2.7 1.3 3.4 1 .1-.7.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.3 11.3 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A11.4 11.4 0 0 0 12 .6z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M22 12h-2.4M4.4 12H2M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7M19.1 19.1l-1.7-1.7M6.6 6.6 4.9 4.9"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
+</defs></svg>
+
+<header class="site-head">
+  <div class="site-head__in">
+    <a class="brand" href="index.html">
+      <img class="brand__mark" src="https://avatars.githubusercontent.com/u/242870738?s=96&v=4" alt="" width="26" height="26">
+      <span class="brand__name">Diviner&nbsp;Dojo</span>
+      <span class="brand__ver">v3.5</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="index.html">Framework</a>
+      <a href="how-to.html">How to use it</a>
+      <a href="proof.html" aria-current="page">Proof</a>
+    </nav>
+    <button class="icon-btn theme-btn" type="button" aria-label="Switch to light theme">
+      <svg class="sun" aria-hidden="true"><use href="#i-sun"/></svg>
+      <svg class="moon" aria-hidden="true"><use href="#i-moon"/></svg>
+    </button>
+    <a class="icon-btn" href="https://github.com/Diviner-Dojo/agent_framework_template" aria-label="View on GitHub">
+      <svg aria-hidden="true"><use href="#i-gh"/></svg>
+    </a>
+    <div class="progress" aria-hidden="true"></div>
+  </div>
+</header>
+
+<section class="wrap hero">
+  <span class="hero__kicker"><b>Evidence</b> · counted 2026-07-25</span>
+  <h1>Every framework claims discipline. <em>Here's the receipt.</em></h1>
+  <p class="hero__sub">
+    Two production codebases have been built with this framework since March 2026 — a Python
+    licence-verification platform and a Flutter journalling app. Below are the incidents their
+    review panels actually caught, quoted from the committed artifacts, <strong>including the
+    ones that make the framework look expensive</strong>.
+  </p>
+</section>
+
+<div class="wrap">
+<div class="layout">
+
+  <nav class="rail" aria-label="On this page">
+    <p class="rail__label">On this page</p>
+    <a href="#counts">The record</a>
+    <a href="#vp">Case 1 · Verification platform</a>
+    <a href="#ij">Case 2 · Flutter journal</a>
+    <a href="#pattern">Incident → rule</a>
+    <a href="#cost">What it costs</a>
+    <a href="#start">Try it</a>
+  </nav>
+
+  <main class="doc" id="main">
+
+  <!-- COUNTS -->
+  <section class="section reveal" id="counts" style="padding-top:24px">
+    <p class="eyebrow">01 — The record</p>
+    <h2>What four months of enforced process leaves behind.</h2>
+    <p class="lede">
+      These are file and row counts in committed directories, not estimates. The counting command
+      is given so you can reproduce any figure against the repositories.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Artifact</th>
+            <th class="nowrap">Template</th>
+            <th class="nowrap">Verification&nbsp;platform</th>
+            <th class="nowrap">Flutter&nbsp;journal</th>
+            <th class="nowrap">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>ADRs</strong><br><span class="xsmall muted mono">docs/adr/ADR-*.md</span></td><td class="mono">28</td><td class="mono">41</td><td class="mono">90</td><td class="mono"><strong>159</strong></td></tr>
+          <tr><td><strong>Review reports</strong><br><span class="xsmall muted mono">docs/reviews/*.md</span></td><td class="mono">71</td><td class="mono">138</td><td class="mono">318</td><td class="mono"><strong>527</strong></td></tr>
+          <tr><td><strong>Captured discussions</strong><br><span class="xsmall muted mono">discussions/**/DISC-*/</span></td><td class="mono">38</td><td class="mono">226</td><td class="mono">787</td><td class="mono"><strong>1,051</strong></td></tr>
+          <tr><td><strong>Specs</strong><br><span class="xsmall muted mono">docs/sprints/*.md</span></td><td class="mono">—</td><td class="mono">53</td><td class="mono">196</td><td class="mono"><strong>249</strong></td></tr>
+          <tr><td><strong>Quality-gate runs</strong><br><span class="xsmall muted mono">metrics/quality_gate_log.jsonl</span></td><td class="mono">255</td><td class="mono">235</td><td class="mono">1,212</td><td class="mono"><strong>1,702</strong></td></tr>
+          <tr><td><strong>Regression-ledger entries</strong><br><span class="xsmall muted mono">memory/bugs/regression-ledger.md</span></td><td class="mono">—</td><td class="mono">78</td><td class="mono">217</td><td class="mono"><strong>295</strong></td></tr>
+          <tr><td><strong>Test files</strong><br><span class="xsmall muted mono">tests/ · test/</span></td><td class="mono">—</td><td class="mono">179</td><td class="mono">511</td><td class="mono"><strong>690</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-file"/></svg>How to reproduce these</p>
+      <p class="mono xsmall" style="line-height:1.9">
+        ls docs/adr/ADR-*.md | wc -l<br>
+        ls docs/reviews/*.md | wc -l<br>
+        find discussions -maxdepth 2 -type d -name 'DISC-*' | wc -l<br>
+        wc -l &lt; metrics/quality_gate_log.jsonl
+      </p>
+      <p class="small">
+        Two honest caveats. <strong>Review reports are files, not verdicts</strong> — a report exists
+        per review run, and some runs approve cleanly. <strong>Regression-ledger entries are counted
+        per format</strong>: the verification platform uses one heading per bug, the Flutter project
+        uses one table row per bug. Neither number is a bug count for the product; it's a count of
+        bugs that were fixed <em>and</em> given a permanent guard test.
+      </p>
+    </div>
+  </section>
+
+  <!-- CASE 1 -->
+  <section class="section reveal" id="vp">
+    <p class="eyebrow">02 — Case study</p>
+    <h2>A licence-verification platform where a wrong answer is the product failing.</h2>
+
+    <div class="case">
+      <div class="case__head">
+        <div class="case__meta">
+          <span class="tag tag--accent">Python 3.11 · FastAPI</span>
+          <span class="tag">Playwright</span>
+          <span class="tag">Celery + Redis</span>
+          <span class="tag">51 states</span>
+          <span class="tag">62 state configs</span>
+        </div>
+        <h3>VerificationPortal</h3>
+        <p>
+          Automates professional licence verification across U.S. state portals — browser scraping,
+          bulk datasets, and public APIs, cascading per state. The domain has a nasty property:
+          <strong>a confidently wrong answer is worse than no answer</strong>. Reporting an expired
+          contractor licence as valid is a compliance failure that looks exactly like success.
+        </p>
+      </div>
+
+      <div class="case__body">
+
+        <!-- Exhibit A -->
+        <div>
+          <p class="eyebrow" style="margin-bottom:12px">Exhibit A — six defects, zero blast radius</p>
+          <h3 style="margin-bottom:10px">An adversarial panel took apart a scorer before it wrote a single value.</h3>
+          <p>
+            A new endpoint-scoring module — a gated lexicographic ranking function that decides which
+            data source each state should trust — was built and looked fine. Four independent
+            reviewers were dispatched against it with instructions to <em>refute</em>, then a
+            synthesis pass. The verdict was blunt: <strong>"NOT CORRECT AS-IS."</strong> Six distinct
+            real defects plus two test gaps, all found <strong>pre-activation</strong>.
+          </p>
+
+          <div class="evidence">
+            <div class="evidence__src"><svg aria-hidden="true"><use href="#i-file"/></svg>memory/bugs/regression-ledger.md — "Endpoint scorer: 6 correctness defects caught by adversarial review before activation (ADR-0038)"</div>
+            <div class="evidence__body">
+<strong>M1 (load-bearing)</strong>  _build_composite_plan spliced REFERENT-FAILED endpoints —
+              re-opening the exact hole the referent gate exists to close.
+<strong>M2</strong>  unbounded CapabilityVector inflated the composite past 100 + gamed the gate.
+<strong>M3</strong>  _composite_display's round(...,2) erased the freshness + tiebreak tiers, so the
+      stored composite disagreed with rank_state's order.
+<strong>M4</strong>  rank_state winner was input-order-dependent on ties — breaks idempotence.
+<strong>M5</strong>  a plan could name a find_source with zero find capability.
+<strong>M6</strong>  find/status exclusion used source_id equality, dropping a distinct deep endpoint.
+<strong>M-RISK-2</strong>  classify_delta returned "degradation" without drift attribution —
+           <em>a harness change could masquerade as portal rot.</em>
+
+<em>Known-Broken Approach recorded:</em> shipping a scoring/ranking function on design-review
+and happy-path tests alone.
+            </div>
+          </div>
+
+          <p style="margin-top:16px">
+            Every one of the six now has a named guard test — <code>test_ranking_is_deterministic_across_input_permutations</code>,
+            <code>test_composite_is_order_preserving_function_of_rank_key</code>, and four siblings.
+            The interesting part is not that a review found bugs. It is that
+            <strong>M3 and M4 are invisible to a happy-path test suite</strong>: both produce
+            plausible output every single run. A ranking that silently depends on input order does
+            not crash. It just quietly gives a different answer on Tuesday.
+          </p>
+        </div>
+
+        <hr class="hr">
+
+        <!-- Exhibit B -->
+        <div>
+          <p class="eyebrow" style="margin-bottom:12px">Exhibit B — the word "Verified" meant nothing</p>
+          <h3 style="margin-bottom:10px">An audit found expired licences being reported as Active.</h3>
+
+          <div class="timeline">
+            <div class="tl tl--crit">
+              <div class="tl__dot">1</div>
+              <div><div class="tl__t">A substring match with no negation guard</div>
+              <div class="tl__d"><code>parser._normalize_status</code> matched <code>"active"</code> inside <code>"Not Active - Expired"</code>. Expired licences read as Active — and the string is real portal output, not a hypothetical.</div></div>
+            </div>
+            <div class="tl tl--crit">
+              <div class="tl__dot">2</div>
+              <div><div class="tl__t">"Verified" rows with no evidence behind them</div>
+              <div class="tl__d">The bulk path wrote no per-row artifact, so rows were mislabelled provenance <code>"cache"</code> — reporting reuse of a cached result that never existed. Separately, rows were being marked Verified with <em>no expiration date at all</em>.</div></div>
+            </div>
+            <div class="tl tl--accent">
+              <div class="tl__dot">3</div>
+              <div><div class="tl__t">The definition was rewritten, not patched</div>
+              <div class="tl__d">ADR-0020 redefined the gate: a row cannot be <code>LicenseVerified</code> unless it has <strong>a loadable evidence record AND an expiration date</strong>. Everything else demotes to <code>NeedsReview</code> with a reason code.</div></div>
+            </div>
+            <div class="tl tl--good">
+              <div class="tl__dot">4</div>
+              <div><div class="tl__t">The cost was accepted openly</div>
+              <div class="tl__d">Roughly 700 previously-"Verified" rows reclassified to NeedsReview. That is the framework working: the number went down because the number had been lying.</div></div>
+            </div>
+          </div>
+
+          <div class="note note--good" style="margin-top:18px">
+            <p class="note__t"><svg aria-hidden="true"><use href="#i-check"/></svg>What made it durable</p>
+            <p>
+              The fix did not stop at code. It became <code>.claude/rules/verified_gate_and_provenance.md</code> —
+              a rule loaded into every future session — including the specific requirement that
+              <strong>"no artifact" must never be labelled "cache"</strong>, and a test that fails if
+              any report surface re-derives status from the lossy legacy field instead of the
+              persisted canonical one. A future agent cannot reintroduce this by accident without
+              tripping a test written by the agent that found it.
+            </p>
+          </div>
+        </div>
+
+        <hr class="hr">
+
+        <!-- Exhibit C -->
+        <div>
+          <p class="eyebrow" style="margin-bottom:12px">Exhibit C — a 403 that wasn't</p>
+          <h3 style="margin-bottom:10px">Two states nearly got silently dropped because "Forbidden" looked like an answer.</h3>
+          <p>
+            The Texas and Arizona bulk sources both returned <code>403 Forbidden</code> and read as
+            offline. Accepting that would have quietly removed two states from coverage — the failure
+            mode the project fears most, because nothing looks broken. Investigation at the source
+            found the portals were <strong>TLS-fingerprinting the HTTP client</strong> and rejecting
+            it at the handshake. A different client downloaded the full sanctioned CSV immediately:
+            Arizona, 9.16 MB, 43,886 records.
+          </p>
+          <div class="evidence">
+            <div class="evidence__src"><svg aria-hidden="true"><use href="#i-file"/></svg>.claude/rules/endpoint_integrity.md — elevated to Principle #10 by developer directive, 2026-06-26</div>
+            <div class="evidence__body">
+<em>"We must never let batches be run through endpoints that we are not certain are open
+and effective. Never, never, never accept a stale endpoint in its own right without
+trying and raising and yelling very loudly that we cannot pass additional records
+through it."</em>
+
+<strong>Four non-negotiables:</strong> never silently accept a degraded endpoint · when you cannot
+repair it, yell loudly · never run a batch through an endpoint you are not certain of ·
+keep endpoint state visible in a dashboard.
+
+<strong>The bright line:</strong> repair via sanctioned means only. A TLS-impersonating transport for
+a public CSV is fine. Solving a CAPTCHA is not — that is a blocked endpoint, and the
+honest move is to say so.
+            </div>
+          </div>
+          <p class="small muted" style="margin-top:14px">
+            This is the framework's evolution path running end to end: an incident produced a
+            developer directive, the directive became a rule file, the rule became a numbered
+            principle in the project constitution, and the principle now constrains every future
+            session — with an explicit ethical boundary attached so "be creative about access"
+            can't drift into "bypass whatever's in the way."
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- CASE 2 -->
+  <section class="section reveal" id="ij">
+    <p class="eyebrow">03 — Case study</p>
+    <h2>A Flutter app where the wrong microcopy is a clinical failure.</h2>
+
+    <div class="case">
+      <div class="case__head">
+        <div class="case__meta">
+          <span class="tag tag--accent">Flutter · Dart</span>
+          <span class="tag">Riverpod · drift</span>
+          <span class="tag">Supabase</span>
+          <span class="tag">443 source files</span>
+          <span class="tag">511 test files</span>
+        </div>
+        <h3>Insight Journal</h3>
+        <p>
+          An ADHD-informed journalling app with voice capture, on-device storage, and AI-assisted
+          reflection. The domain constraint is unusual and absolute: the app must
+          <strong>never mention missed days, gaps, or absence</strong> — not even implicitly.
+          No streaks. No gap-shaming calendars. A feature that quietly violates this is a
+          clinical failure, not a UX nitpick.
+        </p>
+      </div>
+
+      <div class="case__body">
+
+        <div>
+          <p class="eyebrow" style="margin-bottom:12px">Exhibit A — the two-PR pattern</p>
+          <h3 style="margin-bottom:10px">One untested default broke every speech engine at once.</h3>
+          <p>
+            A new speech-to-text service was added <em>and made the production default in the same
+            commit</em>. It had never been tested on a physical device. Its WebSocket auth failures
+            triggered a latent microphone resource leak, which then blocked
+            <strong>all three</strong> speech engines from acquiring the OS microphone. Voice mode —
+            the core of "effortless capture" — was dead for multiple sessions, and it was only
+            visible on real hardware.
+          </p>
+
+          <div class="evidence">
+            <div class="evidence__src"><svg aria-hidden="true"><use href="#i-file"/></svg>.claude/rules/capability_protection.md — the Capability Protection Protocol (ADR-0035)</div>
+            <div class="evidence__body">
+<strong>You cannot change a provider default in the same PR that introduces the new
+implementation.</strong> This is the Two-PR Pattern. It is not negotiable.
+
+<strong>PR N</strong>    add the implementation. The proven default stays. Register the capability
+        as EXPERIMENTAL.
+<strong>PR N+1</strong>  after confirmed device testing, change the default. Mark it PROVEN, and
+        cite the device, OS version, and date.
+
+<em>The pause between "I built this" and "this is now the default" is where device
+testing, review, and the registry update happen.</em>
+            </div>
+          </div>
+
+          <p style="margin-top:16px">
+            Three enforcement points followed. The quality gate now <strong>hard-blocks</strong> a
+            commit that promotes an <code>EXPERIMENTAL</code> capability to default — upgraded from a
+            warning, because the warning had not been enough. Any diff touching a provider default
+            automatically adds the <code>independent-perspective</code> agent to the review panel and
+            asks it one question: <em>"does this replace a proven capability with an unproven one,
+            and what is the rollback plan?"</em> And a capability marked <code>PROVEN</code> more
+            than 30 days ago is treated as unconfirmed until re-tested — because verified state gets
+            assumed far faster than it gets re-checked.
+          </p>
+        </div>
+
+        <hr class="hr">
+
+        <div>
+          <p class="eyebrow" style="margin-bottom:12px">Exhibit B — the silent overwrite</p>
+          <h3 style="margin-bottom:10px">A parallel agent quietly reverted a 681-line redesign.</h3>
+          <p>
+            A feature was built in a git worktree that had branched before a major UI overhaul
+            landed. On merge, git did what git does: the older version of a shared file won, and a
+            681-line rewrite was silently replaced. Nothing failed. Nothing warned. It surfaced
+            during unrelated testing days later.
+          </p>
+          <p>
+            The resulting rule is short and specific, which is why it works: diff the worktree
+            branch against its base before merging, manually review any file changed on
+            <em>both</em> sides, stop and escalate at 50+ lines of change on both sides, and
+            <strong>never auto-merge a worktree branch touching UI files</strong>. As the rule puts
+            it: worktree agents cannot see changes made after they branched, which makes them
+            <em>structurally</em> prone to overwriting concurrent work. Parallel agents are a real
+            capability with a real failure mode, and the honest response is a guardrail, not
+            enthusiasm.
+          </p>
+        </div>
+
+        <hr class="hr">
+
+        <div>
+          <p class="eyebrow" style="margin-bottom:12px">Exhibit C — the ledger recognising a repeat</p>
+          <h3 style="margin-bottom:10px">The second sighting of a bug class was diagnosed by name.</h3>
+          <p>
+            Course generation started failing with a truncation error on a large repository. Adding
+            API credits did nothing — it was never billing. The root cause: a hard output-token cap
+            sized for an older, lighter payload, left unchanged when the payload grew.
+          </p>
+          <div class="evidence">
+            <div class="evidence__src"><svg aria-hidden="true"><use href="#i-file"/></svg>memory/bugs/regression-ledger.md — root-cause class field</div>
+            <div class="evidence__body">
+<strong>Root cause class: abstraction narrowing</strong> (output cap under-sized for its payload
+— <em>2nd sighting; the sibling chapter call hit the identical failure first</em>).
+
+The sibling constant had already hit this exact stop_reason and been raised 2800 → 8000.
+The digest constant was simply never re-sized for its heavier payload.
+
+<em>Fix:</em> sized to MATCH the sibling rather than an intermediate value — architecture review
+showed an intermediate cap risks a second truncation round-trip.
+            </div>
+          </div>
+          <p style="margin-top:16px">
+            This is the part that only pays off after months of discipline. The ledger does not just
+            record <em>what</em> broke — it records the <strong>root-cause class</strong>. So the
+            second occurrence arrives pre-diagnosed, the fix is sized against the first one instead
+            of guessed at, and the review can ask the better question: <em>where else does this class
+            live?</em>
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- PATTERN -->
+  <section class="section reveal" id="pattern">
+    <p class="eyebrow">04 — The mechanism</p>
+    <h2>Every one of those incidents took the same route.</h2>
+    <p class="lede">
+      This is what "self-improving" means here. Not an agent editing its own prompt — a
+      <strong>human-gated pipeline that converts a specific failure into a constraint that
+      loads on every future turn</strong>.
+    </p>
+
+    <div class="flow" style="margin-bottom:6px">
+      <span class="flow__n flow__n--warn">Incident</span><span class="flow__a">→</span>
+      <span class="flow__n">Captured discussion</span><span class="flow__a">→</span>
+      <span class="flow__n">Root-cause class</span><span class="flow__a">→</span>
+      <span class="flow__n">Guard test</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--accent">Rule or ADR</span><span class="flow__a">→</span>
+      <span class="flow__n flow__n--good">Loaded every session</span>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="card"><h3>Nothing rests on memory</h3><p>The constraint lives in a rule file the agent loads, a test the gate runs, or a hook that blocks the write. Not in a retro nobody rereads.</p></div>
+      <div class="card"><h3>Three sightings promote</h3><p>A finding seen in three independent contexts is surfaced by the Rule of Three as a promotion candidate — and an advisory that recurs three times escalates to blocking.</p></div>
+      <div class="card"><h3>A person signs every promotion</h3><p>Nothing reaches curated memory or tightens a classifier without human approval. The framework proposes; it never self-legislates.</p></div>
+    </div>
+  </section>
+
+  <!-- COST -->
+  <section class="section reveal" id="cost">
+    <p class="eyebrow">05 — The other side</p>
+    <h2>What it costs, and what it does not fix.</h2>
+    <p class="lede">
+      A page of wins is marketing. Here is the honest ledger — most of it drawn from the projects'
+      own retrospectives, where the framework's overhead was measured and then cut.
+    </p>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card__ico card__ico--warn"><svg aria-hidden="true"><use href="#i-scale"/></svg></div>
+        <h3>It is not free, in tokens or time</h3>
+        <p>
+          A five-agent panel on every change is genuinely wasteful, and both projects learned that
+          the hard way. The verification platform now runs a <strong>default execution profile</strong>:
+          two-agent ensembles for low and medium risk, the full panel reserved for security,
+          architecture, and data migration; workers on the cheaper tier; reflections only after a
+          REVISE on a medium-or-higher change. Its own estimate — roughly a third of full-panel cost
+          at comparable quality.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--warn"><svg aria-hidden="true"><use href="#i-loop"/></svg></div>
+        <h3>Ceremony erodes under deadline</h3>
+        <p>
+          One retrospective found 85 coverage skips and 51 test skips with no recorded
+          justification — discipline quietly draining away, invisible until someone queried the
+          gate log. The response was not exhortation. Skips now require a one-line justification in
+          the commit message, which makes them auditable in git history.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--crit"><svg aria-hidden="true"><use href="#i-alert"/></svg></div>
+        <h3>Gates have real holes</h3>
+        <p>
+          Review-existence checks that <em>a</em> review from today exists, not that it covered your
+          staged files. The pre-commit hook can't pass <code>--skip-reviews</code> through. A
+          5-minute verification cache can silently suppress the regression-ledger reminder. All three
+          are documented in the constitution rather than left for you to discover.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card__ico card__ico--crit"><svg aria-hidden="true"><use href="#i-search"/></svg></div>
+        <h3>It cannot see what it cannot run</h3>
+        <p>
+          The microphone leak was invisible to every static review and every widget test — it needed
+          physical hardware. So the rule that came out of it mandates <em>device</em> verification,
+          not more review. Knowing which failures a review panel structurally cannot catch is part
+          of using one well.
+        </p>
+      </div>
+    </div>
+
+    <div class="note">
+      <p class="note__t"><svg aria-hidden="true"><use href="#i-shield"/></svg>Where the value actually lands</p>
+      <p>
+        The pattern across both projects is consistent: the framework earns its cost on
+        <strong>changes with silent failure modes</strong> — ranking functions, status
+        normalisation, provider defaults, anything where wrong output is indistinguishable from
+        right output until a user is harmed. On a CSS tweak it is pure overhead, which is exactly
+        why the risk tiers exist and why the micro-fix protocol lets small things stay small.
+      </p>
+    </div>
+  </section>
+
+  <section class="section reveal" id="start">
+    <div class="cta">
+      <p class="eyebrow">Your turn</p>
+      <h2>The interesting question isn't whether it works. It's what it would catch in your codebase.</h2>
+      <p class="lede">
+        The fastest way to find out is to point it at code you already have and read the first
+        review it produces.
+      </p>
+      <div class="hero__cta">
+        <a class="btn btn--primary" href="how-to.html">Set it up<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <a class="btn btn--ghost" href="index.html">How the framework works</a>
+        <a class="btn btn--ghost" href="https://github.com/Diviner-Dojo/agent_framework_template"><svg aria-hidden="true"><use href="#i-gh"/></svg>Repository</a>
+      </div>
+    </div>
+  </section>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-foot">
+  <div class="site-foot__in">
+    <span>AI-Native Agentic Development Framework · v3.5</span>
+    <span class="sep"><a href="index.html">Framework</a></span>
+    <span><a href="how-to.html">How to use it</a></span>
+    <span><a href="https://github.com/Diviner-Dojo/agent_framework_template">GitHub</a></span>
+    <span><a href="../LICENSE">Apache-2.0</a></span>
+  </div>
+</footer>
+
+<script src="assets/site.js" defer></script>
+</body>
+</html>
