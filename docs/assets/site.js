@@ -67,10 +67,15 @@
   }
 
   /* ---- reveal on scroll ------------------------------------------------- */
-  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The boot script only sets `reveal-on` when revealing is safe (top-level
+  // window, motion allowed, IntersectionObserver present). If it is absent the
+  // content is already visible and there is nothing to do — never add hiding
+  // here, or a failure below would leave the page blank.
   var reveals = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
-  if (reduce || !('IntersectionObserver' in window)) {
-    reveals.forEach(function (el) { el.classList.add('in'); });
+  function showAll() { reveals.forEach(function (el) { el.classList.add('in'); }); }
+
+  if (!root.classList.contains('reveal-on')) {
+    showAll();
   } else {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
@@ -78,6 +83,11 @@
       });
     }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
     reveals.forEach(function (el) { io.observe(el); });
+
+    // Failsafe: if anything is still hidden after 2.5s — an observer that never
+    // fired, a viewport smaller than the page expects — show it. A missed
+    // animation is a cosmetic loss; invisible content is a broken page.
+    setTimeout(showAll, 2500);
   }
 
   /* ---- copy buttons ----------------------------------------------------- */

@@ -956,8 +956,13 @@ details.acc[open] > summary { border-bottom: 1px solid var(--line); }
 .xsmall { font-size: 11.5px; }
 .hr { height: 1px; background: var(--line); border: 0; margin: 26px 0; }
 
-.reveal { opacity: 0; transform: translateY(12px); }
-.reveal.in { opacity: 1; transform: none; transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
+/* Reveal-on-scroll is a progressive enhancement and must never be load-bearing
+   for legibility. Content is visible by default; it is only hidden once the boot
+   script has confirmed it can and will reveal it (top-level window, motion
+   allowed, IntersectionObserver present). Without that opt-in — inside an
+   iframe, with JS disabled, or under reduced-motion — the page just renders. */
+html.reveal-on .reveal { opacity: 0; transform: translateY(12px); }
+html.reveal-on .reveal.in { opacity: 1; transform: none; transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
 
 /* ---------- 19. RESPONSIVE ----------------------------------------------- */
 
@@ -998,7 +1003,7 @@ details.acc[open] > summary { border-bottom: 1px solid var(--line); }
   .site-head, .rail, .skip-link { display: none; }
   body::before { display: none; }
   .layout { grid-template-columns: 1fr; }
-  .reveal { opacity: 1; transform: none; }
+  html.reveal-on .reveal { opacity: 1; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1007,5 +1012,5 @@ details.acc[open] > summary { border-bottom: 1px solid var(--line); }
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
-  .reveal { opacity: 1; transform: none; }
+  html.reveal-on .reveal { opacity: 1; transform: none; }
 }

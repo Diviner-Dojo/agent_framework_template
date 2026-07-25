@@ -27,6 +27,13 @@
       var s = localStorage.getItem('dd-theme');
       if (s !== 'light' && s !== 'dark') s = 'dark'; // brand default; toggle persists a choice
       document.documentElement.setAttribute('data-theme', s);
+      // Opt in to scroll-reveal ONLY where it can actually work. Embedded in an
+      // iframe the observer's viewport is the frame, not the page, so nothing
+      // ever intersects and every section would stay at opacity 0.
+      if (window.self === window.top && 'IntersectionObserver' in window &&
+          !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+        document.documentElement.classList.add('reveal-on');
+      }
     } catch (e) {}
   })();
 </script>
