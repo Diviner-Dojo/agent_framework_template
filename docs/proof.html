@@ -187,8 +187,7 @@
 
           <div class="evidence">
             <div class="evidence__src"><svg aria-hidden="true"><use href="#i-file"/></svg>memory/bugs/regression-ledger.md — "Endpoint scorer: 6 correctness defects caught by adversarial review before activation (ADR-0038)"</div>
-            <div class="evidence__body">
-<strong>M1 (load-bearing)</strong>  _build_composite_plan spliced REFERENT-FAILED endpoints —
+            <div class="evidence__body"><strong>M1 (load-bearing)</strong>  _build_composite_plan spliced REFERENT-FAILED endpoints —
               re-opening the exact hole the referent gate exists to close.
 <strong>M2</strong>  unbounded CapabilityVector inflated the composite past 100 + gamed the gate.
 <strong>M3</strong>  _composite_display's round(...,2) erased the freshness + tiebreak tiers, so the
@@ -200,8 +199,7 @@
            <em>a harness change could masquerade as portal rot.</em>
 
 <em>Known-Broken Approach recorded:</em> shipping a scoring/ranking function on design-review
-and happy-path tests alone.
-            </div>
+and happy-path tests alone.</div>
           </div>
 
           <p style="margin-top:16px">
@@ -240,8 +238,7 @@ and happy-path tests alone.
             <div class="tl tl--good">
               <div class="tl__dot">4</div>
               <div><div class="tl__t">The cost was accepted openly</div>
-              <div class="tl__d">Roughly 700 previously-"Verified" rows reclassified to NeedsReview. That is the framework working: the number went down because the number had been lying.</div></div>
-            </div>
+              <div class="tl__d">Roughly 700 previously-"Verified" rows reclassified to NeedsReview. That is the framework working: the number went down because the number had been lying.</div></div></div>
           </div>
 
           <div class="note note--good" style="margin-top:18px">
@@ -253,8 +250,7 @@ and happy-path tests alone.
               any report surface re-derives status from the lossy legacy field instead of the
               persisted canonical one. A future agent cannot reintroduce this by accident without
               tripping a test written by the agent that found it.
-            </p>
-          </div>
+            </p></div>
         </div>
 
         <hr class="hr">
@@ -273,8 +269,7 @@ and happy-path tests alone.
           </p>
           <div class="evidence">
             <div class="evidence__src"><svg aria-hidden="true"><use href="#i-file"/></svg>.claude/rules/endpoint_integrity.md — elevated to Principle #10 by developer directive, 2026-06-26</div>
-            <div class="evidence__body">
-<em>"We must never let batches be run through endpoints that we are not certain are open
+            <div class="evidence__body"><em>"We must never let batches be run through endpoints that we are not certain are open
 and effective. Never, never, never accept a stale endpoint in its own right without
 trying and raising and yelling very loudly that we cannot pass additional records
 through it."</em>
@@ -285,8 +280,7 @@ keep endpoint state visible in a dashboard.
 
 <strong>The bright line:</strong> repair via sanctioned means only. A TLS-impersonating transport for
 a public CSV is fine. Solving a CAPTCHA is not — that is a blocked endpoint, and the
-honest move is to say so.
-            </div>
+honest move is to say so.</div>
           </div>
           <p class="small muted" style="margin-top:14px">
             This is the framework's evolution path running end to end: an incident produced a
@@ -294,8 +288,7 @@ honest move is to say so.
             principle in the project constitution, and the principle now constrains every future
             session — with an explicit ethical boundary attached so "be creative about access"
             can't drift into "bypass whatever's in the way."
-          </p>
-        </div>
+          </p></div>
 
       </div>
     </div>
@@ -341,8 +334,7 @@ honest move is to say so.
 
           <div class="evidence">
             <div class="evidence__src"><svg aria-hidden="true"><use href="#i-file"/></svg>.claude/rules/capability_protection.md — the Capability Protection Protocol (ADR-0035)</div>
-            <div class="evidence__body">
-<strong>You cannot change a provider default in the same PR that introduces the new
+            <div class="evidence__body"><strong>You cannot change a provider default in the same PR that introduces the new
 implementation.</strong> This is the Two-PR Pattern. It is not negotiable.
 
 <strong>PR N</strong>    add the implementation. The proven default stays. Register the capability
@@ -351,8 +343,7 @@ implementation.</strong> This is the Two-PR Pattern. It is not negotiable.
         cite the device, OS version, and date.
 
 <em>The pause between "I built this" and "this is now the default" is where device
-testing, review, and the registry update happen.</em>
-            </div>
+testing, review, and the registry update happen.</em></div>
           </div>
 
           <p style="margin-top:16px">
@@ -402,16 +393,14 @@ testing, review, and the registry update happen.</em>
           </p>
           <div class="evidence">
             <div class="evidence__src"><svg aria-hidden="true"><use href="#i-file"/></svg>memory/bugs/regression-ledger.md — root-cause class field</div>
-            <div class="evidence__body">
-<strong>Root cause class: abstraction narrowing</strong> (output cap under-sized for its payload
+            <div class="evidence__body"><strong>Root cause class: abstraction narrowing</strong> (output cap under-sized for its payload
 — <em>2nd sighting; the sibling chapter call hit the identical failure first</em>).
 
 The sibling constant had already hit this exact stop_reason and been raised 2800 → 8000.
 The digest constant was simply never re-sized for its heavier payload.
 
 <em>Fix:</em> sized to MATCH the sibling rather than an intermediate value — architecture review
-showed an intermediate cap risks a second truncation round-trip.
-            </div>
+showed an intermediate cap risks a second truncation round-trip.</div>
           </div>
           <p style="margin-top:16px">
             This is the part that only pays off after months of discipline. The ledger does not just
@@ -419,8 +408,7 @@ showed an intermediate cap risks a second truncation round-trip.
             second occurrence arrives pre-diagnosed, the fix is sized against the first one instead
             of guessed at, and the review can ask the better question: <em>where else does this class
             live?</em>
-          </p>
-        </div>
+          </p></div>
 
       </div>
     </div>
@@ -502,8 +490,7 @@ showed an intermediate cap risks a second truncation round-trip.
           physical hardware. So the rule that came out of it mandates <em>device</em> verification,
           not more review. Knowing which failures a review panel structurally cannot catch is part
           of using one well.
-        </p>
-      </div>
+        </p></div>
     </div>
 
     <div class="note">
@@ -529,8 +516,7 @@ showed an intermediate cap risks a second truncation round-trip.
       <div class="hero__cta">
         <a class="btn btn--primary" href="how-to.html">Set it up<svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
         <a class="btn btn--ghost" href="index.html">How the framework works</a>
-        <a class="btn btn--ghost" href="https://github.com/Diviner-Dojo/agent_framework_template"><svg aria-hidden="true"><use href="#i-gh"/></svg>Repository</a>
-      </div>
+        <a class="btn btn--ghost" href="https://github.com/Diviner-Dojo/agent_framework_template"><svg aria-hidden="true"><use href="#i-gh"/></svg>Repository</a></div>
     </div>
   </section>
 

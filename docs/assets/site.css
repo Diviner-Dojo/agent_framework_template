@@ -863,6 +863,11 @@ details.acc[open] > summary { border-bottom: 1px solid var(--line); }
   line-height: 1.7;
   color: var(--ink-2);
   overflow-x: auto;
+  /* These are verbatim quotations from ledger and rule files — their line
+     breaks and hanging indents carry meaning, so they must survive. pre-wrap
+     (not pre) so long lines still reflow instead of forcing a scrollbar. */
+  white-space: pre-wrap;
+  tab-size: 2;
 }
 .evidence__body strong { color: var(--ink); font-weight: 600; }
 .evidence__body em { color: var(--accent); font-style: normal; }
