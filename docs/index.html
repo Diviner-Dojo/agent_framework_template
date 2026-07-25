@@ -6,7 +6,7 @@
 
   Counts stated on this page — keep in sync with .claude/ per the
   syncing-framework-docs skill:
-    12 agents · 25 commands · 25 skills · 4 always/path-scoped rules · 10 hooks
+    12 agents · 25 commands · 25 skills · 4 always/path-scoped rules · 9 hooks
     9 principles · 28 ADRs · framework v3.5
 -->
 <html lang="en" data-theme="dark">
@@ -401,7 +401,7 @@
     <div class="grid grid-2">
       <div class="card">
         <div class="card__ico card__ico--warn"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
-        <h3>Ten hooks around the session</h3>
+        <h3>Nine hooks across six lifecycle events</h3>
         <p><strong>Before a write:</strong> atomic file locks so parallel agents can't clobber each other, a 12-pattern secret scanner, and a protected-file deny-list (<code>.env</code>, <code>.git/</code>, the metrics DB, <code>settings.json</code>).<br>
         <strong>Before a commit:</strong> the quality gate. <strong>Before a push:</strong> a main-branch blocker.<br>
         <strong>Around the session:</strong> auto-format, lock release, context-occupancy monitoring, compaction checkpointing, and a session-start state restore.</p>
