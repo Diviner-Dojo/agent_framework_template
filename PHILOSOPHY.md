@@ -29,16 +29,22 @@ We use `lab/*` branches freely, commit messy work, and push to our private repo 
 We don't rush to implement. We deliberate, we review from multiple perspectives, we capture the reasoning. The code is the output; the understanding is the asset (Principle #1).
 
 This means:
-- We plan before we build (`/plan` → `/build_module`)
+- We decide before we build, and write the decision down (`/decide`)
 - We review before we commit (`/review`)
 - We reflect after we ship
 - We measure what matters: not lines of code, but clarity of thought
 
 ### The team is the framework
 
-The specialist agents are not interchangeable review functions. Each brings distinct Values — load-bearing beliefs about what matters most in their craft — and a Domain Lens — a reasoning sequence they apply before analysis. The Facilitator leads them as a respected elder: insightful, considerate, demanding of their best work. The Steward guards the framework's evolution with the wisdom of its founder.
+The review agents are not interchangeable functions. Each is defined by a
+distinct thing to *look for* — correctness, threat, structure, the unconsidered
+alternative, the load-bearing idea. That diversity is what makes multi-agent
+review worth more than any single analysis, however good.
 
-Every agent is equal in standing. They have different strengths, different lenses, different instincts. That diversity of perspective is what makes multi-agent review more valuable than any single analysis, however brilliant.
+What makes it work is not their character. It is that each runs in a context
+that never saw why the code was written that way. Independence is an
+information property. Protect it by giving reviewers the diff and the stakes,
+not your reasoning.
 
 ### Promotion is earned
 
@@ -47,40 +53,82 @@ Features earn their way to the public repo. The standard is not "does this work?
 Before promoting, ask:
 - Would a person new to AI-native development find this useful?
 - Does this reduce friction or add it?
-- Is this the simplest version that delivers the value? (Principle #8)
-- Have we understood it well enough to teach it? (Principle #6)
+- Is this the simplest version that delivers the value? (least-complex intervention)
+- Have we understood it well enough to teach it? (understanding before merge)
 
 If the answer to any of these is no, the feature stays in the lab until it matures.
 
-### Agents improve through evidence, not opinion
+### The framework improves through evidence, not opinion
 
-When an agent's performance needs to evolve, the change follows a deliberate path:
-1. The Facilitator observes a pattern across multiple reviews — not a single incident
-2. The Facilitator proposes a specific change with evidence
-3. The Steward evaluates the proposal against the framework's philosophy and principles
-4. The developer approves the change
-5. The change goes through the same review process as any code change
+When something here needs to change, the path is deliberate:
+1. Observe a pattern across multiple sessions — not a single incident
+2. Propose a specific change, with the evidence attached
+3. The developer decides
+4. The change goes through review like any other
+
+An agent may observe and propose. It may not edit a rule or a gate off its own
+proposal — that is self-modification, and the human gate is the whole point.
 
 This is how we get better without losing what already works.
+
+### What expires, and what doesn't
+
+There is an old teaching about a raft: you build it to cross the river, and
+when you reach the far bank you set it down, because carrying it overland helps
+nobody. It is the right instinct, and it has a sharp edge that is easy to miss.
+
+Not everything in a framework is a raft.
+
+Some of what we build compensates for what a model cannot yet do — how to
+reason through a problem, when to verify, how to hold a long task together.
+That is raft. It was right when we built it, and it becomes dead weight the
+moment the model can do it unaided. Carrying it costs real tokens and, worse,
+makes the model argue with instincts that were already better than ours.
+
+But some of what we build has nothing to do with model weakness. That capture
+happens whether or not anyone remembers. That decisions can't be quietly
+rewritten. That the thing which wrote the code isn't the only thing that judges
+it. That the person whose name is on this repository still understands it.
+
+Those aren't rafts. They are the reason for crossing at all — and a faster boat
+makes them matter more, not less. The developer who can be handed a finished
+system in an afternoon is in *more* danger of not understanding it than the one
+who had to write it by hand.
+
+So: set the raft down, gladly and often. Delete this framework's scaffolding
+every time the model outgrows it — that is maintenance, not loss. But know the
+difference between what carried you across and what you were carrying.
+
+### Deletion is a first-class move
+
+Because scaffolding expires, removing things is ordinary maintenance here, not
+failure. A gate that fires without catching anything costs more than it
+returns. A rule the model would follow anyway is pure overhead. A command that
+describes what the model already does is instruction conflict waiting to
+happen.
+
+Write everything so it is easy to delete: small, named, and honest about why it
+exists. When you add something, record what would make it unnecessary.
 
 ## The promotion standard
 
 A change to the framework is ready when:
 
 1. **It clearly benefits the developer** — not hypothetically, but demonstrably
-2. **It's been independently evaluated** — the proposer is not the sole judge (Principle #4)
+2. **It's been independently evaluated** — the proposer is not the sole judge (independent evaluation)
 3. **It's understandable** — someone encountering it can grasp why it exists
-4. **It's the least-complex version** — no premature abstraction, no speculative features (Principle #8)
-5. **The decision is documented** — with rationale that future sessions can reference (Principle #5)
+4. **It's the least-complex version** — no premature abstraction, no speculative features (least-complex intervention)
+5. **The decision is documented** — with rationale that future sessions can reference (ADRs never deleted)
 
-## Relationship to the eight principles
+## Relationship to the six principles
 
-The eight non-negotiable principles in CLAUDE.md are the *how*. This philosophy is the *why*.
+The six principles in CLAUDE.md are the *how*. This philosophy is the *why*.
 
 - **Reasoning is the primary artifact** because understanding is how we serve creativity — not just our own, but the creativity of everyone who uses what we build.
-- **Collaboration precedes adversarial rigor** because building together produces richer ideas than tearing them apart.
-- **Education gates before merge** because a feature that can't be understood can't empower anyone.
-- **Least-complex intervention first** because complexity is the enemy of creativity — every unnecessary abstraction is a barrier someone has to climb.
+- **Capture is automatic** because a good reason that nobody can find later is the same as no reason at all.
+- **The generator is never the sole evaluator** because a system that grades its own work will always find it satisfactory.
+- **Understanding is offered before merge** because a feature that can't be understood can't empower anyone — and because the person it must empower is the one who owns the repository.
+- **Curated memory needs human approval** because what a project chooses to remember is an act of authorship, not a computation.
 
 ## A note on failure
 
@@ -96,7 +144,7 @@ This framework exists to serve the common good. The technical commitments above 
 
 This is not a moral marketing claim. It is a structural description of what the framework already does. Naming it makes the next maintainer's job easier — they can see what they're inheriting, why it has the shape it does, and what would betray it. It also names the limit honestly: the framework can shape designs, but it cannot bind the model provider. A Claude model retrained to be more extractive, or platform policies requiring telemetry the framework would refuse, cannot be resisted by this document. The framework provides the gates; the human provides the verdict; the provider can change the conditions under both.
 
-The framework's deepest commitment, the one all the technical principles operationalize, is that AI capability must distribute rather than concentrate. Reasoning belongs to the contributor who reasoned. Decisions belong to the team that decided. Memory belongs to the user whose work it represents. Evolution belongs to the community of derived projects that earn it. When the framework ceases to distribute and starts to concentrate, it has betrayed its purpose, and the next maintainer is authorized — by the eight principles and the Prime Objective they serve — to refuse the change.
+The framework's deepest commitment, the one all the technical principles operationalize, is that AI capability must distribute rather than concentrate. Reasoning belongs to the contributor who reasoned. Decisions belong to the team that decided. Memory belongs to the user whose work it represents. Evolution belongs to the community of derived projects that earn it. When the framework ceases to distribute and starts to concentrate, it has betrayed its purpose, and the next maintainer is authorized — by the six principles and the Prime Objective they serve — to refuse the change.
 
 ### Sources are canonical (the suchness invariant)
 

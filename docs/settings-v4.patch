@@ -1,0 +1,76 @@
+--- .claude/settings.json	2026-07-28 06:48:44.462265595 +0000
++++ docs/settings-v4.proposed.json	2026-07-28 07:21:32.948460781 +0000
+@@ -6,15 +6,9 @@
+       "Write",
+       "Bash(*)",
+       "WebFetch(*)",
+-      "Task(*)",
+-      "Skill(build_module)",
+-      "Skill(build_module:*)"
++      "Task(*)"
+     ]
+   },
+-  "statusLine": {
+-    "type": "command",
+-    "command": "bash .claude/hooks/context-statusline.sh"
+-  },
+   "hooks": {
+     "PreToolUse": [
+       {
+@@ -50,56 +44,6 @@
+           {
+             "type": "command",
+             "command": "bash .claude/hooks/auto-format.sh"
+-          },
+-          {
+-            "type": "command",
+-            "command": "bash .claude/hooks/post-tool-use-unlock.sh",
+-            "timeout": 5
+-          }
+-        ]
+-      }
+-    ],
+-    "UserPromptSubmit": [
+-      {
+-        "hooks": [
+-          {
+-            "type": "command",
+-            "command": "bash .claude/hooks/context-guard.sh",
+-            "timeout": 5
+-          }
+-        ]
+-      }
+-    ],
+-    "PreCompact": [
+-      {
+-        "matcher": "auto|manual",
+-        "hooks": [
+-          {
+-            "type": "command",
+-            "command": "powershell -ExecutionPolicy Bypass -File .claude/hooks/pre-compact.ps1"
+-          }
+-        ]
+-      }
+-    ],
+-    "SessionStart": [
+-      {
+-        "matcher": "resume|compact",
+-        "hooks": [
+-          {
+-            "type": "command",
+-            "command": "powershell -ExecutionPolicy Bypass -File .claude/hooks/session-start.ps1"
+-          }
+-        ]
+-      }
+-    ],
+-    "Stop": [
+-      {
+-        "matcher": "",
+-        "hooks": [
+-          {
+-            "type": "command",
+-            "command": "python scripts/stop_hook.py",
+-            "timeout": 660
+           }
+         ]
+       }

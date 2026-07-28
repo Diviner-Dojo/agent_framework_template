@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import pytest
 
-from mcp_server.server import (
+# The memory substrate is an optional extra (fastmcp, numpy,
+# sentence-transformers). Skip rather than error when it is not installed, so a
+# lightweight checkout still gets a clean gate run.
+pytest.importorskip("fastmcp", reason="memory substrate extra not installed")
+pytest.importorskip("sentence_transformers", reason="memory substrate extra not installed")
+
+from mcp_server.server import (  # noqa: E402
     PROJECT_ID,
     SOURCE_ROOTS,
     get_source,

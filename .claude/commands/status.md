@@ -1,21 +1,17 @@
 ---
-description: "Show repository status: interactive visual map of branches, sync state, and working directory health. Opens a browser-based infographic."
-allowed-tools: ["Bash", "Read"]
+description: "Where things stand: working tree, risk of the current change, and what you haven't been briefed on."
 ---
 
-# Repository Status
-
-Run the git visualizer to generate an interactive map of the repository:
+# Status
 
 ```bash
-python scripts/git_visualize.py
+git status --short && git log --oneline -5
+python scripts/assess_risk.py
+python scripts/briefing.py ledger
 ```
 
-After the visualization opens in the browser, provide a brief text summary:
+Report it plainly and briefly. Lead with anything that needs a decision.
 
-1. **Where you are**: Current branch and what you're working on (last commit message)
-2. **Sync status**: Whether your repo is in sync with upstream
-3. **Cleanup opportunities**: Any merged branches that can be deleted, stale stashes
-4. **Unsaved work**: Any uncommitted or untracked files
-
-Keep the text summary to 5-6 lines max — the visual has the detail.
+Deferred briefings are information, not a debt to collect on. Mention the count
+once. If one has been sitting a long time and the code it covers is about to
+change again, that is worth saying — otherwise leave it alone.

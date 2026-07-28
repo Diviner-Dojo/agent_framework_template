@@ -512,3 +512,46 @@ class TestCheckPromotionBacklog:
         )
         assert "check_promotion_backlog()" in source
         assert "results.append(check_promotion_backlog" not in source
+
+
+class TestRegressionLedgerRetirement:
+    """A fixed bug cannot regress once the code carrying it is deleted.
+
+    The ledger row stays as an immutable record of what went wrong, but it
+    stops demanding a live regression test (ADR-0029).
+    """
+
+    def test_entry_guarding_existing_file_is_live(self, tmp_path, monkeypatch):
+        import quality_gate as qg
+
+        monkeypatch.setattr(qg, "PROJECT_ROOT", tmp_path)
+        (tmp_path / "kept.py").write_text("")
+        assert not qg._is_retired({"file": "kept.py", "test_file": "t.py"})
+
+    def test_entry_guarding_deleted_file_is_retired(self, tmp_path, monkeypatch):
+        import quality_gate as qg
+
+        monkeypatch.setattr(qg, "PROJECT_ROOT", tmp_path)
+        assert qg._is_retired({"file": "gone.py", "test_file": "t.py"})
+
+    def test_multi_file_entry_is_live_while_any_source_survives(self, tmp_path, monkeypatch):
+        import quality_gate as qg
+
+        monkeypatch.setattr(qg, "PROJECT_ROOT", tmp_path)
+        (tmp_path / "kept.py").write_text("")
+        entry = {"file": "gone.py + kept.py", "test_file": "t.py"}
+        assert not qg._is_retired(entry)
+
+    def test_multi_file_entry_retires_only_when_all_sources_gone(self, tmp_path, monkeypatch):
+        import quality_gate as qg
+
+        monkeypatch.setattr(qg, "PROJECT_ROOT", tmp_path)
+        entry = {"file": "gone_a.py + gone_b.py", "test_file": "t.py"}
+        assert qg._is_retired(entry)
+
+    def test_empty_file_column_is_not_retired(self, tmp_path, monkeypatch):
+        """An unparseable row must not silently disable its own guard."""
+        import quality_gate as qg
+
+        monkeypatch.setattr(qg, "PROJECT_ROOT", tmp_path)
+        assert not qg._is_retired({"file": "", "test_file": "t.py"})

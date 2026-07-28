@@ -1,121 +1,110 @@
-# AI-Native Agentic Development Framework — Project Template
+# AI-Native Agentic Development Framework
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-A structured, multi-agent development framework for Claude Code that transforms AI-assisted development from unstructured "vibe coding" into a disciplined, self-improving engineering methodology.
+A framework for Claude Code that keeps two things true as an AI agent writes
+your codebase: **the reasoning survives**, and **you still understand your own
+system**.
 
-> **New here?** Start with the [Framework Presentation](https://diviner-dojo.github.io/agent_framework_template/docs/diviner-dojo-framework-presentation.html) for an overview, or the [How-To Guide](https://diviner-dojo.github.io/agent_framework_template/docs/how-to-use-presentation.html) to get started.
+## What it is for
 
-## Prerequisites
+Frontier models can now build a great deal, quickly. That creates a problem the
+speed itself cannot solve: the reasoning behind a change lives in a context
+window that ends, and the developer's grasp of their own codebase quietly falls
+behind the code.
 
-Install these tools before using the framework:
+This framework is a small amount of machinery aimed at exactly those two
+problems. It does not tell the model how to think — v4 deleted all of that,
+because current models do it better unprompted (see ADR-0029). What remains is
+what no model capability replaces:
 
-| Tool | Required | What It Does | Get It |
-|------|----------|-------------|--------|
-| **Python 3.11+** | Yes | Runtime for the framework and your application | [python.org](https://www.python.org/downloads/) |
-| **Git** | Yes | Version control — the framework uses branches, hooks, and commit gates | [git-scm.com](https://git-scm.com/downloads) |
-| **Claude Code** | Yes | The CLI that runs all 11 agents and 16 commands | [claude.com/claude-code](https://claude.com/claude-code) |
-| **VS Code** | Recommended | Editor with Claude Code integration | [code.visualstudio.com](https://code.visualstudio.com/) |
-| **GitHub CLI (`gh`)** | Optional | Used by `/discover-projects`, `/ship`, and PR workflows | [cli.github.com](https://cli.github.com/) |
+- **Reasoning is captured automatically**, by scripts and hooks rather than by
+  asking the model to remember.
+- **Decisions become immutable ADRs**, superseded but never deleted.
+- **Code is reviewed by a context that did not write it.**
+- **You get taught your own codebase**, at a depth chosen by how risky the
+  change actually is — and you can always decline.
 
-## Quick Start
+## Install
 
-This is a **framework template**, not a standalone application. It provides the agentic development infrastructure — agents, commands, rules, hooks, and capture pipelines — that you build your project on top of.
-
-### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. Initialize the metrics database
-```bash
 python scripts/init_db.py
+pytest tests/ -q
 ```
 
-### 3. Run tests
-```bash
-pytest tests/ -v
-```
+## Use
 
-### 4. Start building
-Add your application code to `src/` and your tests to `tests/`, then use the framework commands in Claude Code:
-- `/review src/` — Run a multi-agent code review
-- `/plan "feature"` — Plan a feature with spec-driven development
-- `/build_module` — Build a module from a spec with integrated quality gates
-- `/deliberate "topic"` — Start a structured discussion
-- `/walkthrough src/routes.py` — Get a guided code walkthrough
-- `/quiz src/routes.py` — Take a comprehension quiz
-- `/analyze-project owner/repo` — Analyze an external project for patterns worth adopting
-- `/lineage` — Check framework lineage and drift status
-- `/ship 1.0.0` — Run the full release workflow
+| Command | What it does |
+|---|---|
+| `/teach` | Brief you on a change, scaled to its risk |
+| `/review` | Independent multi-agent review, captured |
+| `/decide` | Write an ADR with the reasoning behind it |
+| `/remember` | Promote a lesson into curated memory |
+| `/status` | Working tree, current risk, briefing ledger |
+| `/retro` | Look back and propose changes |
+| `/ship` | Gate, version, changelog, tag |
+| `/apply-framework` | Put this framework on another project |
 
-See all 16 commands in `.claude/commands/`.
+## The education gate
 
-## Directory Structure
+This is the part most worth explaining, because it is easy to build badly.
+
+Every change is scored from its diff by `scripts/assess_risk.py` — new source
+files, security-relevant paths, schema and dependency changes, size, reach. The
+score picks a depth:
+
+- **light** — three lines: what changed, why it matters, what to watch.
+- **standard** — the concept you now need, the tradeoff that was live, the
+  thing most likely to bite you. One real question back.
+- **deep** — the above, plus a walkthrough until you can explain it back.
+
+The aim is never to test you. It is that when you next make a decision near
+this code, you already know what you need to know.
+
+**You can always skip.** The skip is recorded, never blocked, and there is no
+score and no failure state — the ledger has no column that could grade you.
+Deferred briefings show up in `/status` as information, not as a debt. A gate
+that stops you shipping has failed at its purpose.
+
+## Structure
 
 ```
 .claude/
-  agents/       — 11 specialist agent definitions
-  commands/     — 16 workflow commands (/review, /deliberate, /plan, etc.)
-  rules/        — 7 auto-loaded standards (all agents inherit these)
-  skills/       — 5 reference knowledge playbooks
-  hooks/        — Automated lifecycle hooks (locking, secrets, formatting, session)
-  custodian/    — Steward lineage tracking (append-only event log)
+  commands/   — 8 workflow commands
+  agents/     — 5 review agents, each a distinct thing to look for
+  skills/     — 2 reference protocols
+  hooks/      — commit gate, protected files, secret detection
 
-docs/
-  adr/          — Architecture Decision Records
-  reviews/      — Review reports from /review
-  sprints/      — Sprint plans, retrospectives, meta-reviews
-  templates/    — Reusable artifact templates
-
-discussions/    — Layer 1: Immutable discussion capture (events.jsonl + transcript.md)
-memory/         — Layer 3: Curated knowledge (human-approved patterns and rules)
-metrics/        — Layer 2: SQLite relational index (evaluation.db)
-scripts/        — Capture pipeline utilities (Python)
-  lineage/      — Lineage tracking utilities (drift detection, manifest)
-
-src/            — Your application source code (empty in template)
-tests/          — Test suite
-framework-lineage.yaml  — Lineage manifest (project-template relationship)
+docs/adr/     — decision record (immutable)
+docs/reviews/ — review reports
+discussions/  — Layer 1: raw captured reasoning
+metrics/      — Layer 2: SQLite index
+memory/       — Layer 3: curated, human-approved knowledge
+scripts/      — capture pipeline, quality gate, risk scoring
+src/ tests/   — your code
 ```
 
-## The Agent Panel
+## Design
 
-| Agent | Priority | When Activated |
-|-------|----------|---------------|
-| **Facilitator** | Orchestration, synthesis | Every workflow |
-| **Architecture Consultant** | Structural alignment, drift | Architecture changes, new modules |
-| **Security Specialist** | Vulnerabilities, threats | Auth, API, data handling |
-| **QA Specialist** | Test coverage, reliability | Every code review |
-| **Performance Analyst** | Efficiency, scalability | Data processing, DB, API |
-| **Docs/Knowledge** | Documentation, ADRs | Every review (light), arch changes (full) |
-| **Educator** | Developer understanding | Every merge gate |
-| **Independent Perspective** | Anti-groupthink | Medium/high risk changes |
-| **UX Evaluator** | Interaction flow, accessibility | User-facing changes |
-| **Project Analyst** | External project scouting | /analyze-project workflows |
-| **Steward** | Framework lineage, drift tracking | Template/fork management |
+The framework is built on one distinction, and it is worth internalizing before
+extending anything:
 
-## Key Concepts
+**Scaffolding** compensates for what a model cannot do. It is correct when
+written and decays as models improve, eventually costing more in tokens and
+instruction conflict than it returns.
 
-- **Coopetition**: Agents share goals but have different professional priorities — natural productive tension without manufactured opposition
-- **Four-Layer Capture**: Immutable files → SQLite index → Curated memory → Optional vector search
-- **Education Gates**: Walkthrough → Quiz → Explain-back → Merge
-- **Nested Loops**: Micro (per-discussion) → Meso (per-sprint /retro) → Macro (quarterly /meta-review)
-- **Spec-Driven Development**: Every significant change starts with an approved spec
-- **Lineage Tracking**: Steward agent tracks project-to-template relationships via `framework-lineage.yaml`, detecting drift and managing divergences
-- **Build Review Protocol**: Mid-build checkpoint reviews enforce independence (Principle #4) during `/build_module` execution
+**Governance** constrains what may happen to the human. It does not decay — it
+matters *more* as capability grows, because a faster agent outruns its owner's
+understanding faster.
 
-## External Project Analysis & Attribution
+Before adding anything here, ask: *does this exist because the model was weak?*
+If yes, it will expire. Write it so it is easy to delete.
 
-The `/analyze-project` command lets you study external projects (public GitHub repos or local codebases) to discover architectural patterns worth adopting. The framework extracts **ideas and design patterns**, not code — and attributes everything back to the source.
+`PHILOSOPHY.md` covers why. `FRAMEWORK.md` covers what. `ADR-0029` covers what
+v4 removed from v3 and the arguments against doing so.
 
-- Every adopted pattern is permanently linked to its source project in `memory/lessons/adoption-log.md`
-- License checks run before analysis begins, with risk-appropriate framing (permissive, copyleft, or unlicensed)
-- The Rule of Three requires patterns to appear in 3+ independent projects before priority consideration
-- Target projects are read-only — never modified during analysis
+## License
 
-See `/discover-projects` to find candidates and `/analyze-project` to run the analysis.
-
-## Framework Spec
-
-See the full framework specification: [`docs/FRAMEWORK_SPECIFICATION.md`](docs/FRAMEWORK_SPECIFICATION.md)
+Apache 2.0. Patterns adopted from external projects are attributed in
+`memory/lessons/adoption-log.md`.

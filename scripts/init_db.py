@@ -143,6 +143,22 @@ def init_db(db_path: Path = DB_PATH, *, quiet: bool = False) -> None:
             timestamp       DATETIME NOT NULL
         );
 
+        -- v4 education ledger. Deliberately has no score and no pass/fail:
+        -- a briefing is delivered or deferred, and deferring is a legitimate
+        -- choice that is recorded rather than blocked (ADR-0029).
+        CREATE TABLE IF NOT EXISTS briefings (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope           TEXT NOT NULL,
+            depth           TEXT NOT NULL CHECK(depth IN ('light', 'standard', 'deep')),
+            risk_score      INTEGER NOT NULL,
+            status          TEXT NOT NULL CHECK(status IN ('delivered', 'deferred')),
+            concept         TEXT,
+            note            TEXT,
+            commit_sha      TEXT,
+            discussion_id   TEXT REFERENCES discussions(discussion_id),
+            timestamp       DATETIME NOT NULL
+        );
+
         -- Knowledge pipeline tables
 
         CREATE TABLE IF NOT EXISTS findings (
@@ -296,6 +312,8 @@ def init_db(db_path: Path = DB_PATH, *, quiet: bool = False) -> None:
         CREATE INDEX IF NOT EXISTS idx_reflections_agent ON reflections(agent);
         CREATE INDEX IF NOT EXISTS idx_education_session ON education_results(session_id);
         CREATE INDEX IF NOT EXISTS idx_education_discussion ON education_results(discussion_id);
+        CREATE INDEX IF NOT EXISTS idx_briefings_status ON briefings(status);
+        CREATE INDEX IF NOT EXISTS idx_briefings_timestamp ON briefings(timestamp);
         CREATE INDEX IF NOT EXISTS idx_discussions_status ON discussions(status);
         CREATE INDEX IF NOT EXISTS idx_discussions_created ON discussions(created_at);
         CREATE INDEX IF NOT EXISTS idx_protocol_yield_discussion ON protocol_yield(discussion_id);

@@ -1,195 +1,123 @@
-# AI-Native Agentic Development Framework v3.0
+# AI-Native Agentic Development Framework v4.0
 
-> Universal framework principles. This file applies to any project using the framework.
-> Project-specific configuration lives in CLAUDE.md. Philosophy lives in PHILOSOPHY.md.
-> See ADR-0065 for the decomposition rationale.
+> Universal framework principles — applies to any project using the framework.
+> Project configuration lives in `CLAUDE.md`. Values live in `PHILOSOPHY.md`.
+> The v3→v4 rationale lives in ADR-0029.
 
-## Non-Negotiable Principles
+## The distinction this framework is built on
 
-1. **Reasoning is the primary artifact.** Code is output. Deliberation, trade-offs, and decision lineage are the durable assets. Every significant decision must be traceable to the discussion that produced it.
-2. **Capture must be automatic.** The capture system uses structured commands that guarantee event-level recording. The model cannot opt out of logging. Enforced at the command/tooling layer.
-3. **Collaboration precedes adversarial rigor.** Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review (red-teaming), fault injection/stress testing, anti-groupthink checks.
-4. **Independence prevents confirmation loops.** The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review.
-5. **ADRs are never deleted.** Only superseded with references to the replacing decision. This creates an immutable decision history.
-6. **Education gates before merge.** Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk. Deferrals require developer acknowledgment and must be logged in the retro. Deferred gates must be completed before the next phase begins, or formally re-deferred with documented rationale.
-7. **Layer 3 promotion requires human approval.** No discussion insight is promoted automatically.
-8. **Least-complex intervention first.** When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. Only escalate to structural changes when simpler interventions have been tried or are demonstrably insufficient.
+Everything here is either **scaffolding** or **governance**.
 
-## Agent Architecture
+**Scaffolding** compensates for what a model cannot do. Reasoning procedures,
+mandated verification steps, context management, orchestration protocols. It is
+correct when written and decays as models improve — eventually costing more in
+tokens and instruction conflict than it returns.
 
-### Leadership Hierarchy
-- **Steward**: Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Does not participate in day-to-day reviews — only activated for framework evolution. Cannot dispatch other agents. See `PHILOSOPHY.md` for the values the steward protects.
-- **Facilitator**: Team leader and workflow orchestrator. Leads specialists through insightful guidance, contextual dispatch, and rigorous synthesis. The single orchestrator for all multi-agent workflows.
-- **Specialists**: 10 domain agents, each with a Values block (load-bearing beliefs) and a Domain Lens (structured reasoning steps). Equal in standing, different in strengths.
+**Governance** constrains what may happen to the human. Capture, immutable
+decision history, human approval for durable memory, independent evaluation,
+understanding before merge. It does not decay. It becomes more necessary as
+capability grows, because a faster agent can outrun its owner's understanding
+faster.
 
-### Agent Roster (12 agents)
-| Agent | Model | Role |
-|---|---|---|
-| steward | opus | Framework philosophy guardian |
-| facilitator | opus | Team leader and orchestrator |
-| architecture-consultant | opus | Structural alignment and component boundaries |
-| independent-perspective | opus | Multi-instance thinker: analyst, observer, scout, critic |
-| security-specialist | sonnet | Security vulnerabilities, auth patterns, threat modeling |
-| qa-specialist | sonnet | Test coverage, edge cases, reliability |
-| performance-analyst | sonnet | Latency, resource efficiency, scalability |
-| docs-knowledge | sonnet | Team historian: decision traceability, knowledge flow |
-| project-analyst | sonnet | External project explorer and co-review orchestrator |
-| ux-evaluator | sonnet | User advocate: friction, delight, clinical UX |
-| educator | sonnet | Coach: walkthroughs, Bloom's assessments, mastery tracking |
-| history-analyst | sonnet | Git history context: churn, refactors, reverts, blame (--deep only) |
+v4 deleted the scaffolding and kept the governance. Apply the same test to
+anything you add: *does this exist because the model was weak?*
 
-### Orchestration Rules
-- Subagents CANNOT spawn other subagents, except the **project-analyst** which serves as a delegated orchestrator for `/analyze-project`
-- The facilitator (main agent) orchestrates all other multi-agent workflows
-- Multiple subagents can run concurrently with true parallelism
-- Each subagent gets its own isolated context window
+## Principles
 
-### Model Override
-The facilitator may override an agent's default model tier upward (sonnet → opus) when the task demands deeper reasoning. All overrides are recorded with `model:<tier>` tags in event capture for retrospective analysis.
+1. **Reasoning is the primary artifact.** Code is output. Every significant
+   decision traces to the discussion that produced it.
+2. **Capture is automatic.** Enforced by scripts and hooks, never by asking the
+   model to remember. A decision that exists only in a context window did not
+   happen.
+3. **The generator is never the sole evaluator.** Independent review means a
+   separate context that never saw the generation reasoning — an information
+   property, not a personality.
+4. **ADRs are never deleted.** Superseded, with a pointer to the replacement.
+5. **Understanding is offered before merge, never withheld.**
+6. **Curated memory needs human approval.**
 
-### Cross-Agent Collaboration Protocols
-- **Cross-Agent Dispatch** (`.claude/rules/cross_agent_dispatch_protocol.md`): Any specialist can request dispatch of another agent through the facilitator. All requests captured with `dispatch-request` / `dispatch-decision` tags.
-- **Multi-Instance Dispatch** (`.claude/rules/multi_instance_protocol.md`): Specialists can request to be split into multiple parallel instances. Independent-perspective has pre-approved multi-instance dispatch (4 instance types). All other agents must request facilitator approval. Max 3 instances per agent per review.
-- **Discovery Pipeline**: independent-perspective (Research Scout) finds cross-domain insights → requests project-analyst deep investigation → docs-knowledge captures the entire discovery chain for institutional memory.
+## Where guarantees live
 
-### Agent Improvement Path
-1. Facilitator observes a pattern across multiple reviews (not a single incident)
-2. Facilitator proposes a specific change with evidence (development note)
-3. Steward evaluates against framework philosophy and principles
-4. Developer approves the change
-5. Change goes through `/review` like any code change
+A guarantee written in prose is a request. A guarantee written in code is a
+guarantee. Anything load-bearing belongs in `scripts/` or `.claude/hooks/`.
 
-## Collaboration Mode Spectrum
+| Mechanism | Guarantees |
+|---|---|
+| `scripts/create_discussion.py`, `write_event.py`, `close_discussion.py` | Reasoning is recorded and sealed |
+| `scripts/quality_gate.py` | Format, lint, tests, coverage, ADR completeness, review existence |
+| `scripts/assess_risk.py` | Briefing depth is chosen by the diff, not by mood |
+| `scripts/briefing.py` | Teaching and deferrals are both recorded |
+| `.claude/hooks/pre-commit-gate.sh` | The gate cannot be forgotten |
+| `.claude/hooks/validate_tool_use.py` | Protected files; secret detection |
+| `.claude/hooks/pre-push-main-blocker.sh` | No accidental push to main |
 
-The facilitator selects the mode per change:
+The markdown in `.claude/commands/` and `.claude/agents/` describes intent and
+sequencing. It does not enforce anything, and should not pretend to.
 
-1. **Ensemble** — independent contribution, no inter-agent exchange (lightest)
-2. **Yes, And** — collaborative building, each agent builds on previous
-3. **Structured Dialogue** — coopetitive exchange with multi-round discussion (default for significant changes)
-4. **Dialectic Synthesis** — thesis-antithesis-synthesis with ACH matrix (high-stakes decisions)
-5. **Adversarial** — red team, scoped to security/fault-injection/anti-groupthink only
+## Capture stack
 
-### Exploration Intensity (orthogonal to collaboration mode)
-- **Low**: Primary analysis with brief notes on alternatives
-- **Medium**: 2-3 alternatives with trade-off analysis (default)
-- **High**: Thorough exploration of alternatives, edge cases, failure modes
+- **Layer 1 — `discussions/`** — raw events and transcripts, sealed on close.
+  Canonical. Everything downstream is a vehicle for engaging with this, never a
+  replacement for it.
+- **Layer 2 — `metrics/evaluation.db`** — relational index for querying.
+- **Layer 3 — `memory/`** — curated, human-approved. Entry requires `/remember`.
 
-## Four-Layer Capture Stack
+Derived artifacts carry a pointer back to their source: ADRs cite
+`discussion_id` (the quality gate enforces this), reviews cite findings,
+promoted memory cites `sources`. A claim whose provenance cannot be traced has
+lost the property that made it trustworthy — repair the pointer or withhold
+the promotion.
 
-- **Layer 1 — Immutable Files**: `discussions/` — events.jsonl + transcript.md, sealed after closure
-- **Layer 2 — Relational Index**: `metrics/evaluation.db` — SQLite for querying and metrics
-- **Layer 3 — Curated Memory**: `memory/` — human-approved patterns and rules
-- **Layer 4 — Optional Vector**: Only when corpus grows large enough
+## Understanding before merge
 
-## Capture Pipeline
+`scripts/assess_risk.py` scores each diff and selects a depth: `light`,
+`standard`, or `deep`. `/teach` delivers it, aimed at the **next decision** the
+developer will face rather than at comprehension for its own sake.
 
-When a `/review`, `/deliberate`, `/analyze-project`, `/build_module`, `/retro`, or `/meta-review` command runs:
-1. `scripts/create_discussion.py` creates the discussion directory and registers it in SQLite
-2. Each agent turn is captured via `scripts/write_event.py` to events.jsonl
-3. `scripts/close_discussion.py` seals the discussion (transcript generation, SQLite ingestion, findings extraction, pattern surfacing, agent effectiveness computation, read-only lock)
-4. `scripts/record_yield.py` records protocol yield metrics into the `protocol_yield` table
-5. Quality gate runs append JSONL records for trend analysis
-6. `/knowledge-health` reports on all pipeline layers
+The developer may always decline. The decline is recorded, never blocked, and
+carries no score or failure state — the ledger has no column that could grade a
+person. Deferred briefings surface in `/status` as information.
 
-## Knowledge Amplification Pipeline
+A gate that stops someone from shipping has failed at this framework's purpose.
 
-1. **Findings Extraction**: Parses critique/proposal events into structured findings with severity and category
-2. **Pattern Mining**: Clusters similar findings using Jaccard similarity. The `v_rule_of_three` view surfaces patterns appearing in 3+ discussions
-3. **Agent Effectiveness**: Tracks per-agent uniqueness, survival rate, and confidence calibration
-4. **Promotion Pipeline**: Recurring findings/reflections become promotion candidates. Human gate preserved (Principle #7)
-5. **Forgetting Curve**: 90-day review flag, 180-day auto-archive for stale promoted knowledge
-6. **Unified Rule of Three**: Combines adoption-log patterns with discussion-derived patterns
+## Agents
 
-## Build Review Protocol
+Five, each defined by a distinct thing to look for rather than by a persona.
+The value is the independent context, not the character.
 
-Mid-build checkpoint reviews enforce Principle #4 during code generation:
+| Agent | Looks for |
+|---|---|
+| `code-reviewer` | correctness, edge cases, coverage, performance |
+| `security-reviewer` | trust boundaries, authz, injection, secrets |
+| `architecture-reviewer` | boundaries, coupling, drift, premature structure |
+| `contrarian` | the unconsidered alternative, the buried assumption |
+| `educator` | the load-bearing idea, taught for the next decision |
 
-- **Triggers**: new module, architecture choice, database schema, security-relevant code, state management wiring, external API integration, UI flow / navigation
-- **Exempt**: scaffolding, dependency config, pure test writing, theme/style-only, docs, final verification
-- **Protocol**: 2 specialists dispatched per checkpoint, APPROVE or REVISE (under 200 words), max 2 rounds
-- **Unresolved concerns**: Flagged with `risk_flags: ["unresolved-checkpoint"]` and surfaced in the build summary
+Delegate for genuinely independent, sizeable work. Do not delegate what you can
+finish in a handful of tool calls, and do not use subagents to double-check
+your own work.
 
-## Commit Protocol
+## Commands
 
-Every commit must pass two gates:
+| Command | Purpose |
+|---|---|
+| `/teach` | Brief the developer, risk-scaled and skippable |
+| `/review` | Independent evaluation, captured |
+| `/decide` | ADR plus the reasoning behind it |
+| `/remember` | Promote to curated memory (human gate) |
+| `/status` | Tree, current risk, briefing ledger |
+| `/retro` | Look back; produce proposals, never self-applied edits |
+| `/ship` | Gate, version, changelog, tag |
+| `/apply-framework` | Assess and deploy onto another project |
 
-1. **Quality Gate** (automated): formatting, linting, tests, coverage (>= 80%), ADR completeness, review existence
-2. **Code Review** (agent-assisted): `/review` before committing code changes. Auto-detects scope, produces structured report with verdict.
+## Framework evolution
 
-For low-risk changes (config, docs, simple fixes), the quality gate alone may suffice. For any code change, always run `/review` first.
+Changing a rule, a gate, or the framework's own definition is a **developer
+action**. An agent may observe, gather evidence, and propose — it may not edit
+a classifier surface or a governance rule off its own proposal. That would be
+self-modification, and the human gate is the point.
 
-## External Project Analysis
+## Conventions
 
-The `/analyze-project` command evaluates external projects for patterns worth adopting. The `/discover-projects` command finds candidates.
-
-- Scoring: 5-dimension rubric out of 25. Only patterns >= 20/25 recommended.
-- Adoption log tracks evaluated patterns and enforces the Rule of Three.
-- Technology Grid profiles map project concepts using controlled vocabulary.
-- The project's own profile (`_self.md`) enables direct comparison.
-
-## ID Format Conventions
-
-- **Discussion**: `DISC-YYYYMMDD-HHMMSS-slug`
-- **ADR**: `ADR-NNNN` (zero-padded sequential)
-- **Review**: `REV-YYYYMMDD-HHMMSS`
-- **Reflection**: `REFL-YYYYMMDD-HHMMSS-agent`
-- **Analysis**: `ANALYSIS-YYYYMMDD-HHMMSS-slug`
-
-## Artifact Format Standard
-
-All structured artifacts use **YAML frontmatter + Markdown body**:
-```
----
-key: value
----
-
-## Section
-Content here.
-```
-
-## Directory Layout (Framework Skeleton)
-
-```
-.claude/
-  agents/       — Agent definitions (steward + facilitator + specialists)
-  commands/     — Slash command workflows
-  hooks/        — Automated lifecycle hooks
-  rules/        — Auto-loaded standards (all agents inherit)
-  skills/       — Reference knowledge (playbooks, checklists)
-PHILOSOPHY.md   — Framework philosophy: why we work the way we do
-FRAMEWORK.md    — This file: universal framework principles
-CLAUDE.md       — Project-specific configuration
-docs/
-  adr/          — Architecture Decision Records
-  reviews/      — Structured review reports
-  sprints/      — Sprint plans and retrospectives
-  templates/    — Reusable artifact templates
-discussions/    — Layer 1: Immutable discussion capture
-memory/         — Layer 3: Curated promoted knowledge
-metrics/        — Layer 2: SQLite relational index + trend data
-scripts/        — Capture pipeline utilities + quality gate + knowledge pipeline
-BUILD_STATUS.md — Session state persistence
-```
-
-## Agent Invocation Pattern
-
-```
-Task(subagent_type="agent-name", prompt="...")
-```
-
-Model override (facilitator only, for harder tasks):
-```
-Task(subagent_type="agent-name", model="opus", prompt="...")
-```
-
-The facilitator collects all results and synthesizes a unified report. All agent turns are captured with `model:<tier>` tags for retrospective analysis.
-
-## Framework Evolution
-
-Changes to agent definitions, rules, or framework philosophy follow a gated path:
-
-1. **Observation**: Facilitator identifies a pattern across multiple reviews
-2. **Proposal**: Development note with evidence, diagnosis, and proposed change
-3. **Steward Gate**: Steward evaluates alignment with `PHILOSOPHY.md` and the eight principles
-4. **Developer Approval**: Human gate preserved
-5. **Review**: Change goes through `/review` like any code change
+**IDs**: `DISC-YYYYMMDD-HHMMSS-slug` · `ADR-NNNN` · `REV-YYYYMMDD-HHMMSS`
+**Artifacts**: YAML frontmatter + Markdown body.

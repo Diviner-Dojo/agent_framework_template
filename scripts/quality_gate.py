@@ -188,8 +188,27 @@ def check_adrs() -> bool:
     return True
 
 
+def _has_application_code() -> bool:
+    """Check whether src/ holds anything beyond package scaffolding.
+
+    The template ships an empty ``src/`` for the derived project to fill. There
+    is nothing to measure until it does, and "0% of nothing" is not a failure.
+    """
+    if not SRC_DIR.exists():
+        return False
+    return any(
+        p.suffix == ".py" and p.name != "__init__.py"
+        for p in SRC_DIR.rglob("*.py")
+        if "__pycache__" not in p.parts
+    )
+
+
 def check_coverage() -> bool:
     """Check 4: coverage meets threshold (configured in pyproject.toml)."""
+    if not _has_application_code():
+        _pass("Coverage (no application code in src/ yet)")
+        return True
+
     result = _run(
         [
             "python",
@@ -254,20 +273,41 @@ def _parse_regression_ledger() -> list[dict[str, str]]:
     return entries
 
 
+def _is_retired(entry: dict[str, str]) -> bool:
+    """Check whether a ledger entry guards code that no longer exists.
+
+    A fixed bug cannot regress once the code carrying it is gone, so such an
+    entry no longer needs a live regression test. The row stays in the ledger —
+    it is an immutable record of what went wrong — but it stops being enforced.
+
+    The ``file`` column may name several sources joined by ``+``; the entry is
+    retired only when *every* one of them is absent.
+    """
+    sources = [s.strip() for s in entry["file"].split("+") if s.strip()]
+    if not sources:
+        return False
+    return not any((PROJECT_ROOT / s).exists() for s in sources)
+
+
 def check_regression_ledger() -> bool:
     """Check 7: verify regression test files exist for ledger entries.
 
     For each entry in the regression ledger, verifies:
     - The test file exists
     - Modified source files listed in the ledger have corresponding tests
+
+    Entries guarding deleted source files are retired rather than enforced.
     """
     entries = _parse_regression_ledger()
     if not entries:
         _pass("Regression ledger (no entries)")
         return True
 
+    live = [e for e in entries if not _is_retired(e)]
+    retired_count = len(entries) - len(live)
+
     errors: list[str] = []
-    for entry in entries:
+    for entry in live:
         test_file = PROJECT_ROOT / entry["test_file"]
         if not test_file.exists():
             errors.append(f"Missing test file: {entry['test_file']} (guards {entry['file']})")
@@ -280,7 +320,9 @@ def check_regression_ledger() -> bool:
             print(f"         ... and {len(errors) - 5} more")
         return False
 
-    _pass(f"Regression ledger ({len(entries)} guard(s))")
+    summary = f"Regression ledger ({len(live)} guard(s)"
+    summary += f", {retired_count} retired)" if retired_count else ")"
+    _pass(summary)
     return True
 
 
