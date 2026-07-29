@@ -5,7 +5,9 @@ import pytest
 from scripts.assess_risk import (
     LIGHT_MAX,
     STANDARD_MAX,
+    GitUnavailable,
     assess,
+    assess_working_tree,
     depth_for_score,
     render,
 )
@@ -165,3 +167,105 @@ class TestDocumentationIsNotCode:
         files = [f"docs/note_{i}.md" for i in range(8)]
         result = assess(files, [f"5\t0\tdocs/note_{i}.md" for i in range(8)])
         assert any("spans 8 non-test files" in s.reason for s in result.signals)
+
+
+class TestGitInterface:
+    """Tests against real repositories.
+
+    The original suite built `files`/`numstat` by hand, so the module's entire
+    contract with git was unexercised — which is exactly where B1-B3 lived.
+    """
+
+    @staticmethod
+    def _repo(tmp_path):
+        """Create a repo with one commit."""
+        import subprocess
+
+        def git(*args):
+            subprocess.run(["git", *args], cwd=str(tmp_path), check=True, capture_output=True)
+
+        git("init", "-q")
+        git("config", "user.email", "t@example.com")
+        git("config", "user.name", "t")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "auth.py").write_text("x = 1\n")
+        git("add", "-A")
+        git("commit", "-qm", "init")
+        return git
+
+    def test_staged_work_is_seen_by_default_invocation(self, tmp_path):
+        """B1: bare `git diff` is working-tree-vs-index, so staged work vanished.
+
+        /teach invokes the no-flag form. Before the fix this scored 0/light.
+        """
+        git = self._repo(tmp_path)
+        (tmp_path / "src" / "auth.py").write_text("\n".join(f"a{i}=1" for i in range(400)))
+        (tmp_path / "pyproject.toml").write_text("dep\n")
+        git("add", "-A")
+
+        default = assess_working_tree(cwd=tmp_path)
+        staged = assess_working_tree(staged=True, cwd=tmp_path)
+
+        assert default.depth == "deep"
+        assert default.depth == staged.depth
+        assert default.files_changed == staged.files_changed
+
+    def test_unstaged_work_is_still_seen(self, tmp_path):
+        self._repo(tmp_path)
+        (tmp_path / "src" / "auth.py").write_text("\n".join(f"a{i}=1" for i in range(400)))
+        assert assess_working_tree(cwd=tmp_path).depth == "deep"
+
+    def test_untracked_source_file_counts_as_new(self, tmp_path):
+        """Untracked files are absent from `git diff HEAD`; fold them in."""
+        self._repo(tmp_path)
+        (tmp_path / "src" / "brand_new.py").write_text("y = 2\n")
+        result = assess_working_tree(cwd=tmp_path)
+        assert any("new source file" in s.reason for s in result.signals)
+
+    def test_new_files_come_from_the_selected_range_not_the_worktree(self, tmp_path):
+        """B2: an unrelated untracked file must not score against a staged diff."""
+        git = self._repo(tmp_path)
+        (tmp_path / "README.md").write_text("typo fixed\n")
+        git("add", "README.md")
+        (tmp_path / "scratch_helper.py").write_text("z = 3\n")  # untracked, unrelated
+
+        result = assess_working_tree(staged=True, cwd=tmp_path)
+
+        assert not any("new source file" in s.reason for s in result.signals)
+        assert result.depth == "light"
+
+    def test_new_files_in_a_committed_range_are_detected(self, tmp_path):
+        """B2, other direction: --base must see files added by commits in range."""
+        import subprocess
+
+        git = self._repo(tmp_path)
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        (tmp_path / "src" / "added_later.py").write_text("w = 4\n")
+        git("add", "-A")
+        git("commit", "-qm", "add module")
+
+        result = assess_working_tree(base=base, cwd=tmp_path)
+
+        assert any("new source file" in s.reason for s in result.signals)
+
+    def test_bad_ref_raises_rather_than_reporting_light(self, tmp_path):
+        """B3: 'assessment did not run' must never look like 'low risk'."""
+        self._repo(tmp_path)
+        with pytest.raises(GitUnavailable):
+            assess_working_tree(base="refs/does/not/exist", cwd=tmp_path)
+
+    def test_non_repository_raises(self, tmp_path):
+        with pytest.raises(GitUnavailable):
+            assess_working_tree(cwd=tmp_path)
+
+    def test_clean_repository_is_light(self, tmp_path):
+        self._repo(tmp_path)
+        result = assess_working_tree(cwd=tmp_path)
+        assert result.depth == "light"
+        assert result.files_changed == 0

@@ -9,11 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-# The memory substrate is an optional extra (numpy, sentence-transformers).
-# Skip rather than error when it is not installed.
-pytest.importorskip("sentence_transformers", reason="memory substrate extra not installed")
-
-from assertion_store.substrate import resolve_project_id  # noqa: E402
+from assertion_store.substrate import resolve_project_id
 
 
 class TestResolveProjectId:

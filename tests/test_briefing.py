@@ -8,7 +8,14 @@ import sqlite3
 
 import pytest
 
-from scripts.briefing import DEPTHS, ledger, record
+from scripts.briefing import (
+    DEPTHS,
+    OUTCOMES,
+    ledger,
+    record,
+    record_outcome,
+    regret_report,
+)
 from scripts.init_db import init_db
 
 
@@ -107,3 +114,76 @@ class TestLedger:
             record(f"scope-{i}", "light", 0, db_path=db)
         output = ledger(db_path=db, limit=2)
         assert output.count("[light]") == 2
+
+
+class TestOutcomeJoin:
+    """The join ADR-0029 needed and originally lacked.
+
+    Without an outcome column a deferral and a later regression are two rows
+    that never meet, so the risk weights can never be checked against regret.
+    """
+
+    def test_outcome_is_null_until_known(self, db):
+        record("src/a.py", "deep", 6, deferred=True, db_path=db)
+        assert rows(db)[0]["outcome"] is None
+
+    def test_record_outcome_sets_all_three_fields(self, db):
+        record("src/a.py", "deep", 6, deferred=True, db_path=db)
+        record_outcome(1, "regressed", ref="REV-123", db_path=db)
+        row = rows(db)[0]
+        assert row["outcome"] == "regressed"
+        assert row["outcome_ref"] == "REV-123"
+        assert row["outcome_at"]
+
+    @pytest.mark.parametrize("outcome", OUTCOMES)
+    def test_all_outcomes_accepted(self, outcome, db):
+        record("src/a.py", "light", 0, db_path=db)
+        record_outcome(1, outcome, db_path=db)
+        assert rows(db)[0]["outcome"] == outcome
+
+    def test_invalid_outcome_rejected(self, db):
+        record("src/a.py", "light", 0, db_path=db)
+        with pytest.raises(ValueError, match="outcome must be one of"):
+            record_outcome(1, "catastrophe", db_path=db)
+
+    def test_unknown_id_is_reported_not_silent(self, db, capsys):
+        record_outcome(999, "clean", db_path=db)
+        assert "No briefing with id 999" in capsys.readouterr().out
+
+    def test_regret_report_says_so_when_unanswerable(self, db):
+        record("src/a.py", "deep", 6, deferred=True, db_path=db)
+        out = regret_report(db_path=db)
+        assert "not yet answerable" in out
+        assert "1 briefing(s) awaiting" in out
+
+    def test_regret_report_crosses_depth_status_and_outcome(self, db):
+        record("src/a.py", "deep", 6, deferred=True, db_path=db)
+        record("src/b.py", "standard", 3, db_path=db)
+        record_outcome(1, "regressed", db_path=db)
+        record_outcome(2, "clean", db_path=db)
+        out = regret_report(db_path=db)
+        assert "deep" in out and "deferred" in out and "regressed" in out
+        assert "standard" in out and "delivered" in out and "clean" in out
+
+
+class TestFreshCheckout:
+    """B4: an unguarded connect left a 0-byte DB that broke create_discussion."""
+
+    def test_record_on_missing_db_self_initializes(self, tmp_path):
+        db = tmp_path / "sub" / "evaluation.db"
+        record("src/a.py", "light", 0, db_path=db)
+        assert db.exists() and db.stat().st_size > 0
+        assert rows(db)[0]["scope"] == "src/a.py"
+
+    def test_other_tables_exist_after_self_init(self, tmp_path):
+        """The cascade: a stub DB would break every peer script afterwards."""
+        db = tmp_path / "evaluation.db"
+        record("src/a.py", "light", 0, db_path=db)
+        conn = sqlite3.connect(str(db))
+        try:
+            names = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        finally:
+            conn.close()
+        assert {"discussions", "turns", "findings", "protocol_yield"} <= names

@@ -1,7 +1,8 @@
 ---
 adr_id: ADR-0016
 title: "Progressive-disclosure restructuring of the always-loaded instruction corpus"
-status: accepted
+status: superseded
+superseded_by: ADR-0029
 date: 2026-05-20
 decision_makers: [facilitator, architecture-consultant, docs-knowledge, security-specialist]
 discussion_id: DISC-20260520-161826-efficiency-ledger-ratification
@@ -11,6 +12,10 @@ scope: framework
 confidence: 0.85
 tags: [token-efficiency, progressive-disclosure, claude-md, rules, skills]
 ---
+
+> **Superseded by ADR-0029 (2026-07-28).** the progressive-disclosure corpus (rules + on-demand skills) was replaced by a single short CLAUDE.md. The decision and its
+> reasoning are preserved here; only its status changed.
+
 
 ## Context
 

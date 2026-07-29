@@ -112,7 +112,7 @@ def close_discussion(discussion_id: str) -> None:
                 print(f"Token rollup completed for {discussion_id}")
             else:
                 print(
-                    f"Token rollup skipped for {discussion_id} (no per-turn token data; run ingest_token_usage.py)"
+                    f"Token rollup skipped for {discussion_id} (no per-turn token data recorded)"
                 )
             conn.close()
     except Exception as e:

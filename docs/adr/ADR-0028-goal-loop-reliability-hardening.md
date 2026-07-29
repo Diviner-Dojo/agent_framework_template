@@ -1,7 +1,8 @@
 ---
 adr_id: ADR-0028
 title: "Goal-loop reliability hardening — first-real-use backflow from VerificationPortal"
-status: accepted
+status: superseded
+superseded_by: ADR-0029
 date: 2026-06-27
 decision_makers: [orchestrator, steward]
 discussion_id: DISC-20260628-022452-goal-loop-hardening-adr0028
@@ -13,6 +14,10 @@ risk_level: high
 confidence: 0.88
 tags: [backflow, goal-loop, verifier-integrity, reliability, verification-portal, safety-critical]
 ---
+
+> **Superseded by ADR-0029 (2026-07-28).** goal-loop reliability hardening went with the goal-loop driver. The decision and its
+> reasoning are preserved here; only its status changed.
+
 
 ## Context
 

@@ -33,12 +33,14 @@ one:
 
 ```markdown
 ---
-id: ADR-NNNN
-title: <what was decided>
+adr_id: ADR-NNNN
+title: "<what was decided>"
 status: accepted
 date: <YYYY-MM-DD>
+decision_makers: [developer, <agents involved>]
 discussion_id: DISC-...
-supersedes: ADR-NNNN | none
+supersedes:
+scope: framework | project
 ---
 
 ## Context
@@ -47,16 +49,23 @@ What forced a decision. The constraints that were real at the time.
 ## Decision
 What we chose, in the active voice.
 
-## Alternatives
+## Alternatives Considered
 What else was on the table, and what would have made each of them right.
 
 ## Consequences
 What this costs. What it forecloses. What we'll wish we'd known.
 ```
 
-`discussion_id` is required — the quality gate enforces it, because an ADR that
-can't point back to its reasoning has lost the property that makes it
-trustworthy.
+The field names and the four headings are exact — `scripts/quality_gate.py`
+checks them literally, and a near-miss (`id:`, or `## Alternatives`) fails the
+gate. Verify before you finish:
+
+```bash
+python scripts/quality_gate.py --skip-tests --skip-coverage
+```
+
+`discussion_id` is required, because an ADR that can't point back to its
+reasoning has lost the property that makes it trustworthy.
 
 Superseding an earlier ADR means setting the old one's status to `superseded`
 with a pointer forward. It is never deleted (Principle #4).

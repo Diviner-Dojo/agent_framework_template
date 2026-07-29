@@ -308,9 +308,12 @@ def check_regression_ledger() -> bool:
 
     errors: list[str] = []
     for entry in live:
-        test_file = PROJECT_ROOT / entry["test_file"]
-        if not test_file.exists():
-            errors.append(f"Missing test file: {entry['test_file']} (guards {entry['file']})")
+        # A single bug can be guarded by tests in more than one file, joined by
+        # "+" exactly as the source column does. Every named file must exist.
+        test_files = [t.strip() for t in entry["test_file"].split("+") if t.strip()]
+        for test_file in test_files:
+            if not (PROJECT_ROOT / test_file).exists():
+                errors.append(f"Missing test file: {test_file} (guards {entry['file']})")
 
     if errors:
         _fail(f"Regression ledger ({len(errors)} missing test(s))")

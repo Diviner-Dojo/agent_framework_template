@@ -8,13 +8,17 @@ review) lands in a follow-up commit.
 
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
 # The memory substrate is an optional extra (fastmcp, numpy,
 # sentence-transformers). Skip rather than error when it is not installed, so a
 # lightweight checkout still gets a clean gate run.
-pytest.importorskip("fastmcp", reason="memory substrate extra not installed")
-pytest.importorskip("sentence_transformers", reason="memory substrate extra not installed")
+# Only fastmcp is genuinely required to import the server. Embeddings are
+# lazy now (ADR-0029), so the thread-local and path-traversal guards below run
+# without torch installed.
+pytest.importorskip("fastmcp", reason="fastmcp not installed")
 
 from mcp_server.server import (  # noqa: E402
     PROJECT_ID,
@@ -281,11 +285,19 @@ class TestThreadLocalIsolation:
         )
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("sentence_transformers") is None,
+    reason="roundtrip genuinely embeds text; needs the memory-substrate extras",
+)
 class TestRoundtrip:
     """End-to-end: write an assertion, search for it, verify it appears.
 
     Uses tmp_path to isolate from the production DB. Monkey-patches DB_PATH
     on the server module so _get_db() opens an isolated database for this test.
+
+    This is the only test in the file that needs the embedding model, so the
+    skip is scoped here rather than to the module. A module-level skip took the
+    path-traversal and thread-local guards down with it (ADR-0029).
     """
 
     def test_assert_and_search_roundtrip(self, tmp_path):

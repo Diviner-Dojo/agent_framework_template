@@ -78,7 +78,19 @@ SECRET_PATTERNS = [
     ("GCP OAuth token", re.compile(r"ya29\.[a-zA-Z0-9_-]{50,}")),
 ]
 
-PROTECTED_PATTERNS = [".git/", ".env", "metrics/evaluation.db", ".claude/settings.json"]
+# `.claude/hooks/` is protected for the same reason as settings.json: a hook
+# command runs without a permission prompt, so writing a file here is arbitrary
+# execution that bypasses the Bash permission surface entirely. settings.json
+# names hook paths, and a named-but-absent path is a pre-authorized execution
+# slot waiting to be filled — "restore the missing hook" is exactly what a
+# prompt injection would ask for. Changing a hook is a developer action.
+PROTECTED_PATTERNS = [
+    ".git/",
+    ".env",
+    "metrics/evaluation.db",
+    ".claude/settings.json",
+    ".claude/hooks/",
+]
 
 TEST_FILE_PATTERNS = re.compile(
     r"(test_.*\.py|.*_test\.py|.*/tests/.*\.py|.*\.test\.[tj]sx?|.*\.spec\.[tj]sx?)$"

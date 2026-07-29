@@ -85,6 +85,31 @@ class TestSchemaMigration:
         init_db(db_path, quiet=True)
         assert _columns(db_path, "discussion_model_tokens") == before
 
+    def test_outcome_columns_added_to_v4_0_briefings(self, tmp_path):
+        """A v4.0 database (briefings without outcome) gains the join columns.
+
+        The columns arrive via the ALTER _migrations list, so this exercises
+        the swallow-all OperationalError guard for the briefings table.
+        """
+        db_path = _make_db(tmp_path)
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("DROP TABLE briefings")
+        conn.execute(
+            """CREATE TABLE briefings (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 scope TEXT NOT NULL, depth TEXT NOT NULL,
+                 risk_score INTEGER NOT NULL, status TEXT NOT NULL,
+                 concept TEXT, note TEXT, commit_sha TEXT,
+                 discussion_id TEXT, timestamp DATETIME NOT NULL)"""
+        )
+        conn.commit()
+        conn.close()
+        assert "outcome" not in _columns(db_path, "briefings")
+
+        init_db(db_path, quiet=True)
+
+        assert {"outcome", "outcome_ref", "outcome_at"} <= _columns(db_path, "briefings")
+
     def test_briefings_table_added_to_pre_v4_db(self, tmp_path):
         """A v3 database gains the v4 education ledger on re-init."""
         db_path = _make_db(tmp_path)

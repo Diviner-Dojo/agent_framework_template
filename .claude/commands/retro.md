@@ -10,6 +10,8 @@ Read the captured record and say something true about it.
 ```bash
 python scripts/mine_patterns.py --since <date>
 python scripts/compute_agent_effectiveness.py
+python scripts/audit_calibration.py --report-only
+python scripts/briefing.py regret
 python scripts/briefing.py ledger --limit 30
 ```
 
@@ -20,7 +22,11 @@ Look for what actually recurs:
 - Briefings repeatedly deferred in one area — either the teaching missed, or
   that area needs simplifying rather than explaining
 - Framework friction — a gate that fires without catching anything is costing
-  more than it returns, and should be proposed for deletion
+  more than it returns, and should be proposed for deletion. **Check that
+  before believing it**: `protocol_yield` records what each review actually
+  caught. A gate with no recorded yield may be worthless, or may simply never
+  have been measured — those look identical and are not the same. Never propose
+  deleting a gate on absence of evidence
 
 Prefer the smallest intervention that would work. In this framework, deleting
 something is usually available and usually right.

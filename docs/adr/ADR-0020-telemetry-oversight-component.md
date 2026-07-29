@@ -1,7 +1,8 @@
 ---
 adr_id: ADR-0020
 title: "Telemetry & Oversight component (failure/waste lens + visibility) and per-tier cost amendment to ADR-0013"
-status: accepted
+status: superseded
+superseded_by: ADR-0029
 date: 2026-06-05
 decision_makers: [facilitator, architecture-consultant, security-specialist, qa-specialist, performance-analyst, steward]
 discussion_id: DISC-20260606-041937-telemetry-oversight-spec-review
@@ -13,6 +14,10 @@ scope: framework
 confidence: 0.86
 tags: [telemetry, oversight, cost, observability, adr-0013-amendment, attribution, compute-dont-store]
 ---
+
+> **Superseded by ADR-0029 (2026-07-28).** the telemetry oversight component (dashboard, charts, live server) was removed. The decision and its
+> reasoning are preserved here; only its status changed.
+
 
 ## Context
 

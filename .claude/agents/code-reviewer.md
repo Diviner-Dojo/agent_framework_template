@@ -25,3 +25,8 @@ should label it one.
 
 End with the smallest set of things that should block the commit — or say
 plainly that nothing should.
+
+Mark every finding with an explicit `Severity: CRITICAL|HIGH|MEDIUM|LOW|INFO`.
+The capture pipeline parses that marker and trusts it over guessing from your
+prose; without it the recorded severity is wrong. See the
+`severity-calibration` skill — when two tiers both fit, pick the lower.

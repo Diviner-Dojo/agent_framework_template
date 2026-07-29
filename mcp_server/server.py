@@ -54,10 +54,21 @@ substrate = Substrate(db_path=DB_PATH, project_id=PROJECT_ID, source_roots=SOURC
 
 mcp = FastMCP("agent-memory")
 
-# Warm the sentence-transformers model at startup so the first MCP tool call
-# does not stall for 1-3s while ~80MB loads from disk into memory. This shifts
-# the cold-start tax to server boot, where latency is expected.
-embed("")
+
+def _warm_embedding_model() -> None:
+    """Preload the sentence-transformers model before serving.
+
+    Shifts the 1-3s / ~80MB cold-start tax to boot, where latency is expected,
+    instead of onto the first MCP tool call.
+
+    This runs at *serve* time rather than import time. As an import-time side
+    effect it made this whole module unimportable without the optional extras,
+    which silently disabled three regression guards listed in the ledger — the
+    thread-local isolation test named in CLAUDE.md and two path-traversal
+    checks. Importing the module to exercise its pure functions must not
+    require torch. See ADR-0029 and REV-20260728-140000.
+    """
+    embed("")
 
 
 @mcp.tool()
@@ -147,4 +158,5 @@ def get_source(source_ref: str) -> dict:
 
 
 if __name__ == "__main__":
+    _warm_embedding_model()
     mcp.run()

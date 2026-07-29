@@ -1,7 +1,8 @@
 ---
 adr_id: ADR-0013
 title: "Token-efficiency telemetry via post-hoc JSONL ingest"
-status: accepted
+status: superseded
+superseded_by: ADR-0029
 amended_by: ADR-0020
 date: 2026-05-12
 accepted_date: 2026-06-05
@@ -13,6 +14,10 @@ scope: framework
 confidence: 0.78
 tags: [telemetry, efficiency, instrumentation, capture-pipeline]
 ---
+
+> **Superseded by ADR-0029 (2026-07-28).** token-efficiency telemetry ingestion was removed; nothing writes the token tables. The decision and its
+> reasoning are preserved here; only its status changed.
+
 
 > **Ratified `proposed` → `accepted` on 2026-06-05** alongside ADR-0020, which
 > **amends** §2 ("Cost computation"): accurate per-tier dollar cost is now computed by

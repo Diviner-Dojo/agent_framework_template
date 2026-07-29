@@ -1,7 +1,8 @@
 ---
 adr_id: ADR-0018
 title: "Model-aware session wrap-up and handoff"
-status: accepted
+status: superseded
+superseded_by: ADR-0029
 date: 2026-05-23
 decision_makers: [facilitator, architecture-consultant, security-specialist, qa-specialist, steward]
 discussion_id: DISC-20260523-192249-build-session-wrapup
@@ -11,6 +12,10 @@ scope: framework
 confidence: 0.86
 tags: [context-window, session-wrapup, handoff, hooks, statusline, auto-launch, consent]
 ---
+
+> **Superseded by ADR-0029 (2026-07-28).** model-aware session wrap-up was removed; native compaction and a 1M context supersede it. The decision and its
+> reasoning are preserved here; only its status changed.
+
 
 ## Context
 

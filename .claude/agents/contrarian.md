@@ -24,3 +24,8 @@ dissent is worse than silence because it teaches people to route around you.
 
 Bring at most three things, ranked by how expensive they would be to discover
 later.
+
+Mark every finding with an explicit `Severity: CRITICAL|HIGH|MEDIUM|LOW|INFO`.
+The capture pipeline parses that marker and trusts it over guessing from your
+prose; without it the recorded severity is wrong. See the
+`severity-calibration` skill — when two tiers both fit, pick the lower.

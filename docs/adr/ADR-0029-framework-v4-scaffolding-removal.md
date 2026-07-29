@@ -6,7 +6,7 @@ date: 2026-07-28
 decision_makers: [developer, steward]
 discussion_id: DISC-20260728-071754-framework-v4-modernization
 spec_id:
-supersedes:
+supersedes: [ADR-0013, ADR-0016, ADR-0018, ADR-0020, ADR-0023, ADR-0026, ADR-0028]
 extends:
 scope: framework
 risk_level: critical
@@ -146,8 +146,52 @@ against intuition rather than outcomes. `/retro` should revisit them once the
 briefing ledger holds enough history to compare deferrals against the changes
 that later caused trouble.
 
+## Post-review amendments (2026-07-28)
+
+Reviewed by four independent contexts before merge — REV-20260728-140000,
+`DISC-20260728-135213-v4-framework-review`. Verdict REVISE, nine blocking.
+Three of those findings change what this ADR claims, so they are recorded here
+rather than only in the review:
+
+**The classification test was not applied as stated.** The review found a third
+over-deletion — `scripts/audit_calibration.py`, whose docstring describes
+itself in this ADR's own governance vocabulary (writes proposals to a
+human-approved queue, never edits a classifier surface) and which was
+nonetheless swept up in a directory-level pass. The honest account is that
+directory membership and category did some of the sorting this ADR credits to
+the per-file question. Restored.
+
+**The falsification plan was unexecutable as designed.** This ADR named one
+thing it expected to be wrong about — whether the risk weights track regret —
+and specified that `/retro` should check it. The deletion removed
+`record_yield.py` (sole writer to `protocol_yield`) while leaving
+`compute_agent_effectiveness.py` reading it, so `findings_false_positive` was
+permanently 0 and calibration systematically flattering; and the `briefings`
+table had no outcome column, so a deferral and a later regression could never
+be joined. Measurement was classified as telemetry and telemetry as
+scaffolding; the deletion prior in `/retro` survived while the only instrument
+that could contradict it did not. The thin write path is restored — one
+`protocol_yield` row per review, plus a `briefings.outcome` column — without
+restoring the ~13,000 lines of dashboards and charts.
+
+**A governance guarantee was moved from code into prose.** Rewriting
+`/apply-framework` orphaned `scripts/distribute/`, dropping four fail-closed
+controls on the cross-repo trust boundary — target-file prompt-injection
+framing, secret redaction, per-instance assent, and the clean-tree gate — in
+the same change whose `FRAMEWORK.md` states that a prose guarantee is a
+request. The command is rewired onto the existing machinery; ADR-0021 stands.
+
+The mechanism corollary in **Decision** therefore holds more strictly than
+first written: *code that persists state after the context window ends is not
+scaffolding at any model capability* — and that explicitly includes code whose
+only job is to measure the framework, because a framework that deletes its own
+instruments cannot tell whether its next deletion was right.
+
 ## Related
 
 - ADR-0014 — memory substrate (retained unchanged)
+- ADR-0021 — `/apply-framework` unification (still accepted; rewired, not retired)
+- ADR-0024 — confidence calibration loop (still accepted; restored)
+- REV-20260728-140000 — the review that produced these amendments
 - `PHILOSOPHY.md` — the values this decision serves
 - `memory/archive/v3-framework/` — v3 documents preserved verbatim

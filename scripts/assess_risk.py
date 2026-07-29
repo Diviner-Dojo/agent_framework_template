@@ -90,8 +90,22 @@ def depth_for_score(score: int) -> str:
     return "deep"
 
 
+class GitUnavailable(RuntimeError):
+    """A git command failed, so no assessment could be made.
+
+    This is deliberately not swallowed. Returning an empty diff on failure
+    would score 0 and print LIGHT, making "assessment did not run"
+    indistinguishable from "assessed, low risk" — and failing toward *less*
+    teaching, which is the one direction this tool must never fail in.
+    """
+
+
 def _run_git(args: list[str], cwd: Path) -> str:
-    """Run a git command and return stdout, or an empty string on failure."""
+    """Run a git command and return stdout.
+
+    Raises:
+        GitUnavailable: if git is missing, times out, or exits non-zero.
+    """
     try:
         result = subprocess.run(
             ["git", *args],
@@ -101,32 +115,71 @@ def _run_git(args: list[str], cwd: Path) -> str:
             timeout=30,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return result.stdout if result.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise GitUnavailable(f"git {' '.join(args)} could not run: {exc}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip().splitlines()
+        raise GitUnavailable(
+            f"git {' '.join(args)} failed: {detail[0] if detail else 'unknown error'}"
+        )
+    return result.stdout
+
+
+def _diff_range(base: str | None, staged: bool, cwd: Path) -> list[str]:
+    """Build the git diff range arguments for the selected mode.
+
+    With no base and no --staged the range is ``HEAD``, not the empty range.
+    A bare ``git diff`` compares the working tree against the *index*, so once
+    work is staged it reports nothing — which silently under-teaches at exactly
+    the moment someone is about to commit.
+    """
+    if base:
+        try:
+            merge_base = _run_git(["merge-base", base, "HEAD"], cwd).strip()
+        except GitUnavailable:
+            merge_base = ""
+        return [merge_base or base, "HEAD"]
+    if staged:
+        return ["--cached"]
+    return ["HEAD"]
 
 
 def collect_diff(
     base: str | None = None, staged: bool = False, cwd: Path = PROJECT_ROOT
-) -> tuple[list[str], list[str]]:
-    """Return (changed file paths, numstat lines) for the selected diff range.
+) -> tuple[list[str], list[str], list[str]]:
+    """Return (changed paths, numstat lines, added paths) for the selected range.
+
+    Added paths come from the same range as the diff via ``--diff-filter=A``,
+    so they describe the change being assessed rather than whatever happens to
+    be sitting untracked in the working tree.
 
     Args:
         base: Compare against the merge-base with this ref, if given.
         staged: Restrict to staged changes.
         cwd: Repository root.
+
+    Raises:
+        GitUnavailable: if any underlying git command fails.
     """
-    range_args: list[str] = []
-    if base:
-        merge_base = _run_git(["merge-base", base, "HEAD"], cwd).strip()
-        range_args = [merge_base or base, "HEAD"]
-    elif staged:
-        range_args = ["--cached"]
+    range_args = _diff_range(base, staged, cwd)
 
     names = _run_git(["diff", "--name-only", *range_args], cwd)
     numstat = _run_git(["diff", "--numstat", *range_args], cwd)
+    added = _run_git(["diff", "--diff-filter=A", "--name-only", *range_args], cwd)
+
     files = [line.strip() for line in names.splitlines() if line.strip()]
-    return files, [line for line in numstat.splitlines() if line.strip()]
+    new_files = [line.strip() for line in added.splitlines() if line.strip()]
+
+    if not base and not staged:
+        # Untracked files are absent from `git diff HEAD` entirely. They are
+        # genuinely part of an uncommitted change, so fold them in here — but
+        # only in working-tree mode, where "untracked" is meaningful.
+        untracked = _run_git(["ls-files", "--others", "--exclude-standard"], cwd).splitlines()
+        extra = [line.strip() for line in untracked if line.strip()]
+        files.extend(e for e in extra if e not in files)
+        new_files.extend(e for e in extra if e not in new_files)
+
+    return files, [line for line in numstat.splitlines() if line.strip()], new_files
 
 
 def _parse_numstat(numstat: list[str]) -> tuple[int, int]:
@@ -212,12 +265,12 @@ def assess(
 def assess_working_tree(
     base: str | None = None, staged: bool = False, cwd: Path = PROJECT_ROOT
 ) -> RiskAssessment:
-    """Assess the current repository state."""
-    files, numstat = collect_diff(base=base, staged=staged, cwd=cwd)
-    status = _run_git(["status", "--porcelain"], cwd)
-    new_files = [
-        line[3:].strip() for line in status.splitlines() if line.startswith(("A ", "?? ", "AM"))
-    ]
+    """Assess the current repository state.
+
+    Raises:
+        GitUnavailable: if the repository cannot be read.
+    """
+    files, numstat, new_files = collect_diff(base=base, staged=staged, cwd=cwd)
     return assess(files, numstat, new_files)
 
 
@@ -244,7 +297,12 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Emit JSON")
     args = parser.parse_args()
 
-    assessment = assess_working_tree(base=args.base, staged=args.staged)
+    try:
+        assessment = assess_working_tree(base=args.base, staged=args.staged)
+    except GitUnavailable as exc:
+        print(f"Could not assess risk: {exc}", file=sys.stderr)
+        print("No briefing depth was determined. Do not treat this as 'light'.", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(assessment.to_dict(), indent=2))
     else:

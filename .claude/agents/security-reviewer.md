@@ -27,3 +27,8 @@ finding. Inflated severity trains people to ignore you.
 For each real finding: the entry point, the path to impact, and what an
 attacker gets at the end of it. Rank by that impact, not by how unusual the bug
 is.
+
+Mark every finding with an explicit `Severity: CRITICAL|HIGH|MEDIUM|LOW|INFO`.
+The capture pipeline parses that marker and trusts it over guessing from your
+prose; without it the recorded severity is wrong. See the
+`severity-calibration` skill — when two tiers both fit, pick the lower.

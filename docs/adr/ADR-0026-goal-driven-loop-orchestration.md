@@ -1,7 +1,8 @@
 ---
 adr_id: ADR-0026
 title: "Goal-Driven Loop Orchestration (/goal-loop)"
-status: accepted  # developer Principle-#7 approval of the facilitator "Goal-Seeking Loop Mode" delta granted 2026-06-21
+status: superseded
+superseded_by: ADR-0029
 date: 2026-06-21
 decision_makers: [facilitator, steward, architecture-consultant, independent-perspective, security-specialist, qa-specialist]
 discussion_id: DISC-20260621-065121-goal-loop-phase1-design
@@ -11,6 +12,10 @@ scope: framework  # hub capability; propagates to all derived projects (Phase 3)
 confidence: 0.83
 tags: [loop-orchestration, agent-loops, goal-contract, facilitator, framework-evolution, verifier-integrity]
 ---
+
+> **Superseded by ADR-0029 (2026-07-28).** the deterministic goal-loop driver was removed; extended autonomy is native model behaviour. The decision and its
+> reasoning are preserved here; only its status changed.
+
 
 ## Context
 

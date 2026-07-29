@@ -1,7 +1,8 @@
 ---
 adr_id: ADR-0023
 title: "One-shot Stop hook — silent-by-default, intent-queued, allow-list-gated reply injection"
-status: accepted
+status: superseded
+superseded_by: ADR-0029
 date: 2026-06-12
 decision_makers: [orchestrator, security-specialist, steward]
 discussion_id: DISC-20260612-d2-pattern1-review
@@ -12,6 +13,10 @@ risk_level: high
 confidence: 0.88
 tags: [backflow, hooks, stop-hook, ntfy, notifications, untrusted-input, dan-research-wiki]
 ---
+
+> **Superseded by ADR-0029 (2026-07-28).** the one-shot Stop hook was removed. The decision and its
+> reasoning are preserved here; only its status changed.
+
 
 ## Context
 

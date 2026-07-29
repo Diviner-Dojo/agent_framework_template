@@ -14,7 +14,7 @@ DB_PATH = Path(__file__).parent.parent / "metrics" / "evaluation.db"
 # identifiers (`?` is values-only), so they are interpolated — these sets make
 # the safety explicit and fail loudly if a future entry ever sources an
 # identifier from config/input (security review B1).
-_MIGRATION_ALLOWED_TABLES = {"discussions", "turns", "findings"}
+_MIGRATION_ALLOWED_TABLES = {"discussions", "turns", "findings", "briefings"}
 _MIGRATION_ALLOWED_TYPES = {
     "TEXT",
     "REAL",
@@ -156,7 +156,15 @@ def init_db(db_path: Path = DB_PATH, *, quiet: bool = False) -> None:
             note            TEXT,
             commit_sha      TEXT,
             discussion_id   TEXT REFERENCES discussions(discussion_id),
-            timestamp       DATETIME NOT NULL
+            timestamp       DATETIME NOT NULL,
+            -- Outcome is what makes deferral data rather than trivia: it is the
+            -- join between "I skipped this briefing" and "that code later
+            -- caused trouble". Without it the risk weights in assess_risk.py
+            -- can never be checked against regret, which is the one thing
+            -- ADR-0029 said it expected to be wrong about. NULL = not yet known.
+            outcome         TEXT CHECK(outcome IN ('clean', 'regressed', 'reworked')),
+            outcome_ref     TEXT,   -- commit sha, REV-id, or ledger entry
+            outcome_at      DATETIME
         );
 
         -- Knowledge pipeline tables
@@ -416,6 +424,13 @@ def init_db(db_path: Path = DB_PATH, *, quiet: bool = False) -> None:
         ("turns", "content_excerpt", "TEXT"),
         ("turns", "tags", "TEXT DEFAULT '[]'"),
         ("discussions", "related_discussion_id", "TEXT"),
+        # ADR-0029 post-review: the join between a deferred briefing and what
+        # happened next. Added by ALTER so a v4.0 database gains it in place.
+        # No CHECK constraint here — ALTER TABLE cannot add one; the CREATE
+        # path carries it, and briefing.py validates before writing.
+        ("briefings", "outcome", "TEXT"),
+        ("briefings", "outcome_ref", "TEXT"),
+        ("briefings", "outcome_at", "TEXT"),
         # ADR-0013: token-efficiency telemetry.
         # NULL is honest for historical rows — see ADR.
         ("turns", "tokens_in", "INTEGER"),

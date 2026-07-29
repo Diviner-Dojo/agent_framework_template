@@ -24,3 +24,8 @@ still describes what the code does.
 
 Say which findings are structural — worth fixing before this lands — and which
 are preferences you would not block on. Be explicit about the difference.
+
+Mark every finding with an explicit `Severity: CRITICAL|HIGH|MEDIUM|LOW|INFO`.
+The capture pipeline parses that marker and trusts it over guessing from your
+prose; without it the recorded severity is wrong. See the
+`severity-calibration` skill — when two tiers both fit, pick the lower.

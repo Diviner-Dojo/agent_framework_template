@@ -8,6 +8,7 @@ description: "Where things stand: working tree, risk of the current change, and 
 git status --short && git log --oneline -5
 python scripts/assess_risk.py
 python scripts/briefing.py ledger
+python scripts/briefing.py regret
 ```
 
 Report it plainly and briefly. Lead with anything that needs a decision.
