@@ -166,14 +166,16 @@ class ChangePackage:
         """True if any file needs assessment (a collision-diverged candidate exists).
 
         A package with no diverged candidates is *obviously inert* and qualifies for the
-        Principle #8 fast-path (single risk-referee instead of the full assessment room).
+        Growth-brake fast-path (single risk-referee instead of the full assessment room).
+        (`PHILOSOPHY.md`, *Growth has a brake* — a numbered principle until v3.6.)
         """
         return len(self.diverged) > 0
 
     def needs_interpretation(self) -> bool:
         """True if the floor flagged any overwrite (``value-unverified``).
 
-        Principle #8 tiering: when this is True but ``has_unmediable_candidates`` is False, the
+        Growth-brake tiering (`PHILOSOPHY.md`, *Growth has a brake*): when this is True but
+        ``has_unmediable_candidates`` is False, the
         single referee interprets the flagged overwrites (fast-path); when a collision-diverged
         file is also present, the full room handles both.
         """

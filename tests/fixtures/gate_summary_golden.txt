@@ -1,0 +1,15 @@
+
+[1mQuality Gate[0m
+========================================
+  [92mPASS[0m  Formatting (ruff format)
+  [92mPASS[0m  Linting (ruff check)
+  [92mPASS[0m  Tests (pytest)
+  [92mPASS[0m  Coverage (>= 80%, incl. scripts/education/ in isolation)
+  [92mPASS[0m  ADR completeness (29 ADR(s))
+  [92mPASS[0m  Review existence (no code changes staged)
+  [92mPASS[0m  Regression ledger (56 guard(s))
+  [93mWARN[0m  BUILD_STATUS.md freshness (last updated 872 minutes ago — consider updating)
+  [93mWARN[0m  Promotion backlog: 20 pending candidates (>5) — consider running /promote to review pattern sightings
+========================================
+[92m[1mQuality Gate: 7/7 passed[0m
+

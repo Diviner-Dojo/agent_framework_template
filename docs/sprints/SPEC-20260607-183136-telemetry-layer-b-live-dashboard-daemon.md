@@ -2,13 +2,14 @@
 spec_id: SPEC-20260607-183136
 title: "Layer B Telemetry Dashboard — live localhost-only daemon (redesign)"
 type: spec
-status: reviewed
+status: complete
 risk_level: high
 reviewed_by: [security-specialist, architecture-consultant, qa-specialist]
 discussion_id: DISC-20260607-183247-telemetry-layer-b-live-dashboard-daemon-spec-review
 intake_ids: []
-completed_at:
-completed_commit:
+completed_at: 2026-06-10
+completed_commit: c5a9cf2
+status_note: "stamped complete post-hoc 2026-07-16 during the wave-2 spec-budget check (shipping evidence: git log; part of triage #11 bookkeeping debt)"
 ---
 
 ## Goal

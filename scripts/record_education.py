@@ -1,19 +1,28 @@
 """Record education gate results into the SQLite education_results table.
 
 Usage:
-    python scripts/record_education.py <session_id> <discussion_id> <bloom_level> <question_type> <score> <passed>
+    python scripts/record_education.py <session_id> <discussion_id> <bloom_level> \
+        <question_type> <score> <passed>
 
 Example:
-    python scripts/record_education.py QUIZ-20260218-143000 DISC-20260218-140000-auth understand walkthrough 0.85 true
+    python scripts/record_education.py QUIZ-20260218-143000 \
+        DISC-20260218-140000-auth understand walkthrough 0.85 true
 """
 
 import argparse
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DB_PATH = PROJECT_ROOT / "metrics" / "evaluation.db"
+
+# Single source of truth for the education_results enums. These mirror the
+# CHECK constraints in scripts/init_db.py and are imported by other tooling
+# (e.g. scripts/education/ingest_walkthrough_session.py) so enum whitelists are
+# never redefined. Keep in sync with the DDL.
+BLOOM_LEVELS = ("remember", "understand", "apply", "analyze", "evaluate", "create")
+QUESTION_TYPES = ("recall", "walkthrough", "debug-scenario", "change-impact", "explain-back")
 
 
 def record_education(
@@ -50,7 +59,7 @@ def record_education(
             question_type,
             score,
             passed,
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
         ),
     )
     conn.commit()
@@ -64,13 +73,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Record education gate results")
     parser.add_argument("session_id", help="Education session ID")
     parser.add_argument("discussion_id", help="Discussion ID that triggered the gate")
-    parser.add_argument(
-        "bloom_level", choices=["remember", "understand", "apply", "analyze", "evaluate", "create"]
-    )
-    parser.add_argument(
-        "question_type",
-        choices=["recall", "walkthrough", "debug-scenario", "change-impact", "explain-back"],
-    )
+    parser.add_argument("bloom_level", choices=list(BLOOM_LEVELS))
+    parser.add_argument("question_type", choices=list(QUESTION_TYPES))
     parser.add_argument("score", type=float, help="Score 0-1")
     parser.add_argument("passed", help="true or false")
     args = parser.parse_args()

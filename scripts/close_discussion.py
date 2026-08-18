@@ -13,6 +13,9 @@ This script:
 7. Surfaces promotion candidates
 8. Computes agent effectiveness
 9. Sets events.jsonl and transcript.md to read-only (advisory)
+9b. Records a sha256 of each sealed file in metrics/layer1_manifest.jsonl
+    (append-only), so a later change to the sealed record is detectable
+    regardless of how it was made — see scripts/verify_layer1_integrity.py
 """
 
 import argparse
@@ -172,6 +175,11 @@ def close_discussion(discussion_id: str) -> None:
             pass  # Table may not exist yet
 
     # Step 9: Set files to read-only (advisory immutability)
+    #
+    # Advisory is the operative word, and it has been measured: on 2026-08-07 a
+    # subagent truncated a sealed events.jsonl whose read-only bit was set
+    # (IsReadOnly=True) and nothing objected. The read-only bit is a speed bump,
+    # not a seal. Step 9b is what makes the seal checkable after the fact.
     for filename in ["events.jsonl", "transcript.md"]:
         filepath = disc_dir / filename
         if filepath.exists():
@@ -180,6 +188,27 @@ def close_discussion(discussion_id: str) -> None:
             except OSError:
                 # On some systems (Windows) this may not work fully
                 pass
+
+    # Step 9b: Record a sha256 of each sealed file in the append-only manifest
+    # (metrics/layer1_manifest.jsonl). This runs here rather than being anyone's
+    # responsibility to remember: capture is enforced at the tooling layer, and
+    # a discussion that seals without a digest is a record no one can later
+    # prove was not altered.
+    #
+    # Non-fatal on failure, consistent with steps 4-8: a manifest problem must
+    # not leave a discussion half-closed. The gate's own Layer 1 integrity check
+    # reports any record that ends up with no digest as UNKNOWN — an absence of
+    # evidence that is visible rather than silent.
+    try:
+        from verify_layer1_integrity import record_seal
+
+        recorded = record_seal(discussion_id, disc_dir)
+        if recorded:
+            print(f"Layer 1 integrity: recorded {len(recorded)} digest(s) for {discussion_id}")
+        else:
+            print(f"Layer 1 integrity: digests already recorded for {discussion_id}")
+    except Exception as e:
+        print(f"Warning: Layer 1 digest recording failed (non-fatal): {e}")
 
     # Step 10: Send push notification
     try:

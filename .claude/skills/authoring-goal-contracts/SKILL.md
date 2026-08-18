@@ -12,7 +12,7 @@ R1; rules enforced by `validate_contract` in `scripts/goal_loop.py`). Author int
 example** drawn from `loops/starter/` — the grill-me cadence.
 
 > Never hand-fill the template from blank. The interview exists because the *shape* of "done" is
-> where loops succeed or fail. If the developer is at a fork, **stop and ask** (Principle #9).
+> where loops succeed or fail. If the developer is at a fork, **stop and ask** (Principle #7).
 
 ## Step 0 — Lead with the goal (state it plainly, clarify up front)
 

@@ -69,7 +69,7 @@ Unnamed failures collapse to "something went wrong." You can't build recovery ha
 **Common causes**: Time pressure, low-risk assessment, developer already familiar with the code.
 **Recovery**:
 1. Log the deferral in the retro (automatic via capture pipeline)
-2. The deferred gate must be completed before the next phase begins, or formally re-deferred with documented rationale (Principle #6)
+2. The deferred gate must be completed before the next phase begins, or formally re-deferred with documented rationale (Principle #5)
 **Max retries**: N/A — deferral is a deliberate choice, not an error
 **Escalation**: If the same education gate is deferred twice consecutively, flag in the next retro as a pattern
 

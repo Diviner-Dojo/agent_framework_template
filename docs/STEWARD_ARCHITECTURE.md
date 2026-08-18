@@ -18,13 +18,13 @@ The architecture rests on four pillars:
 
 2. **Bidirectional Propagation via Vouchers** — Changes flow through self-contained "Voucher" packets — lightweight JSON files containing the diff, content hash, classification, attribution chain, and narrative explanation. Downstream sync uses three-way merge with pinned-trait awareness. Upstream contributions use a `/gift` command that packages improvements for template consideration.
 
-3. **Graduated Autonomy** — The Steward starts as a passive observer (tracking drift, recording lineage events) and earns increasing autonomy through demonstrated accuracy. It never makes architectural decisions unilaterally — it surfaces recommendations for human approval, respecting Principle #7.
+3. **Graduated Autonomy** — The Steward starts as a passive observer (tracking drift, recording lineage events) and earns increasing autonomy through demonstrated accuracy. It never makes architectural decisions unilaterally — it surfaces recommendations for human approval, respecting Principle #6.
 
 4. **Graceful Speciation** — As derived projects diverge for different industries, the system classifies divergences as soft forks (backward-compatible specializations) or hard forks (breaking departures), tracks them as speciation events in a lineage DAG, and maintains a compatibility matrix so template changes only propagate to projects that can absorb them.
 
 The design draws on proven patterns from Linux kernel patch flow, Ubuntu's Merge-o-Matic, Google's Copybara, biological cladistics, blockchain fork semantics, CRDT conflict resolution, and open-source governance models (TC39, Rust RFCs, Python PEPs). It integrates with every existing framework component: the Four-Layer Capture Stack, ADR system, adoption-log, Rule of Three, `/ship` workflow, and multi-agent panel review.
 
-Implementation follows Principle #8 (least-complex intervention first) across five phases, each delivering standalone value. Phase 1 (observation-only) requires only the agent definition, manifest file, and a single Python utility. The full system at Phase 5 transforms the Sovereign Architect from a single-instance framework into a self-improving ecosystem where every derived project makes every other derived project stronger.
+Implementation follows *Growth has a brake* (`PHILOSOPHY.md` — least-complex intervention first, a numbered principle until v3.6) across five phases, each delivering standalone value. Phase 1 (observation-only) requires only the agent definition, manifest file, and a single Python utility. The full system at Phase 5 transforms the Sovereign Architect from a single-instance framework into a self-improving ecosystem where every derived project makes every other derived project stronger.
 
 ---
 
@@ -139,7 +139,7 @@ The Steward follows Sheridan and Verplanck's levels of automation, starting cons
 | Architectural decisions | **L2** — Present options | L4 — Recommend, execute if approved | Never fully autonomous |
 | Framework self-modification | **L2** — Present options | L3 — Narrow alternatives | Never above L4 |
 
-**Principle #7 always applies**: any change that modifies the template's canonical state (Layer 3 promotion, principle modification, agent restructuring) requires explicit human approval regardless of the Steward's autonomy level.
+**Principle #6 always applies**: any change that modifies the template's canonical state (Layer 3 promotion, principle modification, agent restructuring) requires explicit human approval regardless of the Steward's autonomy level.
 
 ### 3.4 Three Sub-Functions
 
@@ -671,7 +671,7 @@ Every divergence is explicitly classified:
 Drawing on the AOSP Generic Kernel Image model, the framework defines a boundary between **stable public interfaces** and **extensible internals**:
 
 **Stable interfaces** (modifications here trigger hard-fork classification):
-- CLAUDE.md schema (the 8 non-negotiable principles, architectural boundaries)
+- CLAUDE.md schema (the seven non-negotiable principles, architectural boundaries)
 - Agent YAML frontmatter schema (field names, types, required fields)
 - Four-Layer Capture Stack event format
 - ADR numbering and lifecycle conventions
@@ -804,7 +804,7 @@ New ADR sections for lineage-relevant decisions:
 - **Attribution:** {source type and chain}
 ```
 
-Every pinned trait references an ADR. Every hard-fork decision is recorded as an ADR. This ensures the "why" of every divergence is preserved in the framework's permanent decision record — ADRs are never deleted (Principle #5), so the rationale for every speciation event persists indefinitely.
+Every pinned trait references an ADR. Every hard-fork decision is recorded as an ADR. This ensures the "why" of every divergence is preserved in the framework's permanent decision record — ADRs are never deleted (Principle #4), so the rationale for every speciation event persists indefinitely.
 
 ### 11.3 Existing Agents
 

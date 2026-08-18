@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <!--
   How-to-use deck for the AI-Native Agentic Development Framework.
-  Revised 2026-07-09 (round-3 accuracy pass, ADR-0020..0028 era). 19 slides (added a
-  dedicated /goal-loop slide after the async-autonomy slide). Counts refreshed: commands
-  24->25, skills 21->25. Added /goal-loop + /handoff to the "What Do I Do When" and
-  cheat-sheet slides, grill-yourself to the skill sheet, cross-linked the What-It-Is deck,
-  and reconciled the /quiz Bloom-levels wording. Counts: 12 agents / 25 commands / 25 skills /
-  10 hooks / 4 rules / 9 principles (Stop hook wired 2026-07-10). Keep counts in sync with .claude/ — see the
-  syncing-framework-docs skill.
+  Rebuilt 2026-08-18 (adopter-first revision; developer-approved go-forward): NEW "Your First
+  Ten Minutes" (slide 4); slide 5 rebuilt as "From Idea to Committed Code" (research explicitly
+  allowed outside the framework; walks a non-coder from scratch); "Five Phases" moved to
+  slide 10; goal-loop builder-vs-judge citation corrected #4 -> #3. 20 slides.
+  Counts measured 2026-08-18: 12 agents / 24 commands / 25 skills / 7 principles. Hooks
+  described by function with no count stated (open developer decision on the denominator).
+  Keep in sync with .claude/ — see the syncing-framework-docs skill.
 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>How to Use — AI-Native Agentic Development Framework (Revised Sample)</title>
+<title>How to Use — AI-Native Agentic Development Framework</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -33,7 +33,6 @@
   --accent: #6d5acd;
   --accent-light: #8b7ae0;
   --accent-glow: rgba(109,90,205,0.25);
-  --accent-secondary: #3b82f6;
   --gold: #f59e0b;
   --gold-dim: rgba(245,158,11,0.15);
   --green: #10b981;
@@ -48,7 +47,6 @@
   --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.3);
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -77,9 +75,9 @@ body {
 .slide.active { opacity: 1; transform: translateX(0); pointer-events: all; }
 .slide.exit-left { opacity: 0; transform: translateX(-60px); }
 
-.slide-inner { max-width: 1200px; width: 100%; display: flex; flex-direction: column; gap: 32px; margin: auto 0; /* safe centering: short slides center, tall slides scroll from the top (fixes unreachable-top overflow) */ }
+.slide-inner { max-width: 1200px; width: 100%; display: flex; flex-direction: column; gap: 32px; margin: auto 0; /* short slides center, tall slides scroll from the top */ }
 
-/* ===== SCROLL AFFORDANCE (P4 — signals content continues below the fold) ===== */
+/* ===== SCROLL AFFORDANCE ===== */
 .scroll-fade {
   position: fixed; bottom: 49px; left: 0; right: 0; height: 44px;
   background: linear-gradient(transparent, var(--bg-primary));
@@ -157,7 +155,7 @@ h3 { font-size: clamp(1.1rem, 1.5vw, 1.4rem); font-weight: 600; }
 .code-block .flag { color: var(--gold); }
 .code-block .file { color: var(--blue); }
 
-/* ===== CODE-BLOCK CONTEXT LABELS (P1 — distinguish shell vs Claude Code) ===== */
+/* ===== CODE-BLOCK CONTEXT LABELS (shell vs Claude Code) ===== */
 .code-block.ctx { position: relative; padding-top: 38px; }
 .code-block.ctx::before {
   content: attr(data-ctx); position: absolute; top: 0; left: 0; right: 0;
@@ -195,11 +193,6 @@ h3 { font-size: clamp(1.1rem, 1.5vw, 1.4rem); font-weight: 600; }
 .flow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; padding: 20px 0; }
 .flow-step { padding: 8px 14px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 12px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .flow-arrow { color: var(--text-muted); font-size: 14px; }
-
-/* ===== SCENARIO CARD ===== */
-.scenario { border-left: 3px solid var(--accent); padding-left: 20px; margin: 8px 0; }
-.scenario h3 { font-size: 15px; color: var(--accent-light); margin-bottom: 6px; }
-.scenario p { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
 
 /* ===== ENTRANCE ANIMATIONS ===== */
 .slide.active .anim-fade-up { animation: fadeUp 0.6s ease forwards; }
@@ -246,7 +239,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
            alt="Diviner Dojo" class="title-logo anim-fade-up">
       <span class="badge badge-accent anim-fade-up-d1">Practical Guide</span>
       <h1 class="anim-fade-up-d2">How to Use the<br>Agentic Development Framework</h1>
-      <p class="subtitle anim-fade-up-d3">A step-by-step walkthrough of the commands,<br>workflows, and daily patterns that make it work.</p>
+      <p class="subtitle anim-fade-up-d3">From clone to first review in ten minutes &mdash; then the commands,<br>workflows, and daily patterns that make it work.</p>
       <div class="card anim-fade-up-d4" style="max-width:680px; margin:20px auto 0; border-left:3px solid var(--gold); text-align:left;">
         <p style="font-size:13px; color:var(--text-secondary); margin:0;"><span style="color:var(--gold); font-weight:600;">&#9888; Evolving rapidly &mdash; some parts are still experimental.</span> The <strong style="color:var(--text-primary);">core workflow &mdash; review, plan, build, deliberate &mdash; is stable.</strong> Some advanced features (memory persistence, lineage tracking, and routing) are still experimental and will change. Pin a version if you need stability; expect the experimental parts to move.</p>
       </div>
@@ -258,7 +251,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 2: WHAT THIS ACTUALLY IS (NEW — P4 mental model) ==================== -->
+  <!-- ==================== SLIDE 2: WHAT THIS ACTUALLY IS ==================== -->
   <div class="slide" data-slide="2">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Start Here</p>
@@ -281,74 +274,13 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
       </div>
 
       <div class="card anim-fade-up-d4" style="border-left:3px solid var(--blue);">
-        <p style="font-size:13px; margin:0;"><span style="color:var(--blue); font-weight:600;">Who it&rsquo;s for:</span> anyone using Claude Code to build real software who wants independent review, a record of decisions, and guardrails &mdash; without writing that machinery themselves. <span style="color:var(--text-muted);">Not sure yet? Slide&nbsp;9 (&ldquo;What Do I Do When&hellip;&rdquo;) maps common situations straight to a command. Want the architecture and the "why" first? See the <a href="diviner-dojo-framework-presentation.html" style="color:var(--blue); text-decoration:none;">What It Is</a> deck.</span></p>
+        <p style="font-size:13px; margin:0;"><span style="color:var(--blue); font-weight:600;">Who it&rsquo;s for:</span> anyone using Claude Code to build real software who wants independent review, a record of decisions, and guardrails &mdash; without writing that machinery themselves. <span style="color:var(--text-muted);">Not sure yet? Slide&nbsp;9 (&ldquo;What Do I Do When&hellip;&rdquo;) maps common situations straight to a command. Want the &ldquo;why&rdquo; and a real review replayed end-to-end? See the <a href="diviner-dojo-framework-presentation.html" style="color:var(--blue); text-decoration:none;">What It Is</a> deck.</span></p>
       </div>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 3: FROM IDEA TO CODE ==================== -->
+  <!-- ==================== SLIDE 3: SETUP ==================== -->
   <div class="slide" data-slide="3">
-    <div class="slide-inner">
-      <p class="section-label anim-fade-up">Before You Start</p>
-      <h2 class="anim-fade-up-d1">From Idea to Code: Five Phases</h2>
-      <p class="subtitle anim-fade-up-d2">Most of the planning happens <em>before</em> you write a line of code. This is the suggested approach &mdash; research first, validate second, build last.</p>
-
-      <div class="flow anim-fade-up-d3" style="margin-bottom:8px;">
-        <span class="flow-step" style="border-color:var(--gold); color:var(--gold);">1. Seed</span>
-        <span class="flow-arrow">&rarr;</span>
-        <span class="flow-step" style="border-color:var(--accent); color:var(--accent-light);">2. Anchor</span>
-        <span class="flow-arrow">&rarr;</span>
-        <span class="flow-step" style="border-color:var(--blue); color:var(--blue);">3. Scout</span>
-        <span class="flow-arrow">&rarr;</span>
-        <span class="flow-step" style="border-color:var(--green); color:var(--green);">4. Reconcile</span>
-        <span class="flow-arrow">&rarr;</span>
-        <span class="flow-step" style="border-color:var(--green); color:var(--green); border-width:2px;">5. Specify</span>
-      </div>
-
-      <div class="card-grid cols-2 anim-fade-up-d3" style="gap:12px;">
-        <div class="card" style="padding:18px;">
-          <h3><span style="color:var(--gold);">1. Seed</span> &mdash; Research &amp; Bootstrap Your Idea</h3>
-          <p style="margin-top:6px;">Explore your domain, then turn a raw idea into something concrete. The framework gives you tools for this stage &mdash; it isn&rsquo;t all manual:</p>
-          <div style="margin-top:8px; font-size:12.5px; color:var(--text-secondary); display:flex; flex-direction:column; gap:5px;">
-            <div>&bull; <code style="color:var(--accent-light);">grill-me</code> skill &mdash; have the agent interview you relentlessly (one question at a time) to pressure-test and build out a fuzzy idea before you commit.</div>
-            <div>&bull; <code style="color:var(--blue);">deep-research</code> <span style="color:var(--text-muted);">(a Claude Code built-in)</span> &mdash; a fan-out, multi-source, fact-checked research report (or use Gemini / manual reading). Save findings as markdown.</div>
-            <div>&bull; <code style="color:var(--gold);">/seed</code> &middot; <code style="color:var(--gold);">/spawn-project</code> &mdash; bootstrap that idea into a framework project (scaffold structures, wire hooks, first discussion).</div>
-          </div>
-          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Ideation &mdash; but framework-assisted, not off to the side.</p>
-        </div>
-        <div class="card" style="padding:18px;">
-          <h3><span style="color:var(--accent-light);">2. Anchor</span> &mdash; Pressure-Test with Specialists</h3>
-          <p style="margin-top:6px;">Paste your research findings into <code style="color:var(--accent-light);">/deliberate</code>. The agent panel evaluates from architecture, security, UX, and anti-groupthink perspectives. One deliberation per major theme.</p>
-          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Bridges external research into framework-captured reasoning.</p>
-        </div>
-        <div class="card" style="padding:18px;">
-          <h3><span style="color:var(--blue);">3. Scout</span> &mdash; Find Real-World Validation</h3>
-          <p style="margin-top:6px;">Use <code style="color:var(--blue);">/discover-projects</code> to find reference implementations on GitHub, then <code style="color:var(--blue);">/analyze-project</code> to score their patterns. If 3+ projects implement a pattern well, that&rsquo;s strong evidence.</p>
-          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Grounds research against actual working code.</p>
-        </div>
-        <div class="card" style="padding:18px;">
-          <h3><span style="color:var(--green);">4. Reconcile</span> &mdash; Make Decisions</h3>
-          <p style="margin-top:6px;">Run <code style="color:var(--green);">/deliberate</code> again with all evidence &mdash; research, specialist findings, and project analysis scores. Produce <strong style="color:var(--text-primary);">ADRs (Architecture Decision Records)</strong> documenting your decisions with the alternatives you considered.</p>
-          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Synthesizes everything into traceable decisions.</p>
-        </div>
-      </div>
-
-      <div class="card anim-fade-up-d4" style="padding:18px; border-color:var(--green); border-width:2px; margin-top:-4px;">
-        <div style="display:flex; align-items:center; gap:16px;">
-          <div style="flex:1;">
-            <h3><span style="color:var(--green);">5. Specify</span> &mdash; Create the Executable Plan</h3>
-            <p style="margin-top:6px;">Run <code style="color:var(--green);">/plan</code> to produce a structured spec. Specialists review it. Once approved, <code style="color:var(--green);">/build_module</code> takes over and builds it with integrated quality gates.</p>
-          </div>
-          <div style="font-size:12px; color:var(--text-muted); text-align:center; min-width:140px; padding:12px; background:var(--bg-card); border-radius:var(--radius-sm);">
-            <div style="color:var(--green); font-weight:600;">This is where<br>coding begins.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== SLIDE 4: SETUP ==================== -->
-  <div class="slide" data-slide="4">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Getting Started</p>
       <h2 class="anim-fade-up-d1">Setup: From Clone to First Command</h2>
@@ -390,7 +322,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           </div>
           <div class="card" style="margin-bottom:12px;">
             <h3>What You Get</h3>
-            <p style="margin-top:6px;">A ready-made team of AI specialists (security, architecture, QA, UX, and more), the commands that coordinate them, and automatic capture of every decision and review. <span style="color:var(--text-muted);">Under the hood: 12 agents, 25 commands, 25 on-demand skills, 10 hooks, and the four-layer capture stack.</span></p>
+            <p style="margin-top:6px;">A ready-made team of AI specialists (security, architecture, QA, UX, and more), the commands that coordinate them, and automatic capture of every decision and review. <span style="color:var(--text-muted);">Under the hood: 12 agents, 24 commands, 25 on-demand skills, lifecycle hooks at every stage of the session, and the four-layer capture stack.</span></p>
           </div>
           <div class="card" style="margin-bottom:12px; border-left:3px solid var(--teal);">
             <h3>Make It Yours</h3>
@@ -413,46 +345,91 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
+  <!-- ==================== SLIDE 4: YOUR FIRST TEN MINUTES (NEW) ==================== -->
+  <div class="slide" data-slide="4">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">First Win</p>
+      <h2 class="anim-fade-up-d1">Your First Ten Minutes</h2>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-16px;">Don&rsquo;t start by reading 25 skills. Start by making the framework prove itself on one file.</p>
+      <div class="two-col anim-fade-up-d3">
+        <div>
+          <div class="code-block ctx in-claude" style="margin-bottom:14px;">
+            <div><span class="comment"># Pick one real file you care about and ask for a review:</span></div>
+            <div><span class="cmd">/review</span> <span class="file">src/routes.py</span></div>
+            <div style="margin-top:10px;"><span class="comment"># What happens next, automatically:</span></div>
+            <div><span class="output"># 1. Risk assessed &rarr; panel selected (2&ndash;5 specialists)</span></div>
+            <div><span class="output"># 2. Each reviews in its own context, in parallel</span></div>
+            <div><span class="output"># 3. Findings synthesized &rarr; verdict rendered</span></div>
+            <div><span class="output"># 4. Report written + discussion sealed to disk</span></div>
+            <div style="margin-top:10px;"><span class="comment"># Then open what it wrote:</span></div>
+            <div><span class="file">docs/reviews/REV-&lt;timestamp&gt;.md</span></div>
+          </div>
+          <div class="card" style="border-left:3px solid var(--accent);">
+            <h3 style="font-size:14px;">No code yet? Deliberate instead.</h3>
+            <p style="font-size:13px; margin-top:4px;"><code style="color:var(--accent-light);">/deliberate "What should I build first, and how should I structure src/?"</code> works on an empty project &mdash; you get a specialist panel's trade-off analysis, captured to <code>discussions/</code>.</p>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="margin-bottom:12px; border-left:3px solid var(--green);">
+            <h3>What you&rsquo;ll be holding</h3>
+            <p style="margin-top:6px;">A verdict (<span style="color:var(--green);">approve</span> &middot; <span style="color:var(--gold);">approve with changes</span> &middot; <span style="color:var(--red);">request changes</span>), findings split into <strong style="color:var(--text-primary);">blocking</strong> vs <strong style="color:var(--text-primary);">advisory</strong>, each with the specialist and confidence that produced it &mdash; written by contexts that <em>didn&rsquo;t write the code</em>.</p>
+          </div>
+          <div class="card" style="margin-bottom:12px; border-left:3px solid var(--gold);">
+            <h3>What it costs, honestly</h3>
+            <p style="margin-top:6px;">A panel review usually takes <strong style="color:var(--text-primary);">a couple of minutes</strong> and spends several contexts&rsquo; worth of tokens on your paid Claude plan &mdash; noticeably more than a bare prompt. That&rsquo;s the price of independent review. The telemetry dashboard tracks the spend per discussion.</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--blue);">
+            <h3>Then decide</h3>
+            <p style="margin-top:6px;">If the findings earned their keep, make the template yours (<code>CLAUDE.md</code> identity, previous slide) and adopt the daily flow on the next one. If not &mdash; you spent ten minutes and one review finding out.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== SLIDE 5: DAILY WORKFLOW ==================== -->
   <div class="slide" data-slide="5">
     <div class="slide-inner">
-      <p class="section-label anim-fade-up">Daily Pattern</p>
-      <h2 class="anim-fade-up-d1">The Typical Development Flow</h2>
+      <p class="section-label anim-fade-up">The Development Flow</p>
+      <h2 class="anim-fade-up-d1">From Idea to Committed Code</h2>
+      <p class="subtitle anim-fade-up-d1" style="margin-top:-16px;">You don&rsquo;t have to start from code &mdash; and you don&rsquo;t have to be a big coder. Steps 1&ndash;3 happen once per project or feature (sometimes partly <em>outside</em> the framework); steps 4&ndash;6 are the everyday loop.</p>
       <div class="flow anim-fade-up-d2" style="margin-bottom:16px;">
-        <span class="flow-step">Write Code</span>
+        <span class="flow-step" style="border-color:var(--gold); color:var(--gold);">1. Research</span>
         <span class="flow-arrow">&rarr;</span>
-        <span class="flow-step" style="border-color:var(--blue); color:var(--blue);">/review</span>
+        <span class="flow-step" style="border-color:var(--gold); color:var(--gold);">2. Learn from others</span>
         <span class="flow-arrow">&rarr;</span>
-        <span class="flow-step">Fix Findings</span>
+        <span class="flow-step" style="border-color:var(--accent); color:var(--accent-light);">3. Decide &amp; plan</span>
         <span class="flow-arrow">&rarr;</span>
-        <span class="flow-step" style="border-color:var(--gold); color:var(--gold);">Quality Gate</span>
+        <span class="flow-step">4. Build</span>
         <span class="flow-arrow">&rarr;</span>
-        <span class="flow-step" style="border-color:var(--green); color:var(--green);">Commit</span>
+        <span class="flow-step" style="border-color:var(--blue); color:var(--blue);">5. Gate &amp; /review</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--green); color:var(--green);">6. Commit</span>
       </div>
       <div class="card-grid cols-3 anim-fade-up-d3">
+        <div class="card" style="border-left:3px solid var(--gold);">
+          <h3>1. Research Your Idea <span style="font-size:11px; color:var(--text-muted); font-weight:400;">(often outside the framework)</span></h3>
+          <p>Before any code: what technology even fits? Researching a phone app, for example, might point you to <strong style="color:var(--text-primary);">Flutter/Dart for one codebase on both Android and iOS</strong>. Use the <code style="color:var(--blue);">deep-research</code> built-in, any AI, or plain reading &mdash; and save the findings as markdown so they can feed step 3.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--gold);">
+          <h3>2. See How Others Solved It</h3>
+          <p><code style="color:var(--blue);">/discover-projects</code> finds real projects that tackled the same problem; <code style="color:var(--blue);">/analyze-project</code> scores their patterns so you learn from working code instead of guessing. If 3+ projects converge on an approach, that&rsquo;s strong evidence.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--accent);">
+          <h3>3. Decide &amp; Plan &mdash; Before Code</h3>
+          <p>Paste your research into <code style="color:var(--accent-light);">/deliberate</code> to pressure-test it, then <code style="color:var(--green);">/plan</code> turns the decisions into a spec that specialists review. <strong style="color:var(--text-primary);">Nothing has been coded yet</strong> &mdash; and that&rsquo;s the cheap place to catch a wrong turn. Full methodology: slide 10.</p>
+        </div>
         <div class="card">
-          <h3>1. Write Your Code</h3>
-          <p>Build features, fix bugs, refactor. The framework doesn't change how you write code — it changes what happens after.</p>
+          <h3>4. Build</h3>
+          <p><code style="color:var(--green);">/build_module</code> executes the approved spec task-by-task with checkpoint reviews &mdash; the AI does the typing. (Small change instead? Write it yourself and jump straight to step 5; the framework doesn&rsquo;t care who typed.)</p>
         </div>
         <div class="card" style="border-color:rgba(59,130,246,0.3);">
-          <h3>2. Run <code style="color:var(--blue);">/review</code></h3>
-          <p>The <strong>facilitator</strong> &mdash; the lead agent that runs every multi-agent workflow &mdash; assesses risk, assembles specialists, and produces a structured review with a verdict. A full panel runs in parallel, usually a couple of minutes.</p>
-        </div>
-        <div class="card">
-          <h3>3. Address Findings</h3>
-          <p><strong>Blocking</strong> findings must be fixed. <strong>Advisory</strong> findings are recommendations. The review report tells you which is which.</p>
-        </div>
-        <div class="card" style="border-color:rgba(245,158,11,0.3);">
-          <h3>4. Quality Gate</h3>
-          <p>Run <code style="color:var(--gold);">python scripts/quality_gate.py</code> or just commit &mdash; the pre-commit hook runs it automatically.</p>
+          <h3>5. Gate, Then Review</h3>
+          <p>Run <code style="color:var(--gold);">python scripts/quality_gate.py</code> (or <code>--fix</code>) so formatting, lint, and tests are green for free &mdash; then <code style="color:var(--blue);">/review</code>: the facilitator assesses risk, assembles specialists, and returns a verdict in a couple of minutes. <strong>Blocking</strong> findings must be fixed; <strong>advisory</strong> findings are recommendations.</p>
         </div>
         <div class="card" style="border-color:rgba(16,185,129,0.3);">
-          <h3>5. Commit</h3>
-          <p>If the quality gate passes and the review is clean, commit your code. The entire review is saved in <code>discussions/</code> &mdash; your searchable record of why each decision was made.</p>
-        </div>
-        <div class="card">
-          <h3>6. Education Gate</h3>
-          <p>For complex changes, run <code style="color:var(--accent-light);">/walkthrough</code> and <code style="color:var(--accent-light);">/quiz</code> to verify you understand the AI-generated code.</p>
+          <h3>6. Commit &mdash; and Understand</h3>
+          <p>Commit when clean &mdash; the pre-commit hook re-runs the quality gate as a backstop, and the whole review is saved to <code>discussions/</code>. For code you can&rsquo;t yet explain, <code style="color:var(--accent-light);">/walkthrough</code> + <code style="color:var(--gold);">/quiz</code> close the loop.</p>
         </div>
       </div>
     </div>
@@ -626,7 +603,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
       <div class="card-grid cols-2 anim-fade-up-d2" style="gap:12px;">
         <div class="card" style="padding:18px; border-left: 3px solid var(--green);">
           <h3 style="font-size:14px;">&ldquo;I have an idea but don&rsquo;t know where to start&rdquo;</h3>
-          <p style="margin-top:6px;">Research first (Phase 1), then <code style="color:var(--accent-light);">/deliberate</code> to pressure-test, then <code style="color:var(--green);">/plan</code> to create a spec.</p>
+          <p style="margin-top:6px;">Research first (the <strong>Seed</strong> phase &mdash; slide 10), then <code style="color:var(--accent-light);">/deliberate</code> to pressure-test, then <code style="color:var(--green);">/plan</code> to create a spec.</p>
         </div>
         <div class="card" style="padding:18px; border-left: 3px solid var(--accent);">
           <h3 style="font-size:14px;">&ldquo;I want to think through or stress-test an idea&rdquo;</h3>
@@ -672,8 +649,69 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 10: LEARNING COMMANDS ==================== -->
+  <!-- ==================== SLIDE 10: FROM IDEA TO CODE (moved from slide 3) ==================== -->
   <div class="slide" data-slide="10">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Starting Something Big</p>
+      <h2 class="anim-fade-up-d1">From Idea to Code: Five Phases</h2>
+      <p class="subtitle anim-fade-up-d2">For a serious feature or a new project, most of the value is created <em>before</em> the first line of code. Research first, validate second, build last.</p>
+
+      <div class="flow anim-fade-up-d3" style="margin-bottom:8px;">
+        <span class="flow-step" style="border-color:var(--gold); color:var(--gold);">1. Seed</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--accent); color:var(--accent-light);">2. Anchor</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--blue); color:var(--blue);">3. Scout</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--green); color:var(--green);">4. Reconcile</span>
+        <span class="flow-arrow">&rarr;</span>
+        <span class="flow-step" style="border-color:var(--green); color:var(--green); border-width:2px;">5. Specify</span>
+      </div>
+
+      <div class="card-grid cols-2 anim-fade-up-d3" style="gap:12px;">
+        <div class="card" style="padding:18px;">
+          <h3><span style="color:var(--gold);">1. Seed</span> &mdash; Research &amp; Bootstrap Your Idea</h3>
+          <p style="margin-top:6px;">Explore your domain, then turn a raw idea into something concrete. The framework gives you tools for this stage &mdash; it isn&rsquo;t all manual:</p>
+          <div style="margin-top:8px; font-size:12.5px; color:var(--text-secondary); display:flex; flex-direction:column; gap:5px;">
+            <div>&bull; <code style="color:var(--accent-light);">grill-me</code> skill &mdash; have the agent interview you relentlessly (one question at a time) to pressure-test and build out a fuzzy idea before you commit.</div>
+            <div>&bull; <code style="color:var(--blue);">deep-research</code> <span style="color:var(--text-muted);">(a Claude Code built-in)</span> &mdash; a fan-out, multi-source, fact-checked research report (or use Gemini / manual reading). Save findings as markdown.</div>
+            <div>&bull; <code style="color:var(--gold);">/seed</code> &middot; <code style="color:var(--gold);">/spawn-project</code> &mdash; bootstrap that idea into a framework project (scaffold structures, wire hooks, first discussion).</div>
+          </div>
+          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Ideation &mdash; but framework-assisted, not off to the side.</p>
+        </div>
+        <div class="card" style="padding:18px;">
+          <h3><span style="color:var(--accent-light);">2. Anchor</span> &mdash; Pressure-Test with Specialists</h3>
+          <p style="margin-top:6px;">Paste your research findings into <code style="color:var(--accent-light);">/deliberate</code>. The agent panel evaluates from architecture, security, UX, and anti-groupthink perspectives. One deliberation per major theme.</p>
+          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Bridges external research into framework-captured reasoning.</p>
+        </div>
+        <div class="card" style="padding:18px;">
+          <h3><span style="color:var(--blue);">3. Scout</span> &mdash; Find Real-World Validation</h3>
+          <p style="margin-top:6px;">Use <code style="color:var(--blue);">/discover-projects</code> to find reference implementations on GitHub, then <code style="color:var(--blue);">/analyze-project</code> to score their patterns. If 3+ projects implement a pattern well, that&rsquo;s strong evidence.</p>
+          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Grounds research against actual working code.</p>
+        </div>
+        <div class="card" style="padding:18px;">
+          <h3><span style="color:var(--green);">4. Reconcile</span> &mdash; Make Decisions</h3>
+          <p style="margin-top:6px;">Run <code style="color:var(--green);">/deliberate</code> again with all evidence &mdash; research, specialist findings, and project analysis scores. Produce <strong style="color:var(--text-primary);">ADRs (Architecture Decision Records)</strong> documenting your decisions with the alternatives you considered.</p>
+          <p style="margin-top:8px; font-size:12px; color:var(--text-muted);">Synthesizes everything into traceable decisions.</p>
+        </div>
+      </div>
+
+      <div class="card anim-fade-up-d4" style="padding:18px; border-color:var(--green); border-width:2px; margin-top:-4px;">
+        <div style="display:flex; align-items:center; gap:16px;">
+          <div style="flex:1;">
+            <h3><span style="color:var(--green);">5. Specify</span> &mdash; Create the Executable Plan</h3>
+            <p style="margin-top:6px;">Run <code style="color:var(--green);">/plan</code> to produce a structured spec. Specialists review it. Once approved, <code style="color:var(--green);">/build_module</code> takes over and builds it with integrated quality gates.</p>
+          </div>
+          <div style="font-size:12px; color:var(--text-muted); text-align:center; min-width:140px; padding:12px; background:var(--bg-card); border-radius:var(--radius-sm);">
+            <div style="color:var(--green); font-weight:600;">This is where<br>coding begins.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 11: LEARNING COMMANDS ==================== -->
+  <div class="slide" data-slide="11">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Learning &amp; Growth</p>
       <h2 class="anim-fade-up-d1">Commands That Make You Better</h2>
@@ -687,7 +725,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </div>
         <div class="card" style="border-left: 3px solid var(--gold);">
           <h3>/quiz <span class="badge badge-gold" style="font-size:10px;">assessment</span></h3>
-          <p style="margin-top:8px;">Bloom's taxonomy quiz on code you're about to ship. Tests understanding across up to six Bloom's levels &mdash; recall through create &mdash; weighted toward Apply/Analyze. Includes debug scenarios and change-impact questions.</p>
+          <p style="margin-top:8px;">Bloom's taxonomy quiz on code you're about to ship. Tests understanding across up to six Bloom's levels &mdash; recall through create &mdash; weighted toward Analyze/Evaluate/Create. Includes debug scenarios and change-impact questions.</p>
           <div class="code-block ctx in-claude" style="margin-top:12px; padding:12px 16px; padding-top:36px;">
             <div><span class="cmd">/quiz</span> <span class="file">src/routes.py</span></div>
           </div>
@@ -710,8 +748,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 11: PROCESS IMPROVEMENT ==================== -->
-  <div class="slide" data-slide="11">
+  <!-- ==================== SLIDE 12: PROCESS IMPROVEMENT ==================== -->
+  <div class="slide" data-slide="12">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Continuous Improvement</p>
       <h2 class="anim-fade-up-d1">You Improve It &mdash; With Structure</h2>
@@ -766,7 +804,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           </div>
           <div class="card" style="margin-top:12px; margin-bottom:12px;">
             <h3>/promote <span style="color:var(--text-muted); font-weight:400;">&mdash; Layer 3</span></h3>
-            <p style="font-size:13px; margin-top:4px;">When a pattern proves valuable across multiple reviews, promote it to curated memory &mdash; the framework&rsquo;s durable <strong>Layer 3</strong> &mdash; with <code style="color:var(--green);">/promote</code>. Requires your explicit approval (Principle #7).</p>
+            <p style="font-size:13px; margin-top:4px;">When a pattern proves valuable across multiple reviews, promote it to curated memory &mdash; the framework&rsquo;s durable <strong>Layer 3</strong> &mdash; with <code style="color:var(--green);">/promote</code>. Requires your explicit human approval (Principle #6).</p>
           </div>
           <div class="card">
             <h3>/batch-evaluate <span style="color:var(--text-muted); font-weight:400;">&mdash; Audit</span></h3>
@@ -777,8 +815,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 12: QUALITY GATE ==================== -->
-  <div class="slide" data-slide="12">
+  <!-- ==================== SLIDE 13: QUALITY GATE ==================== -->
+  <div class="slide" data-slide="13">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Safety Net</p>
       <h2 class="anim-fade-up-d1">The Quality Gate &mdash; Your Last Line of Defense</h2>
@@ -843,8 +881,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 13: ASYNC AUTONOMY / AFK COLLABORATION ==================== -->
-  <div class="slide" data-slide="13">
+  <!-- ==================== SLIDE 14: ASYNC AUTONOMY ==================== -->
+  <div class="slide" data-slide="14">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Async Autonomy</p>
       <h2 class="anim-fade-up-d1">Working While You&rsquo;re Away From Keyboard</h2>
@@ -903,8 +941,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 14: GOAL-LOOP ==================== -->
-  <div class="slide" data-slide="14">
+  <!-- ==================== SLIDE 15: GOAL-LOOP ==================== -->
+  <div class="slide" data-slide="15">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Goal-Seeking</p>
       <h2 class="anim-fade-up-d1">/goal-loop &mdash; Iterate Until a Goal Is Met</h2>
@@ -923,7 +961,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
               <div class="step-num" style="background:var(--blue-dim); color:var(--blue);">2</div>
               <div class="step-info">
                 <h3>The tick loop runs</h3>
-                <p>A deterministic driver (<code>scripts/goal_loop.py</code>) owns control flow: each tick the model produces a <strong>build delta</strong>, then an <strong>independent judge</strong> checks it against a criterion. The builder is never its own judge (Principle&nbsp;#4).</p>
+                <p>A deterministic driver (<code>scripts/goal_loop.py</code>) owns control flow: each tick the model produces a <strong>build delta</strong>, then an <strong>independent judge</strong> checks it against a criterion. The builder is never its own judge (Principle&nbsp;#3).</p>
               </div>
             </div>
             <div class="step-item">
@@ -952,8 +990,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 15: LINEAGE & SHIP ==================== -->
-  <div class="slide" data-slide="15">
+  <!-- ==================== SLIDE 16: LINEAGE & SHIP ==================== -->
+  <div class="slide" data-slide="16">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Release &amp; Lineage</p>
       <h2 class="anim-fade-up-d1">Shipping and Tracking Your Fork</h2>
@@ -996,8 +1034,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 16: CHEAT SHEET ==================== -->
-  <div class="slide" data-slide="16">
+  <!-- ==================== SLIDE 17: COMMAND CHEAT SHEET ==================== -->
+  <div class="slide" data-slide="17">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Reference</p>
       <h2 class="anim-fade-up-d1">Command Cheat Sheet</h2>
@@ -1049,8 +1087,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 17: SKILL CHEAT SHEET (NEW — round 2) ==================== -->
-  <div class="slide" data-slide="17">
+  <!-- ==================== SLIDE 18: SKILL CHEAT SHEET ==================== -->
+  <div class="slide" data-slide="18">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Reference</p>
       <h2 class="anim-fade-up-d1">Skill Cheat Sheet</h2>
@@ -1087,7 +1125,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
             <h3 style="font-size:14px;">Work While You&rsquo;re Away From Keyboard</h3>
             <div style="margin-top:6px; font-size:12.5px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px;">
               <div><code style="color:var(--blue);">notifying-the-developer</code> &mdash; push a question to your phone and read the reply safely.</div>
-              <div><code style="color:var(--blue);">collaborating-async</code> &mdash; the two-way loop that lets the agent keep working while you&rsquo;re out (see Slide&nbsp;13).</div>
+              <div><code style="color:var(--blue);">collaborating-async</code> &mdash; the two-way loop that lets the agent keep working while you&rsquo;re out (see Slide&nbsp;14).</div>
             </div>
           </div>
           <div class="card" style="padding:16px; border-left:3px solid var(--teal);">
@@ -1103,8 +1141,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 18: GETTING THE MOST OUT OF IT ==================== -->
-  <div class="slide" data-slide="18">
+  <!-- ==================== SLIDE 19: GETTING THE MOST OUT OF IT ==================== -->
+  <div class="slide" data-slide="19">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Avoid These Traps</p>
       <h2 class="anim-fade-up-d1">Getting the Most Out of It</h2>
@@ -1116,7 +1154,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </div>
         <div class="card" style="padding:16px; border-left:3px solid var(--red);">
           <h3 style="font-size:14px;">Committing code you didn&rsquo;t <code style="color:var(--blue);">/review</code></h3>
-          <p style="margin-top:6px;">Never. The agent that wrote the code can&rsquo;t objectively judge it &mdash; independent review is the whole point (Principle #4).</p>
+          <p style="margin-top:6px;">Never. The agent that wrote the code can&rsquo;t objectively judge it &mdash; it must never be its own sole evaluator, and the review runs in a separate context (Principle #3).</p>
         </div>
         <div class="card" style="padding:16px; border-left:3px solid var(--gold);">
           <h3 style="font-size:14px;">Treating the <em>code</em> as the deliverable</h3>
@@ -1128,7 +1166,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </div>
         <div class="card" style="padding:16px; border-left:3px solid var(--blue);">
           <h3 style="font-size:14px;">Reflexively overriding &ldquo;are you sure?&rdquo;</h3>
-          <p style="margin-top:6px;">When Claude asks a clarifying question before building, that&rsquo;s the <strong style="color:var(--text-primary);">~95% confidence gate</strong> (Principle #9) saving you wrong-path tokens. Answer it &mdash; don&rsquo;t auto-dismiss it.</p>
+          <p style="margin-top:6px;">When Claude asks a clarifying question before building, that&rsquo;s the <strong style="color:var(--text-primary);">~95% confidence gate</strong> &mdash; the 95% rule, clarify before acting (Principle #7) &mdash; saving you wrong-path tokens. Answer it &mdash; don&rsquo;t auto-dismiss it.</p>
         </div>
         <div class="card" style="padding:16px; border-left:3px solid var(--blue);">
           <h3 style="font-size:14px;">Merging code you can&rsquo;t explain</h3>
@@ -1146,8 +1184,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
     </div>
   </div>
 
-  <!-- ==================== SLIDE 19: GET STARTED ==================== -->
-  <div class="slide" data-slide="19">
+  <!-- ==================== SLIDE 20: GET STARTED ==================== -->
+  <div class="slide" data-slide="20">
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up" style="width:80px; height:80px;">
@@ -1178,7 +1216,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </a>
       </div>
       <p style="margin-top:24px; color:var(--text-muted); font-size:13px;">
-        AI-Native Agentic Development Framework v3.5 &middot; Diviner Dojo
+        AI-Native Agentic Development Framework v3.6 &middot; Diviner Dojo
         <br><a href="mailto:diviner-dojo@gmail.com" style="color:var(--text-muted); text-decoration:none;">diviner-dojo@gmail.com</a>
       </p>
     </div>
@@ -1197,17 +1235,17 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
   </div>
   <div class="nav-controls">
     <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
-    <span class="slide-counter" id="slideCounter">1 / 19</span>
+    <span class="slide-counter" id="slideCounter">1 / 20</span>
     <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">&#8594;</button>
   </div>
 </div>
 
-<div class="progress-bar" id="progressBar" style="width: 5.26%;"></div>
+<div class="progress-bar" id="progressBar" style="width: 5%;"></div>
 
 <script>
 // ===== SLIDE NAVIGATION =====
 let currentSlide = 1;
-const totalSlides = 19;
+const totalSlides = 20;
 
 function showSlide(n) {
   if (n < 1 || n > totalSlides) return;

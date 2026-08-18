@@ -1,0 +1,264 @@
+---
+discussion_id: DISC-20260612-144008-t4a-knowledge-loop-revival-review
+started: 2026-06-12T14:40:30.324795+00:00
+ended: 2026-06-13T00:06:33.827535+00:00
+agents: [architecture-consultant, docs-knowledge, facilitator, qa-specialist]
+total_turns: 9
+---
+
+# Discussion: DISC-20260612-144008-t4a-knowledge-loop-revival-review
+
+## Turn 1 — facilitator (evidence)
+*2026-06-12T14:40:30.324795+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Implement SPEC-20260612-004321 (T4-A knowledge-loop revival) — three sub-units on branch feat/t4a-knowledge-loop: P1 reconnect read path, P2 clean capture stream and severity calibration, P3 make /promote usable.
+- **Files/scope**: scripts/extract_findings.py (R2.2 boilerplate + R2.3 severity rework), scripts/init_db.py (R2.1 is_noise column + migration), scripts/mine_patterns.py (R2.5 is_noise filter), scripts/quality_gate.py (R3.2 promotion backlog advisory), scripts/knowledge_dashboard.py (R2.5 noise-aware counts), scripts/backfill_finding_noise.py (new, R2.4), .claude/commands/review.md (R1.2 prior findings pre-read), .claude/commands/promote.md (R3.1 human-readable queue), .claude/skills/searching-prior-art/SKILL.md (R1.1 two new locations), .claude/skills/selecting-review-gates/SKILL.md (severity-calibration ref), .claude/skills/severity-calibration/SKILL.md (new R2.6), docs/adr/ADR-0022 (new), new test files for AC2-AC9.
+- **Developer-stated motivation**: The framework knowledge loop is write-only — 396 findings captured over 4 months with 0 ever promoted. Root causes: 53 critical vs 1 high severity skew (body-scan classifier), scaffold boilerplate reaching findings table, read path never querying the findings DB or transcripts, /promote showing opaque hex instead of human-readable summaries.
+- **Explicit constraints**: C1 existing regression tests must stay green (no existing _BOILERPLATE_SUMMARIES or _SUBSTANTIVE_SUMMARIES entries edited). C2 flag-never-delete (no row deletions). C4 idempotent migration. C5 ADR-0022 required.
+
+---
+
+## Turn 2 — qa-specialist (proposal)
+*2026-06-12T14:46:24.124104+00:00 | confidence: 0.83*
+*tags: qa-review, confirmed-bug-fix, medium-risk*
+
+## QA Review — T4-A knowledge-loop-revival
+
+confidence: 0.83
+
+### Finding 1
+Severity: high
+Category: missing-regression
+Location: tests/test_extract_findings_classify_severity.py, tests/test_backfill_finding_noise.py, tests/test_mine_patterns_is_noise.py
+Description: Three new test files guard confirmed bugs (53-critical body-scan inflation, scaffold leaking into findings, mine_patterns consuming noise rows). None carry @pytest.mark.regression. The key regression guard — test_body_injection_does_not_force_critical_when_summary_benign — will not appear in 'pytest -m regression' sweeps.
+Recommendation: Add @pytest.mark.regression to at minimum: test_body_injection_does_not_force_critical_when_summary_benign (AC3b), test_backfill_flags_scaffold_rows_as_noise (AC5), test_mine_patterns_discussion_id_path_excludes_noise and its --all sibling.
+Rule: testing_requirements.md — every confirmed-bug fix MUST include a regression test tagged @pytest.mark.regression
+
+### Finding 2
+Severity: medium
+Category: missing-edge-case
+Location: scripts/extract_findings.py:68-74, tests/test_extract_findings_classify_severity.py
+Description: _EXPLICIT_SEVERITY_RE covers [CRITICAL] bracket form and Severity: colon form but has no tests for double-star bold form (**HIGH**: text) or equality form (severity=medium). Agents may emit these forms in the wild.
+Recommendation: Add parametrized test cases for **HIGH**: text, *LOW*: text, severity=medium.
+Rule: testing_requirements.md — test both success paths and error/edge cases
+
+### Finding 3
+Severity: medium
+Category: weak-assertion
+Location: tests/test_backfill_finding_noise.py:214-224 (test_backfill_dry_run_writes_nothing)
+Description: Dry-run test asserts db_writes==0 and DB unchanged, but does not assert histogram counts (noise_flagged, total). A bug that zeroed the histogram while writing nothing would pass.
+Recommendation: Add assert result['noise_flagged'] == len(_SCAFFOLD_ROWS) and assert result['total'] == len(_SCAFFOLD_ROWS).
+Rule: testing_requirements.md — every test must have meaningful assertions
+
+### Finding 4
+Severity: low
+Category: missing-edge-case
+Location: tests/test_backfill_finding_noise.py, scripts/backfill_finding_noise.py:44-46
+Description: run_backfill early-return for missing DB has no dedicated test.
+Recommendation: Add test_backfill_missing_db_returns_zero_dict.
+
+### Finding 5
+Severity: low
+Category: missing-edge-case
+Location: tests/test_extract_findings_classify_severity.py
+Description: No test for highest-tier-wins when summary contains multiple tier keywords (e.g., security + race condition should yield high not medium).
+Recommendation: Add test_highest_tier_wins_when_summary_has_multiple_tier_keywords.
+
+### Strengths
+- Body-isolation regression test explicitly documents the failure mode of the old code in its docstring.
+- Idempotency verified with behavioral assertion (db_writes==0), not just no-exception.
+- test_pre_migration_db_gains_is_noise_via_backfill is a genuine integration test of the live-upgrade path.
+- All four polarity cases for mine_patterns covered symmetrically.
+- TestCheckPromotionBacklog asserts result is True (identity, not just truthiness).
+
+---
+
+## Turn 3 — architecture-consultant (proposal)
+*2026-06-12T14:46:38.567971+00:00 | confidence: 0.86*
+*tags: architecture-review, medium-risk*
+
+## Architecture Review — T4-A knowledge-loop-revival
+
+confidence: 0.86
+
+### Overall Assessment
+No structural concerns block the commit. ADR-0022 is honored throughout; flag-never-delete invariant and idempotent migration hold at both entry points.
+
+### Finding 1
+Severity: low
+Category: pattern-inconsistency
+Location: scripts/backfill_finding_noise.py:17 vs scripts/mine_patterns.py:17
+Description: backfill_finding_noise.py uses sys.path.insert(0, str(Path(__file__).parent)) before its sibling import; mine_patterns.py uses a bare sibling import relying on test harness and cwd. Two different conventions in the same directory. Backfill's approach is actually more robust.
+Recommendation: No action needed for this commit. Deferred: standardize on backfill's approach or add a scripts/conftest.py. Do NOT remove backfill's insert — that would make it order-dependent.
+ADR: ADR-0022 (sanctions cross-import; does not specify resolution mechanism)
+
+### Finding 2
+Severity: info
+Category: coupling
+Location: scripts/init_db.py:153-160, backfill recalibration
+Description: After backfill, is_noise=1 rows retain pre-calibration severity (irrelevant for current consumers which all filter is_noise=0). Any future query reading severity without is_noise=0 guard would silently mix two severity semantics. Already documented in ADR-0022.
+Recommendation: No code change. Optionally add a one-line schema comment near severity/is_noise columns in init_db.py pointing to ADR-0022.
+
+### Finding 3
+Severity: info
+Category: drift (potential, not present)
+Location: scripts/init_db.py:18-24 (_MIGRATION_ALLOWED_TYPES)
+Description: New migration entry is correctly admitted — 'INTEGER NOT NULL DEFAULT 0' was added to _MIGRATION_ALLOWED_TYPES in lockstep. Allowlist guard updated correctly. Noting only to confirm guard kept pace.
+Recommendation: None. Working as designed.
+
+### Strengths
+- Filter-once-at-the-boundary (mine_patterns excludes noise before writing to pattern_sightings) — structurally correct.
+- Single source of truth for classifier via cross-import is the right trade over duplicated logic.
+- Advisory wire-up matched existing precedent exactly (check_build_status_freshness pattern).
+- Migration safety doubled at two independent entry points (init_db + backfill).
+- Graceful degradation on pre-migration DBs uniform across all new read sites.
+
+---
+
+## Turn 4 — architecture-consultant (critique)
+*2026-06-12T18:16:58.285357+00:00 | confidence: 0.8*
+
+Severity: Info
+Category: architecture
+Summary: Private-symbol cross-import in backfill_finding_noise.py is a sound single-source-of-truth choice for this scale.
+Detail: backfill_finding_noise.py:20 imports _is_verdict_boilerplate and _classify_severity from extract_findings. Both source definitions (extract_findings.py:143, 167) carry docstring comments declaring the intentional cross-import, and ADR-0022 Consequences documents the boundary. This is the correct call: re-implementing the classifier in the backfill would create two divergent histograms — exactly the consistency failure ADR-0022 'Filter at query time only' alternative rejected. The shared symbols are pure functions (no I/O, no global state), so the coupling is to a stable contract, not to mutable internals. The fragility is real but minimal: a signature change to either function silently breaks the backfill. The signature-change risk is mitigated by the sys.path.insert(0, ...) sibling-import shim and by the comments. For a <5k-LOC script tier with one consumer, extracting a third 'severity_rules' module would be premature abstraction (CLAUDE.md Principle #8). No action needed.
+
+Severity: Low
+Category: architecture
+Summary: backfill_finding_noise._ensure_is_noise_column duplicates the migration DDL instead of routing through init_db's allowlist-guarded path.
+Detail: init_db.py:28 defines _assert_safe_migration with _MIGRATION_ALLOWED_TABLES / _MIGRATION_ALLOWED_TYPES allowlists (security review B1) so every ALTER TABLE in the framework passes one guarded chokepoint. backfill_finding_noise.py:25-31 issues its own 'ALTER TABLE findings ADD COLUMN is_noise INTEGER NOT NULL DEFAULT 0' on a raw connection, bypassing that guard. The DDL string here is a hard-coded literal with no interpolation, so there is zero injection surface today — this is a consistency/drift concern, not a security one. The intent is reasonable (the backfill must self-heal a pre-migration DB without requiring a separate init_db run). But it establishes a second, ungoverned migration site: a future edit here is not protected by the allowlist that init_db's own comment (line 414) says 'should be mirrored' across migration sites. Recommendation: either call init_db(db_path, quiet=True) to run the canonical guarded migration before backfill, or import and assert via _assert_safe_migration. Exception: does not apply if the team intends backfill to remain fully standalone with no scripts/ import coupling — but it already imports from extract_findings, so that boundary is already crossed. ADR Reference: ADR-0022 (Cross-import boundary), init_db security B1.
+
+Severity: Info
+Category: architecture
+Summary: is_noise migration fits the existing _MIGRATION_ALLOWED_TYPES allowlist correctly and ADR-0022 covers all required sections.
+Detail: 'INTEGER NOT NULL DEFAULT 0' was added to _MIGRATION_ALLOWED_TYPES (init_db.py:23) and the migration tuple at init_db.py:410 passes _assert_safe_migration cleanly; the schema CREATE TABLE (line 158) and the ALTER both match, and idx_findings_is_noise (line 303) is added — no schema/migration drift. The NOT NULL DEFAULT 0 constant-default ALTER is safe on SQLite (no table rewrite), as the inline comment notes. The two-connection pattern in backfill (autocommit migration conn closed at line 51, then a fresh transactional conn for the data backfill) is the correct separation: DDL on an autocommit connection avoids holding an implicit transaction open across the read-modify-write, and keeps the idempotent ALTER out of the backfill's atomic UPDATE batch. _classify_severity's new optional summary param (extract_findings.py:164) is backward-compatible (defaults to None, derives from content via _extract_summary); both call sites pass it correctly — extract_findings.py:288 and backfill line 77. quality_gate wire-up is correct: check_promotion_backlog() is called unconditionally at line 786 after the other advisory checks, its return value is discarded (not appended to results, total not incremented), matching the other advisories. ADR-0022 covers Context (root causes A/B), Decision (P1-P3), the C2 flag-never-delete invariant, and the derived-project migration note (Consequences: 'Derived projects gain the column on next init_db run'). Structurally complete.
+
+---
+
+## Turn 5 — docs-knowledge (critique)
+*2026-06-12T18:18:01.577201+00:00 | confidence: 0.8*
+
+Documentation review for feat/t4a-knowledge-loop. Six file groups assessed. Overall quality is high — ADR-0022 is complete and actionable, severity-calibration/SKILL.md is well-structured, and the knowledge flow design is sound. Three findings follow, in descending severity.
+
+---
+
+Severity: MEDIUM
+Category: documentation
+Summary: review.md Step 1.5 snippet contains a literal placeholder `<SCOPE_FILES>` that will cause a SyntaxError if the model runs it verbatim.
+Detail: Line 201 of .claude/commands/review.md reads `files = [pathlib.Path(f).name for f in <SCOPE_FILES>]`. The angle-bracket token is not valid Python. The surrounding code block is presented as an executable snippet (it is inside a fenced python block), yet it cannot run without substitution. Unlike the prose-level template variables in the Step 3 bash blocks (which are clearly fill-in-the-blanks within shell here-docs), this one sits inside a runnable Python snippet with no substitution hint. A model executing it literally will get a SyntaxError; a model that correctly infers the substitution will work, but the comment `# basenames only` does not explain how to supply the list. The spec (R1.2) and AC1 describe this as a runnable snippet. A one-line comment such as `# replace <SCOPE_FILES> with the list from Step 0 scope detection` would resolve the ambiguity without changing behaviour.
+Future Reader Impact: Any model agent or human operator copying this snippet as-is hits a SyntaxError. Given that the surrounding code is otherwise complete and runnable, a future reader will reasonably assume the whole block is copy-paste-safe.
+
+---
+
+Severity: LOW
+Category: documentation
+Summary: severity-calibration/SKILL.md does not document the `[HIGH]` inline bracket form it implicitly supports — the SKILL shows only the `Severity: HIGH` block form and the `[HIGH]` inline form as examples in the capture pipeline comment, but the Required Format section shows only the block form and one bracket example without explaining the closing-bracket requirement.
+Detail: The `_EXPLICIT_SEVERITY_RE` regex (extract_findings.py line 68-74) recognises three forms: `Severity: X`, `[X]` (bracketed), and `*X*`/`**X**:` (bold markdown). The skill's Required Format section (lines 96-110) shows the block form (`Severity: HIGH`) and the inline `[HIGH]` form. However the inline example shows `[HIGH] \`mine_patterns.py\` …` without noting that the closing `]` is required for the regex to match. A specialist writing `[HIGH finding]` or `[HIGH: …]` would silently fall through to keyword heuristics. The skill would be more reliable if it noted: "the bracketed form requires the closing bracket immediately after the tier word — `[HIGH]` not `[HIGH: …]`."
+Future Reader Impact: Specialists copy-pasting the inline form incorrectly will produce un-parsed markers. The fallback heuristic still produces a severity tier, so the failure is silent and will not surface as an error — making it hard to diagnose if the severity histogram remains noisy after this change.
+
+---
+
+Severity: LOW
+Category: documentation
+Summary: ADR-0022 does not note which model tier produced the findings that motivate it, leaving teams using non-opus tiers unable to assess whether the 53-critical skew diagnosis would reproduce for them.
+Detail: The ADR context section describes findings from a live DB audit (396 rows, 53 critical vs 1 high). This audit was the output of multi-agent review work. Per the model-awareness documentation responsibility, when a review finding or architectural insight was produced by a specific model tier, that context is worth noting — especially for a framework ADR that derived projects will read to decide whether to run the backfill. A one-sentence note such as "audit conducted with facilitator at opus tier; the classification defect is deterministic (it is a regex, not model-dependent) and will reproduce regardless of model tier" would resolve the gap and prevent a derived-project team from wondering whether their lower-tier findings triggered the same skew.
+Future Reader Impact: A team adopting this framework and evaluating ADR-0022 to decide whether to run backfill_finding_noise.py may wonder whether the 53-critical skew is a model-tier artefact or a deterministic code defect. The ADR's Alternatives Considered section is clear on the technical decision; the context section is the right place for this one-sentence clarification.
+
+---
+
+Strengths noted for the record (not findings):
+- severity-calibration/SKILL.md is complete: all five tiers have scope tests, one-sentence tests, concrete framework examples, the default-down rule, and required format. AC10 satisfied.
+- searching-prior-art/SKILL.md entries 5 and 6 are correctly numbered, runnable, and implement the two-level graceful degrade (try/except for absent column, silent skip for absent table) exactly as specified in R1.1 and AC1.
+- review.md Step 1.5 graceful-degrade is correct: the single try/except sqlite3.OperationalError catches both absent-table and absent-column, matching the promote.md guard pattern.
+- promote.md Step 1 correlated subquery is correct SQL: `(SELECT ps.summary FROM pattern_sightings ps WHERE ps.pattern_hash = pc.finding_pattern ORDER BY ps.id LIMIT 1) AS summary` ensures one row per candidate regardless of sighting count (AC7 satisfied).
+- selecting-review-gates/SKILL.md now opens with a Severity Calibration section that cross-references the skill and states the explicit-marker requirement (AC10 satisfied for the selecting-review-gates side).
+- ADR-0022 covers all five required elements: context (53-critical skew, root causes A+B), decision (is_noise flag + reclassify), alternatives considered (delete vs flag, filter-at-query-time, broad content scan), constraint C2 (flag-never-delete) as a named consequence, and derived-project migration note. Status is accepted, discussion_id references the spec review. Appropriately brief.
+- The cross-import boundary between backfill_finding_noise.py and extract_findings.py is documented in both files with explicit comments and in ADR-0022 Consequences — the "intentional cross-import" pattern is discoverable from three locations.
+- Knowledge flow architecture is sound: the severity-calibration skill is referenced from both review.md (Step 1.5 intro + Step 5 specialist dispatch) and selecting-review-gates/SKILL.md, creating two independent prompting paths that will produce Severity: markers at the source for _classify_severity to consume.
+
+---
+
+## Turn 6 — qa-specialist (critique)
+*2026-06-12T18:19:46.339567+00:00 | confidence: 0.8*
+
+QA Review — T4-A Knowledge Loop Revival (feat/t4a-knowledge-loop)
+All 1124 tests pass, including all new AC2/AC3/AC4/AC5/AC6/AC8 tests and the existing C1 regression suite (tests/test_extract_findings_verdict_filter.py, 30 tests).
+
+---
+
+Severity: HIGH
+Category: correctness
+Summary: check_promotion_backlog staleness-trigger raises TypeError on naive datetime strings from the database.
+Detail: The staleness path at quality_gate.py lines 506-510 calls datetime.fromisoformat(last_activity.replace('Z', '+00:00')) then subtracts from datetime.now(UTC). When reflection or promotion_candidates rows were inserted with bare ISO strings (no timezone offset, e.g. '2025-01-01T00:00:00'), fromisoformat returns a naive datetime and the subtraction raises TypeError: can't subtract offset-naive and offset-aware datetimes. The bare except Exception at line 491 only wraps the DB query, not the datetime arithmetic, so the exception propagates and crashes the advisory check rather than silently returning True. Reproduce: insert a reflections row with created_at='2025-01-01T00:00:00' and 1 pending promotion_candidates row (below threshold=5), then call check_promotion_backlog(). Fix: move the datetime arithmetic inside the try/except, or use datetime.fromisoformat(last_activity).replace(tzinfo=UTC) as a fallback for naive strings.
+
+---
+
+Severity: MEDIUM
+Category: testing
+Summary: The staleness-trigger path in check_promotion_backlog has zero test coverage.
+Detail: TestCheckPromotionBacklog covers: always-returns-true, warns-when-pending>5, silent-on-empty, gate-exit-code-zero. None of these exercise the staleness branch (line 502-516): pending > 0 AND last_activity is set AND the count is at or below the threshold AND the date is older than _PROMOTION_STALE_DAYS. The TypeError bug above (HIGH finding) would not be caught by the current test suite. A missing test for an existing branch is medium severity on its own; combined with a confirmed crash bug it becomes the primary gap.
+Recommendation: Add a test that seeds 1 pending candidate and a stale reflection row (created_at > 30 days ago), monkeypatches PROJECT_ROOT to the tmp DB, calls check_promotion_backlog(), and asserts both that it returns True and that a warning was captured via capsys. Use a timezone-aware ISO string to guard against the naive-datetime crash.
+
+---
+
+Severity: MEDIUM
+Category: testing
+Summary: _EXPLICIT_SEVERITY_RE does not match the bare **HIGH** form (bold without trailing text), and this gap is untested.
+Detail: The regex pattern requires the severity word to be followed by ], 0-2 stars then colon/whitespace, or end-of-string. '**HIGH**' (bold markers with no trailing content) does not match because the closing ** does not satisfy any of those alternatives. In practice framework-agent outputs use 'Severity: HIGH' or '**HIGH**:' but '**HIGH**' alone (a valid Markdown bold word) is silently ignored and falls through to keyword heuristics. The existing test (test_explicit_critical_bracket_marker_parsed) covers [CRITICAL] but not **HIGH** standalone. This is a low-probability but plausible format and its miss is silent (no error, just a possible wrong severity tier). Recommendation: either document that **WORD** without trailing punctuation is intentionally not supported (comment in the regex), or fix the terminal anchor to also match before a word boundary.
+
+---
+
+Severity: LOW
+Category: testing
+Summary: No test verifies check_promotion_backlog is NOT appended to the results list in the main() flow.
+Detail: AC8 specifies 'NOT in results list, NOT incrementing total'. The TestCheckPromotionBacklog tests confirm the function always returns True but do not inspect the results list or the total count in a simulated main() invocation. The check is confirmed correct by code inspection (line 786 calls check_promotion_backlog() as a standalone statement, not results.append(...)), but there is no test that would catch a future regression where someone accidentally changes it to results.append(check_promotion_backlog()). This is a low-severity gap since the code is clearly correct; a paranoid regression test would prevent future drift.
+
+---
+
+Strengths:
+- All 65 new tests are deterministic, well-named, and use tmp_path isolation. No shared mutable state.
+- Backfill idempotency is verified correctly: second run db_writes==0, confirmed both by test and manual probe.
+- The boilerplate filter correctly preserves substantive English sentences containing 'validation' and 'pass' (AC2 anti-regression cases are thorough).
+- _classify_severity None/empty summary paths are handled safely (fall through to default medium).
+- C1 preserved: all 30 existing verdict-filter regression tests pass unchanged.
+- C4 migration idempotency is tested at both the init_db level and the backfill _ensure_is_noise_column level.
+- The is_noise=0 filter on both mine_patterns query branches is tested separately with positive and negative cases.
+
+---
+
+## Turn 7 — facilitator (critique)
+*2026-06-13T00:05:15.693708+00:00 | confidence: 0.8*
+*tags: finding-verification*
+
+Finding verification (resumed session after abnormal headless end; all 3 specialists' events were captured pre-crash, no re-dispatch needed). 18 findings across qa(9)/arch(6)/docs(3). VERIFIED-ALREADY-FOLDED by the prior session: qa HIGH naive-datetime TypeError in check_promotion_backlog (normalization present at quality_gate.py ~506); docs MED SCOPE_FILES placeholder comment (review.md:201); arch LOW backfill DDL allowlist bypass (backfill now routes through _init_db). That last fold EXPOSED a latent ordering bug the panel missed: init_db created idx_findings_is_noise in the main index block BEFORE the migration loop, crashing init_db on any pre-ADR-0022 database (AC4 test red at session start) — fixed by creating that index after the migration loop. VERIFIED-FALSE: qa critique MED 'bare **HIGH** does not match' (empirical probe: it matches); docs LOW '[HIGH: ...] falls through' (it parses). Adjacent REAL gap found during refutation: the closing class rejected ')' '.' ',' so '(severity: medium)' — documented in the regex's own comment — silently fell through; the existing test passed only coincidentally via default-medium. FOLDED THIS SESSION: regex closing-class widening + 9-form parametrized pin; @pytest.mark.regression markers (qa F1); dry-run histogram asserts (qa F3); missing-DB test (qa F4); highest-tier-wins test (qa F5); naive-datetime staleness regression test (qa MED); results-list source pin (qa LOW); init_db schema comment (arch F2); ADR-0022 provenance note (docs LOW); severity-calibration SKILL accepted-forms note corrected to empirical truth (docs LOW). DEFERRED-AS-ADVISORY: arch F1 LOW sys.path convention standardization (scripts/conftest.py candidate). Live DB migrated + backfilled: 397 rows, 140 noise-flagged, 94 severity recalibrations, criticals 53 to 1.
+
+---
+
+## Turn 8 — facilitator (synthesis)
+*2026-06-13T00:05:36.133457+00:00 | confidence: 0.87*
+*tags: blocking:1, advisory:17, speculative:0, model-tiers:qa-sonnet+arch-sonnet+docs-sonnet*
+
+## Request Context
+- **What was requested**: Implement SPEC-20260612-004321 (T4-A knowledge-loop revival): P1 reconnect read path, P2 clean capture stream + severity calibration, P3 usable /promote; full workflow on feat/t4a-knowledge-loop.
+- **Files/scope**: scripts/{extract_findings,init_db,mine_patterns,quality_gate,knowledge_dashboard,backfill_finding_noise}.py, .claude/commands/{review,promote}.md, .claude/skills/{searching-prior-art,selecting-review-gates,severity-calibration}, docs/adr/ADR-0022, 4 new test files.
+- **Developer-stated motivation**: 396 findings / 0 promoted in 4 months; 53-critical severity skew; scaffold noise; opaque /promote queue.
+- **Explicit constraints**: C1 existing regression tests green; C2 flag-never-delete; C4 idempotent migration; C5 ADR-0022.
+
+## Verdict: APPROVE (approve-with-changes pre-fold; all actionable findings folded)
+Panel: qa-specialist 0.83 + architecture-consultant 0.86 + docs-knowledge (structured-dialogue, 2 rounds, sonnet tier). Weighted ~0.85.
+Blocking: 1 — qa HIGH naive-datetime TypeError crashing check_promotion_backlog (folded: UTC normalization + naive-string regression test). Advisory: 17; 14 folded (across the prior partial session + this resumption), 2 verified-false (bare-**HIGH** and bracket-colon claims — refuted empirically; refutation surfaced the REAL trailing-punctuation gap, also folded with a 9-form parametrized pin), 1 deferred-as-advisory (arch F1 LOW sys.path convention — scripts/conftest.py candidate, next refactor slice).
+Facilitator catch beyond panel: init_db index-before-migration ordering bug (idx_findings_is_noise crashed init_db on pre-ADR-0022 DBs) — introduced by the allowlist fold, caught by AC4 test, fixed by post-migration index creation.
+Live DB migrated + backfilled (constraint C2 honored: 0 deletions): 397 rows, 140 noise, 94 recalibrations, criticals 53 to 1, ADR-0022 goal achieved on real data.
+Confidence annotation: 0 speculative (<0.80), 0 unscored. Model tiers: qa:sonnet, arch:sonnet, docs-knowledge:sonnet; facilitator = Fable main loop.
+
+---
+
+## Turn 9 — facilitator (reflection)
+*2026-06-13T00:06:33.827535+00:00 | confidence: 0.8*
+*tags: reflection, reflection-deferral*
+
+Reflection round deferred per lean-dispatch policy (resumed session; specialist critiques captured in rounds 1-2). Education gate deferred to the open cohort per auth E; scope recorded in REV-20260612-144008.
+
+---

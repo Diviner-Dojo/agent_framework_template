@@ -15,7 +15,6 @@ Code does not exist in a vacuum — its history reveals patterns that a point-in
 
 ## Domain Lens
 
-Before analyzing, apply this reasoning sequence:
 1. **Check file churn**: how many changes in the last 30 commits? Flag 5+ as high churn
 2. **Look for recent refactors**: renames, moves, restructuring in progress — signals of active evolution
 3. **Search for reverted changes** — a signal of instability worth flagging for specialists

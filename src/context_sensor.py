@@ -8,7 +8,9 @@ coverage-measured place (``src/`` is on the ``--cov`` perimeter).
 
 Responsibilities:
     * Load the per-model threshold config (``config/model_context_profiles.yaml``).
-    * Resolve a model id -> threshold profile via ``min(fraction*window, abs_cap)``.
+    * Resolve a model id -> threshold profile via ``min(fraction*window, abs_cap)``,
+      normalizing harness/snapshot id variants before falling back (see
+      :func:`resolve_threshold`).
     * Read context occupancy from the statusLine-written sidecar, or fall back to
       a transcript-token estimate (reusing ``scripts/ingest_token_usage.py``).
     * Decide whether to inject a soft/hard wrap-up nudge, debounced per session.
@@ -78,6 +80,15 @@ _HARDCODED_DEFAULT_PROFILE_NAME = "haiku_200k"
 # ---------------------------------------------------------------------------
 
 
+#: The three ways a model id can arrive at a profile. ``exact`` = the id is a key
+#: in the config's ``models:`` map. ``normalized`` = a suffix-stripped form of the
+#: id is a key (see :func:`_resolution_candidates`). ``default`` = nothing matched
+#: and the conservative ``defaults.profile`` floor was used.
+RESOLUTION_EXACT = "exact"
+RESOLUTION_NORMALIZED = "normalized"
+RESOLUTION_DEFAULT = "default"
+
+
 @dataclass(frozen=True)
 class ThresholdProfile:
     """Resolved wrap-up thresholds for a specific model.
@@ -89,8 +100,23 @@ class ThresholdProfile:
         hard_tok: Effective hard threshold = ``min(hard_fraction*window, hard_cap)``.
         auto_compact_tok: Harness auto-compaction backstop, in tokens (informational).
         model: The model id this was resolved for, or ``None``.
-        matched: ``True`` if ``model`` mapped to a profile; ``False`` if it fell
-            back to the conservative default.
+        matched: ``True`` if ``model`` reached a profile deliberately (exactly OR via
+            normalization); ``False`` if it fell back to the conservative default.
+            This is the operator-facing "chosen vs defaulted" bit and its meaning is
+            unchanged from ADR-0018.
+        resolution: Which of the three routes was taken — ``"exact"``,
+            ``"normalized"``, or ``"default"``. This is the third state ``matched``
+            cannot express, and is what distinguishes "the config names this model"
+            from "we inferred it from a variant suffix".
+        resolved_model_id: The ``models:`` key that was actually hit (equal to
+            ``model`` for an exact match, the stripped base id for a normalized
+            match, ``None`` when defaulted).
+
+    Invariant maintained by :func:`resolve_threshold`:
+    ``matched == (resolution != RESOLUTION_DEFAULT)``. The two new fields carry
+    defaults ONLY so that existing positional construction keeps working; they are
+    purely informational and never influence a threshold, so their default value
+    has no fail-safe consequence.
     """
 
     profile_name: str
@@ -100,6 +126,8 @@ class ThresholdProfile:
     auto_compact_tok: int
     model: str | None
     matched: bool
+    resolution: str = RESOLUTION_EXACT
+    resolved_model_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +221,94 @@ def _as_int(value: object, fallback: int) -> int:
 # Threshold resolution.
 # ---------------------------------------------------------------------------
 
+# A harness-emitted context-window variant suffix, e.g. "claude-opus-5[1m]".
+_BRACKET_SUFFIX_RE = re.compile(r"^(?P<base>.+?)\[(?P<tag>[^\[\]]*)\]$")
+# A date-pinned snapshot suffix, e.g. "claude-opus-5-20260601". Exactly 8 digits.
+_DATE_SUFFIX_RE = re.compile(r"^(?P<base>.+?)-\d{8}$")
+# A variant tag that advertises a window size, e.g. "1m" -> 1_000_000, "200k" -> 200_000.
+_WINDOW_TAG_RE = re.compile(r"^(?P<value>\d+)(?P<unit>[kKmM])$")
+
+
+def _parse_window_tag(tag: str) -> int | None:
+    """Return the token count a variant tag advertises, or ``None`` if unparseable.
+
+    ``"1m"`` -> ``1_000_000``; ``"200k"`` -> ``200_000``. Anything we cannot read as
+    a window size returns ``None``, which the caller treats as "refuse to normalize"
+    (an unknown variant could denote a *smaller* window, and guessing permissively is
+    the one failure direction this module must not take).
+    """
+    match = _WINDOW_TAG_RE.match(tag.strip())
+    if match is None:
+        return None
+    scale = 1_000_000 if match.group("unit").lower() == "m" else 1_000
+    return int(match.group("value")) * scale
+
+
+def _resolution_candidates(model: str) -> list[tuple[str, int | None]]:
+    """Ordered ``(candidate_id, window_hint)`` fallbacks to try AFTER the exact id.
+
+    Two — and only two — suffix forms are stripped, most-specific first:
+
+    1. A bracketed context-window variant (``claude-opus-5[1m]`` -> ``claude-opus-5``),
+       carrying the tag's advertised window as a hint the caller uses as a guard.
+    2. A date-pinned snapshot (``claude-opus-5-20260601`` -> ``claude-opus-5``). Both
+       strips compose, so ``claude-opus-5-20260601[1m]`` yields both intermediate forms.
+
+    A version segment is deliberately NEVER stripped: the config maps
+    ``claude-sonnet-4-5`` to a 200K profile and ``claude-sonnet-4-6`` to a 1M one, so
+    collapsing a minor version would cross window classes and could pick the
+    permissive side. An unparseable bracket tag aborts normalization entirely
+    (returns ``[]``) rather than risk widening the window on a guess.
+    """
+    candidates: list[tuple[str, int | None]] = []
+    seen = {model}
+    base = model
+    window_hint: int | None = None
+
+    bracket = _BRACKET_SUFFIX_RE.match(base)
+    if bracket is not None:
+        window_hint = _parse_window_tag(bracket.group("tag"))
+        if window_hint is None:
+            return []
+        base = bracket.group("base")
+        if base and base not in seen:
+            candidates.append((base, window_hint))
+            seen.add(base)
+
+    dated = _DATE_SUFFIX_RE.match(base)
+    if dated is not None:
+        undated = dated.group("base")
+        if undated and undated not in seen:
+            candidates.append((undated, window_hint))
+    return candidates
+
+
+def _select_profile_name(
+    model: str | None, models: dict, profiles: dict, default_name: str
+) -> tuple[str, str, str | None]:
+    """Pick a profile name for ``model``; return ``(name, resolution, matched_key)``.
+
+    The ladder is exact -> normalized -> default, so a currently-resolving id can
+    never change behaviour. A normalized hit is accepted only when the variant tag
+    does not advertise a window *smaller* than the base model's profile window;
+    otherwise we fail safe to the conservative default rather than hand a 200K
+    session a 1M model's headroom.
+    """
+    if not model:
+        return default_name, RESOLUTION_DEFAULT, None
+    if model in models:
+        return models[model], RESOLUTION_EXACT, model
+    for candidate, window_hint in _resolution_candidates(model):
+        name = models.get(candidate)
+        if name is None:
+            continue
+        if window_hint is not None:
+            profile_window = _as_int((profiles.get(name) or {}).get("context_window"), 0)
+            if profile_window and window_hint < profile_window:
+                break
+        return name, RESOLUTION_NORMALIZED, candidate
+    return default_name, RESOLUTION_DEFAULT, None
+
 
 def resolve_threshold(model: str | None, config: dict | None = None) -> ThresholdProfile:
     """Resolve a model id to its effective soft/hard wrap-up thresholds.
@@ -201,6 +317,37 @@ def resolve_threshold(model: str | None, config: dict | None = None) -> Threshol
     percentage binds on small windows and the absolute cap binds on 1M windows.
     An unknown/absent model falls back to the most conservative profile, so its
     thresholds are <= every known model's.
+
+    The numbers this returns are a **judgment, not a measurement**. Nothing in
+    this repository answers "at what occupancy does output quality degrade?", so
+    the caps encode a reading of third-party research plus a mechanical
+    constraint (leave room to write the handoff before the harness compacts).
+    The reasoning is recorded in the config's ``CAP RECALIBRATION`` block and is
+    bound to this function by
+    ``tests/test_context_sensor.py::TestCapRationaleIsRecorded`` and
+    ``::TestHandoffHeadroomInvariant`` — read those before changing a cap.
+
+    Resolution is a three-rung ladder — exact id, then a normalized id, then the
+    default (see :func:`_select_profile_name`). Normalization exists because the
+    harness emits ids the config's ``models:`` map does not literally contain
+    (``claude-opus-5[1m]``, ``claude-opus-5-20260601``); before it, every such
+    session was measured against the 200K floor while really holding a 1M window.
+    Exact match is tried first, so no id that resolves today can change.
+
+    Scope of the fail-safe guarantee — read this before adding a ``models:`` key.
+    What the *mechanism* guarantees is narrow: normalization only ever tries
+    *shorter* candidate ids and still requires an exact hit in ``models:``, so an
+    id matching no key reaches the conservative default exactly as before. It does
+    NOT make the answer safe; it makes the answer *the config's answer*. And it
+    changes what a key means: an entry that used to answer for one literal id now
+    answers for that id's whole family (``claude-opus-4`` also answers for
+    ``claude-opus-4-20250514``). A key overstating a model's window therefore
+    overstates it for N ids, and ``hard_tok`` — computed as a fraction of that
+    window — can land above ``auto_compact_fraction * real window``, i.e. we would
+    fire the handoff only after the harness had already compacted the thread.
+    The config carries the matching obligation (VERIFIED WINDOWS ONLY) and
+    ``tests/test_context_sensor.py::TestConfigKeyWindowsAreVerified`` enforces it;
+    that test, not this docstring, is what keeps the direction fail-safe.
 
     Args:
         model: Full model id (e.g. ``claude-opus-4-7``) or ``None``.
@@ -214,11 +361,17 @@ def resolve_threshold(model: str | None, config: dict | None = None) -> Threshol
     models = config.get("models") if isinstance(config.get("models"), dict) else {}
     default_name = (config.get("defaults") or {}).get("profile", _HARDCODED_DEFAULT_PROFILE_NAME)
 
-    matched = bool(model) and model in models
-    profile_name = models.get(model, default_name) if model else default_name
+    profile_name, resolution, resolved_id = _select_profile_name(
+        model, models, profiles, default_name
+    )
+    if not profiles.get(profile_name):
+        # The map named a profile the config does not define. Report the fallback
+        # honestly rather than stamping a tier whose numbers we did not use.
+        profile_name, resolution, resolved_id = default_name, RESOLUTION_DEFAULT, None
     profile = profiles.get(profile_name) or profiles.get(default_name) or _HARDCODED_PROFILE
     if profile is _HARDCODED_PROFILE:
         profile_name = _HARDCODED_DEFAULT_PROFILE_NAME
+    matched = resolution != RESOLUTION_DEFAULT
 
     window = _as_int(profile.get("context_window"), _HARDCODED_PROFILE["context_window"])
     soft = min(
@@ -230,7 +383,9 @@ def resolve_threshold(model: str | None, config: dict | None = None) -> Threshol
         _as_int(profile.get("hard_abs_cap_tokens"), window),
     )
     auto = int(float(profile.get("auto_compact_fraction", 0.83)) * window)
-    return ThresholdProfile(profile_name, window, soft, hard, auto, model, matched)
+    return ThresholdProfile(
+        profile_name, window, soft, hard, auto, model, matched, resolution, resolved_id
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -321,10 +476,36 @@ def read_sidecar(
     return data
 
 
+def window_disagreement(occ: Occupancy, profile: ThresholdProfile) -> bool:
+    """Return ``True`` when the harness-reported window differs from the profile's.
+
+    This is the cheap cross-check that would have caught the ADR-0031 defect while
+    it was live: the statusLine payload reported a 1,000,000-token window while the
+    resolved ``haiku_200k`` profile assumed 200,000, and nothing compared the two.
+    A mismatch in either direction is worth surfacing — too small means we are
+    taxing the session, too large means we are being dangerously permissive.
+
+    Only the ``statusline`` source is checked; the transcript-estimate path derives
+    ``occ.window`` from the profile itself, so a comparison there is vacuous.
+    """
+    return (
+        occ.source == "statusline"
+        and occ.window > 0
+        and profile.context_window > 0
+        and occ.window != profile.context_window
+    )
+
+
 def build_sidecar_record(
     occ: Occupancy, profile: ThresholdProfile, session_id: str, *, now: float | None = None
 ) -> dict:
-    """Assemble the JSON-serializable sidecar record for an occupancy reading."""
+    """Assemble the JSON-serializable sidecar record for an occupancy reading.
+
+    Carries the resolution provenance (``resolution`` / ``matched`` /
+    ``resolved_model_id``) and the ``window_mismatch`` cross-check alongside the
+    numbers, so a human reading a sidecar off disk can tell whether the tier was
+    chosen for this model or silently defaulted.
+    """
     return {
         "session_id": session_id,
         "used_tokens": occ.used_tokens,
@@ -335,6 +516,11 @@ def build_sidecar_record(
         "soft_tok": profile.soft_tok,
         "hard_tok": profile.hard_tok,
         "source": occ.source,
+        "resolution": profile.resolution,
+        "matched": profile.matched,
+        "resolved_model_id": profile.resolved_model_id,
+        "profile_window": profile.context_window,
+        "window_mismatch": window_disagreement(occ, profile),
         "written_at_epoch": time.time() if now is None else now,
     }
 
@@ -491,9 +677,26 @@ def process_statusline(
     warn = " [wrap-up]" if occ.used_tokens >= profile.soft_tok else ""
     return (
         f"ctx {occ.used_percentage:.0f}% | {occ.used_tokens // 1000}K/{occ.window // 1000}K | "
-        f"{profile.profile_name} | soft {profile.soft_tok // 1000}K hard "
+        f"{_tier_token(occ, profile)} | soft {profile.soft_tok // 1000}K hard "
         f"{profile.hard_tok // 1000}K{warn}"
     )
+
+
+def _tier_token(occ: Occupancy, profile: ThresholdProfile) -> str:
+    """Render the tier name with a one-char ASCII provenance marker.
+
+    ``opus_1m`` (exact) · ``opus_1m~`` (normalized) · ``haiku_200k?`` (defaulted) ·
+    ``haiku_200k!`` (the window cross-check disagrees — the loudest state, and the
+    one that was invisible while ADR-0031's defect was live). Markers are ASCII so
+    the cp1252 statusLine regression test keeps holding.
+    """
+    if window_disagreement(occ, profile):
+        return f"{profile.profile_name}!"
+    if profile.resolution == RESOLUTION_DEFAULT:
+        return f"{profile.profile_name}?"
+    if profile.resolution == RESOLUTION_NORMALIZED:
+        return f"{profile.profile_name}~"
+    return profile.profile_name
 
 
 # ---------------------------------------------------------------------------
@@ -543,22 +746,85 @@ def _resolve_occupancy(
     return estimate_from_transcript(project_root=project_root or PROJECT_ROOT)
 
 
-def _nudge_text(level: str, occ: Occupancy, profile: ThresholdProfile) -> str:
-    """Build the fixed-template nudge (numeric values only — no untrusted text)."""
-    pct = f"{occ.used_percentage:.0f}"
+def _nudge_text(level: str) -> str:
+    """Build the model-facing nudge. FIXED TEXT — no numbers, ever.
+
+    **This function must never interpolate a value.** Not the occupancy, not the
+    percentage, not the threshold, not the window, not the profile name. It is a
+    constant lookup and it is deliberately shaped so that adding a number requires
+    changing its signature.
+
+    Why (ADR-0033, amendment 2026-08-08). The Anthropic reference names surfacing a
+    remaining-token count to the model as a *cause* of the failure this machinery is
+    supposed to prevent, twice: "surfacing remaining-token counts to the model can
+    cause premature wrap-up behavior; avoid showing them where possible", and, on
+    long-running agents, "it can worry about running out of context — suggesting a
+    new session or trimming its own work — most often when the harness surfaces a
+    remaining-token countdown. Avoid showing explicit context-budget counts."
+    This hook was doing exactly that on every single prompt, e.g.
+    "Context HARD wrap-up: ~651,312 tokens (~65% of the opus_1m window; hard
+    threshold 400,000)" — three budget figures, injected into the model's context.
+
+    What was kept and what was dropped, deliberately:
+      * DROPPED — every figure, and the "before context degrades" / "before quality
+        degrades" clauses. There is no documented quality cliff (see the config's
+        CAP RECALIBRATION block); those clauses asserted one.
+      * KEPT — the checkpoint instruction itself, at both levels. Deleting the nudge
+        was the other option on the table and was rejected: the mechanism exists so a
+        session checkpoints before it dies, and losing the thread is the worse
+        failure. The documentation objects to the *countdown*, not to being told to
+        checkpoint, so the countdown is what goes.
+      * ADDED — a reassurance clause, which is the reference's own recommended
+        mitigation for context anxiety: without one, a bare "wrap up now" still
+        reads as scarcity pressure. See the constraint on its wording below.
+
+    **THE CONSTRAINT THAT SHAPES THE WORDING: this text is profile-independent, so
+    it may only assert what is true at the TIGHTEST profile.** The first version of
+    this amendment said "Context remaining is ample", justified by opus_1m leaving
+    430000 tokens (~17x the handoff reserve) above its hard cap. That justification
+    only ever surveyed the 1M class. Measured 2026-08-08 by piping a real payload
+    through the hooks, a `sonnet_200k` session at 141K/200K received the identical
+    sentence — with 26000 tokens left before the harness auto-compacts, i.e. 1.04x
+    the reserve and 1.42x the measured cost of one handoff. "Ample", plus "do not
+    trim your work ... on account of context", told the profile closest to the
+    mechanical floor the opposite of its situation. That is the same failure this
+    amendment was convened to fix, mirrored: the old text over-stated scarcity to
+    every session, and the fix under-stated it to every session.
+
+    What replaced it is the claim the system actually guarantees everywhere: room to
+    write the handoff **is reserved** at the threshold. That holds for all four
+    profiles by construction — ``TestHandoffHeadroomInvariant`` requires
+    ``auto_compact_tok - hard_tok >= 25000`` and the measured handoff cost sits under
+    that reserve — so the sentence is enforced rather than asserted. It carries the
+    same anti-anxiety payload (do not rush, do not truncate, do not bail to a new
+    session) without claiming anything about how full the window is.
+
+    The developer-facing signal is unchanged and still carries every number: it is
+    the status line (:func:`process_statusline`), which prints to the terminal and is
+    never injected into the model's context.
+
+    Enforced by ``tests/test_context_sensor.py::TestModelFacingNudgeCarriesNoFigures``,
+    which asserts the emitted text is digit-free across a sweep of occupancies, that
+    the status line still carries digits for the same readings, and that the
+    reassurance clause is true on the tightest profile the config defines.
+    """
     if level == "hard":
         return (
-            f"⛔ Context HARD wrap-up: ~{occ.used_tokens:,} tokens "
-            f"(~{pct}% of the {profile.profile_name} window; hard threshold "
-            f"{profile.hard_tok:,}). Stop starting new work. Run the "
-            f"`wrapping-up-sessions` skill or `/handoff` NOW to checkpoint, update "
-            f"BUILD_STATUS.md, and write the handoff before context degrades / auto-compaction."
+            "Checkpoint due (HARD). Stop starting new work. Run the "
+            "`wrapping-up-sessions` skill or `/handoff` now: checkpoint the current "
+            "step, update BUILD_STATUS.md, and write the handoff so the thread "
+            "survives if this session ends. Room to write it in full is reserved at "
+            "this threshold, so write it properly rather than rushing: wrap up "
+            "because the checkpoint is due, not because you have run out of room. "
+            "Do not trim your work, shorten your answers, or suggest a new session on "
+            "account of context."
         )
     return (
-        f"⚠ Context soft wrap-up: ~{occ.used_tokens:,} tokens "
-        f"(~{pct}% of the {profile.profile_name} window; soft threshold "
-        f"{profile.soft_tok:,}). Finish the current atomic step, then run the "
-        f"`wrapping-up-sessions` skill / `/handoff` to write a handoff before quality degrades."
+        "Checkpoint due (soft). Finish the current atomic step, then run the "
+        "`wrapping-up-sessions` skill / `/handoff` to write a handoff so the thread "
+        "survives if this session ends. Room to write it in full is reserved at this "
+        "threshold, so write it properly: do not trim your work, shorten your "
+        "answers, or suggest a new session on account of context."
     )
 
 
@@ -577,6 +843,12 @@ def evaluate_guard(
     below soft (the flags are cleared). Below soft, returns ``{}`` (silence).
 
     ``state_dir``, ``config``, and ``project_root`` are injectable for testing.
+
+    The occupancy and thresholds decide **whether** to speak; they never appear in
+    **what** is said. The injected text is fixed and figure-free (see
+    :func:`_nudge_text`) because surfacing a remaining-token count to the model is
+    itself a documented cause of premature wrap-up. The numbers stay on the
+    developer-facing status line.
 
     Returns:
         ``{"additionalContext": <str>}`` to inject, or ``{}`` for silence.
@@ -604,12 +876,12 @@ def evaluate_guard(
             return {}
         _set_flag(soft_flag)
         _set_flag(hard_flag)
-        return {"additionalContext": _nudge_text("hard", occ, profile)}
+        return {"additionalContext": _nudge_text("hard")}
     # level == "soft"
     if _flag_exists(soft_flag):
         return {}
     _set_flag(soft_flag)
-    return {"additionalContext": _nudge_text("soft", occ, profile)}
+    return {"additionalContext": _nudge_text("soft")}
 
 
 def _flag_exists(path: Path | None) -> bool:

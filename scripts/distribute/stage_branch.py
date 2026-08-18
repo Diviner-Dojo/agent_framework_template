@@ -18,7 +18,7 @@ that legitimately does not exist for an externally-staged proposal) must not blo
 real quality gate is run explicitly by the orchestrator post-stage, and the human reviews the
 branch before merging it ("push the proposal, pull the apply").
 
-Usage (library only — invoked by ``.claude/commands/distribute.md``):
+Usage (library only — invoked by ``.claude/commands/apply-framework.md``):
     from scripts.distribute.stage_branch import stage
 """
 

@@ -8,6 +8,8 @@
 #     must be part of the key — it is NOT tier-stable).
 #   - `models:` resolves a full model ID -> a profile. Model IDs churn
 #     quarterly; adding a model is a ONE-LINE edit here, never a migration.
+#   - Keys are BASE model IDs. The sensor normalizes before falling back, so you
+#     do NOT list harness/snapshot variants (see ID NORMALIZATION below).
 #   - This `models:` map is DELIBERATELY independent of model_pricing.yaml's
 #     `models:` map (different update cadences: pricing on price changes,
 #     profiles on new-model windows). ADR-0018 records this conscious
@@ -17,18 +19,94 @@
 #   effective_soft = min(soft_wrapup_fraction * context_window, soft_abs_cap_tokens)
 #   effective_hard = min(hard_wrapup_fraction * context_window, hard_abs_cap_tokens)
 #   The percentage binds on the 200K window; the absolute cap binds on the 1M
-#   window, so large windows get more headroom WITHOUT paying for ~550K of
-#   resident context rot. Comparison is on INTEGER tokens, inclusive (>=).
+#   window, so the 1M trigger is a DECIDED number rather than a by-product of
+#   the window size. Comparison is on INTEGER tokens, inclusive (>=).
+#   This block fixes WHICH TERM BINDS, never the cap VALUES: those are set in
+#   the profiles below and justified in CAP RECALIBRATION (2026-08-08), whose
+#   governing record is ADR-0033 (which supersedes the 1M cap VALUES of
+#   ADR-0018 and nothing else — ADR-0018 still governs this structure).
 #   auto_compact_fraction is the harness backstop, NOT our trigger — we always
 #   fire soft (then hard) BELOW it.
 #
-# RESEARCH BASIS (no Anthropic-official hard %; third-party benchmarks):
-#   - High-quality "effective working fraction" ~= 50-65% of the window.
-#   - Claude degrades slowest among frontier models but is NOT immune to
-#     "context rot" / "lost in the middle".
-#   - Harness auto-compaction default ~83% is the floor we stay above.
+# ID NORMALIZATION (src/context_sensor.py::resolve_threshold):
+#   The running harness does NOT emit the bare IDs listed under `models:`. It
+#   emits a context-window variant suffix (`claude-opus-5[1m]`), and Anthropic
+#   publishes date-pinned snapshots (`claude-opus-5-20260601`). Resolution is a
+#   three-rung ladder:
+#     1. EXACT     — the ID is a key below. Always tried first, so adding a
+#                    literal variant key here still wins and pins that variant.
+#     2. NORMALIZED — strip a trailing `[...]` variant tag and/or a trailing
+#                    -YYYYMMDD snapshot date, then require an EXACT hit here.
+#     3. DEFAULT   — `defaults.profile` (the conservative floor).
+#   Fail-safe is preserved at every rung: normalization only ever tries SHORTER
+#   candidate IDs and still demands an exact key, so an unrecognised model lands
+#   on the floor exactly as before. Two extra guards:
+#     - a variant tag advertising a window SMALLER than the matched profile's
+#       (`claude-opus-5[200k]`) is REFUSED -> floor, not the 1M profile;
+#     - an unparseable tag (`claude-opus-5[thinking]`) aborts normalization -> floor.
+#   A version segment is NEVER stripped: `claude-sonnet-4-5` is 200K while
+#   `claude-sonnet-4-6` is 1M, so collapsing a minor version could cross window
+#   classes toward the permissive side.
+#   Which rung fired is recorded in the occupancy sidecar (`resolution`,
+#   `resolved_model_id`, `window_mismatch`) and marked on the status line
+#   (`~` normalized, `?` defaulted, `!` window cross-check disagrees) — a silent
+#   fail-safe default is what let ADR-0031's defect run unnoticed.
+#
+# VERIFIED WINDOWS ONLY (the rule normalization forces on this file):
+#   A key may appear under `models:` ONLY if its context window has been checked
+#   against the authoritative Anthropic model catalog, and the profile it points
+#   at declares THAT window. This is not tidiness — it is the precondition the
+#   ladder's fail-safe property depends on.
+#     Before normalization a key answered for exactly one literal id, so a wrong
+#     key was one wrong answer. After normalization a key is a FAMILY-WIDE PREFIX
+#     TARGET: `claude-opus-4` also answers for `claude-opus-4-20250514`,
+#     `claude-opus-4[1m]`, and every future snapshot. An unverified key is now an
+#     unverified answer for N ids, not one — and if it over-states the window,
+#     hard_tok is computed from a window the model does not have.
+#   The number that must hold is `hard_tok < auto_compact_fraction * REAL window`
+#   — i.e. we always fire the hard wrap-up BEFORE the harness auto-compacts.
+#   Over-stating a 200K model's window as 1M breaks exactly that: hard 400000 vs
+#   a real backstop of 166000, so the handoff would fire only after compaction had
+#   already destroyed the thread. That is worse than the token tax the ladder fixes.
+#   (That illustration got worse with the 2026-08-08 cap recalibration below — a
+#   mis-keyed 200K model now overshoots its backstop by 234000 tokens instead of
+#   the 14000 it overshot when the 1M hard cap was 180000. The VERIFIED WINDOWS
+#   ONLY rule was already load-bearing; raising the 1M caps raised the cost of
+#   breaking it by ~2.2x.)
+#   Enforced by `tests/test_context_sensor.py::TestConfigKeyWindowsAreVerified`,
+#   which fails on any key absent from its verified-window table. "Historically X
+#   — re-check at add-time" is NOT a verification; do the check or omit the key
+#   (an omitted key falls to the conservative floor, which is always safe).
+#
+# WHAT THE CAP IS FOR (read this before the numbers):
+#   RETIRED 2026-08-08: no documented quality cliff. This block previously cited a
+#   third-party "effective working fraction ~= 50-65% of the window" and a
+#   context-rot / lost-in-the-middle argument, and used them to justify the cap
+#   values. That justification is WITHDRAWN as unsupported. The authoritative
+#   Anthropic reference states, for Claude Opus 5, a 1M-token context window as
+#   both the DEFAULT and the MAXIMUM, and that instruction following, tool calling,
+#   and reasoning STAY STRONG ACROSS THE FULL WINDOW. Anthropic publishes no
+#   degradation threshold. The retired band is third-party, older, and was measured
+#   on earlier model generations; it never described the models this config maps.
+#
+#   The cap therefore exists for TWO reasons, neither of which is quality:
+#     1. COST — resident context is re-billed every turn net of cache, so a session
+#        that runs to 700000 pays for 700000 on every subsequent turn. This is the
+#        half of ADR-0018's objection that survives, and it is undisputed.
+#     2. HANDOFF HEADROOM — the session must still be able to WRITE its handoff
+#        (and the developer must be able to act on it) before the harness compacts.
+#        Measured below; it is a mechanical floor, not a quality judgment.
+#   Anything in this file that reads as "wrap up before the model gets worse" is a
+#   leftover and should be deleted, not re-argued.
+#
+#   Documented numbers this file is allowed to lean on:
+#     - Anthropic's server-side compaction DEFAULT TRIGGER: 150000 tokens. This is
+#       the anchor the caps are now derived from (see CAP RECALIBRATION).
+#     - Harness auto-compaction backstop, ~83% of the window: the floor we stay
+#       above so a hard nudge always has room to act.
+#   Neither is a quality threshold. Both are context-management thresholds.
 
-last_updated: 2026-07-03
+last_updated: 2026-08-08
 unit: tokens
 schema_version: 1
 
@@ -45,26 +123,351 @@ defaults:
   # (ADR-0018 / AC-8). haiku_200k is the floor.
   profile: haiku_200k
 
+# === CAP RECALIBRATION (2026-08-08) — THIS IS A JUDGMENT, NOT A MEASUREMENT ===
+#
+# GOVERNING RECORD: ADR-0033, "Recalibrate the 1M-window wrap-up caps; ADR-0018's
+# magnitude objection upheld on cost, narrowed on quality"
+# (docs/adr/ADR-0033-wrapup-cap-recalibration.md). Read it before changing a
+# number here. ADR-0033 supersedes the 1M cap VALUES of ADR-0018 and NOTHING
+# ELSE: ADR-0018 still governs the threshold STRUCTURE above (which term binds on
+# which window class, integer inclusive comparison, conservative-floor fallback),
+# the consent model, and the sensor design.
+#
+# WHY A NEW ADR AND NOT AN AMENDMENT. The first attempt at this recalibration
+# amended ADR-0018 IN PLACE, deleting twelve lines of its original reasoning —
+# including the sentence that argued against the magnitude it was moving to.
+# Principle #4: ADRs are never deleted, only superseded with a reference to the
+# replacement. ADR-0018 has been reverted and stands intact, objection included.
+# `test_adr_0018_was_not_amended_in_place` fails if anyone edits it back.
+#
+# THE OBJECTION THIS BLOCK HAS TO ANSWER, quoted from ADR-0018 as accepted:
+#   "Percentage alone is the wrong control on a 1M window: 55% = 550K tokens,
+#    which is wasteful (per-turn cost scales with resident context) and still
+#    degraded."
+# The hard cap below is 400000. That is 73% of the magnitude that sentence calls
+# wasteful and degraded, so the sentence is squarely on point and is NOT deleted.
+# ADR-0033 splits it into three claims and gives each an explicit disposition
+# (dispositions 2 and 3 revised by the 2026-08-08 amendment):
+#   1. STRUCTURAL (a percentage is the wrong control on 1M) — UPHELD IN FULL.
+#      The absolute cap remains the binding term; see the note under `profiles:`.
+#   2. COST (resident context is re-billed every turn) — UPHELD, and now the
+#      PRIMARY reason the cap exists at all. Real, undisputed mechanism,
+#      unquantified magnitude, nothing here rebuts it. The response is to take
+#      LESS of the thing it objects to: hard is 400000, not the 500000 the failed
+#      amendment proposed.
+#   3. QUALITY ("55% is still degraded") — WITHDRAWN as to the models this config
+#      maps, not merely narrowed. It was previously NARROWED by appeal to a
+#      third-party 50-65% band; that band is itself retired (see WHAT THE CAP IS
+#      FOR at the top of this file). The authoritative Anthropic reference states
+#      capability holds across the FULL 1M window and publishes no degradation
+#      threshold, so there is nothing left supporting a quality-based cap. The
+#      claim may well have been true of the generation ADR-0018 was written
+#      against; it is not a live reason for a number today.
+#      WHAT THIS DOES NOT MEAN: the cap is not thereby wrong. Disposition 2 alone
+#      justifies a cap, and the handoff-headroom floor justifies a ceiling on how
+#      high one may go. What changed is the REASON, not the value.
+#
+# WHAT CHANGED: the two 1M-window absolute caps, and only those. The four
+# canonical lines below are parsed by
+# tests/test_context_sensor.py::TestCapRationaleIsRecorded, so this prose cannot
+# drift away from what the profiles underneath actually compute:
+#   CAP opus_1m: soft 300000 / hard 400000
+#   CAP sonnet_1m: soft 250000 / hard 350000
+#   CAP sonnet_200k: soft 110000 / hard 140000
+#   CAP haiku_200k: soft 100000 / hard 130000
+# Previously opus_1m was soft 140000 / hard 180000 and sonnet_1m was soft 120000
+# / hard 160000. The two 200K profiles are UNCHANGED — see HEADROOM below for
+# why they are the ones that could not move. ADR-0033 states the same two 1M
+# lines and TestCapRationaleIsRecorded compares BOTH against the resolver, so the
+# config, the decision record and the running arithmetic cannot come apart
+# silently.
+#
+# READ THIS FIRST, because it is the part that is easiest to lose. The numbers
+# being replaced were ALSO a judgment. They were chosen in May 2026 against Opus
+# 4.7, with no measurement behind them either, and ADR-0031 concedes they are
+# "plausibly still conservative". This edit is not evidence replacing opinion. It
+# is a stale judgment replaced by a current one, plus the two things neither
+# version had: a rationale written down, and a test that fires when the
+# situation moves (TestHandoffHeadroomInvariant).
+#
+# WHAT NOBODY HERE HAS MEASURED: "at what occupancy does output quality actually
+# degrade?" That question is not answerable from this repository — there is no
+# eval harness, no held-out task set, and no quality-vs-occupancy series. It is
+# also no longer a question this file needs an answer to, because no number here
+# is justified by quality any more (see disposition 3 above and WHAT THE CAP IS
+# FOR at the top). No number in this file is derived from it and none should be
+# read as if it were.
+#
+# WHY 300000/400000 — the derivation, re-anchored 2026-08-08 on documented and
+# measured numbers only. Every term below is either published by Anthropic or
+# measured in this repo; none is a quality estimate.
+#
+#   TERMS
+#     UNIT      = 150000  DOCUMENTED. Anthropic's server-side compaction default
+#                         trigger — the point at which Anthropic's own stack
+#                         judges a conversation big enough to start summarizing.
+#                         It is a context-management threshold, NOT a quality one.
+#     HANDOFF   =  22687  MEASURED in this repo, re-counted from the files on
+#                         disk 2026-08-09 (round 5), after the EARLY tripwire
+#                         fired exactly as designed — see RE-MEASUREMENT below
+#                         for what moved and why. This number is not stated
+#                         independently of its derivation: it is the SUM of
+#                         the itemization below, and the itemization is checked
+#                         against it (TestHandoffCostDerivationIsSelfConsistent).
+#                         It read 20568 (SUPERSEDED) for round 4, and before that
+#                         20391 (SUPERSEDED) for one round while the
+#                         itemization it is the sum of already read
+#                         20568 (SUPERSEDED) — the
+#                         drift a total restated in three documents produces when
+#                         only one of them is refreshed. `(SUPERSEDED)` is not
+#                         decoration: it is the marker
+#                         TestEveryRestatementOfTheDerivedTotalIsBound reads to
+#                         tell a figure that IS the total from one that WAS. An
+#                         unmarked figure near the total must equal it.
+#     RESERVE   =  25000  HANDOFF rounded up, covering what was not itemized.
+#                         Margin over the measured total is 2313 tokens as of
+#                         2026-08-09; it was 4432 (SUPERSEDED) against round 4's
+#                         total, and the re-measurement — not the spending below
+#                         — is what took most of it. The 2026-08-08 amendment had
+#                         SPENT 885 of it in three instalments:
+#                         636 tok when SKILL.md was retargeted off its severed
+#                         ADR citation, 72 tok in round 3 when that page's
+#                         protocol step 1 stopped ordering the agent to announce a
+#                         token figure, and 177 tok in round 3's follow-up when
+#                         step 5 was made to rule on the handoff TEMPLATE's own
+#                         request for it. The test re-measures live, so it fails
+#                         rather than erodes — but treat the reserve as tight, not
+#                         roomy.
+#     RUNWAY    = 100000  soft->hard gap. 4.4x HANDOFF, so a session can finish
+#                         the current atomic step AND write the handoff between
+#                         the two nudges rather than merely bailing out.
+#     TIER_STEP =  50000  = RUNWAY / 2. sonnet_1m sits one step below opus_1m,
+#                         preserving ADR-0018's ordering of the two tiers.
+#
+#   ARITHMETIC (re-derivable; this is the whole of it)
+#     opus_1m   soft = 2 x UNIT               = 300000
+#     opus_1m   hard = opus soft + RUNWAY     = 400000
+#     sonnet_1m soft = opus soft - TIER_STEP  = 250000
+#     sonnet_1m hard = opus hard - TIER_STEP  = 350000
+#
+#   WHY 2 x UNIT AND NOT 1x OR 3x — the one genuinely chosen number here.
+#     1x (150000) would treat "big enough for Anthropic to start summarizing" as
+#     "big enough to stop working", which is a category error, and it lands within
+#     30000 tokens of the 180000 cap that produced the measured harm below.
+#     3x (450000) clears every mechanical check too, which is exactly why clearing
+#     them is not the test — it just takes more of what disposition 2 objects to.
+#     2x is the smallest multiple that clears the old harmful cap by more than a
+#     full RUNWAY. That is a judgment, and it is the only one left in this block.
+#
+#   MECHANICAL FLOOR — checked, NOT binding. Hard must sit below the harness
+#     auto-compaction backstop with room to WRITE the handoff:
+#     830000 - 400000 = 430000 spare, 17.2x RESERVE. The cost anchor binds long
+#     before the floor does, which is the right ordering — the floor is a
+#     backstop, not a target.
+#
+#   HONEST DISCLOSURE ABOUT THIS DERIVATION: it was constructed AFTER the values
+#   were already in force, to replace a justification found to be unsupported. It
+#   is a defensible re-derivation, not independent evidence that 300000/400000 are
+#   correct. What genuinely changed on 2026-08-08 is the ANCHOR — from a
+#   third-party quality band measured on older models, to a number Anthropic
+#   publishes — and the retirement of every quality claim built on the old one.
+#   The values did not move, and a reader is entitled to weigh that accordingly.
+#
+# RE-MEASUREMENT 2026-08-09 (round 5) — THE EARLY TRIPWIRE FIRED, as designed,
+# and this is the re-measurement it asked for. Read this before the itemization
+# below, because it says which way the numbers moved. The round-4 figures were:
+# live subtotal 18620 (SUPERSEDED), total 20568 (SUPERSEDED), handoff artifact
+# 8821 chars -> 2520 tok (SUPERSEDED), BUILD_STATUS 44987 chars -> 12853 tok
+# (SUPERSEDED). Two components moved, for opposite reasons:
+#
+#   * handoff artifact 2520 -> 4344 tok. The term takes the LARGEST artifact on
+#     disk, and the 2026-08-09 Wave 3 handoff is now that artifact.
+#     OPEN QUESTION FOR THE DEVELOPER, recorded rather than silently fixed: a
+#     good handoff is usually the largest yet, so this tripwire is expected to
+#     fire on roughly EVERY wrap-up. A warning that fires every time stops being
+#     read — the same "advisory becomes wallpaper" failure a reviewer identified
+#     in scripts/verify_paths_not_taken.py's coverage proxy on 2026-08-09.
+#     Whether this term should be the MEDIAN artifact rather than the MAX is a
+#     real decision about what the instrument measures — max answers "can the
+#     worst case still afford a handoff?", median answers "what does a handoff
+#     usually cost?" — and it belongs to the developer, not to a fixer. NOT
+#     CHANGED HERE. (For scale: the 16 artifacts run 3132-15207 chars, median
+#     5908, so the max over-states a typical write by ~2.6x — up from ~1.5x at
+#     round 4, which is itself evidence the two quantities are diverging.)
+#   * BUILD_STATUS 12853 -> 13148 tok, and it would have been far worse. The
+#     Wave 3 session entry took BUILD_STATUS.md to 51774 chars (14543 tok),
+#     which tripped the early wire on its own. Trimming to the DOCUMENTED cap of
+#     three `## Previous Session` blocks brought it back to 46018 chars. That
+#     cap is load-bearing, not housekeeping: without it this single component
+#     alone walks the total into the reserve.
+#
+# THE FLOOR IS NOT BREACHED AND NO CAP MOVED. 22687 still fits inside the 25000
+# RESERVE every profile's headroom is sized against, so the cap arithmetic was
+# re-checked and left alone — this is a re-measurement, not a recalibration. The
+# margin did narrow, from 4432 (SUPERSEDED) to 2313 tokens, which is the honest
+# reason to treat the reserve as tight rather than roomy.
+#
+# MEASURED HANDOFF COST (this repo, re-measured 2026-08-09 — a dated snapshot;
+# the test recomputes it live rather than trusting these figures). Characters
+# were counted and converted at 3.5 chars/token, a divisor chosen BELOW the
+# lowest ratio observed when these same files were run through a real BPE
+# tokenizer, so every line over-states rather than under-states:
+#   wrapping-up-sessions SKILL.md load          9091 chars ->  2597 tok
+#   BUILD_STATUS.md read (protocol step 3)     46018 chars -> 13148 tok
+#   handoff-template.md read (protocol step 5)  2275 chars ->   650 tok
+#   handoff artifact write (largest of the 16
+#     real docs/handoff/HANDOFF-*.md on disk,
+#     HANDOFF-20260809-instruments-first-
+#     wave3.md; the supervisor's rolling file
+#     is excluded — it is appended to across a
+#     whole CHAIN of sessions. See the
+#     RE-MEASUREMENT note above for why "the
+#     largest" is an open question)            15207 chars ->  4344 tok
+#                                             live subtotal -> 20739 tok
+#   BUILD_STATUS `NEXT SESSION` edit payload  ~2x 3409 chars ->  1948 tok
+#                                                     total -> 22687 tok
+# Reserve used by the invariant test: 25000 tokens — the itemized total rounded
+# up, the excess covering what was not itemized (close_discussion calls,
+# retention, and the final report turn). The SKILL.md line above grew by 636 tok
+# on 2026-08-08 when that page was retargeted off its severed ADR citation and
+# taught not to hunt for the removed figures, by a further 72 tok in round 3
+# when its protocol step 1 stopped ordering the agent to announce a token figure
+# at wrap-up, and by 177 tok more in round 3's follow-up when step 5 was made to
+# rule explicitly on the handoff TEMPLATE's own request for that figure (the
+# template is unchanged at 2275 chars and still asks — see ADR-0033,
+# § *Carry-forward — the handoff template was not re-cut*). All three — 885 tok
+# together, the figure the RESERVE term above states — are real, deliberate costs
+# charged against this reserve, recorded rather than absorbed
+# quietly. Against the tightest profile in the file the itemized total is still
+# the binding comparison: 22687 against sonnet_200k's 26000 of headroom — 1.15x
+# after the 2026-08-09 re-measurement, down from 1.26x at round 4. sonnet_200k
+# remains the profile nearest the mechanical floor, and it got nearer.
+#
+# HEADROOM PER PROFILE (auto_compact_tok - hard_tok, against that 25000 reserve):
+#   opus_1m      830000 - 400000 = 430000   17.2x the reserve
+#   sonnet_1m    830000 - 350000 = 480000   19.2x
+#   sonnet_200k  166000 - 140000 =  26000   1.04x  <-- TIGHTEST IN THE FILE
+#   haiku_200k   166000 - 130000 =  36000   1.44x
+# That is the finding that decided the scope of this edit: the class actually
+# near the mechanical constraint is 200K, not 1M. sonnet_200k clears the reserve
+# by 1000 tokens. It was left alone here on purpose — moving a threshold that
+# tight belongs in its own change with its own measurement, and doing it in the
+# same edit as the 1M recalibration would make both unmeasurable.
+#
+# AN INCONSISTENCY IN THIS FILE, NAMED RATHER THAN RESOLVED. As FRACTIONS the
+# untouched 200K profiles are far more permissive than the 1M ones: sonnet_200k
+# hard is 70% of its window and haiku_200k hard is 65%, against opus_1m at 40%.
+# As ABSOLUTE TOKENS the ordering reverses — 400000 is 2.9x sonnet_200k's 140000.
+# Under the 2026-08-08 re-anchoring this matters LESS than it did, because the
+# caps no longer claim to track degradation at all: the cost anchor is denominated
+# in absolute tokens (you are billed for tokens, not for percentages), which makes
+# the absolute-token reading the coherent one and the fraction column merely
+# descriptive. The 200K class is still governed by its percentage terms, so the
+# inconsistency is real and stays recorded rather than papered over.
+#
+# WHICH WAY THIS ERRS, AND WHY. Toward spending tokens, and that is now the
+# admitted direction rather than a hedged one. The quality axis is gone — nothing
+# here claims a cap protects output quality — so the only axes left are cost
+# (disposition 2, which this cap concedes to but does not maximize) and the
+# handoff-affordability floor, where there are 430000 spare tokens against a
+# ~22700-token need — 17.2x the 25000 RESERVE that need is rounded up to. The
+# need grew on 2026-08-09 — round 4 quoted this same sentence against a
+# ~20600 (SUPERSEDED) token need — while the spare margin did not move. The
+# asymmetry was weighed deliberately: erring
+# conservative wastes a whole session's worth of context every single session, a
+# certain and continuous cost, and it fired a hard "stop and hand off" order at
+# ~19% occupancy of a 1M window in a live session on 2026-08-07. Erring permissive
+# risks a session dying without a handoff, losing the thread — which is the harm
+# this machinery exists to prevent, and is the worse failure. The 430000-token
+# spare margin, the soft nudge 100000 tokens earlier, and the headroom test are
+# what buy down that worse failure.
+#
+# WHAT THE MODEL IS TOLD, AND WHAT IT IS NOT (2026-08-08 amendment). None of the
+# numbers in this file are ever shown to the model. The `UserPromptSubmit` guard
+# used to inject a line like "Context HARD wrap-up: ~651,312 tokens (~65% of the
+# opus_1m window; hard threshold 400,000)" into the model's context on EVERY
+# prompt. The Anthropic reference names exactly that as a cause of premature
+# wrap-up — "surfacing remaining-token counts to the model can cause premature
+# wrap-up behavior; avoid showing them where possible", and, for long-running
+# agents, "Avoid showing explicit context-budget counts." The nudge is now fixed,
+# figure-free text (`src/context_sensor.py::_nudge_text`); the numbers stayed on
+# the developer-facing status line. The thresholds here decide WHETHER the model
+# is told to checkpoint; they are no longer part of WHAT it is told.
+#
+#   AND ONE CONSTANT SPEAKS FOR ALL FOUR PROFILES, so it may only assert what is
+#   true at the TIGHTEST one. The first version of that fixed text reassured the
+#   model "Context remaining is ample", reasoned from opus_1m's 430000 spare
+#   tokens (17.2x the reserve). Measured 2026-08-08 by piping payloads through
+#   both hooks, a sonnet_200k session reading `ctx 70% | 141K/200K` got the same
+#   sentence with 26000 tokens left before auto-compaction — 1.04x the reserve —
+#   followed by "do not trim your work ... on account of context". False, and
+#   false toward the worse failure. The wording is now "room to write the handoff
+#   in full is reserved at this threshold", which every profile guarantees by the
+#   headroom invariant. Anyone editing the nudge: check the 200K column of the
+#   HEADROOM PER PROFILE table below before writing a sentence about how much
+#   room is left. `test_the_reassurance_is_true_on_the_tightest_profile_not_just_on_1m`
+#   fails if the promise stops holding there.
+#
+# WHAT WOULD CHANGE THESE NUMBERS (named triggers, not "revisit periodically"):
+#   - The DOCUMENTED anchor moving. If Anthropic changes the server-side
+#     compaction default trigger off 150000, the `2 x UNIT` term changes with it
+#     and the whole arithmetic above must be re-run. This trigger replaced "new
+#     research on context rot": it is checkable against a published document
+#     rather than against a third-party benchmark nobody here can rerun.
+#   - Per-turn cost telemetry (ADR-0020 A1) showing the 300000-400000 band costs
+#     more than the context it buys. Resident context is re-billed every turn net
+#     of cache; this edit trades tokens for continuity and that trade has a price.
+#     This is disposition 2's evidence arriving, and it would push the caps down.
+#     With disposition 3 withdrawn this is now the ONLY live evidence that would
+#     argue the caps DOWN — nothing else in this file does.
+#   - `auto_compact_fraction` moving off 0.83 (a harness change). Re-run the
+#     headroom arithmetic; the invariant test fails first, which is the point.
+#   - BUILD_STATUS.md or handoff-template.md growing. The cost is re-measured
+#     from them at test time, and there are TWO tripwires, not one. The EARLY one
+#     fires when the live four-component subtotal reaches the stated HANDOFF
+#     total of 22687 (currently 20739, so ~1948 tokens of slack — about 6800
+#     characters of BUILD_STATUS growth) and asks for a re-measurement. It DID
+#     fire on 2026-08-09 and the re-measurement above is what it produced, so
+#     this trigger is a demonstrated one rather than a hypothetical. The FLOOR
+#     fires when it outgrows the 25000 RESERVE, which is the number every
+#     profile's headroom is sized against and cannot be raised without
+#     re-checking all four.
+#   - Anthropic publishing an actual degradation threshold, or a quality-vs-
+#     occupancy measurement in this repo. Either REOPENS disposition 3, which is
+#     currently withdrawn for want of support in either direction.
+#   - Any resolution of the fraction-vs-absolute-tokens inconsistency named above.
+#     Note that a wrong `models:` key is now ~2.2x more expensive than it was
+#     under the 180000 cap — see VERIFIED WINDOWS ONLY above.
+#
+# === END CAP RECALIBRATION ===
+
 profiles:
 
-  # ---- 1M-window class (Opus 4.7, Sonnet 4.6) ----
+  # ---- 1M-window class (Opus 4.7+, Sonnet 4.6+) ----
+  # Both caps stay BELOW the fraction product (0.55/0.70 x 1M = 550000/700000)
+  # so the absolute cap, not the percentage, remains the binding term on a 1M
+  # window — the design property the THRESHOLD MODEL block above describes.
   opus_1m:
     context_window: 1000000
     soft_wrapup_fraction: 0.55      # 550K nominal...
     hard_wrapup_fraction: 0.70      # 700K nominal...
-    soft_abs_cap_tokens: 140000     # ...but the cap binds first. Opus degrades
-    hard_abs_cap_tokens: 180000     # slowest -> highest caps of the four.
-    auto_compact_fraction: 0.83     # harness backstop; we always fire before this.
+    soft_abs_cap_tokens: 300000     # ...but the cap binds first. = 2 x UNIT.
+    hard_abs_cap_tokens: 400000     # = soft + RUNWAY. Cost anchor, not quality.
+    auto_compact_fraction: 0.83     # harness backstop; hard clears it by 430000.
 
   sonnet_1m:
     context_window: 1000000
     soft_wrapup_fraction: 0.55
     hard_wrapup_fraction: 0.70
-    soft_abs_cap_tokens: 120000     # tighter than opus: faster degradation risk.
-    hard_abs_cap_tokens: 160000
+    soft_abs_cap_tokens: 250000     # = opus soft - TIER_STEP. Ordering, not a
+    hard_abs_cap_tokens: 350000     # degradation claim: nothing here measures one.
     auto_compact_fraction: 0.83
 
   # ---- 200K-window class (Sonnet 4.5, Haiku 4.5) ----
+  # NOT touched by the 2026-08-08 recalibration. Here the percentage binds, and
+  # the distance from hard_tok to the auto-compact backstop is 26000 / 36000
+  # tokens — barely above the 25000-token handoff reserve. This class is the one
+  # with a real mechanical constraint; see HEADROOM PER PROFILE above.
   sonnet_200k:
     context_window: 200000
     soft_wrapup_fraction: 0.55      # 110K -> percentage binds (below the abs cap).
@@ -75,21 +478,70 @@ profiles:
 
   haiku_200k:
     context_window: 200000
-    soft_wrapup_fraction: 0.50      # haiku degrades fastest -> wrap up earlier.
-    hard_wrapup_fraction: 0.65
+    soft_wrapup_fraction: 0.50      # the conservative floor: an unrecognised model
+    hard_wrapup_fraction: 0.65      # wraps up earliest. Fail-safe, not a quality claim.
     soft_abs_cap_tokens: 130000
     hard_abs_cap_tokens: 160000
     auto_compact_fraction: 0.83
 
-# Full model ID -> profile. Unlisted IDs fall back to `defaults.profile`.
-# Verify the window at add-time when a new model lands.
+# BASE model ID -> profile. Unlisted IDs are normalized (see ID NORMALIZATION),
+# then fall back to `defaults.profile`. Do NOT add `[1m]`/date-suffixed variants —
+# they resolve via normalization. Every key here must satisfy VERIFIED WINDOWS
+# ONLY (above): check the real window against the model catalog, point the key at
+# a profile declaring THAT window, and add it to the test's verified table.
 models:
-  claude-fable-5:    opus_1m        # 1M window (default AND max) verified against Anthropic model docs at add-time 2026-07-03; Fable sits above Opus in capability, so the least-conservative caps apply. Fixes the sensor resolving Fable to the haiku_200k floor (root cause of the 07-03 early-wrap-up/demotion labeling).
+  # ---- Claude 5 family (added 2026-08-05) ----
+  # Every one of these previously fell through to `defaults.profile`
+  # (haiku_200k), so a 1M-window model was measured against a 200K window.
+  # MEASURED COST (re-measured 2026-08-08 against the recalibrated caps, still
+  # not reasoned from the window ratio): the absolute caps continue to bind
+  # before the percentage does, so the realised correction is
+  # soft 100000 -> 300000 and hard 130000 -> 400000 — ~3.0x, i.e. ~200000 tokens
+  # of usable context per session — NOT the 5x the 1M/200K window ratio suggests.
+  # ADR-0031 asserted "5x" from that ratio; ADR-0032 corrected it to the
+  # then-current 1.4x; it read 4.0x under the withdrawn 500000 cap. That figure
+  # has now taken three different values while the window ratio never moved,
+  # which is the whole point: it is a MEASURED quantity that tracks the caps, and
+  # the ratio is the wrong basis. Fail-safe by design (AC-8), but the
+  # frontier-model cost of that safety is real and silent.
+  #
+  # Adding these keys did NOT by itself fix the live path: the harness emits
+  # `claude-opus-5[1m]`, not `claude-opus-5`, so exact-match lookup kept
+  # defaulting every real frontier session to haiku_200k (measured 2026-08-07;
+  # the one sidecar on disk read model=claude-fable-5[1m] tier=haiku_200k
+  # soft_tok=100000 against a 1000000 window). ID NORMALIZATION above is what
+  # closes it; the sidecar/status-line markers are what make the next
+  # recurrence audible instead of silent.
+  claude-opus-5:     opus_1m
+  # Fable's window verification, carried forward from the upstream copy of this key
+  # rather than dropped in the merge (2026-08-15): 1M window — default AND max —
+  # verified against the Anthropic model docs at add-time 2026-07-03. Fable sits
+  # above Opus in capability, so the least-conservative caps apply. That add fixed
+  # the sensor resolving Fable to the haiku_200k floor, which was the root cause of
+  # the 2026-07-03 early-wrap-up / demotion labeling.
+  claude-fable-5:    opus_1m
+  claude-sonnet-5:   sonnet_1m
+  claude-opus-4-8:   opus_1m
   claude-opus-4-7:   opus_1m
   claude-opus-4-6:   opus_1m
-  claude-opus-4:     opus_1m        # historically 200K — re-check at add-time.
-  claude-sonnet-4-7: sonnet_1m
   claude-sonnet-4-6: sonnet_1m
   claude-sonnet-4-5: sonnet_200k
   claude-sonnet-4:   sonnet_200k
   claude-haiku-4-5:  haiku_200k
+  #
+  # ---- Deliberately NOT listed (checked 2026-08-07; do not re-add blind) ----
+  # claude-opus-4      — REMOVED. It carried "historically 200K — re-check at
+  #   add-time" while mapped to opus_1m. The re-check was done: the 1M window
+  #   class begins at the 4.6 generation, so Opus 4 is 200K. Under VERIFIED
+  #   WINDOWS ONLY that key was a 1M claim about a 200K model, and normalization
+  #   had just made it the prefix target for `claude-opus-4-20250514` too —
+  #   which moved that id from the 200K floor (hard 130000) up to hard 180000,
+  #   ABOVE the 166000 auto-compact backstop of its real window. Omitted rather
+  #   than remapped: Opus 4 is deprecated, nothing here runs on it, and the floor
+  #   (hard 130000 < 166000) is already correct and safe for it.
+  # claude-sonnet-4-7  — REMOVED. No such model exists in the Anthropic catalog;
+  #   the key pre-registered a 1M guess for a version that has not shipped. A
+  #   guess is not a verification, and normalization would extend it to every
+  #   future `claude-sonnet-4-7-*` snapshot. Add it (verified) if it ships.
+  # claude-opus-4-5 / claude-opus-4-1 — real 200K models, intentionally unlisted:
+  #   the floor already gives them a correct 200K-class threshold.

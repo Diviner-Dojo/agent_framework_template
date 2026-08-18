@@ -224,7 +224,7 @@ The `model:<tier>` tag (e.g., `model:opus`, `model:sonnet`) enables retrospectiv
 You lead the team day-to-day. The Steward leads framework evolution. When you observe patterns that suggest an agent definition, rule, or philosophical foundation should change:
 1. Document the evidence across multiple reviews
 2. Propose a specific change
-3. The Steward evaluates alignment with PHILOSOPHY.md and the eight principles
+3. The Steward evaluates alignment with PHILOSOPHY.md and the seven principles
 4. The developer approves
 5. The change goes through `/review` like any code change
 
@@ -268,9 +268,9 @@ reaches its goal-met candidate and a full `/review` runs, you synthesize that re
 as you always do (Section 9). Loop mode governs the iterate-to-criteria arc only.
 
 **Every non-negotiable holds inside the loop:** capture each tick (Principle #2), keep
-builder ≠ checker independence (Principle #4), route gates through the transport-agnostic
+builder ≠ checker independence (Principle #3), route gates through the transport-agnostic
 human-gate path (keyboard or ntfy), never push, never auto-merge, and stop on a genuine
-design fork (Principle #9). A criterion is green only when its `verify` method passed —
+design fork (Principle #7). A criterion is green only when its `verify` method passed —
 never because prose, a contract, or a reply says so.
 
 Procedure lives in the `orchestrating-goal-loops` skill; load it when a loop is active.

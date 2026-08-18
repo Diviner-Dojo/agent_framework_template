@@ -135,10 +135,44 @@ completed_commit:  # short SHA — merge commit where feature entered mainline
 ## Affected Components
 - [Which modules/files will be changed]
 
+## Paths Not Taken
+<!-- One block per design option you discarded WHILE drafting the sections above.
+     Write each block the moment you discard the option, in the same pass that produced
+     the requirement or constraint it lost to. Do not write this section last. -->
+
+## Path Not Taken
+- **Decision**: [what was being decided, in one line]
+- **Chosen**: [the approach this spec commits to]
+- **Rejected**: [the specific other approach that was on the table]
+- **Why rejected**: [the reason, at the time]
+- **Files**: [repo-relative paths the decision will land in — the same paths as Affected Components]
+- **Falsifier**: [a literal string that WOULD appear in the added lines if the rejected approach were built]
+
 ## Dependencies
 - [What this depends on]
 - [What depends on this]
 ```
+
+### Why this section is written during Step 2, not after it
+
+A plan's rejected approaches are the highest-value records the framework can hold — they are the
+only place the shape of the decision *space* survives, and by the time code exists nobody can
+reconstruct which options were genuinely live. But they are also the easiest to fake, because a
+rejected approach written after the spec is finished is written to justify the spec. Write each
+block in the same pass that discarded the option and the record costs nothing and is true; write
+them in a closing sweep and you produce a tidy list of straw men.
+
+The `Falsifier` field is what a later checker can act on: a concrete token — a symbol, flag,
+import, or call — that would appear in the implementation's added lines if the rejected approach
+had been built. `scripts/verify_paths_not_taken.py` searches the diff for exactly that string at
+`/review` time, and reports a record whose falsifier is vague (`a different approach`, `n/a`,
+anything under 4 characters) as `UNFALSIFIABLE` instead of accepting it. If you cannot name one,
+the "alternative" may not have been a real option — say that in `Why rejected` rather than
+inventing a token.
+
+If the plan genuinely discarded nothing, write `## Paths Not Taken` with the single line
+`None — no alternative approach was live at spec time.` That is a claim on the record and it can
+be argued with, which an omitted section cannot.
 
 ## Step 3: Create Discussion
 
@@ -175,6 +209,34 @@ python scripts/write_event.py "<discussion_id>" "facilitator" "evidence" \
 # fields as "(none stated)" and add tag "context-brief-cold-start" so uninstrumented
 # invocations are queryable: --tags "context-brief,context-brief-cold-start"
 ```
+
+## Step 3.6: Capture the Paths Not Taken into Layer 1
+
+The spec's `## Paths Not Taken` blocks live in a document that can be edited without trace.
+Copy each block into the discussion as its own event so it lands in append-only Layer 1 and, via
+the capture pipeline, in `turns.tags` where it is queryable. This is the *same* record in the
+capture stack the framework already has — no new ledger, no fourth artifact.
+
+```bash
+# One call per block. Paste the block verbatim from the spec.
+python scripts/write_event.py "<discussion_id>" "facilitator" "decision" \
+  "## Path Not Taken
+- **Decision**: ...
+- **Chosen**: ...
+- **Rejected**: ...
+- **Why rejected**: ...
+- **Files**: ...
+- **Falsifier**: ..." \
+  --tags "path-not-taken,spec"
+```
+
+If the spec recorded `None — no alternative approach was live at spec time.`, write that as a
+single event with the same tag and no block, so the absence is itself captured rather than
+indistinguishable from a `/plan` run that never considered the question.
+
+Tell the developer this discussion id at Step 7: `/review` needs it to verify the spec's claims
+against what was eventually built, and a spec whose discussion nobody passes along is verified
+against nothing.
 
 ## Step 4: Dispatch Specialists and Capture
 
@@ -229,6 +291,9 @@ Present the final spec to the developer for approval, including:
 2. Changes made to address blocking findings
 3. Advisory items noted but deferred
 4. Link to the discussion transcript
+5. **Paths not taken** — the rejected approaches from Step 2, and the discussion id carrying
+   them. State the id explicitly: `/build_module` and `/review` both need it, and it is the only
+   handle that ties the spec's claims to the diff that eventually tests them.
 
 ## Step 8: Developer Approval
 

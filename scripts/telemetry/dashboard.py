@@ -198,7 +198,7 @@ def load_weekly_trends(db_path: Path, pricing: PricingTable) -> WeeklyTrends:
     would cross the dead-helper rule pinned by
     ``test_server_uses_a_arch1_public_helpers_not_underscored`` (REV-20260607-200447
     arch F3); routing through this public loader is the option (b) resolution
-    (least-complex per Principle #8) for that constraint.
+    (least-complex per `PHILOSOPHY.md`, *Growth has a brake*) for that constraint.
 
     **Per-poll DB-IO decision (arch H2 from REV-20260608-053032)**: this
     function is called from the ``/fragments/live`` route handler, which
@@ -210,7 +210,7 @@ def load_weekly_trends(db_path: Path, pricing: PricingTable) -> WeeklyTrends:
     (a) the median row count exceeds ~1,000 (months of captured sessions),
     OR (b) the median aggregation latency exceeds ~10 ms (measured at the
     route handler). The seam itself is intentionally absent now per
-    Principle #8 (least-complex first); naming the triggers above is the
+    `PHILOSOPHY.md`, *Growth has a brake* (least-complex first); naming the triggers above is the
     door so a future slice can add it without re-arguing the decision.
     """
     try:
@@ -262,7 +262,7 @@ def load_cost_report(db_path: Path, pricing: PricingTable) -> tuple[CostReport, 
     watermark present) mirrors :func:`assemble_dashboard_data`'s
     ``cost_state`` logic above — change both together. Deliberately NOT
     extracted into a shared helper at N=2 call sites (SPEC arch F2,
-    Principle #8).
+    `PHILOSOPHY.md`, *Growth has a brake*).
 
     The four-state contract (SPEC-20260610-015114 AC10):
 

@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import ingest_token_usage as itu
 from scripts.ingest_token_usage import (
     DiscussionWindow,
     MessageRecord,
@@ -490,3 +491,48 @@ class TestPublicHelperContract:
         assert by_id["DISC-OPEN"].end >= by_id["DISC-OPEN"].start
         # Closed discussion: end is exactly its closed_at.
         assert by_id["DISC-CLOSED"].end == datetime(2026, 2, 2, 11, 0, 0, tzinfo=UTC)
+
+
+class TestSourceKindAndDeadline:
+    """Direct unit coverage of the SPEC-20260716-093231 parser additions
+    (review qa F3 — previously exercised only transitively via test_call_log)."""
+
+    def _make_session_dir(self, tmp_path: Path) -> Path:
+        session = tmp_path / "sess-1"
+        (session / "subagents").mkdir(parents=True)
+        line_main = json.dumps(
+            {
+                "timestamp": "2026-07-16T10:00:00Z",
+                "message": {"id": "msg_main", "usage": {"input_tokens": 1}},
+            }
+        )
+        line_sub = json.dumps(
+            {
+                "timestamp": "2026-07-16T10:01:00Z",
+                "message": {"id": "msg_sub", "usage": {"input_tokens": 2}},
+            }
+        )
+        (session / "sess-1.jsonl").write_text(line_main + "\n", encoding="utf-8")
+        (session / "subagents" / "agent-1.jsonl").write_text(line_sub + "\n", encoding="utf-8")
+        return session
+
+    def test_iter_jsonl_files_yields_structural_kinds(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(itu, "CLAUDE_PROJECTS_ROOT", tmp_path)
+        session = self._make_session_dir(tmp_path)
+        kinds = {path.name: kind for path, kind in itu._iter_jsonl_files(session)}
+        assert kinds == {"sess-1.jsonl": "main", "agent-1.jsonl": "subagent"}
+
+    def test_parse_session_dir_populates_source_kind(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(itu, "CLAUDE_PROJECTS_ROOT", tmp_path)
+        session = self._make_session_dir(tmp_path)
+        kinds = {r.message_id: r.source_kind for r in itu.parse_session_dir(session)}
+        assert kinds == {"msg_main": "main", "msg_sub": "subagent"}
+
+    def test_parse_session_dir_expired_deadline_yields_nothing(self, tmp_path, monkeypatch):
+        """The cooperative deadline is checked between files: an already-expired
+        deadline yields zero records without opening a single file."""
+        monkeypatch.setattr(itu, "CLAUDE_PROJECTS_ROOT", tmp_path)
+        session = self._make_session_dir(tmp_path)
+        assert list(itu.parse_session_dir(session, deadline=0.0)) == []
+        # And no deadline still yields everything (control).
+        assert len(list(itu.parse_session_dir(session))) == 2

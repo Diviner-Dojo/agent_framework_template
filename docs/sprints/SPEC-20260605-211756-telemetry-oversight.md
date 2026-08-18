@@ -2,15 +2,16 @@
 spec_id: SPEC-20260605-211756
 title: "Telemetry & Oversight: failure/waste lens + visibility surface over the existing capture stack"
 type: spec
-status: approved
+status: complete
 risk_level: medium
 reviewed_by: [architecture-consultant, security-specialist, qa-specialist, performance-analyst]
 approved_by: developer
 approved_at: 2026-06-05
 discussion_id: DISC-20260606-041937-telemetry-oversight-spec-review
 intake_ids: []
-completed_at:
-completed_commit:
+completed_at: 2026-06-06
+completed_commit: a639903
+status_note: "stamped complete post-hoc 2026-07-16 during the wave-2 spec-budget check (shipping evidence: git log; part of triage #11 bookkeeping debt)"
 ---
 
 ## Goal

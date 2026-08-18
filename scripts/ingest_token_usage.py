@@ -20,6 +20,7 @@ import argparse
 import json
 import re
 import sqlite3
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -54,6 +55,10 @@ class MessageRecord:
         cache_read_tokens: ``usage.cache_read_input_tokens`` or ``None``.
         cache_create_tokens: ``usage.cache_creation_input_tokens`` or ``None``.
         source_file: The JSONL file this record was parsed from (for debugging).
+        source_kind: ``"main"`` for a session-root JSONL, ``"subagent"`` for a
+            file under ``subagents/``. Populated by the parser layer so
+            consumers never re-derive it from path inspection
+            (SPEC-20260716-093231 R1).
     """
 
     message_id: str
@@ -64,6 +69,7 @@ class MessageRecord:
     cache_read_tokens: int | None
     cache_create_tokens: int | None
     source_file: Path
+    source_kind: str = "main"
 
 
 def _project_slug(project_root: Path) -> str:
@@ -183,11 +189,20 @@ def coerce_int(value: object) -> int | None:
     return None
 
 
-def _parse_message_line(line: str, source_file: Path) -> MessageRecord | None:
+def _parse_message_line(
+    line: str, source_file: Path, source_kind: str = "main"
+) -> MessageRecord | None:
     """Parse a single JSONL line into a MessageRecord, or ``None`` to skip.
 
     Lines without a ``message.id`` (e.g. queue-operation, system events) are
     skipped — only assistant message records carry token usage.
+
+    Args:
+        line: Raw JSONL line.
+        source_file: File the line came from (recorded for debugging).
+        source_kind: ``"main"`` or ``"subagent"`` — determined by the caller
+            in the parser layer (``parse_session_dir``), defaulted for
+            existing external callers that parse standalone fixture files.
     """
     line = line.strip()
     if not line:
@@ -217,21 +232,27 @@ def _parse_message_line(line: str, source_file: Path) -> MessageRecord | None:
         cache_read_tokens=coerce_int(usage.get("cache_read_input_tokens")),
         cache_create_tokens=coerce_int(usage.get("cache_creation_input_tokens")),
         source_file=source_file,
+        source_kind=source_kind,
     )
 
 
-def _iter_jsonl_files(path: Path) -> Iterator[Path]:
-    """Yield JSONL files reachable from a session path.
+def _iter_jsonl_files(path: Path) -> Iterator[tuple[Path, str]]:
+    """Yield ``(jsonl_file, source_kind)`` pairs reachable from a session path.
 
     Accepts either a single ``.jsonl`` file (main session at project root) or
     a session directory containing a ``subagents/`` subdirectory. Hidden and
     non-JSONL files are ignored. Entries that resolve outside
     ``CLAUDE_PROJECTS_ROOT`` (symlink escape) are skipped.
+
+    ``source_kind`` is ``"subagent"`` for files under ``subagents/`` and
+    ``"main"`` otherwise — determined structurally by which branch yielded the
+    file, so consumers never re-derive it from path inspection
+    (SPEC-20260716-093231 R1).
     """
     if not is_inside_projects_root(path):
         return
     if path.is_file() and path.suffix == ".jsonl":
-        yield path
+        yield path, "main"
         return
     if not path.is_dir():
         return
@@ -239,31 +260,38 @@ def _iter_jsonl_files(path: Path) -> Iterator[Path]:
     if subagents.is_dir() and is_inside_projects_root(subagents):
         for entry in subagents.iterdir():
             if entry.is_file() and entry.suffix == ".jsonl" and is_inside_projects_root(entry):
-                yield entry
+                yield entry, "subagent"
     # Some session dirs may also contain a top-level <sessionId>.jsonl —
     # scan for any .jsonl directly under the dir as well.
     for entry in path.iterdir():
         if entry.is_file() and entry.suffix == ".jsonl" and is_inside_projects_root(entry):
-            yield entry
+            yield entry, "main"
 
 
-def parse_session_dir(path: Path) -> Iterator[MessageRecord]:
+def parse_session_dir(path: Path, deadline: float | None = None) -> Iterator[MessageRecord]:
     """Yield MessageRecord values for every parseable line under ``path``.
 
     Args:
         path: Either a session ``.jsonl`` file or a session directory. The
             caller obtains these paths from ``discover_session_dirs``.
+        deadline: Optional ``time.time()``-based cooperative deadline. Checked
+            between files (never mid-file): once ``time.time() >= deadline``
+            the generator returns early, leaving remaining files unscanned.
+            Callers that pass a deadline must treat the scan as potentially
+            partial (SPEC-20260716-093231 R4c).
 
     Yields:
         One MessageRecord per parseable assistant message. Lines lacking a
         ``message.id`` or a timestamp are silently skipped (they are system
         events, user echoes, or malformed entries).
     """
-    for jsonl_path in _iter_jsonl_files(path):
+    for jsonl_path, source_kind in _iter_jsonl_files(path):
+        if deadline is not None and time.time() >= deadline:
+            return
         try:
             with open(jsonl_path, encoding="utf-8") as handle:
                 for line in handle:
-                    record = _parse_message_line(line, jsonl_path)
+                    record = _parse_message_line(line, jsonl_path, source_kind)
                     if record is not None:
                         yield record
         except OSError:

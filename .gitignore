@@ -20,9 +20,25 @@ build/
 .coverage
 BUILD_STATUS.md
 
-# ntfy collab-loop single-poller coordination lockfile (ADR-0019); runtime-only
+# ntfy collab-loop single-poller coordination lockfile (ADR-0019); runtime-only.
+# write_lock's scratch file is named per-writer (`<lock>.<pid>-<rand>.tmp`) so two
+# processes writing the lock never share one scratch name; the glob must therefore track
+# that shape or a poller killed mid-write strands an untracked file at the project root.
+# The `*` also still covers the pre-2026-08-07 fixed `.collab_loop.lock.tmp` name, which
+# an older poller copy can still produce across a deploy.
+# Guarded by tests/test_collab_loop.py::TestScratchFilesStayUntracked.
+#
+# Both entries were re-verified on 2026-08-07 with `git check-ignore -q` (exit 0 for
+# `.collab_loop.lock`, the legacy `.collab_loop.lock.tmp`, and a live per-writer
+# `.collab_loop.lock.<pid>-<rand>.tmp`), so neither is stale. Note what this cannot do:
+# ignoring a path only hides a stray artifact from `git status` — it does not stop one being
+# created, and the 2026-08-07 incident was a TEST writing a forged-approval payload into the
+# LIVE lockfile, which no ignore rule can prevent. That is now stopped upstream by
+# `tests/conftest.py` (COLLAB_LOOP_LOCK redirects the path; the write guard refuses the write).
+# Deliberately NOT ignored: `probe.lock` and other ad-hoc probe artifacts. A stray in the
+# working tree should stay visible — a forgotten one was how the third contamination was found.
 .collab_loop.lock
-.collab_loop.lock.tmp
+.collab_loop.lock*.tmp
 
 # Session-local worktrees — see spawn_project's EXCLUDE_PATTERNS for the propagation guard
 .claude/worktrees/
@@ -52,3 +68,8 @@ telemetry_dashboard.html
 # Calibration loop runtime artifacts (ADR-0024) — per-run proposals + run log
 memory/calibration-proposals/
 metrics/calibration_log.jsonl
+
+# Per-call token/cache log (SPEC-20260716-093231): grows per model call —
+# durability is on-disk, not in git (committed Layer-2 artifacts stay the DB
+# aggregates; see the ADR-0020 implementation note on the JSONL-vs-table call).
+metrics/model_call_log.jsonl

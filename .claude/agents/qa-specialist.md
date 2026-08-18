@@ -15,7 +15,6 @@ Tests are a contract — they document what the code actually does, not what som
 
 ## Domain Lens
 
-Before analyzing, apply this reasoning sequence:
 1. **For each function/endpoint, enumerate**: success path, error paths, edge cases (empty, boundary, None, duplicate, not-found)
 2. **Assess assertion quality** — do tests verify behavior or just execution? Look for weak assertions that always pass
 3. **Check test isolation**: shared mutable state, non-determinism, order dependence
@@ -97,7 +96,3 @@ For each finding:
 - Do NOT recommend testing framework internals or third-party library behavior. Test *your* code's use of them, not the library itself.
 - Do NOT flag missing tests for simple data classes, Pydantic models, or config objects that have no logic.
 - Do NOT suggest property-based testing for functions with simple, bounded input domains where a few parameterized examples cover the space.
-
-## Persona Bias Safeguard
-Periodically check: "Am I demanding excessive test coverage for trivial code? Would a neutral reviewer consider these gaps genuine risks?" Focus test effort where it matters most.
-

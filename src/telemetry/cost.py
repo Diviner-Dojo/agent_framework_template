@@ -8,6 +8,10 @@ Pure logic over already-loaded rows (the SQLite read happens in
 * **Unknown tiers are never zero-rated** — a row whose tier has no rates
   contributes its tokens to ``total_tokens`` but not to ``known_tokens`` and
   not to ``total_cost_usd``; its ``TierCost.cost_usd`` is ``None``.
+* **Cache-read ratio is a pure token-count derivation** — never a stored
+  dollar or ratio; honest-``None`` on a zero denominator or any unknown
+  component (``compute_cache_read_ratio`` + the per-tier/overall properties,
+  SPEC-20260716-093231).
 """
 
 from __future__ import annotations
@@ -16,6 +20,32 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from src.telemetry.pricing import UNKNOWN_TIER, PricingTable
+
+
+def compute_cache_read_ratio(
+    tokens_in: int | None,
+    cache_read_tokens: int | None,
+    cache_create_tokens: int | None,
+) -> float | None:
+    """Return ``cache_read / (input + cache_read + cache_creation)``, or ``None``.
+
+    The cache-read ratio is the leading cache-health indicator adopted by
+    SPEC-20260716-093231 (triage item #1). Honest-absence rules:
+
+    * Any ``None`` component means the ratio is **unknown** — ``None`` is never
+      silently treated as 0 (repo convention: ``None`` = unknown, ``0`` =
+      known-zero).
+    * A zero denominator yields ``None``, never a fabricated ``0.0``.
+
+    The ratio is a pure token-count derivation — unlike a dollar figure it can
+    never go stale on repricing (ADR-0013 compute-don't-store exemption).
+    """
+    if tokens_in is None or cache_read_tokens is None or cache_create_tokens is None:
+        return None
+    denominator = tokens_in + cache_read_tokens + cache_create_tokens
+    if denominator <= 0:
+        return None
+    return cache_read_tokens / denominator
 
 
 @dataclass(frozen=True)
@@ -61,6 +91,13 @@ class TierCost:
         """Sum of every billable token kind accumulated for this tier."""
         return self.tokens_in + self.tokens_out + self.cache_read_tokens + self.cache_create_tokens
 
+    @property
+    def cache_read_ratio(self) -> float | None:
+        """Cache-read share of this tier's input-side tokens (``None`` if none)."""
+        return compute_cache_read_ratio(
+            self.tokens_in, self.cache_read_tokens, self.cache_create_tokens
+        )
+
 
 @dataclass
 class CostReport:
@@ -94,6 +131,18 @@ class CostReport:
     def is_fully_covered(self) -> bool:
         """True iff every billable token was priced (coverage is 100%)."""
         return self.total_tokens > 0 and self.known_tokens == self.total_tokens
+
+    @property
+    def cache_read_ratio(self) -> float | None:
+        """Overall cache-read share of input-side tokens across every tier.
+
+        ``None`` (honest absence) when there are no input-side tokens at all —
+        never a fabricated ``0.0``.
+        """
+        tokens_in = sum(t.tokens_in for t in self.by_tier.values())
+        cache_read = sum(t.cache_read_tokens for t in self.by_tier.values())
+        cache_create = sum(t.cache_create_tokens for t in self.by_tier.values())
+        return compute_cache_read_ratio(tokens_in, cache_read, cache_create)
 
 
 def build_cost_report(rows: Iterable[ModelTokenRow], pricing: PricingTable) -> CostReport:

@@ -13,9 +13,30 @@ not instruction files (ADR-0024; Principle #7; Prime Objective human-mediated ga
 Backflow origin: the confidence-calibration loop of ``dan_research_karpathy_wiki``
 (SPEC-20260610-205507 decision D2, pattern 2 of 5; ADR-0024).
 
+ADVISORY, NEVER A GATE. This script's exit code is 0 whenever it ran successfully,
+*regardless of how many proposals it emits*. Drift signals must never fail a build,
+block a commit, or gate a workflow: they are inputs to human judgment. A non-zero exit
+here would turn a soft proxy metric into a mechanical enforcement surface, which is
+exactly the self-modification pressure ADR-0024 exists to prevent. A non-zero exit
+means the AUDIT ITSELF failed to run, never that calibration drifted.
+
+EXIT CODES (the contract the command files quote — enforced, not merely described)
+----------------------------------------------------------------------------------
+* ``0`` — the audit RAN. Zero proposals and fifty proposals both exit 0.
+* ``1`` — BROKEN INSTRUMENT: the database was absent or unreadable, so no signal was
+  computed. This is gating on the audit having *run*, never on what it *found*. The
+  distinction is the entire point: without it, "the instrument was missing" and
+  "calibration is healthy" arrive at the reader as the same silent success.
+
+RUN LOG. Every invocation appends one line to ``metrics/calibration_log.jsonl``,
+including runs that emit zero proposals and runs where the instrument was broken
+(``"ok": false``). A clean audit that left no trace is indistinguishable from an audit
+that never happened — the same collapse the yield report exists to prevent, one level
+up. ``--report-only`` suppresses the proposal QUEUE artifact, never the run log.
+
 Usage:
     python scripts/audit_calibration.py              # audit; print report + write queue/log
-    python scripts/audit_calibration.py --report-only  # print report only; write nothing
+    python scripts/audit_calibration.py --report-only  # print report + run log; no queue
 """
 
 from __future__ import annotations
@@ -63,6 +84,12 @@ class AuditResult:
 
     proposals: list[Proposal] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    #: False when the audit could not run at all (database absent or unreadable).
+    #: A STRUCTURED field, deliberately not a substring test against ``notes``: the exit
+    #: code the command files quote must not depend on the wording of a human-readable
+    #: sentence that any later edit could reword. ``instrument_ok is False`` means "no
+    #: signal was computed" — it never means "drift was found".
+    instrument_ok: bool = True
 
 
 def _agent_calibration_drift(conn: sqlite3.Connection) -> list[Proposal]:
@@ -216,24 +243,49 @@ def _severity_marker_disagreement(
     ]
 
 
-def audit_calibration(db_path: Path = DB_PATH, *, write: bool = True) -> AuditResult:
+def audit_calibration(
+    db_path: Path | None = None,
+    *,
+    write: bool = True,
+    write_queue: bool | None = None,
+    queue_dir: Path | None = None,
+    log_path: Path | None = None,
+) -> AuditResult:
     """Run the calibration audit. Read-only on the DB; writes only the queue + log.
 
     Args:
-        db_path: Path to the evaluation database.
-        write: When True, write the proposal queue artifact and append the run log.
+        db_path: Path to the evaluation database. None resolves :data:`DB_PATH` at CALL
+            time (a ``= DB_PATH`` default would bind at def time and silently ignore a
+            monkeypatched destination — the same reason :func:`_write_queue` defers).
+        write: Master switch for persistence. False writes NOTHING — no queue, no log.
+            Tests pass False.
+        write_queue: Whether to write the proposal QUEUE artifact. Defaults to ``write``.
+            Split out because the two writes answer different questions: the queue says
+            *what to change*, the run log says *that the audit happened at all*.
+            ``--report-only`` sets this False while leaving the run log on, so a
+            report-only invocation still leaves a durable trace.
+        queue_dir: Override for the proposal queue directory (tests pass a tmp_path).
+        log_path: Override for the run-log path (tests pass a tmp_path).
 
     Returns:
-        The structured :class:`AuditResult` (proposals + notes).
+        The structured :class:`AuditResult` (proposals + notes + instrument_ok).
     """
+    db_path = db_path if db_path is not None else DB_PATH
+    write_queue = write if write_queue is None else write_queue
     result = AuditResult()
     if not db_path.exists():
+        result.instrument_ok = False
         result.notes.append("Database not found — nothing to audit (run scripts/init_db.py).")
-        return result
+        return _persist(
+            result, write=write, write_queue=write_queue, queue_dir=queue_dir, log_path=log_path
+        )
 
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(str(db_path))
+        # Opened read-only at the driver level, not merely by convention: this script
+        # only ever reads evaluation.db, and an audit tool that could mutate the
+        # evidence it audits is not an audit tool.
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         result.proposals.extend(_agent_calibration_drift(conn))
         result.proposals.extend(_category_noise_rate(conn))
         classifier = _load_classifier()
@@ -248,26 +300,69 @@ def audit_calibration(db_path: Path = DB_PATH, *, write: bool = True) -> AuditRe
                 result.notes.append("Severity-disagreement signal healthy (below threshold).")
     except sqlite3.Error as exc:
         # Never expose raw DB/internal errors (Always-On invariant).
+        result.instrument_ok = False
         result.proposals.clear()
         result.notes.append(
             f"Calibration audit unavailable — database error ({type(exc).__name__})."
         )
-        return result
+        return _persist(
+            result, write=write, write_queue=write_queue, queue_dir=queue_dir, log_path=log_path
+        )
     finally:
         if conn is not None:
             conn.close()
 
-    if write and result.proposals:
-        ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        _write_queue(result, ts)
-        _append_log(result, ts)
+    return _persist(
+        result, write=write, write_queue=write_queue, queue_dir=queue_dir, log_path=log_path
+    )
+
+
+def _persist(
+    result: AuditResult,
+    *,
+    write: bool,
+    write_queue: bool,
+    queue_dir: Path | None,
+    log_path: Path | None,
+) -> AuditResult:
+    """Persist one run: the queue artifact only if there is something to queue, the run
+    log ALWAYS.
+
+    The two writes are deliberately gated differently.
+
+    * The QUEUE is a to-do list for a human, so an empty one is noise: it is written only
+      when ``write_queue`` and there is at least one proposal.
+    * The RUN LOG is the record that the audit HAPPENED, so it is written on every run
+      that persistence is enabled for — zero proposals included, broken instrument
+      included. Gating it on ``result.proposals`` (as an earlier version did) erased
+      exactly the clean case: an audit that ran and found nothing left no trace, making
+      "measured, no drift" indistinguishable from "never measured". That is the same
+      collapse ``efficiency_report.py`` exists to prevent, reproduced inside the
+      instrument meant to prevent it. Capture is automatic (Principle #2) or it is not
+      capture.
+
+    ``write`` remains the master switch: False writes nothing at all, so a library caller
+    (every test in the suite) cannot leave artifacts behind.
+    """
+    if not write:
+        return result
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    if write_queue and result.proposals:
+        _write_queue(result, ts, queue_dir or QUEUE_DIR)
+    _append_log(result, ts, log_path or LOG_PATH)
     return result
 
 
-def _write_queue(result: AuditResult, ts: str) -> Path:
-    """Write a dated, append-safe proposal queue artifact (never overwrites a prior run)."""
-    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
-    path = QUEUE_DIR / f"CALIB-{ts}.md"
+def _write_queue(result: AuditResult, ts: str, queue_dir: Path | None = None) -> Path:
+    """Write a dated, append-safe proposal queue artifact (never overwrites a prior run).
+
+    ``queue_dir`` defaults to None rather than to ``QUEUE_DIR`` so the module global is
+    resolved at CALL time — a ``= QUEUE_DIR`` default would bind at def time and silently
+    ignore a monkeypatched destination, sending test artifacts into the real repo.
+    """
+    queue_dir = queue_dir if queue_dir is not None else QUEUE_DIR
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    path = queue_dir / f"CALIB-{ts}.md"
     lines = [
         f"# Calibration proposals — {ts}",
         "",
@@ -292,16 +387,27 @@ def _write_queue(result: AuditResult, ts: str) -> Path:
     return path
 
 
-def _append_log(result: AuditResult, ts: str) -> None:
-    """Append one line to the calibration run log (capture is automatic — Principle #2)."""
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+def _append_log(result: AuditResult, ts: str, log_path: Path | None = None) -> None:
+    """Append one line to the calibration run log (capture is automatic — Principle #2).
+
+    Called on EVERY persisted run, including zero-proposal runs and runs where the
+    instrument was broken — see :func:`_persist`. ``ok`` carries that distinction into
+    the log so a reader can tell "audited, no drift" from "could not audit" without
+    re-deriving it from the absence of a line.
+
+    ``log_path`` defaults to None for the same call-time-resolution reason as
+    :func:`_write_queue`.
+    """
+    log_path = log_path if log_path is not None else LOG_PATH
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "ts": ts,
+        "ok": result.instrument_ok,
         "proposals": len(result.proposals),
         "signals": sorted({p.signal for p in result.proposals}),
         "kinds": sorted({p.kind for p in result.proposals}),
     }
-    with LOG_PATH.open("a", encoding="utf-8") as fh:
+    with log_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")
 
 
@@ -310,11 +416,29 @@ def render_report(result: AuditResult) -> str:
     out = ["Calibration audit", "=" * 17]
     for note in result.notes:
         out.append(f"note: {note}")
+    if not result.instrument_ok:
+        # Never render a failed audit as a clean one. Before this branch existed, a
+        # missing or corrupt database printed "classifier calibration looks healthy" —
+        # a broken instrument reporting a passing grade for the thing it failed to
+        # measure. The exit code says the same thing (1); this says it to a human.
+        out.append(
+            "BROKEN INSTRUMENT: the audit could not run, so NOTHING was measured.\n"
+            "  This is not a clean bill of health. No conclusion about calibration —\n"
+            "  healthy or drifting — may be drawn from this run. Repair the database\n"
+            "  (scripts/init_db.py) and re-run."
+        )
+        return "\n".join(out)
     if not result.proposals:
         out.append("No drift signals crossed threshold — classifier calibration looks healthy.")
         return "\n".join(out)
     out.append(
         f"{len(result.proposals)} proposal(s) — HUMAN approval required before applying any:"
+    )
+    out.append(
+        "  ADVISORY ONLY. These are communication artifacts, not instructions. The agent\n"
+        "  must NEVER edit a classifier surface off its own proposal — that is\n"
+        "  self-modification (ADR-0024; Principle #6, curated memory needs human\n"
+        "  approval). A human applies each one."
     )
     for i, p in enumerate(result.proposals, 1):
         flag = " [low-confidence]" if p.low_confidence else ""
@@ -328,17 +452,37 @@ def render_report(result: AuditResult) -> str:
 
 
 def main() -> int:
-    """CLI entry point. Returns a process exit code (0 = clean run)."""
-    parser = argparse.ArgumentParser(description="Audit classifier calibration drift.")
+    """CLI entry point.
+
+    Returns 0 whenever the audit RAN, however many proposals it emitted, and 1 when the
+    instrument itself was unavailable (database absent or unreadable). This is an
+    advisory instrument, never a gate on its FINDINGS: see the module docstring. A caller
+    that reads exit 1 as "drift detected" is misreading it — it means "nothing was
+    measured", and the correct response is to repair the instrument, never to conclude
+    anything about calibration.
+    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "Audit classifier calibration drift. ADVISORY ONLY — exits 0 regardless of "
+            "how many proposals are emitted; it never gates a build or a commit. Exit 1 "
+            "means the audit could not run at all."
+        )
+    )
     parser.add_argument(
         "--report-only",
         action="store_true",
-        help="Print the report without writing the proposal queue or run log.",
+        help=(
+            "Do not write the proposal queue artifact. The run log is still appended: "
+            "that the audit ran is recorded even when its output is not queued."
+        ),
     )
     args = parser.parse_args()
-    result = audit_calibration(write=not args.report_only)
+    # write=True always: the run log is capture, not output. --report-only suppresses
+    # only the queue artifact, so a /retro or /knowledge-health invocation still leaves
+    # the durable "the audit ran on this date" record it previously never wrote.
+    result = audit_calibration(write=True, write_queue=not args.report_only)
     print(render_report(result))
-    return 0
+    return 0 if result.instrument_ok else 1
 
 
 if __name__ == "__main__":

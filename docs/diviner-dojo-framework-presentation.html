@@ -1,20 +1,22 @@
 <!DOCTYPE html>
 <!--
   Framework overview deck for the AI-Native Agentic Development Framework.
-  Revised 2026-07-09 (round-3 accuracy pass, ADR-0020..0028 era): commands 24->25,
-  skills 21->25; added the Prime Objective (ADR-0015) to slide 3, /goal-loop builder!=judge
-  (ADR-0026/0028) to slides 7+9, Telemetry & Oversight (ADR-0020) to slide 13; refreshed
-  slide-11 adoption stats (as of May 2026) and cross-linked the how-to deck. Counts:
-  12 agents / 25 commands / 25 skills / 10 hooks / 4 rules / 9 principles. Hooks slide counts
-  enumerated protections (validator splits into 3); the one-shot Stop hook (ADR-0023) was
-  wired into the shipped settings.json on 2026-07-10 and is shown under Session Lifecycle.
+  Rebuilt 2026-08-18 (adopter-first restructure; developer-approved go-forward): need-driven
+  order — problem story, what it is, why use it, a REAL review replayed verbatim from
+  docs/reviews/REV-20260318-035523.md, the three core principles taught off that example,
+  machinery (capture layers, enforcement, agents-by-risk), constitution (Prime Objective in
+  plain language; each principle tagged with the extraction mode it refuses, per PHILOSOPHY.md),
+  human ownership, learning loops, honest trade-off, get started. 17 slides.
+  Counts measured 2026-08-18: 12 agents / 24 commands / 25 skills / 4 rules / 7 principles.
+  Hooks are described by FUNCTION with no count stated — the denominator (9 hook commands vs
+  enumerated protections) is an open developer decision; do not reintroduce a number without it.
   Keep in sync with .claude/ — see the syncing-framework-docs skill.
 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Diviner Dojo — AI-Native Agentic Development Framework v3.5</title>
+<title>Diviner Dojo — AI-Native Agentic Development Framework v3.6</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -34,7 +36,6 @@
   --accent: #6d5acd;
   --accent-light: #8b7ae0;
   --accent-glow: rgba(109,90,205,0.25);
-  --accent-secondary: #3b82f6;
   --gold: #f59e0b;
   --gold-dim: rgba(245,158,11,0.15);
   --green: #10b981;
@@ -43,11 +44,12 @@
   --blue-dim: rgba(59,130,246,0.15);
   --red: #ef4444;
   --red-dim: rgba(239,68,68,0.15);
+  --teal: #14b8a6;
+  --teal-dim: rgba(20,184,166,0.15);
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.3);
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -64,1052 +66,356 @@ body {
 }
 
 /* ===== SLIDE CONTAINER ===== */
-.presentation {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-}
+.presentation { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
 
 .slide {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  padding: 60px 80px;
-  opacity: 0;
-  transform: translateX(60px);
+  position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+  display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
+  padding: 60px 80px; opacity: 0; transform: translateX(60px);
   transition: opacity 0.5s ease, transform 0.5s ease;
-  pointer-events: none;
-  overflow-y: auto;
+  pointer-events: none; overflow-y: auto;
 }
-
-.slide.active {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: all;
-}
-
-.slide.exit-left {
-  opacity: 0;
-  transform: translateX(-60px);
-}
+.slide.active { opacity: 1; transform: translateX(0); pointer-events: all; }
+.slide.exit-left { opacity: 0; transform: translateX(-60px); }
 
 .slide-inner {
-  max-width: 1200px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-  /* safe centering: short slides center, tall slides scroll from the top
-     (justify-content:center clips overflow-top unreachably) */
+  max-width: 1200px; width: 100%;
+  display: flex; flex-direction: column; gap: 28px;
+  /* safe centering: short slides center, tall slides scroll from the top */
   margin: auto 0;
+}
+
+/* ===== SCROLL AFFORDANCE ===== */
+.scroll-fade {
+  position: fixed; bottom: 49px; left: 0; right: 0; height: 44px;
+  background: linear-gradient(transparent, var(--bg-primary));
+  pointer-events: none; z-index: 99;
 }
 
 /* ===== NAVIGATION ===== */
 .nav-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 24px;
-  background: rgba(10,14,26,0.92);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border-subtle);
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 24px; background: rgba(10,14,26,0.92);
+  backdrop-filter: blur(12px); border-top: 1px solid var(--border-subtle);
 }
-
-.nav-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-}
-
-.nav-controls {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
+.nav-logo { width: 28px; height: 28px; border-radius: 6px; }
+.nav-controls { display: flex; align-items: center; gap: 16px; }
 .nav-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  transition: var(--transition);
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  color: var(--text-secondary); width: 36px; height: 36px;
+  border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: var(--transition);
 }
-
-.nav-btn:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-  color: var(--text-primary);
-}
-
-.slide-counter {
-  font-size: 13px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  min-width: 60px;
-  text-align: center;
-}
-
-.progress-bar {
-  position: fixed;
-  bottom: 60px;
-  left: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-light));
-  transition: width 0.4s ease;
-  z-index: 101;
-}
-
-.keyboard-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.key-badge {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-family: var(--mono);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.key-badge:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-  color: var(--text-primary);
-}
+.nav-btn:hover { background: var(--bg-card-hover); border-color: var(--border-hover); color: var(--text-primary); }
+.slide-counter { font-size: 13px; color: var(--text-muted); font-variant-numeric: tabular-nums; min-width: 60px; text-align: center; }
+.progress-bar { position: fixed; bottom: 60px; left: 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent-light)); transition: width 0.4s ease; z-index: 101; }
+.keyboard-hint { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
+.key-badge { background: var(--bg-card); border: 1px solid var(--border-subtle); padding: 2px 8px; border-radius: 4px; font-size: 10px; font-family: var(--mono); color: var(--text-muted); cursor: pointer; transition: var(--transition); }
+.key-badge:hover { background: var(--bg-card-hover); border-color: var(--border-hover); color: var(--text-primary); }
 
 /* ===== TYPOGRAPHY ===== */
-h1 {
-  font-size: clamp(2rem, 4vw, 3.5rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
-  color: var(--text-primary);
-}
-
-h2 {
-  font-size: clamp(1.6rem, 3vw, 2.5rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  color: var(--text-primary);
-}
-
-h3 {
-  font-size: clamp(1.1rem, 1.5vw, 1.4rem);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.subtitle {
-  font-size: clamp(1rem, 1.8vw, 1.35rem);
-  color: var(--text-secondary);
-  font-weight: 400;
-  line-height: 1.5;
-}
-
-.tagline {
-  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
-  color: var(--accent-light);
-  font-style: italic;
-  font-weight: 400;
-}
-
-.section-label {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--accent);
-  margin-bottom: -16px;
-}
+h1 { font-size: clamp(2rem, 4vw, 3.5rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; color: var(--text-primary); }
+h2 { font-size: clamp(1.6rem, 3vw, 2.5rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; color: var(--text-primary); }
+h3 { font-size: clamp(1.05rem, 1.5vw, 1.35rem); font-weight: 600; color: var(--text-primary); }
+.subtitle { font-size: clamp(1rem, 1.8vw, 1.3rem); color: var(--text-secondary); font-weight: 400; line-height: 1.55; }
+.tagline { font-size: clamp(0.95rem, 1.4vw, 1.15rem); color: var(--accent-light); font-style: italic; font-weight: 400; }
+.section-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent); margin-bottom: -12px; }
 
 /* ===== CARDS ===== */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 24px;
-  transition: var(--transition);
-}
-
-.card:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-}
-
-.card-grid {
-  display: grid;
-  gap: 16px;
-}
-
+.card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius); padding: 22px; transition: var(--transition); }
+.card:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+.card-grid { display: grid; gap: 14px; }
 .card-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
 .card-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .card-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
-
-.card-icon {
-  font-size: 28px;
-  margin-bottom: 12px;
-  display: block;
-}
-
 .card h3 { margin-bottom: 8px; }
+.card p { color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
 
-.card p {
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-/* ===== BADGE ===== */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-}
-
-.badge-accent {
-  background: var(--accent-glow);
-  color: var(--accent-light);
-  border: 1px solid rgba(109,90,205,0.3);
-}
-
-.badge-gold {
-  background: var(--gold-dim);
-  color: var(--gold);
-  border: 1px solid rgba(245,158,11,0.25);
-}
-
-.badge-blue {
-  background: var(--blue-dim);
-  color: var(--blue);
-  border: 1px solid rgba(59,130,246,0.25);
-}
-
-.badge-green {
-  background: var(--green-dim);
-  color: var(--green);
-  border: 1px solid rgba(16,185,129,0.25);
-}
+/* ===== BADGES ===== */
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; letter-spacing: 0.03em; }
+.badge-accent { background: var(--accent-glow); color: var(--accent-light); border: 1px solid rgba(109,90,205,0.3); }
+.badge-gold { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(245,158,11,0.25); }
+.badge-blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.25); }
+.badge-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.25); }
+.badge-red { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
 
 /* ===== TITLE SLIDE ===== */
-.title-slide {
-  text-align: center;
-  position: relative;
-}
-
-.title-slide::before {
-  content: '';
-  position: absolute;
-  top: -200px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(109,90,205,0.12) 0%, transparent 70%);
-  pointer-events: none;
-  animation: pulseGlow 6s ease-in-out infinite;
-}
-
-@keyframes pulseGlow {
-  0%, 100% { opacity: 0.5; transform: translateX(-50%) scale(1); }
-  50% { opacity: 1; transform: translateX(-50%) scale(1.1); }
-}
-
-.title-logo {
-  width: 96px;
-  height: 96px;
-  border-radius: 20px;
-  margin-bottom: 24px;
-  box-shadow: 0 8px 32px rgba(109,90,205,0.3);
-  position: relative;
-  z-index: 1;
-}
-
-.title-slide h1 { position: relative; z-index: 1; }
-.title-slide .subtitle { position: relative; z-index: 1; margin-top: 8px; }
-.title-slide .tagline { position: relative; z-index: 1; margin-top: 16px; }
-.title-slide .badge { position: relative; z-index: 1; }
+.title-slide { text-align: center; position: relative; }
+.title-slide::before { content: ''; position: absolute; top: -200px; left: 50%; transform: translateX(-50%); width: 600px; height: 600px; background: radial-gradient(circle, rgba(109,90,205,0.12) 0%, transparent 70%); pointer-events: none; animation: pulseGlow 6s ease-in-out infinite; }
+@keyframes pulseGlow { 0%, 100% { opacity: 0.5; transform: translateX(-50%) scale(1); } 50% { opacity: 1; transform: translateX(-50%) scale(1.1); } }
+.title-logo { width: 96px; height: 96px; border-radius: 20px; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(109,90,205,0.3); position: relative; z-index: 1; }
+.title-slide h1, .title-slide h2, .title-slide .subtitle, .title-slide .tagline, .title-slide .badge { position: relative; z-index: 1; }
+.title-slide .subtitle { margin-top: 8px; }
+.title-slide .tagline { margin-top: 16px; }
 
 /* ===== ANIMATED BG ===== */
-.bg-grid {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.3;
-  background-image:
-    radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0);
-  background-size: 40px 40px;
+.bg-grid { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; opacity: 0.3; background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0); background-size: 40px 40px; }
+
+/* ===== STORY / VIGNETTE ===== */
+.story {
+  background: linear-gradient(135deg, rgba(109,90,205,0.07), rgba(0,0,0,0.25));
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+  font-size: clamp(1rem, 1.5vw, 1.2rem);
+  line-height: 1.8;
+  color: var(--text-secondary);
+  max-width: 900px;
 }
+.story strong { color: var(--text-primary); font-weight: 600; }
+.story .beat { display: block; margin-top: 14px; }
+
+.pull-quote {
+  text-align: center; padding: 20px 32px;
+  font-size: clamp(1.15rem, 2vw, 1.6rem);
+  font-weight: 600; line-height: 1.45; color: var(--text-primary);
+  border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);
+  max-width: 860px; margin: 0 auto;
+}
+.pull-quote .attr { display: block; margin-top: 10px; font-size: 13px; font-weight: 400; color: var(--text-muted); font-style: italic; }
+
+/* ===== CODE BLOCK (+ context labels, ported from the how-to deck) ===== */
+.code-block {
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius); padding: 20px 24px; font-family: var(--mono);
+  font-size: 13.5px; line-height: 1.9; color: var(--text-secondary); overflow-x: auto;
+}
+.code-block .cmd { color: var(--green); }
+.code-block .comment { color: var(--text-muted); }
+.code-block .output { color: var(--accent-light); }
+.code-block .flag { color: var(--gold); }
+.code-block .file { color: var(--blue); }
+.code-block .key { color: var(--teal); }
+.code-block .warn { color: var(--red); }
+
+.code-block.ctx { position: relative; padding-top: 38px; }
+.code-block.ctx::before {
+  content: attr(data-ctx); position: absolute; top: 0; left: 0; right: 0;
+  padding: 6px 16px; font-family: var(--font); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.code-block.terminal { border-color: rgba(100,116,139,0.45); }
+.code-block.terminal::before { content: "\1F5A5  Run in your terminal (shell)"; background: rgba(100,116,139,0.16); color: #cbd5e1; }
+.code-block.in-claude { border-color: rgba(109,90,205,0.5); }
+.code-block.in-claude::before { content: "\26A1  Type inside Claude Code (a / command)"; background: var(--accent-glow); color: var(--accent-light); }
+.code-block.on-disk { border-color: rgba(20,184,166,0.45); }
+.code-block.on-disk::before { content: "\1F4C4  On disk \2014 real file, quoted verbatim"; background: var(--teal-dim); color: var(--teal); }
+
+/* ===== FINDING CARDS (styled like real review output) ===== */
+.finding {
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius); padding: 18px 22px;
+}
+.finding-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.sev { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 10px; border-radius: 6px; }
+.sev-critical { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.35); }
+.sev-high { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(245,158,11,0.3); }
+.sev-medium { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
+.sev-invalidated { background: rgba(100,116,139,0.16); color: #94a3b8; border: 1px solid rgba(100,116,139,0.4); text-decoration: line-through; }
+.finding-id { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+.finding-agent { font-size: 12px; color: var(--accent-light); margin-left: auto; }
+.finding h3 { font-size: 15px; margin-bottom: 4px; }
+.finding p { font-size: 13.5px; color: var(--text-secondary); line-height: 1.65; }
+.finding.crit { border-left: 3px solid var(--red); background: linear-gradient(135deg, rgba(239,68,68,0.05), var(--bg-card)); }
+
+.verdict-strip {
+  display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap;
+  padding: 14px 24px; border-radius: var(--radius);
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle);
+  font-size: 13.5px; color: var(--text-secondary);
+}
+.verdict-strip .v { font-weight: 700; letter-spacing: 0.05em; color: var(--gold); }
+.verdict-strip .sep { color: var(--text-muted); }
 
 /* ===== LAYER DIAGRAM ===== */
-.layer-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-}
-
+.layer-stack { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .layer-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 18px 24px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: var(--transition);
+  display: flex; align-items: center; gap: 16px; padding: 16px 24px;
+  border-radius: var(--radius); cursor: pointer; transition: var(--transition);
   border: 1px solid var(--border-subtle);
 }
-
 .layer-bar:hover { border-color: var(--border-hover); }
-
-.layer-bar.expanded {
-  border-color: var(--accent);
-  background: rgba(109,90,205,0.06);
-}
-
-.layer-number {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
+.layer-bar.expanded { border-color: var(--accent); background: rgba(109,90,205,0.06); }
+.layer-number { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
 .layer-1 .layer-number { background: var(--accent-glow); color: var(--accent-light); }
 .layer-2 .layer-number { background: var(--blue-dim); color: var(--blue); }
 .layer-3 .layer-number { background: var(--green-dim); color: var(--green); }
 .layer-4 .layer-number { background: var(--gold-dim); color: var(--gold); }
-
 .layer-info { flex: 1; }
 .layer-info h3 { font-size: 15px; margin-bottom: 2px; }
 .layer-info p { font-size: 13px; color: var(--text-secondary); }
-
 .layer-detail {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.4s ease, padding 0.4s ease;
-  padding: 0 24px;
-  font-size: 14px;
-  color: var(--text-secondary);
-  line-height: 1.7;
-  border-left: 2px solid var(--border-subtle);
-  margin-left: 42px;
+  max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.4s ease;
+  padding: 0 24px; font-size: 14px; color: var(--text-secondary); line-height: 1.7;
+  border-left: 2px solid var(--border-subtle); margin-left: 42px;
 }
+.layer-detail.open { max-height: 500px; overflow-y: auto; padding: 14px 24px; }
+.layer-expand-icon { color: var(--text-muted); transition: transform 0.3s ease; font-size: 14px; }
+.layer-bar.expanded .layer-expand-icon { transform: rotate(180deg); }
 
-.layer-detail.open {
-  max-height: 300px;
-  padding: 16px 24px;
-}
-
-.layer-expand-icon {
-  color: var(--text-muted);
-  transition: transform 0.3s ease;
-  font-size: 14px;
-}
-
-.layer-bar.expanded .layer-expand-icon {
-  transform: rotate(180deg);
-}
-
-/* ===== AGENT GRID ===== */
-.agent-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-.agent-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 20px;
-  cursor: pointer;
-  transition: var(--transition);
-  position: relative;
-  overflow: hidden;
-}
-
-.agent-card:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-  transform: translateY(-2px);
-}
-
-.agent-card.expanded {
-  border-color: var(--accent);
-}
-
-.agent-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.agent-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.tier-opus { background: var(--gold-dim); }
-.tier-sonnet { background: var(--blue-dim); }
-.tier-haiku { background: var(--green-dim); }
-
-.agent-name { font-size: 14px; font-weight: 600; }
-.agent-role { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-
-.agent-detail {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.35s ease;
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.agent-card.expanded .agent-detail {
-  max-height: 200px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
-}
-
-/* ===== SPECTRUM ===== */
-.spectrum {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.spectrum-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  transition: var(--transition);
-}
-
-.spectrum-item:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-}
-
-.spectrum-num {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 14px;
-  flex-shrink: 0;
-  background: var(--accent-glow);
-  color: var(--accent-light);
-}
-
-.spectrum-info { flex: 1; }
-.spectrum-info h3 { font-size: 15px; margin-bottom: 2px; }
-.spectrum-info p { font-size: 13px; color: var(--text-secondary); }
-
-.spectrum-badge {
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-/* ===== COMMAND GROUPS ===== */
-.cmd-group {
-  margin-bottom: 16px;
-}
-
-.cmd-group-title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--accent);
-  margin-bottom: 8px;
-}
-
-.cmd-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.cmd-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-family: var(--mono);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  transition: var(--transition);
-  cursor: default;
-}
-
-.cmd-chip:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-}
-
-.cmd-chip .cmd-desc {
-  font-family: var(--font);
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-/* ===== FLOW DIAGRAM ===== */
-.flow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: center;
-  padding: 20px 0;
-}
-
-.flow-step {
-  padding: 8px 14px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.flow-arrow {
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-/* ===== HOOKS PIPELINE ===== */
-.hook-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
+/* ===== HOOK / ENFORCEMENT ITEMS ===== */
+.hook-group { display: flex; flex-direction: column; gap: 8px; }
 .hook-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 14px 18px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  display: flex; align-items: flex-start; gap: 14px; padding: 12px 16px;
+  border-radius: var(--radius-sm); background: var(--bg-card); border: 1px solid var(--border-subtle);
 }
-
-.hook-phase {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 3px 10px;
-  border-radius: 6px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
+.hook-phase { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
 .hook-phase.pre { background: var(--gold-dim); color: var(--gold); }
 .hook-phase.post { background: var(--green-dim); color: var(--green); }
 .hook-phase.session { background: var(--blue-dim); color: var(--blue); }
+.hook-info h3 { font-size: 13.5px; margin-bottom: 2px; }
+.hook-info p { font-size: 12.5px; color: var(--text-secondary); }
 
-.hook-info h3 { font-size: 14px; margin-bottom: 3px; }
-.hook-info p { font-size: 13px; color: var(--text-secondary); }
+/* ===== CHECKLIST ===== */
+.checklist { display: flex; flex-direction: column; gap: 8px; }
+.check-item { display: flex; align-items: center; gap: 12px; padding: 11px 18px; border-radius: var(--radius-sm); background: var(--bg-card); border: 1px solid var(--border-subtle); font-size: 14px; }
+.check-icon { font-size: 17px; flex-shrink: 0; color: var(--green); }
 
-/* ===== LOOP DIAGRAM ===== */
-.loops-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  padding: 20px 0;
-  position: relative;
-}
-
-.loop-ring {
-  border-radius: 50%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  position: absolute;
-  border: 2px solid;
+/* ===== AGENT CHIPS ===== */
+.agent-chip-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.agent-chip {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-radius: var(--radius-sm); background: var(--bg-card); border: 1px solid var(--border-subtle);
   transition: var(--transition);
 }
+.agent-chip:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+.agent-chip .a-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.tier-opus { background: var(--gold-dim); }
+.tier-sonnet { background: var(--blue-dim); }
+.agent-chip .a-name { font-size: 13px; font-weight: 600; }
+.agent-chip .a-role { font-size: 11.5px; color: var(--text-muted); line-height: 1.35; }
 
-.loop-ring:hover {
-  transform: scale(1.03);
+/* ===== RISK TABLE ===== */
+.risk-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.risk-table th { text-align: left; padding: 9px 14px; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.risk-table td { padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.risk-table tr:hover td { background: var(--bg-card); }
+
+/* ===== PRINCIPLES ===== */
+.principles-list { display: flex; flex-direction: column; gap: 6px; }
+.principle-item { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition); overflow: hidden; }
+.principle-item:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+.principle-item.expanded { border-color: var(--accent); }
+.principle-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.principle-num { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12.5px; flex-shrink: 0; background: var(--accent-glow); color: var(--accent-light); }
+.principle-title { flex: 1; font-weight: 600; font-size: 13.5px; }
+.refusal-tag { font-size: 10.5px; color: var(--text-muted); font-style: italic; white-space: nowrap; }
+.principle-detail { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; padding: 0 16px 0 54px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+.principle-item.expanded .principle-detail { max-height: 320px; overflow-y: auto; padding: 0 16px 12px 54px; }
+.principle-item.expanded .layer-expand-icon { transform: rotate(180deg); }
+
+/* ===== FLOW ===== */
+.flow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; padding: 12px 0; }
+.flow-step { padding: 8px 14px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 12px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
+.flow-arrow { color: var(--text-muted); font-size: 14px; }
+
+/* ===== FUNNEL (education gate, compact) ===== */
+.funnel-row { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.funnel-cell { flex: 1; min-width: 150px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 16px; }
+.funnel-cell h3 { font-size: 14px; margin-bottom: 4px; }
+.funnel-cell p { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; }
+.funnel-cell.done { border-color: rgba(16,185,129,0.35); }
+
+/* ===== COMPARISON ===== */
+.comparison { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.comparison-row { display: grid; grid-template-columns: 1fr 40px 1fr; align-items: center; gap: 8px; padding: 10px 0; }
+.comp-before { text-align: right; color: var(--text-muted); font-size: 14px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.comp-arrow { color: var(--accent-light); font-size: 18px; text-align: center; }
+.comp-after { color: var(--text-primary); font-size: 14px; display: flex; align-items: center; gap: 8px; }
+
+/* ===== CTA ===== */
+.cta-btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 14px 32px;
+  background: var(--accent); color: white; border: none; border-radius: var(--radius-sm);
+  font-size: 16px; font-weight: 600; font-family: var(--font); cursor: pointer;
+  transition: var(--transition); text-decoration: none;
 }
+.cta-btn:hover { background: var(--accent-light); transform: translateY(-2px); box-shadow: 0 8px 24px var(--accent-glow); }
+.cta-btn.secondary { background: var(--bg-card); border: 1px solid var(--border-hover); color: var(--text-primary); }
 
-.loop-macro {
-  width: 380px; height: 380px;
-  border-color: rgba(245,158,11,0.3);
-  background: rgba(245,158,11,0.03);
+/* ===== TWO COL ===== */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+
+/* ===== FILE TREE ===== */
+.file-tree { font-family: var(--mono); font-size: 13px; line-height: 1.85; background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); border-radius: var(--radius); padding: 22px; }
+.tree-file { color: var(--text-secondary); }
+.tree-dir { color: var(--accent-light); font-weight: 600; }
+.tree-comment { color: var(--text-muted); font-style: italic; }
+.tree-hot { color: var(--teal); }
+
+/* ===== LEARNING LOOP RINGS (ported from the live deck) ===== */
+.loops-container {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; padding: 20px 0; position: relative;
 }
-
-.loop-meso {
-  width: 260px; height: 260px;
-  border-color: rgba(59,130,246,0.3);
-  background: rgba(59,130,246,0.04);
+.loop-ring {
+  border-radius: 50%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  position: absolute; border: 2px solid; transition: var(--transition);
 }
-
-.loop-micro {
-  width: 150px; height: 150px;
-  border-color: rgba(16,185,129,0.3);
-  background: rgba(16,185,129,0.05);
-}
-
-.loop-label {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.loop-desc {
-  font-size: 11px;
-  color: var(--text-secondary);
-  max-width: 120px;
-}
-
+.loop-ring:hover { transform: scale(1.03); }
+.loop-macro { width: 380px; height: 380px; border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.03); }
+.loop-meso { width: 260px; height: 260px; border-color: rgba(59,130,246,0.3); background: rgba(59,130,246,0.04); }
+.loop-micro { width: 150px; height: 150px; border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.05); }
+.loop-label { font-size: 13px; font-weight: 700; }
+.loop-desc { font-size: 11px; color: var(--text-secondary); max-width: 120px; }
 .loop-macro .loop-label { color: var(--gold); }
 .loop-meso .loop-label { color: var(--blue); }
 .loop-micro .loop-label { color: var(--green); }
-
-/* ===== EDUCATION FUNNEL ===== */
-.funnel {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-
-.funnel-step {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 18px 24px;
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  transition: var(--transition);
-  width: 100%;
-  max-width: 700px;
-}
-
-.funnel-step:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-}
-
-.funnel-num {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 16px;
-  flex-shrink: 0;
-  background: var(--accent-glow);
-  color: var(--accent-light);
-}
-
-.funnel-info h3 { font-size: 15px; margin-bottom: 2px; }
-.funnel-info p { font-size: 13px; color: var(--text-secondary); }
-
-.funnel-connector {
-  width: 2px;
-  height: 12px;
-  background: var(--border-subtle);
-}
-
-/* ===== FILE TREE ===== */
-.file-tree {
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.8;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 24px;
-  max-width: 700px;
-}
-
-.tree-folder {
-  cursor: pointer;
-  user-select: none;
-}
-
-.tree-folder > .tree-label {
-  color: var(--accent-light);
-  font-weight: 600;
-}
-
-.tree-folder > .tree-label:hover {
-  color: var(--accent);
-}
-
-.tree-children {
-  padding-left: 20px;
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease;
-}
-
-.tree-folder.open > .tree-children {
-  max-height: 500px;
-}
-
-.tree-file {
-  color: var(--text-secondary);
-}
-
-.tree-comment {
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.tree-toggle {
-  display: inline-block;
-  width: 16px;
-  color: var(--text-muted);
-  transition: transform 0.2s;
-}
-
-.tree-folder.open > .tree-label .tree-toggle {
-  transform: rotate(90deg);
-}
-
-/* ===== QUALITY CHECKLIST ===== */
-.checklist {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 600px;
-}
-
-.check-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 20px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  font-size: 15px;
-}
-
-.check-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.check-pass { color: var(--green); }
-.check-label { color: var(--text-primary); }
-
-/* ===== COMPARISON TABLE ===== */
-.comparison {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-}
-
-.comparison-row {
-  display: grid;
-  grid-template-columns: 1fr 40px 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 0;
-}
-
-.comp-before {
-  text-align: right;
-  color: var(--text-muted);
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.comp-arrow {
-  color: var(--accent-light);
-  font-size: 18px;
-  text-align: center;
-}
-
-.comp-after {
-  color: var(--text-primary);
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* ===== CTA SLIDE ===== */
-.cta-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 32px;
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 16px;
-  font-weight: 600;
-  font-family: var(--font);
-  cursor: pointer;
-  transition: var(--transition);
-  text-decoration: none;
-}
-
-.cta-btn:hover {
-  background: var(--accent-light);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px var(--accent-glow);
-}
-
-.quick-start {
-  background: rgba(0,0,0,0.3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 24px;
-  font-family: var(--mono);
-  font-size: 14px;
-  line-height: 2;
-  max-width: 500px;
-  color: var(--text-secondary);
-}
-
-.quick-start .cmd {
-  color: var(--green);
-}
-
-.quick-start .comment {
-  color: var(--text-muted);
-}
-
-/* ===== ANALYSIS STATS ===== */
-.stats-row {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.stat-card {
-  flex: 1;
-  min-width: 120px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 20px;
-  text-align: center;
-}
-
-.stat-number {
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--accent-light);
-  line-height: 1;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-/* ===== SCORING RUBRIC ===== */
-.rubric {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.rubric-item {
-  flex: 1;
-  min-width: 100px;
-  padding: 12px 16px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  text-align: center;
-}
-
-.rubric-item h3 {
-  font-size: 13px;
-  margin-bottom: 2px;
-}
-
-.rubric-item p {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-/* ===== TWO COLUMN ===== */
-.two-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  align-items: start;
-}
-
-/* ===== EXPLORATION TABLE ===== */
-.intensity-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  margin-top: 16px;
-}
-
-.intensity-table th {
-  text-align: left;
-  padding: 10px 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.intensity-table td {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-}
-
-.intensity-table tr:hover td {
-  background: var(--bg-card);
-}
-
-/* ===== SLIDE ENTRANCE ANIMATIONS ===== */
-.slide.active .anim-fade-up {
-  animation: fadeUp 0.6s ease forwards;
-}
-
-.slide.active .anim-fade-up-d1 { animation: fadeUp 0.6s 0.1s ease forwards; opacity: 0; }
-.slide.active .anim-fade-up-d2 { animation: fadeUp 0.6s 0.2s ease forwards; opacity: 0; }
-.slide.active .anim-fade-up-d3 { animation: fadeUp 0.6s 0.3s ease forwards; opacity: 0; }
-.slide.active .anim-fade-up-d4 { animation: fadeUp 0.6s 0.4s ease forwards; opacity: 0; }
-.slide.active .anim-fade-up-d5 { animation: fadeUp 0.6s 0.5s ease forwards; opacity: 0; }
-
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
-  .slide { padding: 40px 40px 80px; }
-  .agent-grid { grid-template-columns: repeat(2, 1fr); }
-  .card-grid.cols-3 { grid-template-columns: repeat(2, 1fr); }
-  .card-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
-  .two-col { grid-template-columns: 1fr; }
   .loop-macro { width: 300px; height: 300px; }
   .loop-meso { width: 200px; height: 200px; }
   .loop-micro { width: 110px; height: 110px; }
 }
-
 @media (max-width: 768px) {
-  .slide { padding: 24px 20px 80px; }
-  .agent-grid { grid-template-columns: 1fr; }
-  .card-grid.cols-2,
-  .card-grid.cols-3,
-  .card-grid.cols-4 { grid-template-columns: 1fr; }
-  .comparison-row { grid-template-columns: 1fr; gap: 4px; }
-  .comp-before { justify-content: flex-start; text-align: left; }
-  .flow { flex-direction: column; }
-  .flow-arrow { transform: rotate(90deg); }
-  .stats-row { flex-direction: column; }
-  .keyboard-hint { display: none; }
   .loop-macro { width: 260px; height: 260px; }
   .loop-meso { width: 170px; height: 170px; }
   .loop-micro { width: 90px; height: 90px; }
   .loop-desc { font-size: 10px; max-width: 80px; }
 }
 
+/* ===== ENTRANCE ANIMATIONS ===== */
+.slide.active .anim-fade-up { animation: fadeUp 0.6s ease forwards; }
+.slide.active .anim-fade-up-d1 { animation: fadeUp 0.6s 0.1s ease forwards; opacity: 0; }
+.slide.active .anim-fade-up-d2 { animation: fadeUp 0.6s 0.2s ease forwards; opacity: 0; }
+.slide.active .anim-fade-up-d3 { animation: fadeUp 0.6s 0.3s ease forwards; opacity: 0; }
+.slide.active .anim-fade-up-d4 { animation: fadeUp 0.6s 0.4s ease forwards; opacity: 0; }
+.slide.active .anim-fade-up-d5 { animation: fadeUp 0.6s 0.5s ease forwards; opacity: 0; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+  .slide { padding: 40px 40px 80px; }
+  .card-grid.cols-3, .card-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
+  .two-col { grid-template-columns: 1fr; }
+  .agent-chip-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .slide { padding: 24px 20px 80px; }
+  .card-grid.cols-2, .card-grid.cols-3, .card-grid.cols-4 { grid-template-columns: 1fr; }
+  .comparison-row { grid-template-columns: 1fr; gap: 4px; }
+  .comp-before { justify-content: flex-start; text-align: left; }
+  .flow { flex-direction: column; }
+  .flow-arrow { transform: rotate(90deg); }
+  .keyboard-hint { display: none; }
+}
+
 /* ===== PRINT ===== */
 @media print {
   body { overflow: visible; height: auto; }
   .presentation { height: auto; overflow: visible; }
-  .slide {
-    position: relative !important;
-    opacity: 1 !important;
-    transform: none !important;
-    pointer-events: all !important;
-    page-break-after: always;
-    height: auto;
-    min-height: 100vh;
-    padding: 40px;
-  }
-  .nav-bar, .progress-bar, .bg-grid { display: none !important; }
-  .layer-detail, .agent-detail, .tree-children { max-height: none !important; }
+  .slide { position: relative !important; opacity: 1 !important; transform: none !important; pointer-events: all !important; page-break-after: always; height: auto; min-height: 100vh; padding: 40px; }
+  .nav-bar, .progress-bar, .bg-grid, .scroll-fade { display: none !important; }
+  .layer-detail, .principle-detail { max-height: none !important; }
   * { color-adjust: exact; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -1123,642 +429,551 @@ h3 {
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up">
-      <span class="badge badge-accent anim-fade-up-d1">v3.5</span>
+      <span class="badge badge-accent anim-fade-up-d1">v3.6</span>
       <h1 class="anim-fade-up-d2">AI-Native Agentic<br>Development Framework</h1>
-      <p class="subtitle anim-fade-up-d3">Structured Multi-Agent Collaboration for<br>AI-Assisted Software Engineering</p>
+      <p class="subtitle anim-fade-up-d3">Independent review, automatic capture, and human ownership<br>for software you build with AI.</p>
       <p class="tagline anim-fade-up-d4">"Reasoning is the primary artifact. Code is output."</p>
-      <div class="card anim-fade-up-d5" style="max-width:680px; margin:20px auto 0; border-left:3px solid var(--gold); text-align:left;">
-        <p style="font-size:13px; color:var(--text-secondary); margin:0;"><span style="color:var(--gold); font-weight:600;">&#9888; Evolving rapidly &mdash; much is proof-of-concept.</span> The framework changes frequently; several capabilities are POC and will shift (sourced-assertion memory substrate, lineage tracking, the progressive-disclosure restructure, deterministic routing). Pin a version if you need stability.</p>
+      <div class="card anim-fade-up-d5" style="max-width:720px; margin:20px auto 0; border-left:3px solid var(--accent); text-align:left;">
+        <p style="font-size:13.5px; color:var(--text-secondary); margin:0;"><span style="color:var(--accent-light); font-weight:600;">The next 16 slides:</span> the problem in one story &middot; what this is and why you'd use it &middot; <strong style="color:var(--text-primary);">one real review, replayed from the repo's own records</strong> &middot; the machinery that guarantees it &middot; and the honest trade-off.</p>
       </div>
-      <div style="margin-top: 24px;" class="anim-fade-up-d5">
-        <span class="keyboard-hint">
-          Navigate: <span class="key-badge">←</span> <span class="key-badge">→</span> arrow keys
-        </span>
+      <div class="card anim-fade-up-d5" style="max-width:720px; margin:12px auto 0; border-left:3px solid var(--gold); text-align:left;">
+        <p style="font-size:12.5px; color:var(--text-secondary); margin:0;"><span style="color:var(--gold); font-weight:600;">&#9888; Evolving rapidly &mdash; much is proof-of-concept.</span> The core workflow (review, plan, build, deliberate) is stable; several advanced capabilities are POC and will shift. Pin a version if you need stability.</p>
+      </div>
+      <div style="margin-top: 20px;" class="anim-fade-up-d5">
+        <span class="keyboard-hint">Navigate: <span class="key-badge">&#8592;</span> <span class="key-badge">&#8594;</span> arrow keys</span>
       </div>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 2: THE PROBLEM ==================== -->
+  <!-- ==================== SLIDE 2: THE PROBLEM, AS A STORY ==================== -->
   <div class="slide" data-slide="2">
     <div class="slide-inner">
-      <p class="section-label anim-fade-up">The Challenge</p>
+      <p class="section-label anim-fade-up">The Problem</p>
       <h2 class="anim-fade-up-d1">The Problem with AI-Assisted Development Today</h2>
-      <div class="card-grid cols-2 anim-fade-up-d2">
-        <div class="card">
-          <span class="card-icon">🕳️</span>
-          <h3>No Decision Trail</h3>
-          <p>AI makes hundreds of choices — architecture, patterns, trade-offs — but the <em>reasoning</em> disappears. No audit trail. No traceability. No way to understand <em>why</em> six months later.</p>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-12px;">It doesn&rsquo;t show up on day one. It shows up three weeks later, like this:</p>
+      <div class="story anim-fade-up-d2">
+        Tuesday. You asked your AI assistant to add authentication. It weighed JSON Web Tokens against server-side sessions, considered your deployment, and chose httpOnly-cookie JWTs with rotating refresh tokens. It wrote clean code. The tests pass.
+        <span class="beat">Today a teammate asks: <strong>&ldquo;Why are refresh tokens rotated here? Can I simplify this?&rdquo;</strong></span>
+        <span class="beat">The reasoning that made that choice lived in a chat session that no longer exists. The code remembers <strong>what</strong> was decided. Nothing remembers <strong>why</strong> &mdash; so your teammate will either guess, or re-litigate a decision that was already made well.</span>
+      </div>
+      <p class="pull-quote anim-fade-up-d3">&ldquo;A decision that exists only in a context window did not happen.&rdquo;
+        <span class="attr">&mdash; the framework's constitution (CLAUDE.md, Principle #2: capture is automatic)</span>
+      </p>
+      <div class="card-grid cols-4 anim-fade-up-d4">
+        <div class="card" style="padding:16px;">
+          <h3 style="font-size:13.5px;">&#128371;&#65039; No decision trail</h3>
+          <p style="font-size:12.5px;">Hundreds of AI choices per project. The reasoning evaporates with the session.</p>
         </div>
-        <div class="card">
-          <span class="card-icon">🪞</span>
-          <h3>Confirmation Bias</h3>
-          <p>The same AI that writes the code evaluates it. It grades its own homework. No independent review means no safety net for blind spots, hallucinations, or compounding errors.</p>
+        <div class="card" style="padding:16px;">
+          <h3 style="font-size:13.5px;">&#129696; Self-graded homework</h3>
+          <p style="font-size:12.5px;">The same AI that wrote the code reviews it &mdash; and finds what it expects to find.</p>
         </div>
-        <div class="card">
-          <span class="card-icon">🎲</span>
-          <h3>Vibe Coding</h3>
-          <p>Unstructured, ad-hoc AI interactions produce wildly inconsistent quality. No repeatable process. No standards enforcement. Each session is a gamble.</p>
+        <div class="card" style="padding:16px;">
+          <h3 style="font-size:13.5px;">&#127922; Quality is a dice roll</h3>
+          <p style="font-size:12.5px;">Ad-hoc sessions, no repeatable process, no enforced standards.</p>
         </div>
-        <div class="card">
-          <span class="card-icon">💨</span>
-          <h3>Knowledge Evaporates</h3>
-          <p>Insights from AI sessions aren't captured, curated, or reused. Every session starts from zero. Patterns discovered once are lost and rediscovered again and again.</p>
+        <div class="card" style="padding:16px;">
+          <h3 style="font-size:13.5px;">&#128168; Zero institutional memory</h3>
+          <p style="font-size:12.5px;">Every session starts from scratch. Lessons are re-learned, then lost again.</p>
         </div>
       </div>
-      <p class="tagline anim-fade-up-d3" style="text-align:center; margin-top: 16px;">There has to be a better way.</p>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 3: PRINCIPLES ==================== -->
+  <!-- ==================== SLIDE 3: WHAT THIS ACTUALLY IS ==================== -->
   <div class="slide" data-slide="3">
     <div class="slide-inner">
-      <p class="section-label anim-fade-up">Foundation</p>
-      <h2 class="anim-fade-up-d1">The Prime Objective + 9 Non-Negotiable Principles</h2>
-      <div class="card anim-fade-up-d2" style="border-left:3px solid var(--gold); margin-top:-8px;">
-        <h3 style="color:var(--gold);">Prime Objective &mdash; Refuse Extraction <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">ADR-0015</span></h3>
-        <p style="margin-top:6px;">Above the nine principles sits a declared ethic: the framework must serve contributors and users and <strong style="color:var(--text-primary);">never accumulate value at their expense.</strong> A design refuses extraction only if every contributor retains attribution, no one performs labor whose benefit accrues to a third party without consent, and evolution never accumulates value from derivatives without per-instance human assent. Enforcement is <strong style="color:var(--text-primary);">human-mediated at every gate</strong> &mdash; the framework provides the gates; the human renders the verdict. The nine principles below are operational expressions of this objective.</p>
+      <p class="section-label anim-fade-up">Start Here</p>
+      <h2 class="anim-fade-up-d1">What This Actually Is</h2>
+      <p class="subtitle anim-fade-up-d2" style="max-width:940px;">A set of <strong style="color:var(--text-primary);">commands and rules you layer on top of Claude Code.</strong> Instead of chatting with one AI, you use structured commands &mdash; <code style="color:var(--green);">/review</code>, <code style="color:var(--green);">/plan</code>, <code style="color:var(--green);">/deliberate</code> &mdash; that route your work through a team of specialist AI agents, capture the reasoning behind every decision to disk, and run a quality gate before anything is committed. <strong style="color:var(--text-primary);">You stay the decision-maker; the framework makes sure nothing important gets skipped or lost.</strong></p>
+      <div class="card-grid cols-3 anim-fade-up-d3">
+        <div class="card" style="border-left:3px solid var(--accent);">
+          <h3 style="font-size:15px;">It runs <em>inside</em> Claude Code</h3>
+          <p style="margin-top:6px;">Not a separate service, not a SaaS. Version-controlled files in your repo, driven through Anthropic's <a href="https://claude.com/claude-code" target="_blank" style="color:var(--blue); text-decoration:none;">Claude Code</a> CLI. Requires a <strong style="color:var(--text-primary);">paid Claude account</strong> (Pro or Max) &mdash; the agents won't run without one.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--green);">
+          <h3 style="font-size:15px;">The commands <em>are</em> the framework</h3>
+          <p style="margin-top:6px;">It doesn't change how you write code &mdash; it changes what happens around it. Every command automatically records its reasoning; the AI cannot opt out of the paper trail.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--gold);">
+          <h3 style="font-size:15px;">Who it's for</h3>
+          <p style="margin-top:6px;">Anyone using Claude Code to build software they'll still own in six months &mdash; and who wants independent review, a record of decisions, and guardrails without building that machinery themselves.</p>
+        </div>
       </div>
-      <p class="subtitle anim-fade-up-d2" style="margin-top:0;">Click any principle to expand.</p>
-      <div class="principles-list anim-fade-up-d3" id="principlesList">
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">1</span>
-            <span class="principle-title">Reasoning is the primary artifact.</span>
-            <span class="layer-expand-icon">▼</span>
-          </div>
-          <div class="principle-detail">Code is output. Deliberation, trade-offs, and decision lineage are the durable assets. Every significant decision must be traceable to the discussion that produced it. <strong>Why:</strong> Six months from now, the <em>reasoning</em> is more valuable than the code.</div>
+      <div class="card anim-fade-up-d4" style="border-left:3px solid var(--blue);">
+        <p style="font-size:13.5px; margin:0;"><span style="color:var(--blue); font-weight:600;">Next: what it actually does for you</span> &mdash; then three slides that replay one real code review, pulled verbatim from this repository&rsquo;s own sealed records, so you can judge whether the machinery earns its keep.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 4: WHY USE THIS ==================== -->
+  <div class="slide" data-slide="4">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">The Value</p>
+      <h2 class="anim-fade-up-d1">Why Use This?</h2>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-12px;">Six things it does for you that a plain AI chat doesn't.</p>
+      <div class="card-grid cols-3 anim-fade-up-d3">
+        <div class="card" style="border-left:3px solid var(--accent);">
+          <h3 style="font-size:15px;">&#129517; Make better decisions</h3>
+          <p style="margin-top:6px;">Facing a fork &mdash; ORM vs raw SQL, monolith vs services? <code style="color:var(--accent-light);">/deliberate</code> convenes a specialist panel that argues it out from security, architecture, performance, and anti-groupthink angles, then hands you a recommendation with the trade-offs explicit. <strong style="color:var(--text-primary);">You make the call; the reasoning is kept.</strong></p>
         </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">2</span>
-            <span class="principle-title">Capture must be automatic.</span>
-            <span class="layer-expand-icon">▼</span>
-          </div>
-          <div class="principle-detail">If logging depends on model compliance, it will fail. Structured commands guarantee event-level recording. The AI cannot opt out. <strong>Why:</strong> Voluntary compliance doesn't work for audit trails.</div>
+        <div class="card" style="border-left:3px solid var(--red);">
+          <h3 style="font-size:15px;">&#128269; Review the builder can't rig</h3>
+          <p style="margin-top:6px;"><code style="color:var(--blue);">/review</code> sends every change to independent contexts that never saw the builder's reasoning &mdash; findings ranked blocking vs advisory, with a verdict. <strong style="color:var(--text-primary);">Proven on the next three slides.</strong></p>
         </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">3</span>
-            <span class="principle-title">Collaboration precedes adversarial rigor.</span>
-            <span class="layer-expand-icon">▼</span>
-          </div>
-          <div class="principle-detail">Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review, fault injection, and anti-groupthink checks. <strong>Why:</strong> Productive tension beats manufactured opposition.</div>
+        <div class="card" style="border-left:3px solid var(--green);">
+          <h3 style="font-size:15px;">&#128301; Learn from projects that already solved it</h3>
+          <p style="margin-top:6px;"><code style="color:var(--blue);">/discover-projects</code> finds reference implementations on GitHub; <code style="color:var(--blue);">/analyze-project</code> &mdash; the Project Analyst agent &mdash; scores their patterns on a 5-dimension rubric. Only &ge;20/25 gets recommended, with attribution. <strong style="color:var(--text-primary);">Evidence, not fashion.</strong></p>
         </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">4</span>
-            <span class="principle-title">Independence prevents confirmation loops.</span>
-            <span class="layer-expand-icon">▼</span>
-          </div>
-          <div class="principle-detail">The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review. <strong>Why:</strong> Self-review finds what it expects to find.</div>
+        <div class="card" style="border-left:3px solid var(--gold);">
+          <h3 style="font-size:15px;">&#128737;&#65039; Git &amp; GitHub, with guardrails</h3>
+          <p style="margin-top:6px;">The agent drives the ceremony &mdash; feature branches, gated commits &mdash; while hooks block direct pushes to <code>main</code> and destructive git commands are prohibited outright. Pull requests come to you as links to approve. <strong style="color:var(--text-primary);">You don't have to be a Git expert to work safely.</strong></p>
         </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">5</span>
-            <span class="principle-title">ADRs are never deleted.</span>
-            <span class="layer-expand-icon">▼</span>
-          </div>
-          <div class="principle-detail">Architecture Decision Records are only superseded, with references to the replacing decision. This creates an immutable decision history. <strong>Why:</strong> Understanding past decisions prevents repeating mistakes.</div>
+        <div class="card" style="border-left:3px solid var(--blue);">
+          <h3 style="font-size:15px;">&#128451;&#65039; Nothing is forgotten</h3>
+          <p style="margin-top:6px;">Every review and deliberation is sealed to disk automatically &mdash; the &ldquo;why&rdquo; behind any decision stays searchable months later. What graduates into long-term memory is <strong style="color:var(--text-primary);">your call, never automatic.</strong></p>
         </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">6</span>
-            <span class="principle-title">Education gates before merge.</span>
-            <span class="layer-expand-icon">▼</span>
-          </div>
-          <div class="principle-detail">Walkthrough → Quiz → Explain-back → Merge. Proportional to complexity and risk. <strong>Why:</strong> Developers must understand AI-generated code — not just accept it.</div>
+        <div class="card" style="border-left:3px solid var(--teal);">
+          <h3 style="font-size:15px;">&#127899;&#65039; You stay in control</h3>
+          <p style="margin-top:6px;">Every gate is human-held: nothing merges itself, nothing pushes without you, and the education gate keeps you able to explain what ships. <strong style="color:var(--text-primary);">Autonomy never means skipping your verdict.</strong></p>
         </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">7</span>
-            <span class="principle-title">Layer 3 promotion requires human approval.</span>
-            <span class="layer-expand-icon">▼</span>
+      </div>
+      <div class="card anim-fade-up-d4" style="border-left:3px solid var(--blue);">
+        <p style="font-size:13.5px; margin:0;"><span style="color:var(--blue); font-weight:600;">Claims are cheap.</span> The next three slides replay a real review from this repository's own sealed records &mdash; judge the second claim yourself, and hold the rest to the same standard.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 5: WORKED EXAMPLE 1/3 — THE SETUP ==================== -->
+  <div class="slide" data-slide="5">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">A Real Review &middot; 1 of 3</p>
+      <h2 class="anim-fade-up-d1">Release Night, March 2026</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <div class="story" style="font-size:15px; padding:22px 26px;">
+            The developer wants to <strong>ship v3.0 to the public tonight.</strong> The AI has spent the sprint building the release: new agent definitions, two new scripts, five new test files, an updated constitution.
+            <span class="beat">From inside the building context, everything looks done: <strong>tests green, 84% coverage, clean architecture.</strong></span>
+            <span class="beat">Then <code style="color:var(--blue);">/review</code> runs. Risk is assessed as <strong style="color:var(--gold);">HIGH</strong> &mdash; it's a public release &mdash; so six specialist agents are dispatched, each in its own context.</span>
           </div>
-          <div class="principle-detail">No discussion insight is promoted to curated memory automatically. Requires 2+ independent confirmations plus explicit human sign-off. <strong>Why:</strong> Institutional knowledge must be deliberately curated, not auto-accumulated.</div>
+          <div class="flow" style="margin-top:14px;">
+            <span class="flow-step" style="border-color:var(--gold); color:var(--gold);">Risk: HIGH</span>
+            <span class="flow-arrow">&rarr;</span>
+            <span class="flow-step">6 specialists dispatched</span>
+            <span class="flow-arrow">&rarr;</span>
+            <span class="flow-step">Independent analysis</span>
+            <span class="flow-arrow">&rarr;</span>
+            <span class="flow-step">Findings validated</span>
+            <span class="flow-arrow">&rarr;</span>
+            <span class="flow-step" style="border-color:var(--accent); color:var(--accent-light);">Verdict</span>
+          </div>
         </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">8</span>
-            <span class="principle-title">Least-complex intervention first.</span>
-            <span class="layer-expand-icon">▼</span>
+        <div>
+          <div class="card" style="border-left:3px solid var(--accent); margin-bottom:12px;">
+            <h3>The one rule that matters here</h3>
+            <p style="margin-top:6px;"><strong style="color:var(--text-primary);">None of the six reviewers saw the builder's reasoning.</strong> Each got the code and the request &mdash; not the conversation that produced them. That's deliberate, and it's the framework's core guarantee.</p>
           </div>
-          <div class="principle-detail">Prefer prompt changes → command changes → agent changes → architecture changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. <strong>Why:</strong> Don't restructure when a prompt tweak will do.</div>
-        </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">9</span>
-            <span class="principle-title">Clarify before acting (the 95% rule).</span>
-            <span class="layer-expand-icon">▼</span>
+          <div class="card" style="border-left:3px solid var(--blue);">
+            <h3>Why hide the reasoning from the reviewers?</h3>
+            <p style="margin-top:6px;">A reviewer who reads your rationale <em>inherits your blind spots</em> &mdash; they check that the code does what you said, not whether what you said was right. A reviewer who sees only the artifact has to <strong style="color:var(--text-primary);">reconstruct the intent from the code alone</strong>. The gap between what they reconstruct and what you meant is exactly where the bugs live.</p>
           </div>
-          <div class="principle-detail">Before producing a plan, writing code, or taking any substantive action, ask questions until you're ≥95% confident of both intent <em>and</em> scope. Mandatory unless the developer explicitly overrides; micro-fixes are exempt. <strong>Why:</strong> A wrong assumption acted on costs far more than the question that would have prevented it.</div>
+          <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">Everything on the next two slides is quoted from <code>docs/reviews/REV-20260318-035523.md</code> &mdash; a real file in this repository, written automatically on March 18, 2026.</p>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 4: FOUR-LAYER CAPTURE ==================== -->
-  <div class="slide" data-slide="4">
+  <!-- ==================== SLIDE 6: WORKED EXAMPLE 2/3 — THE CATCH ==================== -->
+  <div class="slide" data-slide="6">
     <div class="slide-inner">
-      <p class="section-label anim-fade-up">Core Architecture</p>
-      <h2 class="anim-fade-up-d1">Four-Layer Capture Architecture</h2>
-      <p class="subtitle anim-fade-up-d2" style="margin-top:-16px;">How AI reasoning gets captured. Click a layer to expand.</p>
+      <p class="section-label anim-fade-up">A Real Review &middot; 2 of 3</p>
+      <h2 class="anim-fade-up-d1">What the Independent Contexts Caught</h2>
+      <div class="finding crit anim-fade-up-d2">
+        <div class="finding-head">
+          <span class="sev sev-critical">Critical &middot; Release-blocking</span>
+          <span class="finding-id">F-023</span>
+          <span class="finding-agent">found by: Independent Perspective</span>
+        </div>
+        <h3>PyYAML missing from <code>requirements.txt</code> &mdash; used by 6 files</h3>
+        <p>&ldquo;Every new user gets ImportError on first interaction.&rdquo; The very first command any adopter typed would have crashed &mdash; on release night.</p>
+        <p style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border-subtle);"><strong style="color:var(--text-primary);">Why the builder could never catch this:</strong> its own tests were green <em>because its own environment already had PyYAML installed</em>. From inside the building context, this bug was invisible by construction. It took a separate context asking &ldquo;what does a <em>new</em> machine look like?&rdquo; &mdash; validated at 0.97 confidence.</p>
+      </div>
+      <div class="card-grid cols-3 anim-fade-up-d3">
+        <div class="finding">
+          <div class="finding-head">
+            <span class="sev sev-high">High</span>
+            <span class="finding-id">F-017</span>
+          </div>
+          <h3 style="font-size:13.5px;">Factual error in an ADR</h3>
+          <p style="font-size:12.5px;">&ldquo;Expanded the agent roster from 11 to 11&rdquo; &mdash; a decision record that contradicted itself. Found by Docs-Knowledge.</p>
+        </div>
+        <div class="finding">
+          <div class="finding-head">
+            <span class="sev sev-medium">Medium</span>
+            <span class="finding-id">F-025</span>
+          </div>
+          <h3 style="font-size:13.5px;">Version discrepancy</h3>
+          <p style="font-size:12.5px;"><code>pyproject.toml</code> said <code>0.1.0</code>; the release narrative said v3.0. Caught before the public saw both.</p>
+        </div>
+        <div class="finding">
+          <div class="finding-head">
+            <span class="sev sev-invalidated">Invalidated</span>
+            <span class="finding-id">F-012</span>
+          </div>
+          <h3 style="font-size:13.5px;">&hellip;and one false positive, struck down</h3>
+          <p style="font-size:12.5px;">A plausible-sounding finding was <strong>invalidated during validation</strong>, and three low-confidence findings were filtered. The pipeline kills its own noise instead of drowning you in it.</p>
+        </div>
+      </div>
+      <div class="verdict-strip anim-fade-up-d4">
+        <span>28 findings raised</span><span class="sep">&middot;</span>
+        <span>3 release-blocking</span><span class="sep">&middot;</span>
+        <span>1 invalidated, 3 filtered</span><span class="sep">&middot;</span>
+        <span>Verdict: <span class="v">REQUEST CHANGES</span></span><span class="sep">&middot;</span>
+        <span>All 3 fixes: under 15 minutes</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 7: WORKED EXAMPLE 3/3 — THE PAPER TRAIL ==================== -->
+  <div class="slide" data-slide="7">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">A Real Review &middot; 3 of 3</p>
+      <h2 class="anim-fade-up-d1">What's Left on Disk &mdash; Automatically</h2>
+      <div class="two-col anim-fade-up-d2">
+        <div>
+          <div class="code-block ctx on-disk" style="margin-bottom:12px;">
+            <div><span class="comment"># docs/reviews/REV-20260318-035523.md (frontmatter)</span></div>
+            <div><span class="key">review_id:</span> REV-20260318-035523</div>
+            <div><span class="key">discussion_id:</span> DISC-20260318-035523-review-sprint2-v3-release</div>
+            <div><span class="key">risk_level:</span> <span class="flag">high</span></div>
+            <div><span class="key">collaboration_mode:</span> structured-dialogue</div>
+            <div><span class="key">verdict:</span> <span class="warn">request-changes</span></div>
+            <div><span class="key">confidence:</span> 0.90</div>
+            <div><span class="key">review_duration_minutes:</span> 15</div>
+          </div>
+          <div class="file-tree">
+            <div><span class="tree-dir">docs/reviews/</span></div>
+            <div>&nbsp;&nbsp;<span class="tree-hot">REV-20260318-035523.md</span> <span class="tree-comment">&mdash; full report, every finding</span></div>
+            <div><span class="tree-dir">discussions/</span></div>
+            <div>&nbsp;&nbsp;<span class="tree-dir">DISC-20260318-035523&hellip;/</span></div>
+            <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-file">events.jsonl</span> <span class="tree-comment">&mdash; every turn, machine-readable, sealed</span></div>
+            <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-file">transcript.md</span> <span class="tree-comment">&mdash; human-readable, sealed</span></div>
+            <div><span class="tree-dir">metrics/</span></div>
+            <div>&nbsp;&nbsp;<span class="tree-file">evaluation.db</span> <span class="tree-comment">&mdash; queryable: agents, findings, calibration</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="border-left:3px solid var(--green); margin-bottom:12px;">
+            <h3>Nobody remembered to write this down</h3>
+            <p style="margin-top:6px;">Nobody had to. The report, the sealed transcript, and the metrics row were produced <strong style="color:var(--text-primary);">by the command's own pipeline</strong> &mdash; enforced by scripts and hooks, not by asking the AI to please remember. After a discussion closes, its record is locked; corrections require a new discussion that references the original.</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--accent); margin-bottom:12px;">
+            <h3>Six months later, the &ldquo;why&rdquo; is still there</h3>
+            <p style="margin-top:6px;">Which finding was raised by whom, at what confidence, what was invalidated and why the verdict was request-changes &mdash; all still readable, exactly as it happened.</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--gold);">
+            <h3>This slide is the proof</h3>
+            <p style="margin-top:6px;">The example you just read wasn't invented for this deck. It was <strong style="color:var(--text-primary);">quoted from the repo's own five-month-old sealed record</strong>, findings and frontmatter verbatim. The ability to do that &mdash; on any decision, years later &mdash; is the product.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 8: THE THREE IDEAS ==================== -->
+  <div class="slide" data-slide="8">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Foundation</p>
+      <h2 class="anim-fade-up-d1">The Three Ideas You Just Watched</h2>
+      <div class="card-grid cols-3 anim-fade-up-d2">
+        <div class="card" style="border-top:3px solid var(--red);">
+          <h3>The generator is never the sole evaluator</h3>
+          <p style="margin-top:8px;">Independence here is an <strong style="color:var(--text-primary);">information property, not a personality</strong>: a separate context that never saw the reasoning behind the code. Self-review finds what it expects to find.</p>
+          <p style="margin-top:10px; font-size:12.5px; color:var(--text-muted);"><strong style="color:var(--accent-light);">You saw it:</strong> the builder's tests were green &mdash; the missing dependency was invisible <em>from inside</em>. Only a context that didn't share the builder's environment assumptions could ask the newcomer's question.</p>
+        </div>
+        <div class="card" style="border-top:3px solid var(--green);">
+          <h3>Capture is automatic</h3>
+          <p style="margin-top:8px;">Enforced by scripts and hooks, <strong style="color:var(--text-primary);">not by instruction</strong>. If logging depended on the model's diligence, it would quietly fail on the day it mattered. The AI cannot opt out.</p>
+          <p style="margin-top:10px; font-size:12.5px; color:var(--text-muted);"><strong style="color:var(--accent-light);">You saw it:</strong> the report and sealed transcript existed before anyone decided to document anything. &ldquo;A decision that exists only in a context window did not happen.&rdquo;</p>
+        </div>
+        <div class="card" style="border-top:3px solid var(--accent);">
+          <h3>Reasoning is the primary artifact</h3>
+          <p style="margin-top:8px;">Code is output. The deliberation, trade-offs, and decision lineage are the durable assets &mdash; <strong style="color:var(--text-primary);">the &ldquo;why&rdquo; outlives the diff.</strong></p>
+          <p style="margin-top:10px; font-size:12.5px; color:var(--text-muted);"><strong style="color:var(--accent-light);">You saw it:</strong> this deck quoted a review, verbatim, five months after it ran. Your teammate's &ldquo;why are refresh tokens rotated?&rdquo; gets an answer instead of a shrug.</p>
+        </div>
+      </div>
+      <p class="tagline anim-fade-up-d3" style="text-align:center;">These are three of seven constitutional principles &mdash; the full constitution is on slide 12. First: the machinery that makes them enforceable.</p>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 9: FOUR-LAYER CAPTURE ==================== -->
+  <div class="slide" data-slide="9">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Machinery &middot; Memory</p>
+      <h2 class="anim-fade-up-d1">Where the Paper Trail Lives: Four Layers</h2>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-12px;">Everything you saw on the previous slide flows through this stack. Click a layer to expand.</p>
       <div class="layer-stack anim-fade-up-d3">
         <div class="layer-bar layer-1" onclick="toggleLayer(this)">
           <span class="layer-number">1</span>
           <div class="layer-info">
             <h3>Immutable Discussion Capture</h3>
-            <p>Raw event streams sealed after every reasoning session</p>
+            <p>Raw event streams, sealed after every reasoning session &mdash; the canonical record</p>
           </div>
-          <span class="layer-expand-icon">▼</span>
+          <span class="layer-expand-icon">&#9660;</span>
         </div>
-        <div class="layer-detail" id="layer1-detail">
-          Every canonical AI reasoning session produces a sealed, immutable record in the <code>discussions/</code> directory. Each discussion contains <strong>events.jsonl</strong> (machine-readable event stream) and <strong>transcript.md</strong> (human-readable rendering). Events track: agent identity, intent type (proposal, critique, question, evidence, synthesis, decision, reflection), confidence scores, and risk flags. After closure, these files are locked — corrections require new discussions that reference the original.
+        <div class="layer-detail">
+          Every canonical reasoning session produces a sealed record in <code>discussions/</code>: <strong>events.jsonl</strong> (machine-readable) and <strong>transcript.md</strong> (human-readable). Events track agent identity, intent (proposal, critique, evidence, decision&hellip;), confidence, and risk flags. After closure the files are locked &mdash; corrections require new discussions that reference the original. This is where REV-20260318's transcript lives.
         </div>
-
         <div class="layer-bar layer-2" onclick="toggleLayer(this)">
           <span class="layer-number">2</span>
           <div class="layer-info">
             <h3>Relational Index</h3>
-            <p>SQLite database for querying and metrics across all discussions</p>
+            <p>SQLite database that makes the raw reasoning queryable</p>
           </div>
-          <span class="layer-expand-icon">▼</span>
+          <span class="layer-expand-icon">&#9660;</span>
         </div>
-        <div class="layer-detail" id="layer2-detail">
-          All events are ingested into a SQLite database with 5 tables and 10 indexes. This enables cross-discussion analytics: agent contribution scoring, false positive rate tracking, time-to-consensus measurement, reopened decision analysis, decision churn metrics, and drift detection. The relational layer makes raw reasoning data <em>queryable</em> — essential for the meso and macro learning loops.
+        <div class="layer-detail">
+          All events are ingested into SQLite, enabling cross-discussion analytics: agent contribution scoring, false-positive rates, time-to-consensus, reopened-decision tracking. This is what lets the framework ask &ldquo;which reviewer keeps being right?&rdquo; &mdash; the raw material of the learning loops on slide 14.
         </div>
-
         <div class="layer-bar layer-3" onclick="toggleLayer(this)">
           <span class="layer-number">3</span>
           <div class="layer-info">
             <h3>Curated Memory</h3>
-            <p>Human-approved patterns, decisions, and rules promoted from Layers 1–2</p>
+            <p>Human-approved patterns, decisions, and lessons &mdash; nothing enters automatically</p>
           </div>
-          <span class="layer-expand-icon">▼</span>
+          <span class="layer-expand-icon">&#9660;</span>
         </div>
-        <div class="layer-detail" id="layer3-detail">
-          The <code>memory/</code> directory holds promoted knowledge: decision summaries, code patterns, agent reflections, lessons learned, and graduated rules. Promotion requires 2+ independent confirmations plus explicit human approval. Every promoted artifact has a <strong>90-day forgetting curve</strong> — it must be reconfirmed or it gets archived. This prevents knowledge rot and keeps the curated layer deliberately lean.
+        <div class="layer-detail">
+          The <code>memory/</code> directory holds promoted knowledge: decision summaries, patterns, lessons, graduated rules. Promotion requires independent confirmations <em>plus explicit human sign-off</em> &mdash; institutional knowledge is deliberately curated, never auto-accumulated. Promoted artifacts carry a forgetting curve: reconfirm or archive.
         </div>
-
         <div class="layer-bar layer-4" onclick="toggleLayer(this)">
           <span class="layer-number">4</span>
           <div class="layer-info">
             <h3>Optional Vector Acceleration</h3>
-            <p>Semantic retrieval when the corpus outgrows keyword search</p>
+            <p>Semantic retrieval, only when the corpus outgrows keyword search</p>
           </div>
-          <span class="layer-expand-icon">▼</span>
+          <span class="layer-expand-icon">&#9660;</span>
         </div>
-        <div class="layer-detail" id="layer4-detail">
-          The vector layer activates only when the discussion corpus grows large enough that keyword and full-text search become insufficient. It <strong>never replaces</strong> the relational structure — it accelerates retrieval only. This layer is intentionally deferred; most projects won't need it until they reach significant scale.
+        <div class="layer-detail">
+          Activates only at scale, and <strong>never replaces</strong> the relational structure &mdash; it accelerates retrieval. Intentionally deferred; most projects won't need it for a long time.
         </div>
       </div>
-      <p class="tagline anim-fade-up-d4" style="text-align: center; margin-top: 12px;">From raw events → queryable metrics → curated knowledge. Nothing is lost.</p>
+      <p class="tagline anim-fade-up-d4" style="text-align:center; margin-top:8px;">Raw events &rarr; queryable metrics &rarr; curated knowledge. Nothing is lost, and nothing is canonized without you.</p>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 5: AGENT PANEL ==================== -->
-  <div class="slide" data-slide="5">
+  <!-- ==================== SLIDE 10: ENFORCEMENT ==================== -->
+  <div class="slide" data-slide="10">
     <div class="slide-inner">
-      <p class="section-label anim-fade-up">The Team</p>
-      <h2 class="anim-fade-up-d1">12 Agents: 2 Leaders + 10 Specialists</h2>
-      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px;" class="anim-fade-up-d2">
-        <span class="badge badge-gold">● Opus — Leadership &amp; complex reasoning</span>
-        <span class="badge badge-blue">● Sonnet — Analysis &amp; review</span>
-      </div>
-      <div class="agent-grid anim-fade-up-d3">
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-opus">👑</div>
-            <div>
-              <div class="agent-name">Facilitator</div>
-              <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">opus</span>
-            </div>
-          </div>
-          <div class="agent-role">Orchestrates all multi-agent workflows</div>
-          <div class="agent-detail">
-            Risk assessment, specialist assembly, cross-pollination rounds, synthesis of findings, capture enforcement. The facilitator never renders specialist verdicts — it coordinates but does not evaluate.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-opus">🏛️</div>
-            <div>
-              <div class="agent-name">Architecture Consultant</div>
-              <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">opus</span>
-            </div>
-          </div>
-          <div class="agent-role">Structural integrity &amp; ADR validation</div>
-          <div class="agent-detail">
-            Boundary enforcement, pattern consistency, dependency direction validation. Activated for architecture changes, new modules, and significant refactoring. Guards against unnecessary abstraction.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-sonnet">🛡️</div>
-            <div>
-              <div class="agent-name">Security Specialist</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
-            </div>
-          </div>
-          <div class="agent-role">OWASP Top-10 &amp; trust boundaries</div>
-          <div class="agent-detail">
-            Red-team thinking, auth/authz review, input validation, secret management. Activated for auth code, API security, data handling, and external integrations. Avoids security theater.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-sonnet">🧪</div>
-            <div>
-              <div class="agent-name">QA Specialist</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
-            </div>
-          </div>
-          <div class="agent-role">Test adequacy &amp; edge cases</div>
-          <div class="agent-detail">
-            Coverage analysis, error handling review, boundary conditions. Activated for every code review. Focuses on meaningful assertions, not just coverage numbers. Prevents tests that assert nothing.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-sonnet">⚡</div>
-            <div>
-              <div class="agent-name">Performance Analyst</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
-            </div>
-          </div>
-          <div class="agent-role">Complexity, hot paths &amp; scalability</div>
-          <div class="agent-detail">
-            Algorithmic complexity analysis, database query efficiency, scalability assessment. Activated for data processing, DB operations, and API endpoints. Avoids premature optimization.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-sonnet">📚</div>
-            <div>
-              <div class="agent-name">Docs / Knowledge</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
-            </div>
-          </div>
-          <div class="agent-role">Documentation completeness &amp; ADR quality</div>
-          <div class="agent-detail">
-            Self-healing docs: detects when documentation drifts from implementation. Validates ADR completeness, CLAUDE.md currency, and docstring coverage. Active in every review at light intensity.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-opus">🔍</div>
-            <div>
-              <div class="agent-name">Independent Perspective</div>
-              <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">opus</span>
-            </div>
-          </div>
-          <div class="agent-role">Anti-groupthink &amp; hidden assumptions</div>
-          <div class="agent-detail">
-            Pre-mortem analysis, alternative exploration, challenge of consensus positions. Supports multi-instance dispatch with 4 instance types. Activated for medium/high risk changes. Provides the dissenting voice that prevents echo-chamber failures.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-sonnet">🔬</div>
-            <div>
-              <div class="agent-name">Project Analyst</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
-            </div>
-          </div>
-          <div class="agent-role">External project scouting &amp; pattern evaluation</div>
-          <div class="agent-detail">
-            Two-phase workflow: Survey phase scouts the target project, then Orchestrate phase dispatches domain specialists. The only subagent that can delegate to others — a special orchestrator for external analysis.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-sonnet">🎨</div>
-            <div>
-              <div class="agent-name">UX Evaluator</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
-            </div>
-          </div>
-          <div class="agent-role">Interaction flow &amp; accessibility</div>
-          <div class="agent-detail">
-            Evaluates UI code for UX friction, interaction flow, state feedback, platform conventions, and accessibility. Activated for any user-facing changes.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-opus">🏛️</div>
-            <div>
-              <div class="agent-name">Steward</div>
-              <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">opus</span>
-            </div>
-          </div>
-          <div class="agent-role">Framework philosopher-guardian &amp; lineage</div>
-          <div class="agent-detail">
-            Framework philosopher-guardian. Evaluates agent definition changes, rule modifications, and philosophy evolution. Maintains lineage tracking and drift detection. Activated only for framework evolution — not day-to-day reviews.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-sonnet">🎓</div>
-            <div>
-              <div class="agent-name">Educator</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
-            </div>
-          </div>
-          <div class="agent-role">The Coach — walkthroughs, quizzes &amp; Bloom's assessment</div>
-          <div class="agent-detail">
-            Generates Bloom's taxonomy assessments, guided walkthroughs, and comprehension quizzes. Tracks mastery tiers and adapts difficulty. Scaffolding intensity fades as demonstrated competence grows.
-          </div>
-        </div>
-
-        <div class="agent-card" onclick="toggleAgent(this)">
-          <div class="agent-header">
-            <div class="agent-icon tier-sonnet">&#x1f4ca;</div>
-            <div>
-              <div class="agent-name">History Analyst</div>
-              <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">sonnet</span>
-            </div>
-          </div>
-          <div class="agent-role">Git archaeologist — churn, refactors, reverts &amp; blame</div>
-          <div class="agent-detail">
-            Surfaces git history patterns for files under review: churn frequency, authorship concentration, reverted changes, and bug fix patterns. Activated only with --deep flag for high-risk reviews.
-          </div>
-        </div>
-
-      </div>
-      <p class="tagline anim-fade-up-d4" style="text-align:center; margin-top:8px;">Every agent has a defined lane, explicit triggers, and anti-patterns it must avoid.</p>
-    </div>
-  </div>
-
-  <!-- ==================== SLIDE 6: COLLABORATION MODES ==================== -->
-  <div class="slide" data-slide="6">
-    <div class="slide-inner">
-      <p class="section-label anim-fade-up">Collaboration</p>
-      <h2 class="anim-fade-up-d1">5 Modes of Multi-Agent Collaboration</h2>
-      <div class="two-col anim-fade-up-d2">
-        <div>
-          <div class="spectrum">
-            <div class="spectrum-item">
-              <span class="spectrum-num">1</span>
-              <div class="spectrum-info">
-                <h3>Ensemble</h3>
-                <p>Independent contributions, no inter-agent exchange</p>
-              </div>
-              <span class="spectrum-badge" style="background:var(--green-dim); color:var(--green);">Low risk</span>
-            </div>
-            <div class="spectrum-item">
-              <span class="spectrum-num">2</span>
-              <div class="spectrum-info">
-                <h3>Yes, And</h3>
-                <p>Collaborative building — each agent adds to previous</p>
-              </div>
-              <span class="spectrum-badge" style="background:var(--green-dim); color:var(--green);">Additive</span>
-            </div>
-            <div class="spectrum-item" style="border-color: var(--accent); background: rgba(109,90,205,0.04);">
-              <span class="spectrum-num">3</span>
-              <div class="spectrum-info">
-                <h3>Structured Dialogue</h3>
-                <p>Coopetitive multi-round discussion</p>
-              </div>
-              <span class="spectrum-badge" style="background:var(--accent-glow); color:var(--accent-light);">Default</span>
-            </div>
-            <div class="spectrum-item">
-              <span class="spectrum-num">4</span>
-              <div class="spectrum-info">
-                <h3>Dialectic Synthesis</h3>
-                <p>Thesis-antithesis-synthesis with ACH matrix</p>
-              </div>
-              <span class="spectrum-badge" style="background:var(--gold-dim); color:var(--gold);">High stakes</span>
-            </div>
-            <div class="spectrum-item">
-              <span class="spectrum-num">5</span>
-              <div class="spectrum-info">
-                <h3>Adversarial</h3>
-                <p>Red team — security, fault injection, anti-groupthink only</p>
-              </div>
-              <span class="spectrum-badge" style="background:var(--red-dim); color:var(--red);">Scoped</span>
-            </div>
-          </div>
-        </div>
-        <div>
-          <h3 style="margin-bottom:12px;">Exploration Intensity <span style="color:var(--text-muted); font-weight:400; font-size:13px;">(orthogonal axis)</span></h3>
-          <table class="intensity-table">
-            <thead>
-              <tr><th>Intensity</th><th>Description</th></tr>
-            </thead>
-            <tbody>
-              <tr><td><span class="badge badge-green" style="font-size:11px;">Low</span></td><td>Primary analysis with brief notes on alternatives</td></tr>
-              <tr><td><span class="badge badge-blue" style="font-size:11px;">Medium</span></td><td>2–3 alternatives with trade-off analysis</td></tr>
-              <tr><td><span class="badge badge-gold" style="font-size:11px;">High</span></td><td>Thorough exploration of edge cases &amp; failure modes</td></tr>
-            </tbody>
-          </table>
-          <div class="card" style="margin-top:20px;">
-            <h3 style="color:var(--accent-light);">Key Concept: Coopetition</h3>
-            <p style="margin-top:6px;">Agents share goals but have different professional priorities — a security specialist and a performance analyst will naturally surface different concerns. This creates <em>productive tension</em> without manufactured opposition.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== SLIDE 7: COMMANDS ==================== -->
-  <div class="slide" data-slide="7">
-    <div class="slide-inner">
-      <p class="section-label anim-fade-up">Workflow</p>
-      <h2 class="anim-fade-up-d1">18 Core Commands That Drive the Workflow</h2>
-      <p class="subtitle anim-fade-up-d2" style="margin-top:-16px; font-size:0.95rem;">25 commands in all &mdash; these are the ones you&rsquo;ll reach for most.</p>
-      <div class="two-col anim-fade-up-d2">
-        <div>
-          <div class="cmd-group">
-            <div class="cmd-group-title">Core Workflow</div>
-            <div class="cmd-list">
-              <span class="cmd-chip">/review <span class="cmd-desc">Multi-agent code review</span></span>
-              <span class="cmd-chip">/deliberate <span class="cmd-desc">Structured discussion</span></span>
-              <span class="cmd-chip">/build_module <span class="cmd-desc">Spec-driven construction</span></span>
-              <span class="cmd-chip">/plan <span class="cmd-desc">Feature planning</span></span>
-              <span class="cmd-chip">/goal-loop <span class="cmd-desc">Iterate to a goal contract</span></span>
-            </div>
-          </div>
-          <div class="cmd-group">
-            <div class="cmd-group-title">Analysis &amp; Learning</div>
-            <div class="cmd-list">
-              <span class="cmd-chip">/analyze-project <span class="cmd-desc">External patterns</span></span>
-              <span class="cmd-chip">/discover-projects <span class="cmd-desc">GitHub search</span></span>
-              <span class="cmd-chip">/retro <span class="cmd-desc">Sprint retrospective</span></span>
-              <span class="cmd-chip">/meta-review <span class="cmd-desc">Quarterly evolution</span></span>
-            </div>
-          </div>
-          <div class="cmd-group">
-            <div class="cmd-group-title">Knowledge &amp; Education</div>
-            <div class="cmd-list">
-              <span class="cmd-chip">/promote <span class="cmd-desc">Promote to Layer 3</span></span>
-              <span class="cmd-chip">/onboard <span class="cmd-desc">Project takeover</span></span>
-              <span class="cmd-chip">/quiz <span class="cmd-desc">Bloom's assessment</span></span>
-              <span class="cmd-chip">/walkthrough <span class="cmd-desc">Code explanation</span></span>
-              <span class="cmd-chip">/knowledge-health <span class="cmd-desc">Pipeline health check</span></span>
-              <span class="cmd-chip">/batch-evaluate <span class="cmd-desc">Audit adoptions</span></span>
-              <span class="cmd-chip">/handoff <span class="cmd-desc">Session wrap-up + handoff</span></span>
-            </div>
-          </div>
-          <div class="cmd-group">
-            <div class="cmd-group-title">Release &amp; Lineage</div>
-            <div class="cmd-list">
-              <span class="cmd-chip">/ship <span class="cmd-desc">Release workflow</span></span>
-              <span class="cmd-chip">/lineage <span class="cmd-desc">Drift &amp; manifest</span></span>
-            </div>
-          </div>
-        </div>
-        <div>
-          <h3 style="margin-bottom:12px;">The <code style="color:var(--accent-light);">/review</code> Pipeline</h3>
-          <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">A 10-step automated workflow — from risk assessment to sealed report:</p>
-          <div class="flow">
-            <span class="flow-step">Risk Assessment</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">Discussion Creation</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">Specialist Assembly</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">Independent Analysis</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">Cross-Pollination</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">Synthesis</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">Verdict</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">Report</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step" style="border-color:var(--accent); color:var(--accent-light);">Sealed Record</span>
-          </div>
-          <div class="card" style="margin-top:16px;">
-            <p style="font-size:13px;">Every command auto-captures reasoning via the capture pipeline. The model cannot opt out of logging — it's enforced at the tooling layer.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== SLIDE 8: HOOKS ==================== -->
-  <div class="slide" data-slide="8">
-    <div class="slide-inner">
-      <p class="section-label anim-fade-up">Safety</p>
-      <h2 class="anim-fade-up-d1">10 Hooks — Automated Guardrails</h2>
-      <p class="subtitle anim-fade-up-d2" style="margin-top:-16px;">Safety is enforced at the tooling layer, not by asking the AI to behave.</p>
+      <p class="section-label anim-fade-up">Machinery &middot; Enforcement</p>
+      <h2 class="anim-fade-up-d1">Enforced at the Tooling Layer, Not by Trust</h2>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-12px;">&ldquo;Capture is automatic&rdquo; and &ldquo;quality is gated&rdquo; are promises a model could quietly break. So they aren't left to the model.</p>
       <div class="two-col anim-fade-up-d3">
         <div>
-          <h3 style="margin-bottom:12px; color:var(--gold);">Before Operations</h3>
+          <h3 style="margin-bottom:10px; color:var(--gold);">Lifecycle hooks &mdash; guardrails at every stage</h3>
           <div class="hook-group">
             <div class="hook-item">
-              <span class="hook-phase pre">Pre-Write</span>
+              <span class="hook-phase pre">Before writes</span>
               <div class="hook-info">
-                <h3>File Locking</h3>
-                <p>Atomic locks prevent concurrent agent edits, auto-expire after 120 seconds</p>
+                <h3>Secret detection &middot; protected files &middot; file locking</h3>
+                <p>Scans for a dozen secret patterns (API keys, JWTs, private keys) and blocks the write; protects <code>.env</code>, <code>.git/</code>, the metrics DB; prevents concurrent agent edits.</p>
               </div>
             </div>
             <div class="hook-item">
-              <span class="hook-phase pre">Pre-Write</span>
+              <span class="hook-phase post">After edits</span>
               <div class="hook-info">
-                <h3>Secret Detection</h3>
-                <p>Scans for 12 secret patterns: API keys, AWS keys, JWT, PATs, private keys, and more</p>
+                <h3>Auto-format &middot; lock release</h3>
+                <p>Every Python file is ruff-formatted after every edit. You never commit unformatted code.</p>
               </div>
             </div>
             <div class="hook-item">
-              <span class="hook-phase pre">Pre-Write</span>
+              <span class="hook-phase pre">At commit &amp; push</span>
               <div class="hook-info">
-                <h3>Protected Files</h3>
-                <p>Blocks edits to .env, .git/, evaluation.db, and critical config files</p>
+                <h3>Quality gate &middot; main-branch protection</h3>
+                <p>The full gate (right) runs as a git pre-commit hook; direct pushes to <code>main</code> are blocked with remediation instructions.</p>
               </div>
             </div>
             <div class="hook-item">
-              <span class="hook-phase pre">Pre-Commit</span>
+              <span class="hook-phase session">Across sessions</span>
               <div class="hook-info">
-                <h3>Quality Gate</h3>
-                <p>Formatting, linting, tests, and coverage must all pass before any commit</p>
-              </div>
-            </div>
-            <div class="hook-item">
-              <span class="hook-phase pre">Pre-Push</span>
-              <div class="hook-info">
-                <h3>Main Branch Protection</h3>
-                <p>Blocks direct pushes to main/master with remediation instructions</p>
+                <h3>State save &amp; restore</h3>
+                <p>Working state is saved to <code>BUILD_STATUS.md</code> before context compaction and restored on resume &mdash; work-in-progress survives the session boundary.</p>
               </div>
             </div>
           </div>
         </div>
         <div>
-          <h3 style="margin-bottom:12px; color:var(--green);">After Operations</h3>
-          <div class="hook-group">
-            <div class="hook-item">
-              <span class="hook-phase post">Post-Write</span>
-              <div class="hook-info">
-                <h3>Auto-Format</h3>
-                <p>Runs ruff format + ruff check --fix on every Python file after every edit</p>
-              </div>
-            </div>
-            <div class="hook-item">
-              <span class="hook-phase post">Post-Write</span>
-              <div class="hook-info">
-                <h3>Lock Release</h3>
-                <p>Releases file locks after write/edit completes — cleanup is automatic</p>
-              </div>
-            </div>
+          <h3 style="margin-bottom:10px; color:var(--green);">The quality gate &mdash; every commit</h3>
+          <div class="checklist" style="margin-bottom:12px;">
+            <div class="check-item"><span class="check-icon">&#10003;</span> Formatting &amp; linting (ruff)</div>
+            <div class="check-item"><span class="check-icon">&#10003;</span> Tests (pytest, deterministic suite)</div>
+            <div class="check-item"><span class="check-icon">&#10003;</span> Coverage &ge; 80%</div>
+            <div class="check-item"><span class="check-icon">&#10003;</span> ADR completeness &mdash; decisions documented</div>
+            <div class="check-item"><span class="check-icon">&#10003;</span> Review existence &mdash; code changes require <code>/review</code></div>
+            <div class="check-item"><span class="check-icon">&#10003;</span> Regression ledger &mdash; fixed bugs stay fixed</div>
           </div>
-          <h3 style="margin-top:20px; margin-bottom:12px; color:var(--blue);">Session Lifecycle</h3>
-          <div class="hook-group">
-            <div class="hook-item">
-              <span class="hook-phase session">PreCompact</span>
-              <div class="hook-info">
-                <h3>State Save</h3>
-                <p>Saves in‑flight task state to BUILD_STATUS.md before context compaction</p>
-              </div>
-            </div>
-            <div class="hook-item">
-              <span class="hook-phase session">SessionStart</span>
-              <div class="hook-info">
-                <h3>Context Restore</h3>
-                <p>Reads BUILD_STATUS.md on session resume to restore working context</p>
-              </div>
-            </div>
-            <div class="hook-item">
-              <span class="hook-phase session">Stop</span>
-              <div class="hook-info">
-                <h3>One-Shot Stop Hook</h3>
-                <p>Fires once when a session ends — queues a completion notification without nagging (ADR-0023)</p>
-              </div>
-            </div>
+          <div class="card" style="margin-bottom:12px;">
+            <h3 style="font-size:14px;">Two gates, then commit</h3>
+            <p style="font-size:13px; margin-top:4px;"><strong>Gate 1:</strong> the automated checklist above. <strong>Gate 2:</strong> the independent multi-agent <code>/review</code> you watched. Bypassing either takes an explicit, documented developer override &mdash; never a silent flag.</p>
           </div>
-          <h3 style="margin-top:20px; margin-bottom:8px; color:var(--accent-light);">Async Autonomy (ADR-0019)</h3>
-          <div class="card" style="padding:14px 18px;">
-            <p style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
-              While the agent works autonomously, gating decisions surface to your phone via ntfy.sh.
-              <strong style="color:var(--text-primary);">ask</strong> sends tap-to-answer buttons (max 3).
-              <strong style="color:var(--text-primary);">check</strong> looks back for missed answers on resume.
-              <strong style="color:var(--text-primary);">poll</strong> streams live replies.
-              Replies are validated against an allow-list before the agent acts &mdash; never trusted as raw input.
-              Two topics: MAIN (agent outbound) + REPLY (developer inbound). See the <code>collaborating-async</code> skill.
-            </p>
+          <div class="card" style="border-left:3px solid var(--blue);">
+            <h3 style="font-size:14px;">And it watches its own use</h3>
+            <p style="font-size:13px; margin-top:4px;">Telemetry tracks cost per discussion, failure and waste signals, and a value-vs-subscription lens in a live local dashboard &mdash; so &ldquo;is this worth it?&rdquo; is a number you can look at, not a feeling.</p>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 9: LEARNING LOOPS ==================== -->
-  <div class="slide" data-slide="9">
+  <!-- ==================== SLIDE 11: THE TEAM ==================== -->
+  <div class="slide" data-slide="11">
     <div class="slide-inner">
-      <p class="section-label anim-fade-up">Self-Improvement</p>
-      <h2 class="anim-fade-up-d1">Three Nested Learning Loops</h2>
+      <p class="section-label anim-fade-up">Machinery &middot; The Team</p>
+      <h2 class="anim-fade-up-d1">Twelve Agents, Dispatched by Risk</h2>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-12px;">You don't pick the panel &mdash; the risk of the change does. A typo gets two reviewers; release night got six.</p>
+      <div class="two-col anim-fade-up-d3">
+        <div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+            <span class="badge badge-gold">&#9679; Opus &mdash; leadership &amp; deep reasoning</span>
+            <span class="badge badge-blue">&#9679; Sonnet &mdash; specialist analysis</span>
+          </div>
+          <div class="agent-chip-grid">
+            <div class="agent-chip"><div class="a-icon tier-opus">&#128081;</div><div><div class="a-name">Facilitator</div><div class="a-role">Orchestrates every multi-agent workflow; never renders verdicts itself</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-opus">&#127963;&#65039;</div><div><div class="a-name">Steward</div><div class="a-role">Guards the framework's own evolution &amp; lineage &mdash; episodic by design</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-sonnet">&#128737;&#65039;</div><div><div class="a-name">Security Specialist</div><div class="a-role">Trust boundaries, auth, OWASP &mdash; red-team thinking</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-sonnet">&#129514;</div><div><div class="a-name">QA Specialist</div><div class="a-role">Test adequacy, edge cases &mdash; active in every review</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-opus">&#127963;&#65039;</div><div><div class="a-name">Architecture Consultant</div><div class="a-role">Boundaries, dependencies, drift &mdash; guards against over-abstraction</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-sonnet">&#9889;</div><div><div class="a-name">Performance Analyst</div><div class="a-role">Complexity, hot paths, scalability &mdash; without premature optimization</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-opus">&#128269;</div><div><div class="a-name">Independent Perspective</div><div class="a-role">Anti-groupthink &mdash; the agent that caught F-023</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-sonnet">&#128218;</div><div><div class="a-name">Docs / Knowledge</div><div class="a-role">Detects docs drifting from implementation</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-sonnet">&#127912;</div><div><div class="a-name">UX Evaluator</div><div class="a-role">Friction, state feedback, accessibility on user-facing changes</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-sonnet">&#127891;</div><div><div class="a-name">Educator</div><div class="a-role">Walkthroughs &amp; quizzes &mdash; powers the education gate (slide 13)</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-sonnet">&#128300;</div><div><div class="a-name">Project Analyst</div><div class="a-role">Scouts external projects for patterns worth adopting</div></div></div>
+            <div class="agent-chip"><div class="a-icon tier-sonnet">&#128202;</div><div><div class="a-name">History Analyst</div><div class="a-role">Git archaeology: churn, reverts, repeat fixes &mdash; deep reviews only</div></div></div>
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom:10px;">Risk picks the panel</h3>
+          <table class="risk-table" style="margin-bottom:14px;">
+            <thead><tr><th>Risk</th><th>Panel</th><th>Mode</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge badge-green" style="font-size:11px;">Low</span></td><td>2&ndash;3 agents</td><td>Ensemble &mdash; independent, parallel</td></tr>
+              <tr><td><span class="badge badge-blue" style="font-size:11px;">Medium</span></td><td>3&ndash;4 agents</td><td>Structured dialogue &mdash; findings cross-examined</td></tr>
+              <tr><td><span class="badge badge-gold" style="font-size:11px;">High</span></td><td>4&ndash;5 agents</td><td>Full panel incl. Security + Independent Perspective</td></tr>
+              <tr><td><span class="badge badge-red" style="font-size:11px;">Critical</span></td><td>5&ndash;6 &mdash; full panel</td><td>Adversarial mode; hard floor of &ge;3 independent contexts, never fewer</td></tr>
+            </tbody>
+          </table>
+          <div class="card" style="margin-bottom:12px;">
+            <h3 style="font-size:14px;">Productive tension, by design</h3>
+            <p style="font-size:13px; margin-top:4px;">Specialists share the goal but hold different professional priorities &mdash; security and performance will <em>naturally</em> surface different concerns. Disagreement is surfaced and recorded, not smoothed over.</p>
+          </div>
+          <div class="card" style="border-left:3px solid var(--red);">
+            <h3 style="font-size:14px;">The plurality floor</h3>
+            <p style="font-size:13px; margin-top:4px;">Critical-risk changes carry a written floor of <strong style="color:var(--text-primary);">at least three independent contexts</strong> &mdash; so the framework can never quietly become single-reviewer without someone deciding to make it so.</p>
+          </div>
+          <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">Full roster detail, model tiers, and the five collaboration modes: <code>docs/AGENT_ARCHITECTURE.md</code> in the repo.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 12: THE CONSTITUTION ==================== -->
+  <div class="slide" data-slide="12">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">The Constitution</p>
+      <h2 class="anim-fade-up-d1">A Prime Objective + 7 Non-Negotiable Principles</h2>
+      <div class="card anim-fade-up-d2" style="border-left:3px solid var(--gold); margin-top:-8px;">
+        <h3 style="color:var(--gold);">The Prime Objective, in plain words <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">ADR-0015</span></h3>
+        <p style="margin-top:6px;">Above the seven principles sits one commitment: <strong style="color:var(--text-primary);">the framework must never accumulate value at your expense.</strong> Your attribution stays yours. Nobody's work gets harvested for a third party without consent. And the framework's own evolution can't feed on derived projects without a human saying yes &mdash; each time, per instance. The framework provides the gates; <strong style="color:var(--text-primary);">a human renders every verdict.</strong></p>
+      </div>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:0; font-size:0.95rem;">Each principle refuses a specific way AI systems extract value from the people who use them. Click to expand.</p>
+      <div class="principles-list anim-fade-up-d3">
+        <div class="principle-item" onclick="togglePrinciple(this)">
+          <div class="principle-header"><span class="principle-num">1</span><span class="principle-title">Reasoning is the primary artifact.</span><span class="refusal-tag">refuses: invisible reasoning</span><span class="layer-expand-icon">&#9660;</span></div>
+          <div class="principle-detail">Code is output. Deliberation, trade-offs, and decision lineage are the durable assets. Every significant decision must be traceable to the discussion that produced it. <strong>Why:</strong> six months from now, the <em>reasoning</em> is more valuable than the code.</div>
+        </div>
+        <div class="principle-item" onclick="togglePrinciple(this)">
+          <div class="principle-header"><span class="principle-num">2</span><span class="principle-title">Capture is automatic.</span><span class="refusal-tag">refuses: silent forgetting</span><span class="layer-expand-icon">&#9660;</span></div>
+          <div class="principle-detail">Enforced by scripts and hooks, not by instruction. If logging depended on model compliance, it would fail. A decision that exists only in a context window did not happen. <strong>Why:</strong> voluntary compliance doesn't work for audit trails.</div>
+        </div>
+        <div class="principle-item" onclick="togglePrinciple(this)">
+          <div class="principle-header"><span class="principle-num">3</span><span class="principle-title">The generator is never the sole evaluator.</span><span class="refusal-tag">refuses: agent-as-judge over human work</span><span class="layer-expand-icon">&#9660;</span></div>
+          <div class="principle-detail">Independent review means a <em>separate context</em> that did not see the reasoning behind the code &mdash; an information property, not a personality. <strong>Why:</strong> self-review finds what it expects to find. <strong>Plurality</strong> &mdash; several independent contexts at critical risk, not one &mdash; is a dispatch concern, specified in <code>selecting-review-gates</code> and restated in <code>/review</code>.</div>
+        </div>
+        <div class="principle-item" onclick="togglePrinciple(this)">
+          <div class="principle-header"><span class="principle-num">4</span><span class="principle-title">ADRs are never deleted.</span><span class="refusal-tag">refuses: revisable history</span><span class="layer-expand-icon">&#9660;</span></div>
+          <div class="principle-detail">Architecture Decision Records are only superseded, with references to the replacing decision &mdash; an immutable decision history. <strong>Why:</strong> understanding past decisions prevents repeating mistakes.</div>
+        </div>
+        <div class="principle-item" onclick="togglePrinciple(this)">
+          <div class="principle-header"><span class="principle-num">5</span><span class="principle-title">Understanding before merge &mdash; offered, not withheld.</span><span class="refusal-tag">refuses: bypassed understanding</span><span class="layer-expand-icon">&#9660;</span></div>
+          <div class="principle-detail">Briefing depth is sized to risk and <em>may be declined</em> &mdash; the decline is recorded rather than judged. Skip is unavailable for exactly two classes: changes to the framework's own governance or safety mechanisms, and distribution to derived projects. <strong>Why:</strong> developers must be able to understand AI-generated code &mdash; but a machine-checkable condition may never make a <em>human's</em> briefing non-completable.</div>
+        </div>
+        <div class="principle-item" onclick="togglePrinciple(this)">
+          <div class="principle-header"><span class="principle-num">6</span><span class="principle-title">Curated memory needs human approval.</span><span class="refusal-tag">refuses: automated canonization</span><span class="layer-expand-icon">&#9660;</span></div>
+          <div class="principle-detail">No insight is promoted to curated memory automatically &mdash; independent confirmations plus explicit human sign-off. <strong>Why:</strong> institutional knowledge must be deliberately curated, not auto-accumulated.</div>
+        </div>
+        <div class="principle-item" onclick="togglePrinciple(this)">
+          <div class="principle-header"><span class="principle-num">7</span><span class="principle-title">Clarify before acting (the 95% rule).</span><span class="refusal-tag">refuses: acting on unsurfaced assumptions</span><span class="layer-expand-icon">&#9660;</span></div>
+          <div class="principle-detail">Before a plan, code, or any substantive action: reach &ge;95% confidence on intent <em>and</em> scope. Close the gap from the project record first; ask only at a genuine fork evidence cannot resolve, and name what you extrapolate from. Mandatory unless explicitly overridden; micro-fixes exempt. <strong>Why:</strong> a wrong assumption acted on costs far more than the question that would have prevented it.</div>
+        </div>
+        <div class="card" style="border-left:3px solid var(--text-muted); margin-top:12px;">
+          <h3 style="color:var(--text-muted); font-size:13.5px;">Retired in v3.6 &mdash; recorded, not dropped</h3>
+          <p style="margin-top:6px; font-size:12.5px;">A principle is retired the way an ADR is superseded: with a reference to where the value went. <strong>Old #3, <em>Collaboration precedes adversarial rigor</em></strong> &mdash; the posture half retired as model-facing scaffolding; the plurality half survives as a dispatch concern (see Principle 3 and the plurality floor on slide 11). <strong>Old #8, <em>Least-complex intervention first</em></strong> &mdash; moved to <code>PHILOSOPHY.md</code> &sect; <em>Growth has a brake</em> as the growth-side constraint on how new complexity enters.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 13: YOU STAY THE OWNER ==================== -->
+  <div class="slide" data-slide="13">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Human Ownership</p>
+      <h2 class="anim-fade-up-d1">AI Writes the Code. You Still Own It.</h2>
+      <p class="subtitle anim-fade-up-d2" style="margin-top:-12px;">The fastest way to lose a codebase is to merge six months of code you can't explain. The framework treats your understanding as a gated deliverable &mdash; offered, never forced.</p>
+      <div class="anim-fade-up-d3">
+        <div class="funnel-row">
+          <div class="funnel-cell">
+            <h3>1. Walkthrough</h3>
+            <p>The AI teaches the change &mdash; what it does, why the decisions were made, how the pieces interact. Depth is sized to risk.</p>
+          </div>
+          <div class="funnel-cell">
+            <h3>2. Quiz</h3>
+            <p>Comprehension check &mdash; from recall up to debug scenarios and &ldquo;what breaks if we change this?&rdquo; questions.</p>
+          </div>
+          <div class="funnel-cell">
+            <h3>3. Explain-back</h3>
+            <p>You explain it in your own words &mdash; proving comprehension, not recognition.</p>
+          </div>
+          <div class="funnel-cell done">
+            <h3 style="color:var(--green);">&#10003; Merge</h3>
+            <p>You approve the merge understanding what you're approving.</p>
+          </div>
+        </div>
+      </div>
+      <div class="card-grid cols-3 anim-fade-up-d4">
+        <div class="card" style="border-left:3px solid var(--blue);">
+          <h3 style="font-size:14px;">Declinable &mdash; and that's recorded</h3>
+          <p style="font-size:13px; margin-top:4px;">You can decline a briefing; the decline is recorded, not judged. Only two classes can never skip it: changes to the framework's own governance or safety mechanisms, and distribution to derived projects.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--gold);">
+          <h3 style="font-size:14px;">Every gate is human-held</h3>
+          <p style="font-size:13px; margin-top:4px;">Nothing reaches curated memory without your approval. Nothing merges itself. Nothing pushes to a remote on its own. Autonomy means running the full workflow without nagging you &mdash; never skipping its steps.</p>
+        </div>
+        <div class="card" style="border-left:3px solid var(--green);">
+          <h3 style="font-size:14px;">Scaffolding fades</h3>
+          <p style="font-size:13px; margin-top:4px;">Education intensity adapts as demonstrated competence grows. It's a ramp for owning AI-written systems &mdash; not a permanent toll booth.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 14: IT LEARNS ==================== -->
+  <div class="slide" data-slide="14">
+    <div class="slide-inner">
+      <p class="section-label anim-fade-up">Evolution</p>
+      <h2 class="anim-fade-up-d1">It Improves Itself &mdash; and You Stay in Control</h2>
       <div class="two-col anim-fade-up-d2">
-        <div style="display:flex; align-items:center; justify-content:center; min-height: 400px;">
+        <div style="display:flex; align-items:center; justify-content:center; min-height:400px;">
           <div class="loops-container" style="width:400px; height:400px;">
             <div class="loop-ring loop-macro" style="position:relative;">
               <div class="loop-label" style="position:absolute; top:20px;">Macro</div>
@@ -1775,365 +990,145 @@ h3 {
           </div>
         </div>
         <div>
-          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--green);">
-            <h3 style="color:var(--green);">Micro Loop — Per-Discussion</h3>
-            <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;">After each discussion, agents write structured reflections: what they missed, what they'd improve, confidence calibration. Reflections are stored in SQLite and feed candidate improvement rules.</p>
+          <div class="card" style="margin-bottom:12px; border-left:3px solid var(--green);">
+            <h3 style="font-size:15px; color:var(--green);">Micro &mdash; every discussion</h3>
+            <p style="margin-top:6px; font-size:13px;">After each discussion, agents write structured reflections &mdash; what they missed, confidence calibration &mdash; stored in the SQLite index as raw material for improvement.</p>
           </div>
-          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--blue);">
-            <h3 style="color:var(--blue);">Meso Loop — Sprint Retrospective</h3>
-            <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;">The <code style="color:var(--blue);">/retro</code> command queries SQLite for: reopened decisions, override frequency, frequent issue tags, time-to-resolution stats, and adoption pattern evaluation (PENDING → CONFIRMED or REVERTED).</p>
+          <div class="card" style="margin-bottom:12px; border-left:3px solid var(--blue);">
+            <h3 style="font-size:15px; color:var(--blue);">Meso &mdash; every sprint</h3>
+            <p style="margin-top:6px; font-size:13px;"><code>/retro</code> queries the index: reopened decisions, override frequency, recurring issue tags &mdash; and proposes process adjustments backed by that evidence.</p>
           </div>
-          <div class="card" style="margin-bottom:12px; border-left: 3px solid var(--gold);">
-            <h3 style="color:var(--gold);">Macro Loop — Quarterly Evolution</h3>
-            <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;">The <code style="color:var(--gold);">/meta-review</code> command produces: agent effectiveness scoring, drift analysis, rule update candidates, and decision churn index. Drives framework-level evolution.</p>
+          <div class="card" style="border-left:3px solid var(--gold);">
+            <h3 style="font-size:15px; color:var(--gold);">Macro &mdash; quarterly</h3>
+            <p style="margin-top:6px; font-size:13px;"><code>/meta-review</code> scores agent effectiveness and drift, and proposes framework-level evolution &mdash; gated by the Steward, then by you.</p>
           </div>
-          <div class="card" style="border-left: 3px solid var(--accent);">
-            <h3 style="color:var(--accent-light);">Double-Loop Learning</h3>
-            <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;"><strong>Single-loop:</strong> tune thresholds within existing rules. <strong>Double-loop:</strong> change what counts as "good" based on accumulated evidence. The framework doesn't just follow rules — it evolves them.</p>
-          </div>
-          <div class="card" style="border-left: 3px solid var(--gold); margin-top:12px;">
-            <h3 style="color:var(--gold);">Goal-Seeking Loop &mdash; <code style="color:var(--gold);">/goal-loop</code> <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">ADR-0026/0028</span></h3>
-            <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;">You author a <strong>verifiable goal contract</strong>; a deterministic driver (<code>scripts/goal_loop.py</code>) owns control flow and iterates build &rarr; judge &rarr; refine until the criteria are met. The model only builds, judges, or phrases a gate &mdash; and the <strong style="color:var(--text-primary);">builder is never its own judge</strong> (Principle #4, extended to autonomous iteration). It never pushes, never auto-merges, and halts for <code>/review</code> + an education walkthrough before a human approves the merge.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== SLIDE 10: EDUCATION GATE ==================== -->
-  <div class="slide" data-slide="10">
-    <div class="slide-inner">
-      <p class="section-label anim-fade-up">Human Ownership</p>
-      <h2 class="anim-fade-up-d1">Education Gate: Developers Must Understand AI Code</h2>
-      <div class="two-col anim-fade-up-d2">
-        <div>
-          <div class="funnel">
-            <div class="funnel-step">
-              <span class="funnel-num">1</span>
-              <div class="funnel-info">
-                <h3>Walkthrough</h3>
-                <p>AI explains the code step by step — what it does, why decisions were made, how components interact</p>
-              </div>
-            </div>
-            <div class="funnel-connector"></div>
-            <div class="funnel-step">
-              <span class="funnel-num">2</span>
-              <div class="funnel-info">
-                <h3>Quiz</h3>
-                <p>Bloom's taxonomy assessment — from recall to analysis to evaluation. Includes debug scenarios and change-impact questions.</p>
-              </div>
-            </div>
-            <div class="funnel-connector"></div>
-            <div class="funnel-step">
-              <span class="funnel-num">3</span>
-              <div class="funnel-info">
-                <h3>Explain-Back</h3>
-                <p>Developer explains the code in their own words — proving comprehension, not just recognition</p>
-              </div>
-            </div>
-            <div class="funnel-connector"></div>
-            <div class="funnel-step" style="border-color:var(--green);">
-              <span class="funnel-num" style="background:var(--green-dim); color:var(--green);">✓</span>
-              <div class="funnel-info">
-                <h3>Merge</h3>
-                <p>Only after completing all three steps. Proportional to complexity and risk.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div>
-          <h3 style="margin-bottom:16px;">Bloom's Taxonomy Levels</h3>
-          <div style="display:flex; flex-direction:column; gap:6px;">
-            <div class="card" style="padding:12px 16px;"><span style="color:var(--text-muted); font-size:12px;">Level 1</span> <strong>Remember</strong> — Recall facts and definitions</div>
-            <div class="card" style="padding:12px 16px;"><span style="color:var(--text-muted); font-size:12px;">Level 2</span> <strong>Understand</strong> — Explain concepts in own words</div>
-            <div class="card" style="padding:12px 16px;"><span style="color:var(--text-muted); font-size:12px;">Level 3</span> <strong>Apply</strong> — Use knowledge in new situations</div>
-            <div class="card" style="padding:12px 16px;"><span style="color:var(--text-muted); font-size:12px;">Level 4</span> <strong>Analyze</strong> — Break down and debug components</div>
-            <div class="card" style="padding:12px 16px;"><span style="color:var(--text-muted); font-size:12px;">Level 5</span> <strong>Evaluate</strong> — Assess change impact and trade-offs</div>
-            <div class="card" style="padding:12px 16px;"><span style="color:var(--text-muted); font-size:12px;">Level 6</span> <strong>Create</strong> — Produce original explanations</div>
-          </div>
-          <div class="card" style="margin-top:16px; border-left:3px solid var(--accent);">
-            <p style="font-size:13px;"><strong>70% pass threshold.</strong> At least 1 debug scenario + 1 change-impact question per quiz. Scaffolding fades as competence grows.</p>
-          </div>
-        </div>
-      </div>
-      <p class="tagline anim-fade-up-d3" style="text-align:center; margin-top:8px;">AI writes the code, but the human must own it.</p>
-    </div>
-  </div>
-
-  <!-- ==================== SLIDE 11: EXTERNAL ANALYSIS ==================== -->
-  <div class="slide" data-slide="11">
-    <div class="slide-inner">
-      <p class="section-label anim-fade-up">Evolution</p>
-      <h2 class="anim-fade-up-d1">Learning From the Ecosystem</h2>
-      <div class="anim-fade-up-d2">
-        <div class="flow" style="margin-bottom:24px;">
-          <span class="flow-step">/discover-projects</span>
-          <span class="flow-arrow">→</span>
-          <span class="flow-step">/analyze-project</span>
-          <span class="flow-arrow">→</span>
-          <span class="flow-step">5-Dimension Scoring</span>
-          <span class="flow-arrow">→</span>
-          <span class="flow-step">Adopt / Defer / Reject</span>
-          <span class="flow-arrow">→</span>
-          <span class="flow-step" style="border-color:var(--accent); color:var(--accent-light);">Adoption Audit</span>
         </div>
       </div>
       <div class="two-col anim-fade-up-d3">
-        <div>
-          <h3 style="margin-bottom:12px;">Scoring Rubric (max 25 points)</h3>
-          <div class="rubric" style="margin-bottom:20px;">
-            <div class="rubric-item"><h3>Prevalence</h3><p>How common?</p></div>
-            <div class="rubric-item"><h3>Elegance</h3><p>How clean?</p></div>
-            <div class="rubric-item"><h3>Evidence</h3><p>Proven results?</p></div>
-            <div class="rubric-item"><h3>Fit</h3><p>Compatible?</p></div>
-            <div class="rubric-item"><h3>Maintenance</h3><p>Sustainable?</p></div>
-          </div>
-          <div class="card">
-            <h3 style="color:var(--accent-light);">Rule of Three</h3>
-            <p style="font-size:13px; margin-top:6px;">Patterns seen in 3+ independent projects get priority consideration. Validates that a pattern isn't a one-off novelty but a genuinely useful practice.</p>
-          </div>
-          <div class="card" style="margin-top:8px;">
-            <p style="font-size:13px;">Threshold: only patterns scoring <strong>≥ 20/25</strong> are recommended for adoption. Every adoption <em>and</em> rejection is documented with reasoning — decision lineage is preserved per Principle #1.</p>
-          </div>
+        <div class="card" style="border-left:3px solid var(--gold);">
+          <h3 style="font-size:15px;">Goal-seeking, safely: <code style="color:var(--gold);">/goal-loop</code></h3>
+          <p style="font-size:13px; margin-top:6px;">For tasks with a <em>verifiable</em> done-state, you author a goal contract and a deterministic driver iterates build &rarr; verify &rarr; refine until the criteria are met. The <strong style="color:var(--text-primary);">builder is never its own judge</strong> (Principle #3 &mdash; the generator is never the sole evaluator &mdash; extended to autonomous iteration).
+            The loop halts for <code>/review</code> plus an education walkthrough before you approve any merge. It never pushes, never auto-merges.</p>
         </div>
-        <div>
-          <h3 style="margin-bottom:4px;">Framework's Own Evolution</h3>
-          <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">From <code>memory/lessons/adoption-log.md</code> &mdash; as of May 2026.</p>
-          <div class="stats-row" style="margin-bottom:16px;">
-            <div class="stat-card"><div class="stat-number">18</div><div class="stat-label">Analyses Run</div></div>
-            <div class="stat-card"><div class="stat-number">165</div><div class="stat-label">Patterns Evaluated</div></div>
-          </div>
-          <div class="stats-row" style="margin-bottom:16px;">
-            <div class="stat-card" style="border-color:rgba(16,185,129,0.2);"><div class="stat-number" style="color:var(--green);">62</div><div class="stat-label">Adopted</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:var(--gold);">42</div><div class="stat-label">Deferred</div></div>
-            <div class="stat-card"><div class="stat-number" style="color:var(--text-muted);">33</div><div class="stat-label">Rejected</div></div>
-          </div>
-          <div class="card" style="border-left: 3px solid var(--green);">
-            <p style="font-size:13px;"><strong>4 patterns</strong> achieved Rule of Three status — validated across 3+ independent projects. The framework practices what it preaches: its own evolution follows the structured analysis pipeline.</p>
-          </div>
+        <div class="card" style="border-left:3px solid var(--accent);">
+          <h3 style="font-size:15px;">It learns from other projects, too</h3>
+          <p style="font-size:13px; margin-top:6px;"><code>/discover-projects</code> and <code>/analyze-project</code> score external patterns on a 5-dimension rubric; only &ge;20/25 is recommended, and patterns seen in 3+ independent projects get priority. As of May 2026: 165 patterns evaluated &mdash; 62 adopted, 42 deferred, 33 rejected, <strong style="color:var(--text-primary);">every adoption <em>and</em> rejection documented with reasoning &mdash; decision lineage is preserved (Principle #1).</strong></p>
         </div>
       </div>
+      <p class="tagline anim-fade-up-d4" style="text-align:center;">Single-loop: tune thresholds within the rules. Double-loop: change what counts as &ldquo;good&rdquo; &mdash; with evidence, through the Steward gate, with your approval. Nothing evolves behind your back.</p>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 12: PROJECT STRUCTURE ==================== -->
-  <div class="slide" data-slide="12">
+  <!-- ==================== SLIDE 15: WHAT IT COSTS ==================== -->
+  <div class="slide" data-slide="15">
     <div class="slide-inner">
-      <p class="section-label anim-fade-up">Structure</p>
-      <h2 class="anim-fade-up-d1">What a Project Looks Like</h2>
-      <p class="subtitle anim-fade-up-d2" style="margin-top: -16px;">Click folders to explore. The framework lives alongside your code.</p>
+      <p class="section-label anim-fade-up">The Honest Slide</p>
+      <h2 class="anim-fade-up-d1">The Honest Trade-Off</h2>
+      <p class="subtitle anim-fade-up-d1" style="margin-top:-12px;">The value on slide 4 is real &mdash; and so is the bill. Here's what the framework asks of you, and when that's worth paying.</p>
+      <div class="card-grid cols-3 anim-fade-up-d2">
+        <div class="card" style="border-top:3px solid var(--blue);">
+          <h3 style="font-size:15px;">&#9201;&#65039; Time</h3>
+          <p style="margin-top:6px; font-size:13px;">A typical panel review runs <strong style="color:var(--text-primary);">a couple of minutes</strong>; the six-specialist, high-risk review on slide 7 took fifteen. Planning and building commands are longer, deliberate sessions &mdash; that's the point of them.</p>
+        </div>
+        <div class="card" style="border-top:3px solid var(--gold);">
+          <h3 style="font-size:15px;">&#129689; Tokens</h3>
+          <p style="margin-top:6px; font-size:13px;">Every specialist is a separate context, so a panel review spends <strong style="color:var(--text-primary);">several times the tokens of a bare prompt</strong>, on your paid Claude plan. The telemetry dashboard tracks cost per discussion &mdash; the framework shows you its own bill.</p>
+        </div>
+        <div class="card" style="border-top:3px solid var(--red);">
+          <h3 style="font-size:15px;">&#129520; Ceremony</h3>
+          <p style="margin-top:6px; font-size:13px;">It adds process. The framework matches ceremony to risk &mdash; micro-fixes are exempt, typos don't convene panels &mdash; but yes: there is more structure here than vanilla Claude Code.</p>
+        </div>
+      </div>
       <div class="two-col anim-fade-up-d3">
-        <div class="file-tree" id="fileTree">
-
-          <div class="tree-folder open" onclick="toggleTree(event, this)">
-            <div class="tree-label"><span class="tree-toggle">▸</span> .claude/ <span class="tree-comment">— Framework configuration</span></div>
-            <div class="tree-children">
-              <div class="tree-folder" onclick="toggleTree(event, this)">
-                <div class="tree-label"><span class="tree-toggle">▸</span> agents/ <span class="tree-comment">— 12 agent definitions</span></div>
-                <div class="tree-children">
-                  <div class="tree-file">  facilitator.md</div>
-                  <div class="tree-file">  architecture-consultant.md</div>
-                  <div class="tree-file">  security-specialist.md</div>
-                  <div class="tree-file">  qa-specialist.md</div>
-                  <div class="tree-file">  history-analyst.md</div>
-                  <div class="tree-file">  ... (7 more)</div>
-                </div>
-              </div>
-              <div class="tree-folder" onclick="toggleTree(event, this)">
-                <div class="tree-label"><span class="tree-toggle">▸</span> commands/ <span class="tree-comment">— 25 slash commands</span></div>
-                <div class="tree-children">
-                  <div class="tree-file">  review.md</div>
-                  <div class="tree-file">  deliberate.md</div>
-                  <div class="tree-file">  build_module.md</div>
-                  <div class="tree-file">  analyze-project.md</div>
-                  <div class="tree-file">  ... (21 more)</div>
-                </div>
-              </div>
-              <div class="tree-file">  custodian/ <span class="tree-comment">— Lineage tracking</span></div>
-              <div class="tree-file">  hooks/ <span class="tree-comment">— 9 lifecycle hooks</span></div>
-              <div class="tree-file">  rules/ <span class="tree-comment">— 4 context-loaded standards (rest are on-demand skills)</span></div>
-              <div class="tree-file">  skills/ <span class="tree-comment">— 25 on-demand skills (playbooks + relocated protocols, ADR-0016/ADR-0019/ADR-0026)</span></div>
-            </div>
-          </div>
-
-          <div class="tree-folder" onclick="toggleTree(event, this)">
-            <div class="tree-label"><span class="tree-toggle">▸</span> discussions/ <span class="tree-comment">— Layer 1: Sealed reasoning</span></div>
-            <div class="tree-children">
-              <div class="tree-file">  DISC-YYYYMMDD-slug/</div>
-              <div class="tree-file">    events.jsonl</div>
-              <div class="tree-file">    transcript.md</div>
-            </div>
-          </div>
-
-          <div class="tree-folder" onclick="toggleTree(event, this)">
-            <div class="tree-label"><span class="tree-toggle">▸</span> memory/ <span class="tree-comment">— Layer 3: Curated knowledge</span></div>
-            <div class="tree-children">
-              <div class="tree-file">  decisions/</div>
-              <div class="tree-file">  patterns/</div>
-              <div class="tree-file">  reflections/</div>
-              <div class="tree-file">  lessons/</div>
-              <div class="tree-file">  rules/</div>
-              <div class="tree-file">  archive/</div>
-            </div>
-          </div>
-
-          <div class="tree-file">  metrics/ <span class="tree-comment">— Layer 2: SQLite index</span></div>
-
-          <div class="tree-folder" onclick="toggleTree(event, this)">
-            <div class="tree-label"><span class="tree-toggle">▸</span> docs/ <span class="tree-comment">— Documentation</span></div>
-            <div class="tree-children">
-              <div class="tree-file">  adr/ <span class="tree-comment">— Architecture Decision Records</span></div>
-              <div class="tree-file">  reviews/ <span class="tree-comment">— Review reports</span></div>
-              <div class="tree-file">  templates/ <span class="tree-comment">— Artifact templates</span></div>
-            </div>
-          </div>
-
-          <div class="tree-file">  scripts/ <span class="tree-comment">— Capture pipeline utilities</span></div>
-          <div class="tree-file">  src/ <span class="tree-comment">— Your application code</span></div>
-          <div class="tree-file">  tests/ <span class="tree-comment">— Test suite</span></div>
-          <div class="tree-file" style="margin-top:8px; color:var(--accent-light);">  CLAUDE.md <span class="tree-comment">— Project constitution</span></div>
-
+        <div class="card" style="border-left:3px solid var(--green);">
+          <h3 style="font-size:15px;">Worth it when&hellip;</h3>
+          <p style="font-size:13px; margin-top:6px;">You'll still own this code in six months. Someone else will ask &ldquo;why?&rdquo;. AI is writing a meaningful share of the code and you need review it can't grade itself on. The day F-023 gets caught before <em>your</em> release night, the machinery has paid for itself.</p>
         </div>
-        <div>
-          <div class="card" style="margin-bottom:12px;">
-            <h3>Framework ≠ Separate Tool</h3>
-            <p style="font-size:13px; margin-top:6px;">The framework doesn't run as an external service. It lives inside your project's directory structure — agent definitions, commands, hooks, and rules are all version-controlled files alongside your source code.</p>
-          </div>
-          <div class="card" style="margin-bottom:12px;">
-            <h3>CLAUDE.md — The Project Constitution</h3>
-            <p style="font-size:13px; margin-top:6px;">A single file that codifies all project conventions, principles, boundaries, and ID formats. Every agent reads it. It's the source of truth for how the framework operates in this project.</p>
-          </div>
-          <div class="card" style="margin-bottom:12px;">
-            <h3>Everything is a Markdown File</h3>
-            <p style="font-size:13px; margin-top:6px;">Agent definitions, commands, rules, ADRs, reviews — all Markdown with YAML frontmatter. Human-readable, version-controllable, and diff-friendly. No proprietary formats.</p>
-          </div>
-          <div class="card">
-            <h3>Runs Inside VS Code + Claude Code</h3>
-            <p style="font-size:13px; margin-top:6px;">The framework is designed for Claude Code inside VS Code. Slash commands integrate directly into the Claude Code interface. Hooks fire automatically via Claude Code's hook system.</p>
-          </div>
+        <div class="card" style="border-left:3px solid var(--text-muted);">
+          <h3 style="font-size:15px;">Skip it when&hellip;</h3>
+          <p style="font-size:13px; margin-top:6px;">Throwaway scripts, one-shot prototypes, code you'll delete on Friday. Vanilla Claude Code is the right tool there &mdash; this framework earns its cost on code with a future, not on scratch work.</p>
         </div>
+      </div>
+      <div class="card anim-fade-up-d4" style="border-left:3px solid var(--accent);">
+        <h3 style="font-size:15px;">Your first win takes about ten minutes</h3>
+        <p style="font-size:13.5px; margin-top:6px;">Clone, install, run <code style="color:var(--blue);">/review</code> on one real file. A few minutes later you're holding a verdict, findings ranked blocking vs advisory, and a sealed record in <code>docs/reviews/</code> &mdash; written by contexts that didn't write the code. Judge it on that.</p>
       </div>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 13: QUALITY GATE ==================== -->
-  <div class="slide" data-slide="13">
-    <div class="slide-inner">
-      <p class="section-label anim-fade-up">Quality</p>
-      <h2 class="anim-fade-up-d1">Automated Quality Enforcement</h2>
-      <div class="two-col anim-fade-up-d2">
-        <div>
-          <p class="subtitle" style="margin-bottom:20px;">Every commit must pass the quality gate. Bypassing it isn&rsquo;t a silent flag &mdash; it takes an explicit, documented developer override.</p>
-          <div class="checklist">
-            <div class="check-item"><span class="check-icon check-pass">✓</span><span class="check-label">Formatting — ruff format</span></div>
-            <div class="check-item"><span class="check-icon check-pass">✓</span><span class="check-label">Linting — ruff check</span></div>
-            <div class="check-item"><span class="check-icon check-pass">✓</span><span class="check-label">Tests — pytest (full suite, deterministic)</span></div>
-            <div class="check-item"><span class="check-icon check-pass">✓</span><span class="check-label">Coverage — ≥ 80% for new/modified code</span></div>
-            <div class="check-item"><span class="check-icon check-pass">✓</span><span class="check-label">ADR Completeness — all decisions documented</span></div>
-            <div class="check-item"><span class="check-icon check-pass">✓</span><span class="check-label">Review Existence — code changes require /review</span></div>
-          </div>
-        </div>
-        <div>
-          <div class="card" style="margin-bottom:12px;">
-            <h3>Git Pre-Commit Hook</h3>
-            <p style="font-size:13px; margin-top:6px;">The quality gate runs automatically as a git pre-commit hook. If any check fails, the commit is blocked. This is non-negotiable — the hook cannot be bypassed without explicit developer override and documented reason.</p>
-          </div>
-          <div class="card" style="margin-bottom:12px;">
-            <h3>Trend Analysis</h3>
-            <p style="font-size:13px; margin-top:6px;">Every quality gate run appends a JSONL record to a log file. This data feeds into sprint retrospectives and framework meta-reviews — enabling trend analysis of code quality over time.</p>
-          </div>
-          <div class="card" style="margin-bottom:12px;">
-            <h3>Two-Gate Commit Protocol</h3>
-            <p style="font-size:13px; margin-top:6px;"><strong>Gate 1:</strong> Quality gate (automated). <strong>Gate 2:</strong> Multi-agent code review via /review (agent-assisted). Both must pass before code is committed.</p>
-          </div>
-          <div class="card" style="margin-bottom:12px;">
-            <h3>Auto-Fix Available</h3>
-            <p style="font-size:13px; margin-top:6px;">Run the quality gate with <code style="color:var(--green);">--fix</code> to automatically remediate formatting and lint issues. Tests and coverage still require manual attention.</p>
-          </div>
-          <div class="card" style="border-left:3px solid var(--blue);">
-            <h3>Telemetry &amp; Oversight <span class="badge badge-blue" style="font-size:10px; padding:1px 8px;">ADR-0020</span></h3>
-            <p style="font-size:13px; margin-top:6px;">Beyond pass/fail, the framework watches its own use: <strong>cost</strong> tracking per discussion, <strong>failure/waste</strong> signals, and a <strong>value-vs-subscription</strong> lens &mdash; surfaced in a live local dashboard so you can see where the AI helps and where it burns tokens.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== SLIDE 14: SUMMARY ==================== -->
-  <div class="slide" data-slide="14">
+  <!-- ==================== SLIDE 16: SUMMARY ==================== -->
+  <div class="slide" data-slide="16">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Summary</p>
       <h2 class="anim-fade-up-d1">From Vibe Coding to Engineering Discipline</h2>
       <div class="comparison anim-fade-up-d2" style="max-width: 900px; margin: 0 auto;">
         <div class="comparison-row">
-          <span class="comp-before"><span style="color:var(--red);">✗</span> AI decisions disappear</span>
-          <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> Every decision captured with full lineage</span>
+          <span class="comp-before"><span style="color:var(--red);">&#10007;</span> AI decisions disappear with the session</span>
+          <span class="comp-arrow">&rarr;</span>
+          <span class="comp-after"><span style="color:var(--green);">&#10003;</span> Every decision captured, sealed, and quotable years later</span>
         </div>
         <div class="comparison-row">
-          <span class="comp-before"><span style="color:var(--red);">✗</span> Same AI writes and reviews</span>
-          <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> Independent multi-agent evaluation</span>
+          <span class="comp-before"><span style="color:var(--red);">&#10007;</span> The same AI writes and reviews</span>
+          <span class="comp-arrow">&rarr;</span>
+          <span class="comp-after"><span style="color:var(--green);">&#10003;</span> Independent contexts that never saw the builder's reasoning</span>
         </div>
         <div class="comparison-row">
-          <span class="comp-before"><span style="color:var(--red);">✗</span> Unstructured ad-hoc sessions</span>
-          <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> 25 structured commands with auto-capture</span>
+          <span class="comp-before"><span style="color:var(--red);">&#10007;</span> Unstructured, ad-hoc sessions</span>
+          <span class="comp-arrow">&rarr;</span>
+          <span class="comp-after"><span style="color:var(--green);">&#10003;</span> Structured commands with capture the AI can't opt out of</span>
         </div>
         <div class="comparison-row">
-          <span class="comp-before"><span style="color:var(--red);">✗</span> Knowledge lost between sessions</span>
-          <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> Four-layer capture with curated memory</span>
+          <span class="comp-before"><span style="color:var(--red);">&#10007;</span> Developers merge code they can't explain</span>
+          <span class="comp-arrow">&rarr;</span>
+          <span class="comp-after"><span style="color:var(--green);">&#10003;</span> An education gate that keeps you the owner &mdash; offered, not forced</span>
         </div>
         <div class="comparison-row">
-          <span class="comp-before"><span style="color:var(--red);">✗</span> Developers blindly accept AI code</span>
-          <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> Education gates ensure understanding</span>
+          <span class="comp-before"><span style="color:var(--red);">&#10007;</span> No quality enforcement</span>
+          <span class="comp-arrow">&rarr;</span>
+          <span class="comp-after"><span style="color:var(--green);">&#10003;</span> Two gates on every commit, enforced at the tooling layer</span>
         </div>
         <div class="comparison-row">
-          <span class="comp-before"><span style="color:var(--red);">✗</span> No quality enforcement</span>
-          <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> Automated quality gates on every commit</span>
-        </div>
-        <div class="comparison-row">
-          <span class="comp-before"><span style="color:var(--red);">✗</span> Static unchanging process</span>
-          <span class="comp-arrow">→</span>
-          <span class="comp-after"><span style="color:var(--green);">✓</span> Three nested loops drive continuous improvement</span>
+          <span class="comp-before"><span style="color:var(--red);">&#10007;</span> A static, unchanging process</span>
+          <span class="comp-arrow">&rarr;</span>
+          <span class="comp-after"><span style="color:var(--green);">&#10003;</span> Three learning loops that evolve it &mdash; with a human holding the pen</span>
         </div>
       </div>
-      <p class="tagline anim-fade-up-d3" style="text-align:center; margin-top:24px; font-size: 1.2em;">
+      <p class="tagline anim-fade-up-d3" style="text-align:center; margin-top:20px; font-size: 1.2em;">
         "Reasoning is the primary artifact. Code is output."
       </p>
     </div>
   </div>
 
-  <!-- ==================== SLIDE 15: GET STARTED ==================== -->
-  <div class="slide" data-slide="15">
+  <!-- ==================== SLIDE 17: GET STARTED ==================== -->
+  <div class="slide" data-slide="17">
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up" style="width:80px; height:80px;">
       <h2 class="anim-fade-up-d1">Get Started</h2>
-      <div class="quick-start anim-fade-up-d2" style="text-align:left;">
-        <div><span class="comment"># Install dependencies</span></div>
-        <div><span class="cmd">pip install -r requirements.txt</span></div>
-        <div style="margin-top:8px;"><span class="comment"># Initialize the metrics database</span></div>
-        <div><span class="cmd">python scripts/init_db.py</span></div>
-        <div style="margin-top:8px;"><span class="comment"># Try the framework commands</span></div>
-        <div><span class="cmd">/review src/</span> <span class="comment"># Multi-agent code review</span></div>
-        <div><span class="cmd">/deliberate "topic"</span> <span class="comment"># Structured discussion</span></div>
-        <div><span class="cmd">/walkthrough src/</span> <span class="comment"># Guided code walkthrough</span></div>
-        <div><span class="cmd">/quiz src/</span> <span class="comment"># Comprehension assessment</span></div>
+      <div style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center; max-width:820px; margin:0 auto;">
+        <div class="code-block ctx terminal anim-fade-up-d2" style="text-align:left; flex:1; min-width:330px;">
+          <div><span class="comment"># Clone, isolate, install, initialize</span></div>
+          <div><span class="cmd">git clone</span> <a href="https://github.com/Diviner-Dojo/agent_framework_template" target="_blank" class="file" style="color:var(--blue); text-decoration:none;">&hellip;/agent_framework_template</a></div>
+          <div><span class="cmd">cd</span> agent_framework_template</div>
+          <div><span class="cmd">python -m venv</span> .venv <span class="comment"># + activate</span></div>
+          <div><span class="cmd">pip install -r</span> requirements.txt</div>
+          <div><span class="cmd">python</span> scripts/init_db.py</div>
+        </div>
+        <div class="code-block ctx in-claude anim-fade-up-d2" style="text-align:left; flex:1; min-width:330px;">
+          <div><span class="comment"># Launch Claude Code + sign in, then:</span></div>
+          <div><span class="cmd">claude</span></div>
+          <div style="margin-top:8px;"><span class="comment"># Your ten-minute first win:</span></div>
+          <div><span class="cmd">/review</span> <span class="file">src/</span></div>
+          <div style="margin-top:8px;"><span class="comment"># Then open the report it wrote:</span></div>
+          <div><span class="output">docs/reviews/REV-&lt;timestamp&gt;.md</span></div>
+        </div>
       </div>
       <div class="anim-fade-up-d3" style="margin-top:28px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
-        <a href="https://github.com/Diviner-Dojo/agent_framework_template" target="_blank" class="cta-btn">
-          View on GitHub →
-        </a>
-        <a href="how-to-use-presentation.html" class="cta-btn" style="background:var(--bg-card); border:1px solid var(--border-hover); color:var(--text-primary);">
-          How to Use it →
-        </a>
+        <a href="https://github.com/Diviner-Dojo/agent_framework_template" target="_blank" class="cta-btn">View on GitHub &rarr;</a>
+        <a href="how-to-use-presentation.html" class="cta-btn secondary">How to drive it &rarr;</a>
       </div>
       <p class="anim-fade-up-d4" style="margin-top:24px; color:var(--text-muted); font-size:13px;">
-        AI-Native Agentic Development Framework v3.5 · Diviner Dojo
+        AI-Native Agentic Development Framework v3.6 &middot; Diviner Dojo
         <br><a href="mailto:diviner-dojo@gmail.com" style="color:var(--text-muted); text-decoration:none;">diviner-dojo@gmail.com</a>
       </p>
     </div>
@@ -2141,107 +1136,28 @@ h3 {
 
 </div><!-- end .presentation -->
 
+<div class="scroll-fade"></div>
+
 <!-- ===== NAVIGATION BAR ===== -->
 <div class="nav-bar">
   <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4" alt="Diviner Dojo" class="nav-logo">
   <div class="keyboard-hint">
-    <button class="key-badge" onclick="prevSlide()" aria-label="Previous slide">←</button>
-    <button class="key-badge" onclick="nextSlide()" aria-label="Next slide">→</button> Navigate
+    <button class="key-badge" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
+    <button class="key-badge" onclick="nextSlide()" aria-label="Next slide">&#8594;</button> Navigate
   </div>
   <div class="nav-controls">
-    <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">←</button>
-    <span class="slide-counter" id="slideCounter">1 / 15</span>
-    <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">→</button>
+    <button class="nav-btn" onclick="prevSlide()" aria-label="Previous slide">&#8592;</button>
+    <span class="slide-counter" id="slideCounter">1 / 17</span>
+    <button class="nav-btn" onclick="nextSlide()" aria-label="Next slide">&#8594;</button>
   </div>
 </div>
 
-<div class="progress-bar" id="progressBar" style="width: 6.67%;"></div>
-
-<!-- ===== PRINCIPLES EXTRA STYLES ===== -->
-<style>
-.principles-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.principle-item {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: var(--transition);
-  overflow: hidden;
-}
-
-.principle-item:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-}
-
-.principle-item.expanded {
-  border-color: var(--accent);
-}
-
-.principle-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-}
-
-.principle-num {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 13px;
-  flex-shrink: 0;
-  background: var(--accent-glow);
-  color: var(--accent-light);
-}
-
-.principle-title {
-  flex: 1;
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.principle-detail {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.35s ease, padding 0.35s ease;
-  padding: 0 18px 0 60px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.7;
-}
-
-.principle-item.expanded .principle-detail {
-  max-height: 150px;
-  padding: 0 18px 14px 60px;
-}
-
-.principle-item.expanded .layer-expand-icon {
-  transform: rotate(180deg);
-}
-
-code {
-  font-family: var(--mono);
-  font-size: 0.9em;
-  background: rgba(255,255,255,0.06);
-  padding: 1px 6px;
-  border-radius: 4px;
-}
-</style>
+<div class="progress-bar" id="progressBar" style="width: 5.88%;"></div>
 
 <script>
 // ===== SLIDE NAVIGATION =====
 let currentSlide = 1;
-const totalSlides = 15;
+const totalSlides = 17;
 
 function showSlide(n) {
   if (n < 1 || n > totalSlides) return;
@@ -2250,18 +1166,13 @@ function showSlide(n) {
 
   if (prev) {
     prev.classList.remove('active');
-    if (n > currentSlide) {
-      prev.classList.add('exit-left');
-    }
+    if (n > currentSlide) prev.classList.add('exit-left');
     setTimeout(() => prev.classList.remove('exit-left'), 500);
   }
 
   currentSlide = n;
   const next = slides[n - 1];
-  // Small delay for transition effect
-  requestAnimationFrame(() => {
-    next.classList.add('active');
-  });
+  requestAnimationFrame(() => { next.classList.add('active'); });
 
   document.getElementById('slideCounter').textContent = `${n} / ${totalSlides}`;
   document.getElementById('progressBar').style.width = `${(n / totalSlides) * 100}%`;
@@ -2270,67 +1181,33 @@ function showSlide(n) {
 function nextSlide() { showSlide(currentSlide + 1); }
 function prevSlide() { showSlide(currentSlide - 1); }
 
-// Keyboard navigation
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
-    e.preventDefault();
-    nextSlide();
-  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    prevSlide();
-  } else if (e.key === 'Home') {
-    e.preventDefault();
-    showSlide(1);
-  } else if (e.key === 'End') {
-    e.preventDefault();
-    showSlide(totalSlides);
-  }
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prevSlide(); }
+  else if (e.key === 'Home') { e.preventDefault(); showSlide(1); }
+  else if (e.key === 'End') { e.preventDefault(); showSlide(totalSlides); }
 });
 
-// Touch navigation
 let touchStartX = 0;
-document.addEventListener('touchstart', function(e) {
-  touchStartX = e.changedTouches[0].screenX;
-}, { passive: true });
-
+document.addEventListener('touchstart', function(e) { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
 document.addEventListener('touchend', function(e) {
   const diff = touchStartX - e.changedTouches[0].screenX;
-  if (Math.abs(diff) > 50) {
-    if (diff > 0) nextSlide();
-    else prevSlide();
-  }
+  if (Math.abs(diff) > 50) { if (diff > 0) nextSlide(); else prevSlide(); }
 }, { passive: true });
 
 // ===== INTERACTIVE ELEMENTS =====
 function toggleLayer(el) {
   const detail = el.nextElementSibling;
   const wasExpanded = el.classList.contains('expanded');
-
-  // Close all
   document.querySelectorAll('.layer-bar').forEach(b => b.classList.remove('expanded'));
   document.querySelectorAll('.layer-detail').forEach(d => d.classList.remove('open'));
-
-  if (!wasExpanded) {
-    el.classList.add('expanded');
-    detail.classList.add('open');
-  }
-}
-
-function toggleAgent(el) {
-  const wasExpanded = el.classList.contains('expanded');
-  document.querySelectorAll('.agent-card').forEach(c => c.classList.remove('expanded'));
-  if (!wasExpanded) el.classList.add('expanded');
+  if (!wasExpanded) { el.classList.add('expanded'); detail.classList.add('open'); }
 }
 
 function togglePrinciple(el) {
   const wasExpanded = el.classList.contains('expanded');
   document.querySelectorAll('.principle-item').forEach(p => p.classList.remove('expanded'));
   if (!wasExpanded) el.classList.add('expanded');
-}
-
-function toggleTree(event, el) {
-  event.stopPropagation();
-  el.classList.toggle('open');
 }
 </script>
 

@@ -2,13 +2,14 @@
 spec_id: SPEC-20260523-110504
 title: "Model-Aware Session Wrap-Up & Handoff"
 type: spec
-status: approved
+status: complete
 risk_level: high
 intake_ids: []
 reviewed_by: [architecture-consultant, security-specialist, qa-specialist]
 discussion_id: DISC-20260523-190838-session-wrapup-spec-review
-completed_at:
-completed_commit:
+completed_at: 2026-05-23
+completed_commit: 9601776
+status_note: "stamped complete post-hoc 2026-07-16 during the wave-2 spec-budget check (shipping evidence: git log; part of triage #11 bookkeeping debt)"
 ---
 
 ## Goal

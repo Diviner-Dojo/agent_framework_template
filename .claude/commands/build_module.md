@@ -20,6 +20,7 @@ These rules are pass/fail. Violating any of them is a workflow failure.
 6. **ALWAYS create a discussion at build start**: The build discussion captures all checkpoint events and specialist deliberation. No build runs without a discussion.
 7. **ALWAYS close the discussion at build end**: Even if the build fails or is abandoned. Unclosed discussions corrupt the capture stack.
 8. **NEVER exceed 2 checkpoint iterations per task**: After Round 2, capture the unresolved concern and continue. The build is not blocked by specialist disagreement.
+9. **NEVER carry a rejected option only in your head**: when a task made you choose between two implementable options, the losing option is recorded in Step 3a.5 *before* you evaluate the checkpoint. Not at the end of the build, not in the summary. `/review` re-reads these records against the diff and can fail them (`scripts/verify_paths_not_taken.py`), so an unrecorded choice is a gap the reviewer sees and a false record is a finding.
 
 ## Pre-Flight Checks
 
@@ -107,7 +108,7 @@ If a known-broken approach is found, explicitly note it and explain the alternat
 
 ## Step 3: Execute Tasks (Loop)
 
-For each task in the spec, execute Steps 3a and 3b:
+For each task in the spec, execute Steps 3a, 3a.5, and 3b:
 
 ### Step 3a: Generate Code
 
@@ -118,6 +119,65 @@ Based on the current task:
 4. Include type annotations on all public functions
 5. Include Google-style docstrings
 6. Follow existing patterns in the codebase
+
+### Step 3a.5: Record the Path Not Taken (while deciding, not after)
+
+**Fire this step the moment you pick one implementable option over another** — while the
+rejected option is still in front of you, before you move on and before Step 3b. It is not a
+closing summary step and it must never be batched to the end of the build.
+
+Why the timing is the whole mechanism: an "alternatives considered" section written after the
+work is a **reconstruction**. By then the rejected option is remembered through the lens of the
+one that shipped, so it comes back tidier, weaker, and more obviously wrong than it was — which
+is precisely the story that reads well and teaches nothing. The record is only worth reading if
+it was written when the choice was still live.
+
+**Record when any of these is true** (they mirror the Step 3b trigger categories, because the
+same forks that need a second opinion are the ones worth recording):
+
+- you chose one pattern, abstraction, or library over another that would also have worked
+- you chose a schema shape, an interface, or an error-handling posture over a named other one
+- you chose to change a structure rather than patch it again — or the reverse
+- you rejected an approach the pre-build enrichment (Step 2.5) surfaced as prior art
+- a specialist's REVISE in Step 3b made you change approach: the approach you abandoned is a
+  path not taken and gets its own record
+
+**Do not record** a choice with no live alternative (naming a variable, following the only
+pattern the codebase has, doing exactly what the spec dictates). A record per trivial choice
+buries the real ones.
+
+Write one event per decision, tagged `path-not-taken`. The `decision` intent is used because it
+is the only one of the seven that means *a choice was made*, and — measured — `decision` events
+are not scanned by `scripts/extract_findings.py`, so a record adds no false finding to the
+review's counts.
+
+```bash
+python scripts/write_event.py "<discussion_id>" "facilitator" "decision" \
+  "## Path Not Taken
+- **Decision**: [what was being decided, in one line]
+- **Chosen**: [what you actually implemented]
+- **Rejected**: [the specific other option you could have implemented]
+- **Why rejected**: [the reason, at the time, in your own words]
+- **Files**: [repo-relative paths this decision lands in, comma-separated]
+- **Falsifier**: [a literal string that WOULD appear in the added lines if the rejected option had shipped]" \
+  --tags "path-not-taken,task-<N>"
+```
+
+**The `Falsifier` field is what makes the record checkable, and it is the one people get wrong.**
+It is not a restatement of the rejection. It is a concrete token — a symbol name, a flag, an
+import, a call — that a checker can search the diff's added lines for. If the rejected option had
+shipped, that string would be there; because it did not, it is not.
+
+- Good: `COMMAND_TEXT_RE`, `subprocess.run(`, `--patch-guard`, `class RetryMiddleware`
+- Rejected by the checker: `a different approach`, `n/a`, `the alternative`, anything under 4
+  characters. These name nothing a diff can be searched for, and
+  `scripts/verify_paths_not_taken.py` reports them as `UNFALSIFIABLE` rather than letting them
+  pass as records.
+
+If you genuinely cannot name a falsifier, that is information: the "alternative" you are about
+to write down may not have been a real option. Say so in `Why rejected` instead of inventing a
+token — a fabricated falsifier is worse than an absent record, because it survives the
+mechanical check and gets taught to the developer as fact.
 
 ### Step 3b: Checkpoint Evaluation
 
@@ -188,6 +248,109 @@ python scripts/quality_gate.py
 ```
 
 All checks must pass before proceeding.
+
+## Step 6.5: Self-Check the Path-Not-Taken Records
+
+Run the same check `/review` will run, before handing the change over. Fixing a record now costs
+a minute; a `CONTRADICTED` record found at review time is a finding against the build.
+
+```bash
+# FIRST — capture the tree RIGHT NOW, before `-N` touches it. This is what makes the reversal at
+# the end of this block SCOPED, and it cannot be recovered afterwards: once `-N` has run, the
+# untracked files are no longer untracked and this command reports none of them.
+# Keep TWO sets of lines, because `--all` reaches both and the reversal must reach both back:
+#   `??` — untracked paths, which `-N` REGISTERS; and
+#   ` D` — tracked files deleted in the worktree, which `-N` promotes to STAGED DELETIONS.
+# Measured on a throwaway repo: with ` D sibling.txt` present, after `-N` the index carried
+# `0  1  sibling.txt`, a ??-only reset left it there, and a plain `git commit -m` then SUCCEEDED
+# and shipped that deletion ("1 file changed, 1 deletion(-)"). The `commit -a` warning below does
+# not cover this: no `-a` is involved.
+git status --porcelain --untracked-files=all
+
+# MANDATORY first line. `git diff` NEVER shows untracked files, and a build whose trigger is
+# "2+ new files under src/" produces exactly those. Measured on a throwaway repo: with a 40-line
+# untracked src/new_module.py, `git diff HEAD` is 0 bytes; after --intent-to-add the same diff
+# reports "1 file changed, 40 insertions(+)". (A byte size used to be quoted here instead. It was
+# dropped because it is not reproducible from the shape this sentence names: across path x
+# trailing-newline x LF/CRLF the diff runs 448-527 bytes. The insertion count is 40 in all eight.)
+# Skip this line and every record naming a NEW file is falsely reported PHANTOM — a blocking
+# failure against a truthful record, which is the one outcome that teaches builders to stop
+# recording.
+#
+# SCOPE, and it is narrow — but narrow is not the same as safe. For the UNTRACKED paths `-N`
+# registers, it stages no content: measured, in a tree whose only change is the new file,
+# `git diff --cached --numstat` is EMPTY afterwards and `git commit -m` refuses with "no changes
+# added to commit". That EMPTY result is conditional on the tree, not a property of `-N` — if any
+# tracked file was deleted in the worktree, `--all` stages that deletion and `commit -m` will
+# happily commit it (see the capture step above). But `git
+# commit -am` DOES commit the file in full ("1 file changed, 40 insertions(+)"), so never follow
+# this with `commit -a`. It also does NOT replace explicit staging: the `committing-changes` skill
+# Step 1.8 (Required) says never `git add -A` / `git add .` with an entangled tree, and that still
+# governs the commit. Measured on this repo, `git add --dry-run --intent-to-add --all` named 14
+# paths including .claude/settings.json and two other slices' files — none of which belong in your
+# commit. This line is for the DIFF you hand the checker, nothing else.
+git add --intent-to-add --all
+
+git diff HEAD | python scripts/verify_paths_not_taken.py --discussion "<discussion_id>" --diff -
+
+# THE REVERSAL, once the checker has its diff. `-N` is not free: it leaves every path above
+# registered in the index, where it changes what LATER commands see — `git stash` will carry them,
+# and the `git add <path>` you were going to run for an explicit, scoped commit now sits in a tree
+# where the untracked set has been quietly redefined. Un-register exactly the paths the first
+# command printed, and nothing else.
+#
+# SCOPED, and the scoping is the whole instruction. `git reset -q` with no pathspec resets the
+# WHOLE index: measured on a throwaway repo with one file deliberately staged before `-N`, the
+# bare form left `git diff --cached --numstat` EMPTY — it silently unstaged work that had nothing
+# to do with this check. With the pathspec, the same repo still reported the sibling's staged
+# change afterwards. Never the bare form, and never `git reset -q -- .`, which is the bare form
+# wearing a pathspec.
+#
+# Pass BOTH sets the capture step told you to keep — the `??` paths AND the ` D` paths. A ??-only
+# reset is the incomplete reversal measured above, and it fails in the silent direction.
+git reset -q -- <the ?? paths AND the ` D` paths the first command printed>
+
+# VERIFY THE REVERSAL rather than assuming it. This must match what the capture step saw before
+# `-N` ran; anything extra is something `-N` staged and the reset did not reach, and it is about
+# to ride along on your next commit.
+git diff --cached --numstat
+```
+
+Read the exit code — the four values mean different things and must not be collapsed:
+
+- **0** — `MECHANICALLY-CLEAR`: no record was structurally broken, none was refuted **in code**,
+  and every high-churn file is spoken for. Continue. **Read the word literally.** The script does
+  not print `VERIFIED` and cannot: all it did was fail to find your falsifier string in the added
+  lines, so a record you invented — a straw-man alternative plus a token that was never going to
+  appear — passes this exactly as a true one does. Exit 0 is not evidence your record is true; it
+  is evidence nothing here refuted it. The run prints a `caveat` saying so beside the verdict.
+- **1** — a record is `CONTRADICTED` (the diff added the falsifier, so the "rejected" approach is
+  what shipped), `PHANTOM` (it names files this change never touched), or `UNFALSIFIABLE`.
+  **First check the checker's input, then fix the record.** Two input mistakes produce a failure
+  against work that is entirely honest, and both are stated in the failure text when they apply:
+  a diff taken without the `--intent-to-add` line above (new files invisible → false `PHANTOM`,
+  and the message says so when the path exists on disk), and a path typo. Once the input is
+  right, the record is what changes — not the checker: rewrite it to say what actually happened.
+  A record that no longer matches the code is a record that was written from memory. Never edit
+  `scripts/verify_paths_not_taken.py` to make your own record pass; that is the generator
+  rewriting its own evaluator.
+- **`CONTRADICTED-IN-PROSE`** — advisory, and does **not** change the exit code. The falsifier
+  turned up in a comment or a markdown line rather than in code. Writing a comment that explains
+  why you rejected an approach is good practice and must not refute the record of it, so the
+  checker reports the coincidence and leaves the judgement to a reader. Read the line; if the
+  approach really did ship, fix the record.
+- **2** — coverage gap: files changed with real churn that no record names. Ask yourself whether
+  each was a mechanical change or a choice. If it was a choice, go back and write the record you
+  skipped. If it was mechanical, leave it — exit 2 is advisory here and `/review` will see it too.
+  Bookkeeping paths are skipped before this check runs (`DEFAULT_EXCLUDES` in the script:
+  `discussions/*`, `docs/reviews/*`, `metrics/*`, `BUILD_STATUS.md`) and the run prints how many
+  it skipped. `discussions/*` is the one to understand: Layer 1 grows *because* you wrote records,
+  so without it writing more records made your own `events.jsonl` cross the threshold and be
+  reported unspoken-for. `tests/` is deliberately NOT skipped — a test-design choice is a choice.
+- **3** — instrument failure. HALT per behavioural rule 2. Do NOT read it as "no problems".
+
+This self-check is not the gate. `/review` re-runs it independently on the review's own diff
+range, because a builder checking its own work is the generator evaluating itself.
 
 ## Step 7: Close Discussion
 
@@ -262,7 +425,18 @@ Present to the developer:
 1. **Tasks completed**: List of all tasks with status
 2. **Checkpoints fired**: Which tasks triggered reviews, which specialists responded, outcomes
 3. **Unresolved concerns**: Any tasks where specialists still had concerns after Round 2 (risk_flags: unresolved-checkpoint)
-4. **Test results**: Pass count, coverage
-5. **Quality gate**: Pass/fail status
-6. **Next step**: Recommend `/review <files>` for a full multi-agent review before committing
-7. **Education gate**: Recommend `/walkthrough` and `/quiz` on the new module
+4. **Paths not taken**: Every `path-not-taken` record written in Step 3a.5 — decision, chosen,
+   rejected — plus the Step 6.5 exit code verbatim, **and the build `discussion_id` stated
+   explicitly on its own line**. The id is the only handle that reaches these records: `/review`
+   Step 6.4 passes it to `scripts/verify_paths_not_taken.py --discussion`, and a review that is
+   not given it falls back to writing `NOT RUN`, which verifies nothing. (`/review` can also
+   recover it with `--list-sources`, but recovery is not a substitute for handing it over — the
+   listing cannot tell which discussion belongs to this change.) `/plan` states its spec-time id
+   the same way at its Step 7; if this build came from a spec, repeat that id here too, because
+   both sets of records are claims about the one diff. If zero records were written on a build
+   with more than one task, say so explicitly and say why; "no alternatives arose" is a claim,
+   and it is the claim the reviewer will test first.
+5. **Test results**: Pass count, coverage
+6. **Quality gate**: Pass/fail status
+7. **Next step**: Recommend `/review <files>` for a full multi-agent review before committing
+8. **Education gate**: Recommend `/walkthrough` and `/quiz` on the new module

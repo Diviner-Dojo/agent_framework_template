@@ -1,0 +1,89 @@
+---
+discussion_id: DISC-20260818-200843-review-adopter-decks-promotion
+started: 2026-08-18T20:08:56.781977+00:00
+ended: 2026-08-18T20:19:19.956384+00:00
+agents: [docs-knowledge, facilitator, ux-evaluator]
+total_turns: 6
+---
+
+# Discussion: DISC-20260818-200843-review-adopter-decks-promotion
+
+## Turn 1 — facilitator (evidence)
+*2026-08-18T20:08:56.781977+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: 'I want those approaches to the HTML documents to be my go forward documents for this project. Promote them and then push all of this to the public repo. I want to share it.' Pre-push review of the promoted decks.
+- **Files/scope**: docs/diviner-dojo-framework-presentation.html (17 slides, rebuilt), docs/how-to-use-presentation.html (20 slides, revised) — full adopter-first rewrite replacing the prior 15/19-slide decks, developed over three developer-feedback rounds this session.
+- **Developer-stated motivation**: The decks are the public repo's front door; prior decks enumerated architecture at newcomers. New decks: value before proof, a real review (REV-20260318-035523) replayed verbatim, honest cost, walks a non-coder from idea to commit.
+- **Explicit constraints**: Counts must be measured (24 commands / 25 skills / 12 agents / 7 principles); hook count deliberately NOT stated (open developer decision on denominator); constitution guard (tests/test_constitution_consistency.py) must stay green; docs/samples/*.REVISED.html are frozen and out of scope; never push/merge without the developer.
+
+---
+
+## Turn 2 — ux-evaluator (proposal)
+*2026-08-18T20:15:47.105653+00:00 | confidence: 0.83*
+*tags: review, ux-evaluator, verdict:approve-with-changes*
+
+Verdict: approve-with-changes (confidence 0.83). Both decks internally consistent; all cross-references resolve; narrative arc matches intent; no dead ends.
+
+Severity: HIGH — accessibility/silent content loss. .layer-detail (max-height 300px) and .principle-detail (max-height 170px) use overflow:hidden with fixed-px caps; at 200% text-only zoom (WCAG 1.4.4) expanded text clips silently with no scrollbar — hits the principle 'why' text and four-layer explanations. Fix: overflow-y:auto on both selectors and/or raise caps. Recommended BEFORE the public push.
+
+Severity: MEDIUM — keyboard access (WCAG 2.1.1): expand widgets are divs with onclick only (no tabindex/role/aria-expanded/keydown); keyboard reader cannot reveal layer/principle detail. Core titles remain visible, so MEDIUM.
+Severity: MEDIUM — contrast (WCAG 1.4.3): --text-muted #64748b on #0a0e1a is ~4.05:1, below 4.5:1 AA, used at 10.5-13px for captions/IDs/hints in both decks.
+Severity: MEDIUM — screen-reader noise: leading emoji in card headings lack aria-hidden; announced before every card title.
+Severity: LOW — nav prev/next buttons give no boundary feedback at first/last slide (silent no-op).
+Severity: LOW — slide scroll position persists on revisit (no scrollTop reset in showSlide).
+Severity: LOW — how-to deck closing slide lacks a return CTA to the What-It-Is deck (framework deck has the forward link; asymmetric).
+
+Strengths: slide 6 density handling; expand affordances well-signposted; print stylesheet reveals collapsed content; margin:auto-0 overflow centering correct; coherent voice across decks; honesty framing (POC warning, Skip-it-when, Claims-are-cheap) reads as trust-building. MEDIUM/LOW reasonable to batch post-push; HIGH recommended pre-push.
+
+---
+
+## Turn 3 — docs-knowledge (proposal)
+*2026-08-18T20:17:37.767402+00:00 | confidence: 0.88*
+*tags: review, docs-knowledge, verdict:approve-with-changes*
+
+Verdict: approve-with-changes (confidence 0.88). Nearly every hard number traced checked out exactly (12 agents, 24 commands, 25 skills, 7 principles, model-tier badges, REV-20260318 findings/verdict/0.90/15min, 165/62/42/33 adoption stats vs adoption-log.md frontmatter, 12 secret patterns, 120s lock timeout, 8-item gate checklist, skill sheet 13+12=25); guard 23/23 with both decks in LIVE_FILES; no references to deleted FRAMEWORK.md or /distribute; all ADR citations resolve.
+
+Severity: HIGH — framework deck slide 11 'Risk picks the panel' table mixes framings: Low/Med/High rows quote TARGET agent counts (2-3/3-4/4-5) but the Critical row quotes the plurality FLOOR ('Hard floor: >=3') instead of the target (5-6, Full panel, per selecting-review-gates matrix line 190). Read as one column, Critical appears to get LESS scrutiny than High — inverts the safety-relevant comparison. Fix: state 5-6 Full panel with the floor as a footnote.
+Severity: MEDIUM — how-to slide 11 /quiz card says 'weighted toward Apply/Analyze'; actual mix is 30% Understand/Apply, 70% Analyze/Evaluate/Create — Apply is in the lighter bucket. Fix wording.
+Severity: MEDIUM — framework deck slide 15 cites 'the six-specialist, high-risk review on slide 6 took fifteen'; review_duration_minutes: 15 appears on slide 7 (frontmatter); slide 6's '15' is fix-time, a different metric. Fix ref to slide 7.
+Severity: MEDIUM — how-to slide 5 flow orders /review before the quality gate; CLAUDE.md workflow sequencing and committing-changes run gate BEFORE review, and the framework deck's 'Two gates' card orders Gate 1 (automated) then Gate 2 (/review). Reorder for canon + internal consistency.
+Severity: INFO — optional: neither deck points readers at docs/AGENT_ARCHITECTURE.md for the full collaboration-mode taxonomy the rewrite compressed (content not lost — lives there).
+
+Strengths: worked example quoted with zero factual drift; counts byte-accurate; skill cheat sheet accounts for all 25 exactly; header comments record methodology + the deliberate no-hook-count decision, honored throughout.
+
+---
+
+## Turn 4 — facilitator (critique)
+*2026-08-18T20:19:19.824901+00:00 | confidence: 0.8*
+*tags: finding-verification*
+
+Finding verification: 12 findings collected (ux 7, docs-knowledge 5). Location-specific claims spot-verified against the files and ground truth: risk-table framing mismatch CONFIRMED (selecting-review-gates matrix line 190: Critical = 5-6 Full panel; deck showed only the >=3 floor); slide-ref error CONFIRMED (review_duration_minutes:15 is on slide 7, not 6); quiz-weighting drift CONFIRMED (skill: 30% Understand/Apply, 70% Analyze/Evaluate/Create); flow-order deviation CONFIRMED vs CLAUDE.md small-change sequence (gate before review); overflow:hidden clipping risk CONFIRMED in both .layer-detail and .principle-detail rules. 12 verified/inconclusive-by-judgment, 0 discarded. Both HIGHs + all 3 docs MEDIUMs + the INFO pointer FIXED in-review (9 edits); guard re-run 23/23 green after fixes; slide counts unchanged (17/20).
+
+---
+
+## Turn 5 — facilitator (decision)
+*2026-08-18T20:19:19.892201+00:00 | confidence: 0.8*
+*tags: path-not-taken-verification, not-run*
+
+Paths-not-taken verification: NOT RUN — this change followed the small-change interactive path (no /plan or /build_module discussion exists for it); --list-sources returned 5 discussions (2026-08-09..2026-08-15), none belonging to this change.
+
+---
+
+## Turn 6 — facilitator (synthesis)
+*2026-08-18T20:19:19.956384+00:00 | confidence: 0.86*
+*tags: blocking:2, advisory:10, speculative:0, model-tiers:docs-knowledge-sonnet+ux-evaluator-sonnet*
+
+## Request Context
+- What was requested: promote the adopter-first deck rewrites to the live paths and push to the public repo (developer's explicit order); pre-push review.
+- Files/scope: docs/diviner-dojo-framework-presentation.html (17 slides), docs/how-to-use-presentation.html (20 slides).
+- Developer-stated motivation: decks are the public front door; new structure = value before proof, real review replayed, honest cost, non-coder onboarding.
+- Explicit constraints: measured counts only; no hook count (open denominator decision); constitution guard must stay green; samples frozen.
+
+## Synthesis
+Ensemble panel of 2 (low risk documentation, above the floor of 1): ux-evaluator approve-with-changes 0.83; docs-knowledge approve-with-changes 0.88. 12 findings: 2 HIGH (expand-panel clipping at 200 percent text zoom; risk-table floor/target framing inversion on the panel-size column), 6 MEDIUM, 3 LOW, 1 INFO. ALL blocking-tier findings plus the three docs MEDIUMs and the INFO pointer were fixed during the review (9 edits: overflow-y auto + raised caps; Critical row now 5-6 full panel with the >=3 floor stated as a floor; quiz weighting corrected to Analyze/Evaluate/Create; slide-6->7 ref; gate-before-review flow reorder incl. cards; AGENT_ARCHITECTURE.md pointer). Guard 23/23 after fixes. Remaining 6 advisories batched post-push: keyboard access on expand widgets, --text-muted contrast at small sizes, emoji aria-hidden, nav boundary feedback, scrollTop reset on slide revisit, how-to closing return-CTA. Confidence annotation: 0 findings speculative (<0.80), 0 unscored. Model tiers: docs-knowledge:sonnet, ux-evaluator:sonnet (default tiers, no --cost flag). Reflections: SKIPPED — hard context checkpoint standing; gap logged per Step 7c non-blocking rule.
+## Verdict
+approve-with-changes — changes applied in-review; clear to commit and push.
+
+---

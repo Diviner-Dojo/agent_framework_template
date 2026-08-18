@@ -1,0 +1,109 @@
+---
+discussion_id: DISC-20260816-183933-walkthrough-slice-e-single-source-pnt
+started: 2026-08-16T18:42:33.908401+00:00
+ended: 2026-08-16T19:00:26.900149+00:00
+agents: [educator, facilitator, learner, tutor]
+total_turns: 9
+---
+
+# Discussion: DISC-20260816-183933-walkthrough-slice-e-single-source-pnt
+
+## Turn 1 — educator (decision)
+*2026-08-16T18:42:33.908401+00:00 | confidence: 0.8*
+*tags: walkthrough, education, path-not-taken-verification*
+
+Verification handoff: docs/reviews/REV-20260815-114838.md (matched by reviewed_files, which covers all three taught files; the two newer carriers REV-20260811-154157 and REV-20260809-222916 cover different changes and were skipped). Re-ran the checker: exit 2 COVERAGE GAP reproduced. DEVIATION FROM THE RECORDED diff_command, deliberate and safer: slice E is now COMMITTED at f4f41b3, so the diff was reconstructed with 'git diff f4f41b3^ f4f41b3 -- <5 reviewed files>' (39,526 bytes) instead of re-running 'git add --intent-to-add --all' on a live tree. Same evidence, zero index mutation - and it avoids the exact staged-deletion hazard this slice shipped the fix for. Per-claim reader verdicts: (1) turn 4 blk 1 heading-naming -> VERIFIED with a named exception; the rejected '##' form appears exactly once, review.md:1058, as a TEMPLATED pointer that PLACEHOLDER_RE '[<>]' excludes from the scan, targeting docs/reviews/ not a '## Step N' slice anchor, so the collision class does not apply - convention real, not universal. (2) turn 5 blk 1 scan-not-table -> VERIFIED; POINTER_RE at tests/test_command_pointer_integrity.py:58 is a scan, POINTER_FLOOR=4 at :77 asserted at :253 is the non-vacuity floor, no EXPECTED_POINTERS table exists. (3) spec turn 2 no-new-skill -> VERIFIED; .claude/skills/verifying-paths-not-taken absent. (4) spec turn 3 provenance-preserved-verbatim -> VERIFIED; three 'Measured 2026-08-09' narratives live at review.md:576/617/687 and the 143-non-merge sentence persists f4f41b3^:595 -> HEAD:618, line-offset only. Note the checker STRUCTURALLY CANNOT test this record: a preservation promise is broken by REMOVED lines and the falsifier search reads ADDED lines only - obligation 2 territory, verified by hand. (5) spec turn 4 tutor-loop-untouched -> VERIFIED; educator.md and quiz.md absent from f4f41b3 name-only. (6) spec turn 5 transclusion-rejected -> UNVERIFIABLE; obligation 3 straw-man test fails it - 'no such machinery exists in the repo' was knowable before any work began, no preprocessor exists anywhere in the tree, nothing was tried or measured. Decoration, not a decision. Zero REFUTED.
+
+---
+
+## Turn 2 — educator (critique)
+*2026-08-16T18:42:44.215297+00:00 | confidence: 0.8*
+*tags: path-not-taken-verification, walkthrough, education, report-drift*
+
+Severity: MEDIUM - report/instrument drift found by obligation 1, not a refuted claim. REV-20260815-114838 declares records_checked: 2 and lists 2 claims verbatim, but re-running the checker with the discussion_ids THAT SAME REPORT declares yields 6 records (2 from DISC-20260815-060545 + 4 from DISC-20260812-192946). The exit code reproduced (2); the record count did not. So the REV's Claims section documents 2 of the 6 records actually in scope, and the four spec-time records reached the education gate unquoted - a briefing agent trusting the transcript would have taught two thirds fewer alternatives than exist. This is the 'the report is a transcript written by the party being checked' case landing on the count rather than the verdict. Also recorded: files_unspoken_for differs (REV 2, re-run 1) but that one is explainable - the REV's diff included the SPEC file, mine scoped to the 5 reviewed files. Raise at /retro alongside the false-refutation specimens.
+
+---
+
+## Turn 3 — educator (proposal)
+*2026-08-16T18:43:57.449655+00:00 | confidence: 0.88*
+*tags: walkthrough, education*
+
+Walkthrough for slice E (SPEC-20260812-122753, commit f4f41b3), three layers.
+
+DEVIATION: Step 3's educator subagent dispatch was NOT run - this session carries a standing instruction against agent dispatch absent an explicit request; the walkthrough was authored in-context by the same agent that worked the Step 2a obligations, and the developer was told so and offered the dispatched version.
+
+LAYER 1 - Decision landscape. The paths-not-taken instruction surface was specified in two-to-three places across build_module.md / review.md / walkthrough.md; slice E makes ONE site authoritative per topic and turns the others into pointers (build_module Step 6.5 = the intent-to-add rationale; review.md Step 10 contract = the consequences plus the two non-declinable classes). Alternatives that lost: a new verifying-paths-not-taken SKILL as shared home (rejected - a third location for content that already had two, plus a skill-load indirection, in a chain measured by loaded words); a transclusion/include preprocessor (rejected - no such machinery exists, fails the PHILOSOPHY growth-brake; the reader marked this record UNVERIFIABLE as decoration, because the reason was knowable a priori); embedding the full ## heading in pointers (rejected on MEASUREMENT - it was shipped first and turned SEVEN tests RED, because test_paths_not_taken.py slices review.md with text.index of the Step 6.4 heading through text.index of the Step 6.5 heading at eleven sites, so a pointer containing the literal marker became an earlier match and truncated the slice to about zero chars); a hand-maintained EXPECTED_POINTERS table (rejected - a fourth copy, and it fails silently: a later pointer is simply absent from it).
+
+Deliberately NOT done: provenance narratives stay verbatim in place (they are in-place regression guards addressed to the future editor of that file - moving them reverses a reviewed decision); tutor-loop dedup untouched.
+
+HEADLINE HONEST RESULT: the slice made its own burden metric WORSE - dedup recovered 306 gross words, mandated safety work cost about 1092, net +786 (20510 to 21296). Recorded as PARTIAL MITIGATION with a negative number rather than as "Advisory 4: handled".
+
+LAYER 2 - Invariants and failure modes. The panel found a safety gap INSIDE the safety fix: intent-to-add with --all does not only register untracked paths, it promotes a worktree DELETION of a tracked file to a STAGED deletion, which a ??-scoped reset cannot reach, and a plain commit -m with NO -a then ships that unrelated deletion. Reproduced on a throwaway repo: the index carried a 0/1 numstat row for the sibling file after -N. The retained measured sentence claiming the cached numstat is EMPTY and commit -m refuses is FALSE in that tree state - and the slice had just re-scoped that sentence to its only surviving copy.
+
+Invariant now: capture with git status --porcelain --untracked-files=all BEFORE -N (irrecoverable afterwards), keep BOTH the ?? set and the " D" set, reverse both, and VERIFY with git diff --cached --numstat. Never the bare reset (it resets the whole index - measured, it silently unstaged unrelated work) and never the bare form wearing a dot pathspec.
+
+Second invariant: MECHANICALLY-CLEAR may never be promoted to VERIFIED by copying it across - the script tests string presence, the reader tests whether the code IS the rejected approach under another name.
+
+Guard: a new additive class TestTheIntentToAddIsReversed, 3 tests across 2 files. Before it, grepping the tests tree for the reset command returned NOTHING - so the whole Advisory-3 closure was unpinned while the prose around it was pinned.
+
+LAYER 3 - Diagnostics. Checker exit codes: 0 mechanically-clear, 1 refuted, 2 coverage gap, 3 instrument failure - and 3 is stated loudly but does NOT stop the gate. A non-empty git diff --cached --numstat after the reversal is the tell that -N staged something the reset did not reach. A record whose "Why rejected" was obvious before any work began is decoration - mark it UNVERIFIABLE.
+
+---
+
+## Turn 4 — tutor (question)
+*2026-08-16T18:52:15.497684+00:00 | confidence: 0.8*
+*tags: walkthrough, education, checkpoint*
+
+Checkpoint (Layer 1): someone adds a fourth command file next month with the pointer "See .claude/commands/review.md, section ## Step 10: Education Gate". The pointer-integrity test passes, nothing goes red. What breaks, and when do you find out?
+
+---
+
+## Turn 5 — learner (evidence)
+*2026-08-16T18:52:15.555417+00:00 | confidence: 0.8*
+*tags: walkthrough, education, learner-answer*
+
+"This is all super esoteric, and hard to follow. What is the big picture here?"
+
+---
+
+## Turn 6 — tutor (critique)
+*2026-08-16T18:52:15.609280+00:00 | confidence: 0.8*
+*tags: walkthrough, education, reteach*
+
+Checkpoint miss on Layer 1 - and the miss is the TUTOR's, not the learner's. I opened at mechanism altitude (test string-slicing, pointer collision classes) for a manager-gatekeeper whose stated need is the possibility-space and the concepts, not the syntax (memory: user_education_perspective, feedback_teach_dont_dump, feedback_adhd_cadence_contract). Entry point SPENT: concrete-trace-of-one-real-value / decision-landscape-first. Re-explaining from entry point CONSEQUENCE-FIRST, compressed to three sentences of plain language with no repo jargon, leading with what the slice was FOR and what it actually caught. Do not reuse the decision-landscape frame on this concept.
+
+---
+
+## Turn 7 — learner (evidence)
+*2026-08-16T18:56:44.153543+00:00 | confidence: 0.8*
+*tags: walkthrough, education, learner-answer*
+
+"I feel like every time we report success, we should have an independent verification of that at the time the desigination is made (don't check your own work), then that should be recorded along with the measurements and evidence."
+
+---
+
+## Turn 8 — tutor (synthesis)
+*2026-08-16T18:56:44.207756+00:00 | confidence: 0.95*
+*tags: walkthrough, education, checkpoint-passed*
+
+CHECKPOINT DEMONSTRATED, and above the altitude it was asked at. The developer was asked only whether the failure shape was recognisable; he returned the STRUCTURAL RULE - independent verification at the MOMENT of designation, by someone other than the author, with the evidence recorded alongside. That is Principle #3 generalised from code review to every success designation, which is a generalisation the framework has been discovering one specimen at a time and has never stated as a rule. Concept demonstrated on first ask after one consequence-first re-teach. Do NOT re-ask this concept.
+
+---
+
+## Turn 9 — facilitator (synthesis)
+*2026-08-16T19:00:26.900149+00:00 | confidence: 0.9*
+*tags: walkthrough, education, reteach-log*
+
+Walkthrough handoff (slice E, gate EDU-20260815-slice-e-single-source-pnt).
+
+Demonstrated in his own words (do NOT re-ask): (1) the core concept of the slice - that a mechanism can report success it never actually verified, and that the designation of success is the moment the check is owed. He reached it from a more general angle than it was taught: independent verification at the moment of designation, by someone other than the author, with the evidence recorded. Demonstrated after ONE consequence-first re-teach.
+
+Entry points already spent, per concept (do NOT re-use): "a mechanism reporting success it never verified" -> concrete-trace-of-one-real-value and decision-landscape-first (BOTH SPENT AND BOTH FAILED - he called the result esoteric and hard to follow); then consequence-first (SUCCEEDED). For any future re-teach on this concept use analogy-from-a-domain-he-owns, failure-mode-first, or the losing alternative's point of view. Do not open at mechanism altitude with this developer: his stated need is the possibility-space and the concepts, not the syntax.
+
+Layers skipped, i.e. untested ground to cover first: Layer 2 was NOT delivered as a discrete layer - its central invariant (the intent-to-add staged-deletion hazard, and the capture-both-sets / reverse-both / verify-with-numstat rule) was folded into the plain-language big-picture answer and he engaged with it there, but the specific operational invariants were never checkpointed. Layer 3 (diagnostics: the four checker exit codes, the non-empty cached numstat as the tell that the reversal missed something, recognising a decoration record) was NOT delivered at all. Both are untested ground.
+
+Rationale hedged where the decision record was thin: none needed - the decision record for this slice is unusually complete (2 sealed discussions, 6 path-not-taken records, a full REV). One record was marked UNVERIFIABLE as decoration rather than hedged (spec turn 5, transclusion rejected on an a-priori-obvious reason).
+
+Developer steer captured this session, load-bearing for any future education-surface work: he explicitly DECLINED to turn his own restated rule into a framework proposal - "No, I don't want to add another layer of validation." He was restating the walkthrough, not proposing machinery. Do not re-open it as a Steward proposal or a /retro item. His stated priority is forward progress on promoting the frontier-model updates to the public repo.
+
+---

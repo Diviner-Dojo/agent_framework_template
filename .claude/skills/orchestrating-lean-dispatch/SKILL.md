@@ -1,6 +1,6 @@
 ---
 name: orchestrating-lean-dispatch
-description: Get Fable-level quality while spending Fable tokens ONLY on orchestration, judgment, synthesis, and verification. Use whenever a Fable (or top-tier) main session runs a multi-step workflow — especially autonomous/overnight sessions — to push every delegable token down to cheaper models or deterministic CLI tools. Developer-approved 2026-06-11 (Principle #7); Steward as-built APPROVE 0.86 (Run 0, 2026-06-12). Session-chain economics fold approved 2026-06-12 (WORKITEMS-20260612-lean-supervisor); Steward ratifies as-built.
+description: Get Fable-level quality while spending Fable tokens ONLY on orchestration, judgment, synthesis, and verification. Use whenever a Fable (or top-tier) main session runs a multi-step workflow — especially autonomous/overnight sessions — to push every delegable token down to cheaper models or deterministic CLI tools. Developer-approved 2026-06-11 (Principle #6); Steward as-built APPROVE 0.86 (Run 0, 2026-06-12). Session-chain economics fold approved 2026-06-12 (WORKITEMS-20260612-lean-supervisor); Steward ratifies as-built.
 ---
 
 # Orchestrating Lean Dispatch
@@ -19,7 +19,7 @@ main-loop context window as the scarcest resource in the system.
    capture events, gates, transcript generation, git mechanics, log parsing, conflict unions —
    it must be a script, not a model turn. If the script doesn't exist and the task will recur,
    **Fable writes the script once** (small, tested), then every future run pays zero tokens.
-   This is Principle #8 (least-complex intervention) applied to token spend.
+   This is least-complex intervention first (`PHILOSOPHY.md`, *Growth has a brake*) applied to token spend.
 2. **haiku** — search, inventories, grep sweeps, doc-rot scans, "find all X" fan-outs.
 3. **sonnet** — specialist reviews (qa/arch/security non-enforcement/indep/docs/ux), well-specified
    mechanical implementation (manifest YAML, doc sweeps, boilerplate edits, test scaffolds).

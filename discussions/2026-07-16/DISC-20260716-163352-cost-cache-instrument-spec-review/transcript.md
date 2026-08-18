@@ -1,0 +1,85 @@
+---
+discussion_id: DISC-20260716-163352-cost-cache-instrument-spec-review
+started: 2026-07-16T16:34:07.482479+00:00
+ended: 2026-07-16T16:41:37.334008+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist]
+total_turns: 5
+---
+
+# Discussion: DISC-20260716-163352-cost-cache-instrument-spec-review
+
+## Turn 1 — facilitator (evidence)
+*2026-07-16T16:34:07.482479+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Resume from HANDOFF-20260716-review-triage-complete.md; developer approved starting wave-1 build (triage item #1 cost/cache instrument) and chose: per-call JSONL log, auto-run via Stop hook, lean /plan first.
+- **Files/scope**: SPEC-20260716-093231-cost-cache-instrument.md — new scripts/telemetry/call_log.py, ratio in src/telemetry/cost.py, additive telemetry kick in scripts/stop_hook.py, .gitignore line, tests. Settings.json Stop-hook wiring is a developer manual edit (protected file).
+- **Developer-stated motivation**: 2026-07-14 perf review P1#3 — all token/cost telemetry is NULL; cache_read/total ratio is the leading blind-spot indicator; unblocks triage items 5/7 and the frozen dashboard.
+- **Explicit constraints**: sensor only — dashboard extension stays FROZEN; no push without per-instance OK; branch feat/cost-cache-instrument off main.
+
+---
+
+## Turn 2 — architecture-consultant (critique)
+*2026-07-16T16:39:46.141657+00:00 | confidence: 0.82*
+*tags: spec-review, architecture*
+
+VERDICT: approve-with-changes (0.82). No blocking. ADR-0013 compute-dont-store HONORED (ratio = pure token derivation, exempt from repricing drift); ADR-0023 honored; deps direction scripts->src preserved; parser/watermark reuse correct.
+ADVISORY-1 (med): per-call JSONL outside evaluation.db diverges from ADR-0020 'new granularity = new table' precedent (A1/A2). Fix: short implementation note appended to ADR-0020 (JSONL-vs-table reasons: DDL-allowlist avoidance, repo bloat, durability past transcript pruning).
+ADVISORY-2 (high): R4 time-box under-specified + Windows-hostile inline (no SIGALRM); inline widens Stop-hook import/fault surface. Fix: run kick as timeout-bounded SUBPROCESS reusing the R6 CLI entry point — cross-platform preemption, hook import surface unchanged, no duplication.
+ADVISORY-3 (med): cross-run dedup risks O(whole-file) JSONL re-read (ADR-0020 Alt-4 rejected O(corpus) rescan). Fix: persist {watermark_ts, boundary_ids} in telemetry_run_state; scan only ts>=watermark; never full-file re-read.
+ADVISORY-4 (low-med): kick runs emitter + analyze_cost as two collect_messages passes in one budget. Fix: single pass feeding both, or accept (watermark-bounded incremental corpora are small) + note in Risk.
+ADVISORY-5 (low): source_file_kind main|subagent re-derives transcript-path knowledge outside the isolated parser. Fix: add source_kind field to MessageRecord populated in parse_session_dir.
+INFO-1: R3 'per-model' is ambiguous — CostReport groups by TIER (by_tier); clarify per-tier + overall. INFO-2: logged ratio is a recomputable convenience denorm — one docstring line.
+Strengths: pure/transport split correct; genuine reuse; additive invariant-preserving hook extension; honest-absence discipline; scope discipline (dashboard frozen).
+
+---
+
+## Turn 3 — security-specialist (critique)
+*2026-07-16T16:39:46.252443+00:00 | confidence: 0.82*
+*tags: spec-review, security*
+
+VERDICT: approve-with-changes (0.82). ONE BLOCKING.
+BLOCKING (protocol/contract integrity): stop_hook stdout is a load-bearing single-purpose channel — Claude Code parses exactly one JSON decision object ({decision:block,...}) to act on the allow-listed ntfy reply. Spec R4/R6 never fences the telemetry kick's output stream; if the shared call_log summary path prints to stdout inside the hook, a pending matched reply's JSON payload can be polluted/unparseable — silently dropping the developer's reply (same failure CLASS as the 2026-06-07 reply-misfiling bug, different mechanism). Fix: telemetry kick and everything it calls writes ONLY stderr in hook context (or subprocess with captured output); new AC: with matched-reply intent + telemetry both active, hook stdout is exactly one JSON object byte-identical to the no-telemetry case. R6 CLI summary may keep stdout standalone.
+ADVISORY (config semantics): STOP_HOOK_DISABLE=1 currently short-circuits the whole hook before the intent read; spec's 'independent' framing does not say whether telemetry survives it. Fix: state precedence explicitly (recommend: master off-switch stays authoritative) + AC covering both flags.
+ADVISORY (trust boundary/state): throttle/watermark file under .claude/hooks/.state needs (1) parse-failure = fail-silent default-eligible under the same no-slug contract, (2) atomic write (tmp + os.replace) against torn concurrent writes.
+ADVISORY (forward-looking injection): transcript-derived strings (model, session_id) in the JSONL are opaque untrusted data for FUTURE consumers (#14 greppable-logs rider) — one docstring sentence: structured parsing only, never string-interpolate into shell/path/eval.
+Strengths: no dollars/content in log; guarded A-ARCH1 helper reuse (kills the 2x-recurred symlink class); AC7/AC8 target the two highest-frequency ledger classes; settings.json correctly deferred to developer manual edit (ADR-0018 precedent).
+
+---
+
+## Turn 4 — qa-specialist (critique)
+*2026-07-16T16:39:46.363274+00:00 | confidence: 0.78*
+*tags: spec-review, qa*
+
+VERDICT: approve-with-changes (0.78). THREE BLOCKING (testability).
+BLOCKING-1 (ambiguous AC): AC4/R3 'per-model' ratio — cost.py aggregates by TIER (CostReport.by_tier); no per-model report object exists. Fix: amend to per-TIER + overall (trivial pure property), or name the new per-model structure explicitly.
+BLOCKING-2 (non-deterministic): R4(b)/AC6 'hard wall-clock budget' mechanism unnamed; cooperative-checkpoint vs real preemption have opposite test implications (threads cannot be killed — orphan-writer hazard; subprocess timeout = real-time flaky on Windows CI). Fix: name the mechanism; cooperative deadline check between transcript files preferred — test = monkeypatched clock jumps past deadline mid-loop, N of M files processed, no real sleep.
+BLOCKING-3 (isolation): R7 covers read-side monkeypatching but not WRITE side — model_call_log.jsonl + throttle state must be monkeypatchable module-level constants overridden to tmp_path in every test (stop_hook.STATE_FILE pattern), else tests append to the real gitignored log.
+ADVISORY: concurrent hook invocations can both pass the throttle read and interleave appends on Windows — either scope out explicitly (accepted single-dev risk) or per-line flush + interleave test.
+ADVISORY: truncated trailing line from a killed process — emitter must tolerate + append cleanly after it; docstring note that deleting the JSONL does NOT rebuild it (dedup state lives in DB).
+ADVISORY (honest-null): None-vs-0 semantics — if any token component is None (unknown), ratio must be null, never computed by treating None as 0 (repo convention: None=unknown, 0=known-zero); add parametrized case.
+ADVISORY: throttle timestamp eager-vs-on-success is an unstated fork with opposite failure modes (masked breakage 10min vs 15s retry every turn); pick one + test.
+ADVISORY: AC2 boundary wording should name the exact tie scenario (ts == watermark, unseen message_id, strict > would skip) mirroring existing regression-test docstrings.
+Strengths: reuses proven fixtures; AC5 'existing tests stay green' is a strong cheap guard; AC7/AC8 map to named prior regressions; constraint discipline shrinks the reviewable diff.
+
+---
+
+## Turn 5 — facilitator (synthesis)
+*2026-07-16T16:41:37.334008+00:00 | confidence: 0.85*
+
+## Request Context
+- **What was requested**: Resume from HANDOFF-20260716-review-triage-complete.md; developer approved wave-1 build (triage #1 cost/cache instrument) with pinned scope: per-call JSONL, Stop-hook auto-run, lean /plan first.
+- **Files/scope**: SPEC-20260716-093231 rev 2 — call_log.py emitter, cost.py ratio, stop_hook.py kick, gitignore, ADR-0020 note, tests.
+- **Developer-stated motivation**: perf review P1#3 — all cost telemetry NULL; cache_read/total is the blind-spot leading indicator; unblocks triage 5/7 + frozen dashboard.
+- **Explicit constraints**: sensor only (dashboard FROZEN); no push; branch feat/cost-cache-instrument off main.
+
+## Synthesis
+Panel: architecture-consultant 0.82 approve-with-changes / security-specialist 0.82 approve-with-changes / qa-specialist 0.78 approve-with-changes. 4 BLOCKING total (1 security, 3 qa), all FOLDED into spec rev 2; verdict after fold: APPROVE pending developer sign-off.
+CONVERGENCE: three independent paths led to one design move — the Stop-hook kick as a timeout-bounded subprocess reusing the R6 CLI. Arch wanted it for Windows preemption + unchanged hook import surface (ADV-2); security's BLOCKING (stdout pollution of the hook's single-JSON decision channel — same failure class as the 2026-06-07 reply-misfiling) is resolved structurally by capture_output; qa's BLOCKING-2 (untestable time-box) is satisfied by pairing it with a cooperative deadline inside call_log.py, unit-testable with a fake clock.
+FOLDED (blocking): stdout-purity AC11 + stderr-only hook output (sec B1); per-TIER not per-model ratio, AC4/R3 reworded to existing TierCost/CostReport (qa B1, arch INFO-1); time-box mechanism named — subprocess backstop + cooperative deadline (qa B2, arch ADV-2); write-side test isolation — monkeypatchable JSONL + throttle path constants (qa B3).
+FOLDED (advisory): dedup design pinned to {watermark_ts, boundary_ids} in telemetry_run_state, no O(file) re-read, tie case named in AC2 (arch ADV-3 + qa); STOP_HOOK_DISABLE stays master off-switch, both flags in AC6 (sec ADV); throttle = eager stamp at attempt + atomic tmp/os.replace + parse-failure-eligible (sec ADV + qa ADV); None-vs-0 honest-null ratio, parametrized separately (qa ADV); source_kind moves into MessageRecord (arch ADV-5); truncated-trailing-line tolerance AC12 (qa ADV); concurrency accepted-risk stated + per-line flush (qa ADV); ADR-0020 implementation note for JSONL-vs-table divergence (arch ADV-1); future-consumer injection docstring note (sec ADV); double-parse accepted, watermark-bounded (arch ADV-4).
+NOT ADOPTED: none rejected outright; rotation stays deferred (YAGNI, revisit at ~50MB).
+Spec status: reviewed. Next: developer approval, then /build_module.
+
+---

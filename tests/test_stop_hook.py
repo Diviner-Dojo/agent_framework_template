@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -355,3 +356,169 @@ class TestQueueCli:
 
     def test_timeout_cap_matches_hook_cap(self):
         assert queue_stop_notify.WAIT_TIMEOUT_CAP == stop_hook.WAIT_TIMEOUT_CAP
+
+
+# --------------------------------------------------------------------------- #
+# Telemetry kick (SPEC-20260716-093231 R4/AC5/AC6/AC11)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(autouse=True)
+def telemetry_calls(tmp_path, monkeypatch):
+    """Isolate the telemetry kick for EVERY test in this module.
+
+    Without this, any test calling ``stop_hook.main()`` would stamp the real
+    ``.claude/hooks/.state/telemetry-last-attempt`` and spawn a real
+    subprocess against the live repo DB/log (write-side isolation, spec R7).
+    Returns the recorded subprocess invocations.
+    """
+    calls: list[dict] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": list(cmd), **kwargs})
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(stop_hook.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        stop_hook, "TELEMETRY_STATE_FILE", tmp_path / "tel-state" / "telemetry-last-attempt"
+    )
+    monkeypatch.delenv("STOP_HOOK_TELEMETRY_DISABLE", raising=False)
+    return calls
+
+
+class TestTelemetryKick:
+    def test_kick_runs_on_silent_stop_with_bounded_subprocess(
+        self, state_file, sent_calls, telemetry_calls
+    ):
+        """AC6ii: the kick is a timeout-bounded, output-captured subprocess."""
+        assert stop_hook.main() == 0
+        assert len(telemetry_calls) == 1
+        call = telemetry_calls[0]
+        assert call["cmd"][0] == sys.executable
+        assert call["cmd"][1] == str(stop_hook.CALL_LOG_SCRIPT)
+        assert "--from-hook" in call["cmd"]
+        assert "--budget-seconds" in call["cmd"]
+        assert call["timeout"] == stop_hook.TELEMETRY_BUDGET_SECONDS
+        assert call["capture_output"] is True
+
+    def test_master_disable_skips_entire_hook_including_kick(
+        self, state_file, sent_calls, telemetry_calls, monkeypatch
+    ):
+        """AC6: STOP_HOOK_DISABLE=1 remains the master off-switch (R4a)."""
+        _write_intent(state_file)
+        monkeypatch.setenv("STOP_HOOK_DISABLE", "1")
+        assert stop_hook.main() == 0
+        assert telemetry_calls == []
+        assert sent_calls == []
+
+    def test_telemetry_disable_skips_only_the_kick(
+        self, state_file, sent_calls, telemetry_calls, monkeypatch
+    ):
+        _write_intent(state_file)
+        monkeypatch.setenv("STOP_HOOK_TELEMETRY_DISABLE", "1")
+        assert stop_hook.main() == 0
+        assert len(sent_calls) == 1  # intent flow unaffected
+        assert telemetry_calls == []
+
+    def test_throttle_runs_once_within_floor(self, state_file, sent_calls, telemetry_calls):
+        """AC6: two back-to-back stops inside the floor run the ingest once."""
+        assert stop_hook.main() == 0
+        assert stop_hook.main() == 0
+        assert len(telemetry_calls) == 1
+
+    def test_failed_run_still_stamps_eagerly_and_stays_silent(
+        self, state_file, sent_calls, telemetry_calls, monkeypatch, capsys
+    ):
+        """AC6: eager stamp — a broken ingest costs one attempt per floor, and
+        the failure path prints the exception TYPE only (no-slug, ASCII)."""
+        attempts = {"n": 0}
+
+        def boom(cmd, **kwargs):
+            attempts["n"] += 1
+            raise RuntimeError("http://ntfy.sh/test-topic-slug-abc123 leaked")
+
+        monkeypatch.setattr(stop_hook.subprocess, "run", boom)
+        assert stop_hook.main() == 0  # fail-silent: exit code unchanged
+        assert stop_hook.main() == 0  # throttled: no second attempt
+        assert attempts["n"] == 1
+        err = capsys.readouterr().err
+        assert "telemetry kick failed (RuntimeError)" in err
+        assert "test-topic-slug-abc123" not in err  # no-slug invariant
+        err.encode("ascii")
+        err.encode("cp1252")
+
+    def test_timeout_expired_is_swallowed(
+        self, state_file, sent_calls, telemetry_calls, monkeypatch, capsys
+    ):
+        def hang(cmd, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="call_log", timeout=15)
+
+        monkeypatch.setattr(stop_hook.subprocess, "run", hang)
+        assert stop_hook.main() == 0
+        assert "telemetry kick failed (TimeoutExpired)" in capsys.readouterr().err
+
+    def test_corrupt_throttle_stamp_is_eligible_to_run(
+        self, state_file, sent_calls, telemetry_calls
+    ):
+        stop_hook.TELEMETRY_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        stop_hook.TELEMETRY_STATE_FILE.write_text("not-a-float", encoding="utf-8")
+        assert stop_hook.main() == 0
+        assert len(telemetry_calls) == 1  # fail-open on corrupt stamp (R4b)
+
+    def test_ac5_matched_reply_with_failing_kick_keeps_decision_clean(
+        self, state_file, sent_calls, no_lock, telemetry_calls, monkeypatch, capsys
+    ):
+        """AC5 combined-failure path (review qa F1): an active matched-reply
+        intent AND a failing telemetry subprocess in one run — exit 0, stdout
+        is exactly the one JSON decision object, stderr is type-only."""
+        monkeypatch.setattr(stop_hook, "fetch_reply", lambda since, question_title: "Go")
+        monkeypatch.setattr(
+            stop_hook.subprocess,
+            "run",
+            lambda cmd, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        _write_intent(state_file, wait_for_reply=True, choices=["Go"], wait_timeout_seconds=30)
+        assert stop_hook.main() == 0
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert payload["decision"] == "block"
+        assert "telemetry kick failed (RuntimeError)" in captured.err
+
+    def test_unwritable_stamp_fails_open_and_degrades_to_unthrottled(
+        self, state_file, sent_calls, telemetry_calls, monkeypatch, capsys
+    ):
+        """Review qa F6: a persistently unwritable throttle stamp fails open —
+        the kick still runs, and (documented accepted bound) runs on EVERY
+        stop because the once-per-floor stamp never lands."""
+
+        def broken_replace(src, dst):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(stop_hook.os, "replace", broken_replace)
+        assert stop_hook.main() == 0
+        assert stop_hook.main() == 0
+        assert len(telemetry_calls) == 2  # unthrottled: once per stop
+        err = capsys.readouterr().err
+        assert "telemetry stamp failed (OSError); continuing" in err
+        err.encode("ascii")
+
+    def test_ac11_stdout_is_exactly_one_json_object_with_matched_reply(
+        self, state_file, sent_calls, no_lock, telemetry_calls, monkeypatch, capsys
+    ):
+        """AC11 stdout purity: matched reply + telemetry kick in ONE run, and
+        stdout parses as exactly one JSON decision object, byte-identical to
+        the telemetry-disabled run."""
+        monkeypatch.setattr(stop_hook, "fetch_reply", lambda since, question_title: "Go")
+
+        _write_intent(state_file, wait_for_reply=True, choices=["Go"], wait_timeout_seconds=30)
+        assert stop_hook.main() == 0
+        with_kick = capsys.readouterr().out
+        assert len(telemetry_calls) == 1
+        payload = json.loads(with_kick)  # raises if anything but one JSON object
+        assert payload["decision"] == "block"
+
+        monkeypatch.setenv("STOP_HOOK_TELEMETRY_DISABLE", "1")
+        _write_intent(state_file, wait_for_reply=True, choices=["Go"], wait_timeout_seconds=30)
+        assert stop_hook.main() == 0
+        without_kick = capsys.readouterr().out
+        assert with_kick == without_kick  # byte-identical decision channel
