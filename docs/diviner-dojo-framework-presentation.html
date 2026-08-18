@@ -5,7 +5,7 @@
   skills 21->25; added the Prime Objective (ADR-0015) to slide 3, /goal-loop builder!=judge
   (ADR-0026/0028) to slides 7+9, Telemetry & Oversight (ADR-0020) to slide 13; refreshed
   slide-11 adoption stats (as of May 2026) and cross-linked the how-to deck. Counts:
-  12 agents / 25 commands / 25 skills / 10 hooks / 4 rules / 9 principles. Hooks slide counts
+  12 agents / 25 commands / 25 skills / 10 hooks / 4 rules / 7 principles. Hooks slide counts
   enumerated protections (validator splits into 3); the one-shot Stop hook (ADR-0023) was
   wired into the shipped settings.json on 2026-07-10 and is shown under Session Lifecycle.
   Keep in sync with .claude/ — see the syncing-framework-docs skill.
@@ -14,7 +14,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Diviner Dojo — AI-Native Agentic Development Framework v3.5</title>
+<title>Diviner Dojo — AI-Native Agentic Development Framework v3.6</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -1123,7 +1123,7 @@ h3 {
     <div class="slide-inner title-slide">
       <img src="https://avatars.githubusercontent.com/u/242870738?s=200&v=4"
            alt="Diviner Dojo" class="title-logo anim-fade-up">
-      <span class="badge badge-accent anim-fade-up-d1">v3.5</span>
+      <span class="badge badge-accent anim-fade-up-d1">v3.6</span>
       <h1 class="anim-fade-up-d2">AI-Native Agentic<br>Development Framework</h1>
       <p class="subtitle anim-fade-up-d3">Structured Multi-Agent Collaboration for<br>AI-Assisted Software Engineering</p>
       <p class="tagline anim-fade-up-d4">"Reasoning is the primary artifact. Code is output."</p>
@@ -1173,10 +1173,10 @@ h3 {
   <div class="slide" data-slide="3">
     <div class="slide-inner">
       <p class="section-label anim-fade-up">Foundation</p>
-      <h2 class="anim-fade-up-d1">The Prime Objective + 9 Non-Negotiable Principles</h2>
+      <h2 class="anim-fade-up-d1">The Prime Objective + 7 Non-Negotiable Principles</h2>
       <div class="card anim-fade-up-d2" style="border-left:3px solid var(--gold); margin-top:-8px;">
         <h3 style="color:var(--gold);">Prime Objective &mdash; Refuse Extraction <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">ADR-0015</span></h3>
-        <p style="margin-top:6px;">Above the nine principles sits a declared ethic: the framework must serve contributors and users and <strong style="color:var(--text-primary);">never accumulate value at their expense.</strong> A design refuses extraction only if every contributor retains attribution, no one performs labor whose benefit accrues to a third party without consent, and evolution never accumulates value from derivatives without per-instance human assent. Enforcement is <strong style="color:var(--text-primary);">human-mediated at every gate</strong> &mdash; the framework provides the gates; the human renders the verdict. The nine principles below are operational expressions of this objective.</p>
+        <p style="margin-top:6px;">Above the seven principles sits a declared ethic: the framework must serve contributors and users and <strong style="color:var(--text-primary);">never accumulate value at their expense.</strong> A design refuses extraction only if every contributor retains attribution, no one performs labor whose benefit accrues to a third party without consent, and evolution never accumulates value from derivatives without per-instance human assent. Enforcement is <strong style="color:var(--text-primary);">human-mediated at every gate</strong> &mdash; the framework provides the gates; the human renders the verdict. The seven principles below are operational expressions of this objective.</p>
       </div>
       <p class="subtitle anim-fade-up-d2" style="margin-top:0;">Click any principle to expand.</p>
       <div class="principles-list anim-fade-up-d3" id="principlesList">
@@ -1199,22 +1199,14 @@ h3 {
         <div class="principle-item" onclick="togglePrinciple(this)">
           <div class="principle-header">
             <span class="principle-num">3</span>
-            <span class="principle-title">Collaboration precedes adversarial rigor.</span>
+            <span class="principle-title">The generator is never the sole evaluator.</span>
             <span class="layer-expand-icon">▼</span>
           </div>
-          <div class="principle-detail">Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review, fault injection, and anti-groupthink checks. <strong>Why:</strong> Productive tension beats manufactured opposition.</div>
+          <div class="principle-detail">The agent that generates code must not be the sole evaluator. Independent review means a <em>separate context</em> that did not see the reasoning behind the code — an information property, not a personality. <strong>Why:</strong> Self-review finds what it expects to find. <strong>Plurality</strong> — several independent contexts at critical risk, not one — is a dispatch concern, specified in <code>selecting-review-gates</code> and restated in <code>/review</code>.</div>
         </div>
         <div class="principle-item" onclick="togglePrinciple(this)">
           <div class="principle-header">
             <span class="principle-num">4</span>
-            <span class="principle-title">Independence prevents confirmation loops.</span>
-            <span class="layer-expand-icon">▼</span>
-          </div>
-          <div class="principle-detail">The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review. <strong>Why:</strong> Self-review finds what it expects to find.</div>
-        </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">5</span>
             <span class="principle-title">ADRs are never deleted.</span>
             <span class="layer-expand-icon">▼</span>
           </div>
@@ -1222,35 +1214,31 @@ h3 {
         </div>
         <div class="principle-item" onclick="togglePrinciple(this)">
           <div class="principle-header">
-            <span class="principle-num">6</span>
-            <span class="principle-title">Education gates before merge.</span>
+            <span class="principle-num">5</span>
+            <span class="principle-title">Understanding before merge — offered, not withheld.</span>
             <span class="layer-expand-icon">▼</span>
           </div>
-          <div class="principle-detail">Walkthrough → Quiz → Explain-back → Merge. Proportional to complexity and risk. <strong>Why:</strong> Developers must understand AI-generated code — not just accept it.</div>
+          <div class="principle-detail">Briefing depth is sized to risk and <em>may be declined</em> — the decline is recorded rather than judged. Skip is unavailable for exactly two classes: changes to the framework's own governance or safety mechanisms, and distribution to derived projects. <strong>Why:</strong> Developers must be able to understand AI-generated code — but a machine-checkable condition may never make a <em>human's</em> briefing non-completable. Friction on the agent is preserved; friction on the human was removed.</div>
         </div>
         <div class="principle-item" onclick="togglePrinciple(this)">
           <div class="principle-header">
-            <span class="principle-num">7</span>
-            <span class="principle-title">Layer 3 promotion requires human approval.</span>
+            <span class="principle-num">6</span>
+            <span class="principle-title">Curated memory needs human approval.</span>
             <span class="layer-expand-icon">▼</span>
           </div>
           <div class="principle-detail">No discussion insight is promoted to curated memory automatically. Requires 2+ independent confirmations plus explicit human sign-off. <strong>Why:</strong> Institutional knowledge must be deliberately curated, not auto-accumulated.</div>
         </div>
         <div class="principle-item" onclick="togglePrinciple(this)">
           <div class="principle-header">
-            <span class="principle-num">8</span>
-            <span class="principle-title">Least-complex intervention first.</span>
-            <span class="layer-expand-icon">▼</span>
-          </div>
-          <div class="principle-detail">Prefer prompt changes → command changes → agent changes → architecture changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate. <strong>Why:</strong> Don't restructure when a prompt tweak will do.</div>
-        </div>
-        <div class="principle-item" onclick="togglePrinciple(this)">
-          <div class="principle-header">
-            <span class="principle-num">9</span>
+            <span class="principle-num">7</span>
             <span class="principle-title">Clarify before acting (the 95% rule).</span>
             <span class="layer-expand-icon">▼</span>
           </div>
-          <div class="principle-detail">Before producing a plan, writing code, or taking any substantive action, ask questions until you're ≥95% confident of both intent <em>and</em> scope. Mandatory unless the developer explicitly overrides; micro-fixes are exempt. <strong>Why:</strong> A wrong assumption acted on costs far more than the question that would have prevented it.</div>
+          <div class="principle-detail">Before producing a plan, writing code, or taking any substantive action, reach ≥95% confidence on both intent <em>and</em> scope. Close the gap from the project record first; ask only when the remaining uncertainty is a genuine fork the evidence cannot resolve, and name what you are extrapolating from. Mandatory unless the developer explicitly overrides; micro-fixes are exempt. <strong>Why:</strong> A wrong assumption acted on costs far more than the question that would have prevented it.</div>
+        </div>
+        <div class="card" style="border-left:3px solid var(--text-muted); margin-top:14px;">
+          <h3 style="color:var(--text-muted); font-size:14px;">Retired in v3.6 — recorded, not dropped</h3>
+          <p style="margin-top:6px; font-size:13px;">A principle is retired the way an ADR is superseded: with a reference to where the value went. <strong>Old #3, <em>Collaboration precedes adversarial rigor</em></strong> — the posture half retired as model-facing scaffolding; the plurality half survives as a dispatch concern (see Principle 3). <strong>Old #8, <em>Least-complex intervention first</em></strong> — moved to <code>PHILOSOPHY.md</code> § <em>Growth has a brake</em> as the growth-side constraint on how new complexity enters. It is philosophy now, not a numbered principle.</p>
         </div>
       </div>
     </div>
@@ -1793,7 +1781,8 @@ h3 {
           </div>
           <div class="card" style="border-left: 3px solid var(--gold); margin-top:12px;">
             <h3 style="color:var(--gold);">Goal-Seeking Loop &mdash; <code style="color:var(--gold);">/goal-loop</code> <span class="badge badge-gold" style="font-size:10px; padding:1px 8px;">ADR-0026/0028</span></h3>
-            <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;">You author a <strong>verifiable goal contract</strong>; a deterministic driver (<code>scripts/goal_loop.py</code>) owns control flow and iterates build &rarr; judge &rarr; refine until the criteria are met. The model only builds, judges, or phrases a gate &mdash; and the <strong style="color:var(--text-primary);">builder is never its own judge</strong> (Principle #4, extended to autonomous iteration). It never pushes, never auto-merges, and halts for <code>/review</code> + an education walkthrough before a human approves the merge.</p>
+            <p style="font-size:13px; color:var(--text-secondary); margin-top:6px;">You author a <strong>verifiable goal contract</strong>; a deterministic driver (<code>scripts/goal_loop.py</code>) owns control flow and iterates build &rarr; judge &rarr; refine until the criteria are met. The model only builds, judges, or phrases a gate &mdash; and the <strong style="color:var(--text-primary);">builder is never its own judge</strong> (builder ≠ checker &mdash; Principle #3, extended to autonomous iteration).
+            It never pushes, never auto-merges, and halts for <code>/review</code> + an education walkthrough before a human approves the merge.</p>
           </div>
         </div>
       </div>
@@ -2133,7 +2122,7 @@ h3 {
         </a>
       </div>
       <p class="anim-fade-up-d4" style="margin-top:24px; color:var(--text-muted); font-size:13px;">
-        AI-Native Agentic Development Framework v3.5 · Diviner Dojo
+        AI-Native Agentic Development Framework v3.6 · Diviner Dojo
         <br><a href="mailto:diviner-dojo@gmail.com" style="color:var(--text-muted); text-decoration:none;">diviner-dojo@gmail.com</a>
       </p>
     </div>

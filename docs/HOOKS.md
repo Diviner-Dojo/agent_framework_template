@@ -17,6 +17,25 @@
 - **PreCompact** (`pre-compact.ps1`): before context compaction, prompts the agent to update `BUILD_STATUS.md`.
 - **SessionStart** (`session-start.ps1`): on resume/post-compaction, prompts the agent to read `BUILD_STATUS.md` and runs a 6-point process-health dashboard (retro age, open retro actions, pending adoptions, promotion candidates, stale specs, Layer-3 health).
 
+## Stop (currently INERT — needs a one-line settings paste)
+`scripts/stop_hook.py` runs on turn end and carries two independent capabilities:
+
+- **One-shot ntfy intent** (ADR-0023): silent unless `scripts/queue_stop_notify.py` queued an
+  intent; then fires the notification, optionally polls for an allow-listed reply (matched
+  label only, never raw text), and deletes the intent. Stdout is reserved for exactly one
+  JSON decision object.
+- **Telemetry kick** (SPEC-20260716-093231): runs the per-call cost/cache instrument
+  (`scripts/telemetry/call_log.py`) as a throttled (10-min floor), timeout-bounded (15 s),
+  output-captured subprocess. If your cache ratio is not logging, check — in order — that
+  the Stop hook is wired (below), `STOP_HOOK_DISABLE` / `STOP_HOOK_TELEMETRY_DISABLE` are
+  unset, and the throttle stamp (`.claude/hooks/.state/telemetry-last-attempt`) is not
+  in the future. Manual run: `python scripts/telemetry/call_log.py`.
+
+**Activation**: `.claude/settings.json` has NO `Stop` entry yet — the hook never fires
+until the developer pastes the `Stop` block from the ADR-0020 implementation note
+("per-call cost/cache instrument", timeout 680). Protected file: the paste is a manual
+developer edit by design (ADR-0018 precedent).
+
 ## Notification (optional)
 - **Notification**: fires a system notification when Claude Code completes a task. Platform-specific setup — see `docs/setup/notification-hook.md`.
 

@@ -1,0 +1,37 @@
+---
+discussion_id: DISC-20260613-000652-t4a-steward-asbuilt-gate
+started: 2026-06-13T00:07:24.905327+00:00
+ended: 2026-06-13T00:12:09.635712+00:00
+agents: [facilitator, steward]
+total_turns: 3
+---
+
+# Discussion: DISC-20260613-000652-t4a-steward-asbuilt-gate
+
+## Turn 1 — facilitator (evidence)
+*2026-06-13T00:07:24.905327+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: As-built Steward gate covering two framework-evolution items at the T4-A boundary: (1) T4-A knowledge-loop revival as implemented on feat/t4a-knowledge-loop (ADR-0022: findings is_noise flag + severity reclassification; severity-calibration skill NEW; review.md prior-findings pre-read; promote.md human-readable queue; searching-prior-art 2 new locations; quality_gate promotion-backlog advisory; backfill applied to live DB: 397 rows, 140 noise, criticals 53 to 1; /review APPROVE REV-20260612-144008, blocking 1 folded, advisory 17, 2 refuted). (2) Ratify the orchestrating-lean-dispatch SKILL.md session-chain-economics fold as-built (commit 932c99f on feat/lean-dispatch-skill; developer approval recorded in WORKITEMS-20260612-lean-supervisor.md; base skill Steward APPROVE 0.86 at Run 0).
+- **Files/scope**: as listed; both items developer-pre-approved (Principle #7 satisfied; auth D + WORKITEMS record).
+- **Developer-stated motivation**: write-only knowledge loop (0 promotions in 4 months); overnight chain token economics.
+- **Explicit constraints**: flag-never-delete (C2); capture never bypassed; quality floor independent of orchestrator tier.
+
+---
+
+## Turn 2 — steward (decision)
+*2026-06-13T00:11:58.733856+00:00 | confidence: 0.9*
+*tags: steward-gate, approve, model-tier:opus*
+
+VERDICT ITEM 1 (T4-A/ADR-0022 as-built): APPROVE 0.91. VERDICT ITEM 2 (lean-dispatch session-chain-economics fold): APPROVE 0.88. BINDING CONDITIONS (doc hardening, land before main merge — BOTH FOLDED IN-SESSION): (1) findings schema comment must state noise rows carry an UNMAINTAINED severity, never aggregate without WHERE is_noise=0 — folded into init_db.py schema comment; (2) lean-dispatch skill must pin that the MODEL: handoff line tiers the orchestrator only and has no authority over the quality floor — folded, commit c1040dc on feat/lean-dispatch-skill. REASONING: flag-never-delete = Principles #1/#5 applied to the findings layer; read-path reconnect makes capture consumable (#2); severity-calibration standardizes output grammar not judgment (#4 intact); per-run tiering is a cost lever on the coordinating role, never the evaluating roles (#4 preserved by construction); the agent-writable MODEL: line is acceptable because cost-only + floor unaddressable, now structural via condition 2. PRIME OBJECTIVE: no extraction — attribution untouched (raw_excerpt/agent/created_at), value flows to the developer, human gate intact. LINEAGE: item 1 = canonical schema change (findings.is_noise + dual-severity invariant + new skill; serial bump on commit); item 2 = skill-only evolution introducing a bounded self-steering capability.
+
+---
+
+## Turn 3 — facilitator (synthesis)
+*2026-06-13T00:12:09.635712+00:00 | confidence: 0.9*
+*tags: steward-conditions-folded*
+
+Both Steward conditions folded in-session: (1) init_db.py findings schema comment now states the UNMAINTAINED-severity invariant verbatim; (2) MODEL:-authority pin committed c1040dc on feat/lean-dispatch-skill. Gate outcome: T4-A cleared for commit on feat/t4a-knowledge-loop (developer merges later per morning queue); lean-dispatch branch carries 3 commits (b9b46cf skill + 932c99f economics fold + c1040dc authority pin) ready for developer merge. framework-lineage serial bump owed at T4-A commit.
+
+---

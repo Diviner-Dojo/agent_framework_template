@@ -316,6 +316,61 @@ in-checkpoint: removed an inverted ``mark_orphans`` call from the lazy
 per-request fold — orphan transition needs a session-end signal that lazy
 folding does not have).
 
+## Implementation note — per-call cost/cache instrument (SPEC-20260716-093231), 2026-07-16
+
+The 2026-07-14 performance review found all cost telemetry NULL on the heaviest
+workloads — the A1 writers existed but nothing ever invoked them, and no cache
+health signal existed at all. The wave-1 instrument adds:
+
+* **`scripts/telemetry/call_log.py`** — one JSONL line per model call
+  (`input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`,
+  `output_tokens`, `cache_read_ratio`, `message_id`, `source_kind`) appended to
+  **`metrics/model_call_log.jsonl`** (gitignored). Incremental via a
+  `{watermark_ts, boundary ids}` blob in `telemetry_run_state`
+  (`call_log_watermark`), with a `FLUSH_LAG_SECONDS` trailing window for
+  late-flushed transcript lines.
+* **Cache-read ratio** — `src/telemetry/cost.py` `compute_cache_read_ratio`
+  plus per-tier (`TierCost`) and overall (`CostReport`) properties. Pure
+  read-time computation; honest-`None` on zero denominator or unknown
+  components.
+* **Auto-run seam** — `scripts/stop_hook.py` `_run_telemetry_kick`: throttled
+  (10 min floor, eager atomic stamp), timeout-bounded subprocess with captured
+  output (the hook's stdout stays reserved for its single JSON decision
+  object), `STOP_HOOK_TELEMETRY_DISABLE=1` kill-switch under the existing
+  `STOP_HOOK_DISABLE=1` master switch.
+
+**Why a JSONL, not a table** (divergence from this ADR's "new granularity =
+new table" precedent, recorded per the 2026-07-16 spec-review arch finding):
+(a) no DDL means no exposure of the `_migrations` allowlist surface
+(regression ledger 2026-06-05/06); (b) the per-call corpus (~265M tokens
+historically) would bloat both `evaluation.db` and the repo if committed —
+the JSONL is gitignored, append-only, greppable; (c) its purpose is
+durability past `~/.claude` transcript pruning, not relational queries — the
+committed Layer-2 artifacts remain the DB aggregates. Compute-don't-store is
+preserved: the logged ratio is a recomputable token-count derivation; dollars
+are never logged.
+
+**Activation (developer-applied manual edit — protected file, ADR-0018
+precedent):** add to `.claude/settings.json` `"hooks"`:
+
+```json
+"Stop": [
+  {
+    "hooks": [
+      {
+        "type": "command",
+        "command": "python scripts/stop_hook.py",
+        "timeout": 680
+      }
+    ]
+  }
+]
+```
+
+(680 = the parked ntfy-wait draft's 660 + the 15 s telemetry budget + slack.)
+Until wired, `python scripts/telemetry/call_log.py` runs the same pass
+manually.
+
 ## Linked Discussions
 - Spec review: discussions/2026-06-06/DISC-20260606-041937-telemetry-oversight-spec-review/
 - Steward gate: (framework-evolution review, APPROVE 0.86, 5 conditions)

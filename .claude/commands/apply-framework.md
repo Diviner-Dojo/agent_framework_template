@@ -42,6 +42,10 @@ These are pass/fail. Violating any is a workflow failure.
      **non-null, human-authored** `primary_human` (from `--assent-human "Name"`, or ask the operator)
      **AND** `accepts_distribution: true`. A null/empty name (the `init_lineage` default) **blocks**.
      The assent is written into the target as **deploy step zero** (Rule 8).
+   - **`ALLOW_AUTO_LAUNCH_SESSION` is NEVER set by this command** — any route, any phase. That
+     consent is a manual, developer-applied edit to the target's protected `.claude/settings.json`
+     (ADR-0018); a propagation that carried it would be manufacturing consent. (Invariant carried
+     from the retired `/distribute` alias, which stated it for the old command name.)
 4. **Pinned traits are absolute.** A file matching the target's `pinned_traits` is **dropped**, never
    staged, never overwritten. A pinned-trait conflict is an **UNMEDIABLE halt**.
 5. **NEVER push. NEVER touch a target's main. NEVER auto-merge.** The only hook bypass is the existing
@@ -131,7 +135,9 @@ greenfield). For each flagged overwrite passed into a specialist prompt, wrap th
 `wrap_data_only(od.diff_text, source=od.file_path)`. The room **explains** the flagged files
 (meaningful? backflow? blast radius? confidence) and produces `Interpretation` objects; it never decides
 *whether* to flag them (the floor did). For added (`inert`) files, produce a one-line `FeatureDescription`
-of *what the capability does*. Tiering keeps room cost proportional (Principle #8). Capture findings as
+of *what the capability does*. Tiering keeps room cost proportional (`PHILOSOPHY.md`, *Growth has a
+brake* — the retired least-complex-intervention principle, which is philosophy, not a numbered
+principle). Capture findings as
 labels/counts only.
 
 ### 2c. Build + show the value/risk report (ephemeral)
@@ -215,7 +221,8 @@ counts only**.
 
 The APPLY route does the **light** "lay down framework + surface collisions + deploy." It then **offers**
 to run the deeper `/onboard` takeover (codebase mapping, reverse-engineered ADRs, standards calibration,
-debt ledger) as an explicit follow-on — it does **not** inline the heavy takeover (Principle #8). Present
+debt ledger) as an explicit follow-on — it does **not** inline the heavy takeover (`PHILOSOPHY.md`,
+*Growth has a brake*). Present
 the offer; run it only if the developer accepts.
 
 ## Back-out

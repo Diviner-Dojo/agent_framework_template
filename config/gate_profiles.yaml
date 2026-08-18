@@ -1,0 +1,158 @@
+# Gate profiles — stack-aware quality gate configuration (SPEC-20260716-233400).
+#
+# TRUST BOUNDARY: running the quality gate EXECUTES the commands declared in
+# this file (list-argv, no shell; argv[0] restricted to an allow-list:
+# ruff / pytest / coverage / python / dart / flutter). NOTE: the allow-list is
+# NOT a sandbox — every allow-listed executable is an arbitrary-code
+# interpreter (python -c, pytest conftest.py, coverage run, ...). It blocks
+# casual/typo binary substitution only; the REAL containment boundary is the
+# review gate on this file. Reviewers: scrutinize command ARGUMENTS (-c,
+# --command, unexpected paths), not just the executable name. Review this file
+# before running the gate on any external repo. Edits to this file are
+# review-gated: check_review_existence treats it (and config/gate_baseline.json)
+# as a code change requiring a /review.
+#
+# What a profile CAN vary: the four stack checks (format, lint, tests,
+# coverage) — enabled/disabled, the command to run, thresholds (fail_under).
+# What a profile CANNOT vary: the framework-integrity checks below. Keys naming
+# them here are ignored with a warning (R2.4).
+#
+# The exact list, and what each one can actually do to your build. Verified
+# against scripts/quality_gate.py main() on 2026-08-07 — re-run
+# `grep -n "    # Check [0-9]" scripts/quality_gate.py` before trusting it:
+#
+#   BLOCKING (turn the gate red)      | ADR completeness (--skip-adrs)
+#                                     | review existence (--skip-reviews)
+#                                     | regression ledger (--skip-regression)
+#                                     | Layer 1 sealed-record integrity (--skip-integrity)
+#   ADVISORY (only ever WARN)         | BUILD_STATUS freshness
+#                                     | subscription-fee guard
+#                                     | promotion backlog
+#
+# Two corrections to what this comment used to say, both of the kind that gets
+# a reader to explain the gate as stronger than it is:
+#
+#   1. It listed "education gates" as an integrity check. THERE IS NO EDUCATION
+#      CHECK IN THE GATE. Measured: `grep -n -i education scripts/quality_gate.py`
+#      returns only coverage --cov/--include path arguments; main() never calls
+#      one. The education gate (Principle #5, "Understanding before merge") is
+#      real but lives elsewhere and is NOT mechanically enforced at commit
+#      time: deferrals are tracked in
+#      docs/education/gates.yaml via scripts/education/gate_registry.py, and
+#      ADR-0029 states that adding a gate there is a required MANUAL step. So
+#      nothing fails, warns, or even notices if an education gate is skipped.
+#      Adding such a check is a governance change needing its own /plan and
+#      Steward gate — not something to infer from this comment.
+#   2. It said all of them "run unconditionally". Each blocking check has its
+#      own --skip-* flag, and the three advisories cannot fail the build at all.
+#      "A profile cannot switch it off" and "it always runs and can stop you"
+#      are different claims; only the first was ever true.
+#
+# A check entry without "command" uses the gate's built-in Python
+# implementation (only meaningful for python-fastapi). A stack check a profile
+# does not list is disabled — explicit over implicit.
+#
+# Selection precedence: --profile flag > the "profile:" pin below > auto-detect
+# (pubspec.yaml -> flutter-dart; pyproject.toml -> python-fastapi; neither ->
+# markdown-corpus). Unknown or malformed profiles fail closed.
+#
+# CORE vs SKIN: this file (mechanism + the three shipped profiles) is CORE and
+# propagates via /apply-framework. A derived project's chosen "profile:" pin
+# and its config/gate_baseline.json contents are SKIN.
+#
+# Debt baseline (config/gate_baseline.json, python-fastapi only this build):
+#   {"schema_version": 1,
+#    "fingerprints": [{"check": "lint", "file": "src/foo.py", "code": "F401"}]}
+# Baselined findings WARN; new fingerprints fail RED (set membership, not
+# count).
+#
+# THE FILE DOES NOT EXIST, AND NEVER HAS. Measured 2026-08-07, re-measured
+# 2026-08-08: absent from this template AND from all four derived projects
+# (agentic_journal, VerificationPortal, howie_family_wiki,
+# dan_research_karpathy_wiki) — ABSENT in all five. Re-check across all five,
+# not just this one: `ls <repo>/config/gate_baseline.json` in each (the
+# five-repo loop is in Row 5 of docs/education/governance-mechanisms.md; a bare
+# `ls config/gate_baseline.json` checks one repo and the claim covers five).
+# So no RECORDED DEBT has ever been compared against: treat the paragraph above
+# as a SPEC for an available mechanism, not as a description of something
+# currently doing work in your build.
+#
+# CORRECTION 2026-08-08 — this comment used to continue "with no baseline
+# present the format and lint checks take their ordinary path and
+# _check_against_baseline never runs". The first half is true only without
+# --rebaseline; the second half is false. quality_gate.py collects fingerprints
+# whenever `baseline or args.rebaseline`, and having them routes BOTH stack
+# checks through _check_against_baseline against an EMPTY baseline — so
+# `--rebaseline` on a repo with no baseline file reports every finding as
+# "N NEW finding(s) not in baseline" when no baseline exists at all. Same RED
+# verdict as ordinary lint, misleading words. This mattered because it is the
+# exact invocation the paragraphs here are about, and because the suite's own
+# test asserted the RED that only that path can produce. Both halves are now
+# pinned at the CLI by
+# tests/test_quality_gate.py::TestWhichPathRunsWhenNoBaselineFileExists.
+#
+# Growing the baseline is a developer action, and that is now a property of the
+# code rather than a request: _baseline_write_plan is the only decision point
+# and every set it returns is a subset of the baseline that already exists, so
+# no flag combination can make the gate add a fingerprint. --fix and
+# --shrink-baseline ratchet DOWN only. --rebaseline PROPOSES — it prints the
+# file you would have to commit and writes nothing. Committing that file is
+# review-gated: check_review_existence treats config/gate_baseline.json and
+# config/gate_profiles.yaml as code changes requiring a same-day /review.
+# (Until 2026-08-07 --rebaseline overwrote the file directly and the only thing
+# guarding the reward function was a sentence in an argparse help string asking
+# the agent not to run it. A rule addressed to the actor it binds, enforced by
+# nothing, is not a control.)
+#
+# WHAT KEEPS THAT PARAGRAPH TRUE (added 2026-08-08). The sentence "no flag
+# combination can make the gate add a fingerprint" is a claim about main(), and
+# for one day it was pinned only by unit tests on the pure helper — restoring
+# the pre-fix write inside main() left the whole suite green. It is now pinned
+# at the CLI, in tests/test_quality_gate.py, by the class
+# TestRebaselineWritesNothingThroughMain — it drives real argv through main()
+# and goes red when that write is reintroduced. Measured 2026-08-08 in a scratch
+# copy of tests/test_quality_gate.py (173 passed pristine, exit 0):
+#
+#   restore _write_baseline(current_fps) after
+#   _print_baseline_proposal(current_fps) in main()   -> 7 failed / 166 passed
+#   ...same mutant, that class deselected              -> 1 failed / 166 passed
+#   delete `if rebaseline: return None`
+#   from _baseline_write_plan                          -> 4 failed / 169 passed
+#
+# The second line used to read "165 passed, exit 0 — nothing else notices"; it
+# no longer does, because TestWhichPathRunsWhenNoBaselineFileExists also asserts
+# no baseline file is created. Two independent classes now catch it. If you
+# change the baseline write path, those are the things that have to keep
+# passing — this comment is not the control, and never was.
+
+schema_version: 1
+
+# profile: python-fastapi   # optional pin (SKIN — derived projects set this)
+
+profiles:
+  python-fastapi:
+    checks:
+      format: {enabled: true}
+      lint: {enabled: true}
+      tests: {enabled: true}
+      coverage: {enabled: true, fail_under: 80}
+
+  flutter-dart:
+    checks:
+      format:
+        enabled: true
+        command: [dart, format, --output=none, --set-exit-if-changed, "."]
+      lint:
+        enabled: true
+        command: [dart, analyze]
+      tests:
+        enabled: true
+        command: [flutter, test]
+      coverage: {enabled: false}
+
+  markdown-corpus:
+    checks:
+      format: {enabled: false}
+      lint: {enabled: false}
+      tests: {enabled: false}
+      coverage: {enabled: false}

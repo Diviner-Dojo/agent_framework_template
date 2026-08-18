@@ -1,0 +1,114 @@
+---
+discussion_id: DISC-20260716-172245-build-cost-cache-instrument
+started: 2026-07-16T17:23:05.908419+00:00
+ended: 2026-07-16T17:47:55.842031+00:00
+agents: [architecture-consultant, facilitator, qa-specialist, security-specialist]
+total_turns: 11
+---
+
+# Discussion: DISC-20260716-172245-build-cost-cache-instrument
+
+## Turn 1 — facilitator (evidence)
+*2026-07-16T17:23:05.908419+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: /build_module against developer-approved SPEC-20260716-093231 rev 2 (cost/cache instrument, triage item #1 wave 1) on branch feat/cost-cache-instrument.
+- **Files/scope**: T1 MessageRecord.source_kind (scripts/ingest_token_usage.py); T2 scripts/telemetry/call_log.py (emitter+CLI+--from-hook); T3 src/telemetry/cost.py per-tier+overall cache_read_ratio; T4 scripts/stop_hook.py telemetry kick; T5 .gitignore + ADR-0020 impl note + settings snippet; T6 tests AC1-AC12.
+- **Developer-stated motivation**: perf review P1#3 — all cost telemetry NULL; cache_read/total ratio is the blind-spot leading indicator; unblocks triage 5/7 + frozen dashboard.
+- **Explicit constraints**: sensor only (dashboard FROZEN); no DB DDL; no .claude/settings.json edit by agent; stop_hook invariants untouchable; no push.
+
+---
+
+## Turn 2 — facilitator (proposal)
+*2026-07-16T17:23:06.018517+00:00 | confidence: 0.8*
+*tags: build-plan*
+
+Build plan: 6 tasks from SPEC-20260716-093231 rev 2. T1 source_kind field (additive dataclass field, parser-owned path knowledge). T2 call_log.py emitter — HIGH-STAKES: {watermark_ts, boundary_message_ids} dedup in telemetry_run_state, ts>=watermark scan, cooperative deadline between files, per-line flush, truncated-line tolerance, --from-hook stderr-only mode. T3 cost.py pure per-tier/overall ratio properties, honest-None. T4 stop_hook.py kick: eager atomic throttle, subprocess.run timeout+capture_output, STOP_HOOK_DISABLE master precedence, fail-silent. T5 gitignore line + ADR-0020 implementation note + developer settings snippet. T6 tests per R7 (write-side monkeypatchable constants, fake clock, mocked subprocess, AC1-AC12). Checkpoint expected on T2 (new module + watermark/state design) and T4 (security-relevant hook code).
+
+---
+
+## Turn 3 — architecture-consultant (critique)
+*2026-07-16T17:31:29.959370+00:00 | confidence: 0.85*
+*tags: checkpoint, task-2*
+
+CHECKPOINT T2+T3: APPROVE. Dedup/watermark sound: tie handled (strict < skip), watermark only advances on full pass + never regresses (max(watermark,lagged)), boundary-id pruning self-bounding, JSONL-deletion-no-rebuild matches contract. Import direction mirrors analyze_cost precedent; watermark key distinct (no collision); source_kind parser-owned per R1; symlink guard consistent; ratio honest-null on both paths. Non-blocking notes: (1) run_state read-then-write race between two processes can yield valid duplicate lines (within stated accepted-risk class — add one docstring line); (2) ADR-0020 implementation note still owed before PR done (expected, T5).
+
+---
+
+## Turn 4 — qa-specialist (critique)
+*2026-07-16T17:31:30.077995+00:00 | confidence: 0.8*
+*tags: checkpoint, task-2*
+
+CHECKPOINT T2+T3: APPROVE-with-test-obligations (conf 0.8). Design sound (monotonic watermark, correct tie <, safe ids pruning). Gaps to close in T6: HIGH — corrupt state JSON degrades to full rescan which re-appends already-logged ids, a real (rare) violation of AC2's 'never'; needs an explicit contract test + developer flag at /review. MEDIUM — chronic partial passes with watermark=None never prune seen_ids (state blob grows until first complete pass); test or document accepted. LOW — pin _parse_message_line 2-arg positional compat (context_sensor.py caller) with a regression test. Strengths: FLUSH_LAG_SECONDS patchable makes tie-window tests deterministic; truncated-line healing + honest-null correctly implemented.
+
+---
+
+## Turn 5 — security-specialist (critique)
+*2026-07-16T17:35:30.779678+00:00 | confidence: 0.88*
+*tags: checkpoint, task-4*
+
+CHECKPOINT T4 ROUND 1: REVISE (conf 0.88). BLOCKING: subprocess never imported — the auto-format hook stripped the import (added before its usage existed) as unused, so _run_telemetry_kick raises NameError swallowed by the fail-silent except: the kick NEVER runs, breakage masked by its own contract. Verified sound: decision-channel isolation (kick strictly after _handle_intent + capture_output — AC11 holds); no injection surface (hardcoded arg list, no shell=True); throttle tmp+os.replace atomic, fail-open acceptable for local threat model; no-slug/ASCII on all new paths; STOP_HOOK_DISABLE still gates everything. Minor: sys.stdout.flush() before the subprocess so a printed decision is not delayed by buffering.
+
+---
+
+## Turn 6 — qa-specialist (critique)
+*2026-07-16T17:35:30.895449+00:00 | confidence: 0.94*
+*tags: checkpoint, task-4*
+
+CHECKPOINT T4 ROUND 1: REVISE (conf 0.94). (1) Same missing-import finding — a silent no-op reproducing the exact wiring-never-applied failure the spec fixes. (2) No autouse safety fixture yet: existing test_stop_hook.py tests call main() which would hit the REAL telemetry state path + spawn real subprocesses; isolation fixture must land in the SAME commit as the kick (testing_requirements: no shared mutable state). (3) Kick-specific AC6/AC11 tests still owed (expected mid-build). Positive: throttle/stamp/timeout structure deterministically testable once fixed; _handle_intent untouched, exit-code/stdout contract preserved by construction.
+
+---
+
+## Turn 7 — security-specialist (critique)
+*2026-07-16T17:36:22.572107+00:00 | confidence: 0.9*
+*tags: checkpoint, task-4, round-2*
+
+CHECKPOINT T4 ROUND 2: APPROVE. import subprocess confirmed at stdlib block (correctly ordered); sys.stdout.flush() placed after the decision JSON print, before subprocess.run — buffering concern resolved. Args/timeout/capture, throttle atomicity, no-slug/ASCII unchanged and sound. No new findings.
+
+---
+
+## Turn 8 — qa-specialist (critique)
+*2026-07-16T17:36:22.673613+00:00 | confidence: 0.9*
+*tags: checkpoint, task-4, round-2*
+
+CHECKPOINT T4 ROUND 2: APPROVE (conf 0.9), conditional on T6 landing the autouse isolation fixture + AC6/AC11 kick tests in the SAME commit (confirmed planned, next task). Bug #1 fixed at code level; stdout.flush() a sound unflagged hardening. No new issues.
+
+---
+
+## Turn 9 — facilitator (synthesis)
+*2026-07-16T17:47:35.518231+00:00 | confidence: 0.8*
+*tags: build-summary, blocking:2, advisory:5*
+
+Build complete: 6 tasks, 2 checkpoints fired, 0 unresolved concerns.
+T1 MessageRecord.source_kind (parser-owned, defaulted for positional-compat callers) + parse_session_dir cooperative deadline. T2 scripts/telemetry/call_log.py: per-call JSONL emitter, {watermark_ts, boundary ids} dedup in telemetry_run_state, FLUSH_LAG window, truncated-line healing, --from-hook stderr routing. T3 cost.py compute_cache_read_ratio + TierCost/CostReport properties (honest-None). T4 stop_hook telemetry kick: eager atomic throttle, subprocess timeout+capture_output, STOP_HOOK_DISABLE master precedence, stdout.flush before child. T5 gitignore + ADR-0020 implementation note (JSONL-vs-table divergence + developer settings snippet, timeout 680). T6 tests: new test_call_log.py (20 tests: AC1-3, AC7-9, AC12, partial-pass/corrupt-state/delete-log contracts, positional compat, CLI ASCII) + test_stop_hook.py autouse telemetry isolation fixture + TestTelemetryKick (8 tests: AC5/AC6/AC11 incl. byte-identical stdout).
+Checkpoint 1 (T2+T3, arch+qa): APPROVE round 1 (arch 0.85; qa 0.8 with test obligations, all landed in T6). Checkpoint 2 (T4, security+qa): REVISE round 1 — auto-format hook had stripped 'import subprocess' (added before its usage existed) making the kick a silent no-op masked by its own fail-silent contract; fixed + stdout.flush hardening -> both APPROVE round 2 (0.90/0.90).
+Quality gate 7/7; 446 tests green incl. untouched pre-existing stop_hook suite (AC5). Known accepted bounds documented in module docstring: state read-race duplicate lines, corrupt-state one-time re-log (AC2 carve-out flagged for /review), chronic-partial ids growth.
+
+---
+
+## Turn 10 — security-specialist (reflection)
+*2026-07-16T17:47:55.763763+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Nothing substantive round 1 (missing import was the correct blocking catch; buffering traced proactively). Round 2 near-miss was procedural: verdict written before fully verifying the second fix.
+## Candidate Improvement Rule
+Fix-verification rounds: locate and quote the exact diff lines for EVERY claimed fix before issuing a verdict — a partial-verification APPROVE becomes a real gap with a less attentive reviewer.
+## Confidence Calibration
+Delta: +0.0 (0.88 round 1 appropriate; finding concrete + code-verified).
+
+---
+
+## Turn 11 — qa-specialist (reflection)
+*2026-07-16T17:47:55.842031+00:00 | confidence: 0.8*
+*tags: reflection*
+
+## What I Missed
+Caught the defect but not the ROOT CAUSE CLASS: an autoformat/--fix pass stripped an import added before its call site existed — a sequencing hazard that can recur on any edit adding an import ahead of usage.
+## Candidate Improvement Rule
+When a build adds an import for a not-yet-written call site, verify the import survives one full autoformat/lint cycle AFTER the usage lands; checkpoint reviewers should grep import-vs-usage pairing when the diff was auto-formatted mid-build.
+## Confidence Calibration
+Delta: +0.0 (0.94/0.90 held up against the 7/7 gate outcome).
+
+---

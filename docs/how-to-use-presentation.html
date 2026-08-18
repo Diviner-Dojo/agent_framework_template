@@ -6,7 +6,7 @@
   24->25, skills 21->25. Added /goal-loop + /handoff to the "What Do I Do When" and
   cheat-sheet slides, grill-yourself to the skill sheet, cross-linked the What-It-Is deck,
   and reconciled the /quiz Bloom-levels wording. Counts: 12 agents / 25 commands / 25 skills /
-  10 hooks / 4 rules / 9 principles (Stop hook wired 2026-07-10). Keep counts in sync with .claude/ — see the
+  10 hooks / 4 rules / 7 principles (Stop hook wired 2026-07-10). Keep counts in sync with .claude/ — see the
   syncing-framework-docs skill.
 -->
 <html lang="en">
@@ -766,7 +766,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
           </div>
           <div class="card" style="margin-top:12px; margin-bottom:12px;">
             <h3>/promote <span style="color:var(--text-muted); font-weight:400;">&mdash; Layer 3</span></h3>
-            <p style="font-size:13px; margin-top:4px;">When a pattern proves valuable across multiple reviews, promote it to curated memory &mdash; the framework&rsquo;s durable <strong>Layer 3</strong> &mdash; with <code style="color:var(--green);">/promote</code>. Requires your explicit approval (Principle #7).</p>
+            <p style="font-size:13px; margin-top:4px;">When a pattern proves valuable across multiple reviews, promote it to curated memory &mdash; the framework&rsquo;s durable <strong>Layer 3</strong> &mdash; with <code style="color:var(--green);">/promote</code>. Requires your explicit human approval (Principle #6).</p>
           </div>
           <div class="card">
             <h3>/batch-evaluate <span style="color:var(--text-muted); font-weight:400;">&mdash; Audit</span></h3>
@@ -1116,7 +1116,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </div>
         <div class="card" style="padding:16px; border-left:3px solid var(--red);">
           <h3 style="font-size:14px;">Committing code you didn&rsquo;t <code style="color:var(--blue);">/review</code></h3>
-          <p style="margin-top:6px;">Never. The agent that wrote the code can&rsquo;t objectively judge it &mdash; independent review is the whole point (Principle #4).</p>
+          <p style="margin-top:6px;">Never. The agent that wrote the code can&rsquo;t objectively judge it &mdash; it must never be its own sole evaluator, and the review runs in a separate context (Principle #3).</p>
         </div>
         <div class="card" style="padding:16px; border-left:3px solid var(--gold);">
           <h3 style="font-size:14px;">Treating the <em>code</em> as the deliverable</h3>
@@ -1128,7 +1128,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </div>
         <div class="card" style="padding:16px; border-left:3px solid var(--blue);">
           <h3 style="font-size:14px;">Reflexively overriding &ldquo;are you sure?&rdquo;</h3>
-          <p style="margin-top:6px;">When Claude asks a clarifying question before building, that&rsquo;s the <strong style="color:var(--text-primary);">~95% confidence gate</strong> (Principle #9) saving you wrong-path tokens. Answer it &mdash; don&rsquo;t auto-dismiss it.</p>
+          <p style="margin-top:6px;">When Claude asks a clarifying question before building, that&rsquo;s the <strong style="color:var(--text-primary);">~95% confidence gate</strong> &mdash; the 95% rule, clarify before acting (Principle #7) &mdash; saving you wrong-path tokens. Answer it &mdash; don&rsquo;t auto-dismiss it.</p>
         </div>
         <div class="card" style="padding:16px; border-left:3px solid var(--blue);">
           <h3 style="font-size:14px;">Merging code you can&rsquo;t explain</h3>
@@ -1178,7 +1178,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: rgba(255,255,255,
         </a>
       </div>
       <p style="margin-top:24px; color:var(--text-muted); font-size:13px;">
-        AI-Native Agentic Development Framework v3.5 &middot; Diviner Dojo
+        AI-Native Agentic Development Framework v3.6 &middot; Diviner Dojo
         <br><a href="mailto:diviner-dojo@gmail.com" style="color:var(--text-muted); text-decoration:none;">diviner-dojo@gmail.com</a>
       </p>
     </div>

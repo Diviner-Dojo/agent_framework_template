@@ -11,14 +11,14 @@ set -e
 
 INPUT=$(cat)
 
-# Only process Bash tool
+# Only process shell tools (Bash and PowerShell both carry tool_input.command)
 TOOL_NAME=$(echo "$INPUT" | python -c "
 import json, sys
 data = json.load(sys.stdin)
 print(data.get('tool_name', ''))
 " 2>/dev/null || echo "")
 
-if [[ "$TOOL_NAME" != "Bash" ]]; then
+if [[ "$TOOL_NAME" != "Bash" && "$TOOL_NAME" != "PowerShell" ]]; then
     exit 0
 fi
 

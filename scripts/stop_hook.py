@@ -42,8 +42,15 @@ JSON schema (``.claude/hooks/.state/next-stop-notify.json``)::
       "choices": ["Approve", "Park"]  // REQUIRED when wait_for_reply is true
     }
 
+Telemetry kick (SPEC-20260716-093231): after the intent flow, the hook also
+runs the per-call cost/cache instrument (``scripts/telemetry/call_log.py``)
+as a throttled, timeout-bounded subprocess with captured output — see
+``_run_telemetry_kick``. It shares none of the intent state and cannot write
+to this hook's stdout (the decision channel).
+
 Env-var knobs:
-  STOP_HOOK_DISABLE=1            skip the hook entirely
+  STOP_HOOK_DISABLE=1            skip the hook entirely (telemetry included)
+  STOP_HOOK_TELEMETRY_DISABLE=1  skip only the telemetry kick
   STOP_HOOK_POLL_INTERVAL=3      poll cadence (seconds) when waiting
 """
 
@@ -52,6 +59,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import time
 
@@ -72,6 +80,20 @@ WAIT_TIMEOUT_CAP = 600
 # A queued intent older than this is stale — a forgotten STOP_HOOK_DISABLE=1 or a
 # crashed session must not fire an old gated question into an unrelated session.
 INTENT_TTL_SECONDS = 4 * 3600
+
+# --- Telemetry kick (SPEC-20260716-093231 R4) -------------------------------
+# The per-call cost/cache instrument runs on turn end as a timeout-bounded
+# subprocess (never inline: keeps this hook's import/fault surface unchanged
+# and makes stdout pollution of the decision channel structurally impossible).
+# STOP_HOOK_DISABLE=1 remains the master off-switch for the ENTIRE hook,
+# telemetry included; STOP_HOOK_TELEMETRY_DISABLE=1 disables only the kick.
+# Accepted bound: if the throttle stamp is persistently unwritable (perms,
+# disk full), the kick fails open and runs on EVERY stop — the once-per-floor
+# guarantee degrades to once-per-turn, each bounded by the subprocess timeout.
+TELEMETRY_STATE_FILE = PROJECT_ROOT / ".claude" / "hooks" / ".state" / "telemetry-last-attempt"
+TELEMETRY_THROTTLE_SECONDS = 600
+TELEMETRY_BUDGET_SECONDS = 15
+CALL_LOG_SCRIPT = SCRIPTS_DIR / "telemetry" / "call_log.py"
 
 
 def _poll_interval() -> int:
@@ -141,6 +163,57 @@ def _wait_for_choice(
     return None
 
 
+def _run_telemetry_kick() -> None:
+    """Run the per-call cost/cache instrument, throttled and fail-silent.
+
+    SPEC-20260716-093231 R4: eager atomic throttle stamp (a persistently
+    broken ingest costs at most one budget per floor, never one per turn;
+    no data is lost — the emitter's watermark advances only on success),
+    then a timeout-bounded subprocess with captured output. Any failure
+    prints the exception TYPE only (no-slug invariant) and never blocks
+    the stop.
+    """
+    try:
+        if os.environ.get("STOP_HOOK_TELEMETRY_DISABLE", "").strip() == "1":
+            return
+        now = time.time()
+        try:
+            last_attempt = float(TELEMETRY_STATE_FILE.read_text(encoding="utf-8").strip())
+            if now - last_attempt < TELEMETRY_THROTTLE_SECONDS:
+                return
+        except (OSError, ValueError):
+            pass  # Missing/corrupt stamp -- eligible to run (fail open, R4b).
+        try:
+            TELEMETRY_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = TELEMETRY_STATE_FILE.with_name(TELEMETRY_STATE_FILE.name + ".tmp")
+            tmp.write_text(str(int(now)), encoding="utf-8")
+            os.replace(tmp, TELEMETRY_STATE_FILE)
+        except OSError as e:
+            # Type only -- never str(exc) (no-slug invariant).
+            print(
+                f"[stop-hook] telemetry stamp failed ({type(e).__name__}); continuing",
+                file=sys.stderr,
+            )
+        # An already-printed decision must reach Claude Code before we spend
+        # up to the budget in the child (buffering could otherwise delay it).
+        sys.stdout.flush()
+        subprocess.run(
+            [
+                sys.executable,
+                str(CALL_LOG_SCRIPT),
+                "--from-hook",
+                "--budget-seconds",
+                str(max(TELEMETRY_BUDGET_SECONDS - 3, 1)),
+            ],
+            timeout=TELEMETRY_BUDGET_SECONDS,
+            capture_output=True,
+            check=False,
+        )
+    except Exception as e:
+        # Fail-silent contract (R4e): the hook must never block a session stop.
+        print(f"[stop-hook] telemetry kick failed ({type(e).__name__})", file=sys.stderr)
+
+
 def main() -> int:
     # Drain stdin (Claude Code passes session metadata; currently unused).
     try:
@@ -149,8 +222,20 @@ def main() -> int:
         pass
 
     if os.environ.get("STOP_HOOK_DISABLE", "").strip() == "1":
+        # Master off-switch: skips the ENTIRE hook, telemetry kick included
+        # (preserves the docstring guarantee; SPEC-20260716-093231 R4a).
         return 0
 
+    exit_code = _handle_intent()
+    # After the intent flow, so a gated notification is never delayed; the
+    # kick writes nothing to this process's stdout (decision channel) by
+    # construction -- child output is captured and discarded (AC11).
+    _run_telemetry_kick()
+    return exit_code
+
+
+def _handle_intent() -> int:
+    """Run the one-shot ntfy-intent flow (behavior unchanged; ADR-0023)."""
     if not STATE_FILE.exists():
         return 0  # No intent declared -- silent.
 
@@ -160,7 +245,7 @@ def main() -> int:
         return 0
 
     queued_at = intent.get("queued_at")
-    if isinstance(queued_at, (int, float)) and time.time() - queued_at > INTENT_TTL_SECONDS:
+    if isinstance(queued_at, int | float) and time.time() - queued_at > INTENT_TTL_SECONDS:
         print("[stop-hook] stale intent (older than TTL); discarding", file=sys.stderr)
         _delete_state(STATE_FILE)
         return 0

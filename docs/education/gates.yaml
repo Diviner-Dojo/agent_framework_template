@@ -1,0 +1,235 @@
+# Education Gate Registry
+#
+# Tracks education gates (Principle #6: walkthrough -> quiz -> explain-back -> merge)
+# that were DEFERRED at review/merge time and are still awaiting closure.
+#
+# Managed by scripts/education/gate_registry.py. Prefer the CLI over hand-editing:
+#   python scripts/education/gate_registry.py list [--status open]
+#   python scripts/education/gate_registry.py backlog
+#   python scripts/education/gate_registry.py clear --gate-id <id> --session-id <s> --discussion-id <d>
+#
+# `backlog` is the read-only, age-bucketed rendering that .claude/hooks/session-start.ps1
+# prints in its PROCESS HEALTH block. It is INFORMATIONAL: an open gate fails nothing.
+# That hook does not run on every session: which SessionStart events run it is set by the
+# matcher in .claude/settings.json (measured 2026-08-09: `resume|compact`, so the nudge
+# appeared on resume/compaction but not on a fresh session -- check the file, not the date).
+#
+# A gate is CLOSED by doing the education (/walkthrough then /quiz on its scope). `clear`
+# only RECORDS that such a session happened -- it validates neither --session-id nor
+# --discussion-id against any store, so clearing without the session writes a registry
+# that reports zero education debt with zero education having occurred.
+#
+# This comment header survives the CLI. `save_registry` re-emits the leading comment block
+# verbatim, because yaml.safe_dump cannot round-trip comments; without that the first
+# `clear` deleted every line above `version:`. Reproduced 2026-08-09 against commit 31bfe09
+# on scratch copies (never this file): that commit's 16-line header went to 0. The
+# reproduction command is in read_header's docstring in gate_registry.py.
+#
+# Seeded 2026-07-14 from real deferral archaeology (Phase 0 Task A of
+# SPEC-20260714-220401-repocademy). Every gate below is evidenced by a REV report
+# §Education Gate section or a delivered-but-unclosed walkthrough doc. Units 3.1 and
+# 3.2 of the telemetry cohort were deliberately OMITTED: 3.1's REV (REV-20260609-052616)
+# carries no Education Gate section and 3.2's REV (REV-20260609-060229) explicitly
+# records the gate as "Not needed" (waived as redundant with the Unit 1 walkthrough the
+# developer worked through in session 18) -- neither is an open deferral.
+version: 1
+gates:
+- gate_id: EDU-20260610-unit-3-3
+  created_at: '2026-06-10'
+  origin: REV-20260610-003237
+  scope:
+    files:
+    - src/telemetry/failures.py
+    - src/telemetry/dashboard.py
+    - tests/test_telemetry.py
+    adrs:
+    - ADR-0013
+    - ADR-0020
+    spec: SPEC-20260610-001134
+  reason_deferred: Tier 1 walkthrough+quiz on the TEMPORAL retry-chain heuristic deferred
+    under autonomous execution to the next interactive session.
+  status: open
+  cleared_by: null
+- gate_id: EDU-20260610-unit-4-1
+  created_at: '2026-06-10'
+  origin: REV-20260610-012629
+  scope:
+    files:
+    - src/telemetry/hooks_health.py
+    - src/telemetry/dashboard.py
+    - scripts/telemetry/dashboard_server.py
+    - tests/test_telemetry_hooks_health.py
+    - tests/test_dashboard_server.py
+    adrs:
+    - ADR-0020
+    spec: SPEC-20260610-005602
+  reason_deferred: Medium-risk hook-health chip; walkthrough+quiz deferred to next
+    interactive session per autonomous directive (logged in BUILD_STATUS).
+  status: open
+  cleared_by: null
+- gate_id: EDU-20260610-unit-4-2
+  created_at: '2026-06-10'
+  origin: REV-20260610-022610
+  scope:
+    files:
+    - src/telemetry/dashboard.py
+    - scripts/telemetry/dashboard.py
+    - scripts/telemetry/dashboard_server.py
+    - src/telemetry/static/dashboard-chart.js
+    - src/telemetry/static/README.md
+    - tests/test_telemetry_donut.py
+    - tests/test_dashboard_server.py
+    adrs:
+    - ADR-0020
+    spec: SPEC-20260610-015114
+  reason_deferred: 'Tier 2 walkthrough (model-cost donut: honest-slice USD rationale
+    + SHA-384 JS/HTML seam discipline) deferred to next interactive session.'
+  status: open
+  cleared_by: null
+- gate_id: EDU-20260610-unit-4-3
+  created_at: '2026-06-10'
+  origin: REV-20260610-030010
+  scope:
+    files:
+    - src/telemetry/dashboard.py
+    - scripts/telemetry/dashboard_server.py
+    - tests/test_telemetry.py
+    - tests/test_dashboard_server.py
+    adrs:
+    - ADR-0020
+    spec: SPEC-20260607-183136
+  reason_deferred: Tier 1 walkthrough (CLI --summary renderer-mode contract + transport/pure
+    split) deferred, joining the 3.x/4.1/4.2 cohort. No per-unit spec (built directly);
+    governed by phase spec.
+  status: open
+  cleared_by: null
+- gate_id: EDU-20260610-unit-4-4
+  created_at: '2026-06-10'
+  origin: REV-20260610-034610
+  scope:
+    files:
+    - src/telemetry/static/dashboard-pip.js
+    - src/telemetry/dashboard.py
+    - src/telemetry/static/README.md
+    - tests/test_dashboard_server.py
+    - tests/test_telemetry.py
+    adrs:
+    - ADR-0020
+    spec: SPEC-20260610-031224
+  reason_deferred: Tier 2 walkthrough (Picture-in-Picture mirror-clone design, rejected
+    known-broken alternatives, stale-handle race) explicitly DEFERRED to next interactive
+    session.
+  status: open
+  cleared_by: null
+- gate_id: EDU-20260610-unit-5-1
+  created_at: '2026-06-10'
+  origin: REV-20260610-043121
+  scope:
+    files:
+    - scripts/telemetry/dashboard_server.py
+    - scripts/telemetry/dashboard.py
+    - tests/test_dashboard_server.py
+    - tests/test_telemetry.py
+    adrs:
+    - ADR-0020
+    spec: SPEC-20260610-035920
+  reason_deferred: Recommended walkthrough (byte-parity test enforcing R15, retirement-signpost
+    pattern, two closed doors) joins the deferred Phase 3.x/4.x cohort for the next
+    interactive session.
+  status: open
+  cleared_by: null
+- gate_id: EDU-20260627-d2-backflow-patterns
+  created_at: '2026-06-27'
+  origin: docs/education/WALKTHROUGH-20260627-d2-backflow-patterns.md
+  branch: feat/d2-backflow-patterns
+  scope:
+    files: []
+    adrs:
+    - ADR-0022
+    - ADR-0023
+    - ADR-0024
+    spec: null
+  reason_deferred: Walkthrough delivered offline (one-shot Stop hook, confidence-calibration
+    loop, T4-A knowledge-loop revival); awaiting the 5-minute explain-back to close
+    the gate.
+  status: open
+  cleared_by: null
+- gate_id: EDU-20260810-wave3-sliced
+  created_at: '2026-08-10'
+  origin: DISC-20260810-181205-quiz-wave3-sliced
+  scope:
+    files: []
+    adrs: []
+    spec: null
+  reason_deferred: 'Wave 3 + slice D education gate (non-declinable class: framework
+    governance). Walkthrough DISC-20260810-173821 + quiz DISC-20260810-181205 both
+    complete and sealed; 9/9 concepts demonstrated (8 first ask, 1 re-taught). Awaiting
+    the developer''s own clear per his ''I clear it'' rule - the educator may not
+    mark this complete.'
+  status: cleared
+  cleared_by:
+    session_id: EDU-20260810-wave3-sliced
+    discussion_id: DISC-20260810-181205-quiz-wave3-sliced
+    cleared_at: '2026-08-10T19:47:08.610084+00:00'
+- gate_id: EDU-20260814-adr-0035-i-clear-it
+  created_at: '2026-08-14'
+  origin: REV-20260811-154157
+  branch: feat/framework-v4-instruments-first
+  scope:
+    files:
+    - scripts/education/gate_registry.py
+    - scripts/education/ingest_walkthrough_session.py
+    adrs:
+    - ADR-0035
+    spec: null
+  reason_deferred: Non-declinable gate (framework governance) on the ADR-0035 'I clear
+    it' slice, e818792; owed since commit, taught 2026-08-14
+  status: cleared
+  cleared_by:
+    session_id: EDU-20260814-adr-0035-i-clear-it
+    discussion_id: DISC-20260815-014203-walkthrough-i-clear-it-adr-0035
+    cleared_at: '2026-08-15T05:57:59.018137+00:00'
+- gate_id: EDU-20260815-slice-e-single-source-pnt
+  created_at: '2026-08-15'
+  origin: /build_module slice E (SPEC-20260812-122753) + REV-20260815-114838
+  branch: feat/framework-v4-instruments-first
+  scope:
+    files:
+    - .claude/commands/build_module.md
+    - .claude/commands/review.md
+    - .claude/commands/walkthrough.md
+    - tests/test_command_pointer_integrity.py
+    - tests/test_paths_not_taken.py
+    adrs: []
+    spec: SPEC-20260812-122753
+  reason_deferred: 'NON-DECLINABLE class (framework governance/safety): edits the
+    MANDATORY --intent-to-add mandate in two command files and the education-gate
+    surface. Walkthrough owed; quiz optional per the developer''s lightweight steer;
+    ONLY the developer runs the clear (ADR-0035). Developer was AFK at build time.'
+  status: cleared
+  cleared_by:
+    session_id: EDU-20260816-slice-e-walkthrough
+    discussion_id: DISC-20260816-183933-walkthrough-slice-e-single-source-pnt
+    cleared_at: '2026-08-16T19:02:32.903938+00:00'
+- gate_id: EDU-20260817-b2-framework-md-retirement
+  created_at: '2026-08-17'
+  origin: REV-20260816-194513 + DISC-20260818-002051-walkthrough-b2-framework-md-retirement-and-reconciliation
+  branch: feat/framework-v4-instruments-first
+  scope:
+    files:
+    - CLAUDE.md
+    - PHILOSOPHY.md
+    - .claude/commands/seed.md
+    - docs/FRAMEWORK_SPECIFICATION.md
+    - tests/test_constitution_consistency.py
+    adrs:
+    - ADR-0036
+    spec: null
+  reason_deferred: 'Governance + safety surface: seven-principle reconciliation (10
+    owed fixes) and B2 - FRAMEWORK.md retired, /seed rewired. Principle #5 non-declinable
+    class (framework governance).'
+  status: cleared
+  cleared_by:
+    session_id: 5175f2e4-4ae5-412d-b604-81a931a66574
+    discussion_id: DISC-20260818-002051-walkthrough-b2-framework-md-retirement-and-reconciliation
+    cleared_at: '2026-08-18T00:32:31.706721+00:00'

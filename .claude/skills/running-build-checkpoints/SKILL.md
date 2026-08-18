@@ -5,7 +5,7 @@ description: Mid-build checkpoint review protocol for /build_module — trigger 
 
 # Build Review Protocol
 
-Enforces Principle #4 (independence prevents confirmation loops) within `/build_module` execution.
+Enforces Principle #3 (the generator is never the sole evaluator) within `/build_module` execution.
 
 Mid-build checkpoint reviews ensure that the agent generating code is not the sole evaluator during builds, not just at commit time.
 
@@ -55,6 +55,9 @@ If a task matches multiple categories, the facilitator selects the **two most re
 
 ### Hard Limit
 - **NEVER exceed 2 checkpoint iterations per task.** After Round 2, the build continues regardless. Unresolved concerns are surfaced in the build summary, not blocked on.
+
+### Cross-task verification
+- When a diff adds an import for a not-yet-existing call site, re-verify it survives the auto-format pass after the consumer lands (autoformat-import-strip class — 3rd occurrence 2026-07-16, see `memory/bugs/regression-ledger.md`).
 
 ## Specialist Prompt Template
 

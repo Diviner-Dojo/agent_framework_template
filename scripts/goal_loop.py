@@ -1357,7 +1357,7 @@ class GitDiffSource:
 class SubprocessModelInvoker:
     """Real model seam: one ``claude -p`` subprocess per build/judge step (ADR-0026 =
     SUBPROCESS). The builder and the judge are SEPARATE invocations, so the checker's
-    session id necessarily differs from the builder's -- Principle #4 inside the loop
+    session id necessarily differs from the builder's -- Principle #3 inside the loop
     (AC3). Build deltas are captured from the working tree via ``diff_source``.
 
     ``runner`` is injectable so the build/judge logic is unit-tested without a real CLI.

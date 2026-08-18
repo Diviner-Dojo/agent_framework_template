@@ -1,0 +1,254 @@
+---
+discussion_id: DISC-20260613-175936-fable-model-hold-proceed-tradeoffs
+started: 2026-06-13T18:00:05.520083+00:00
+ended: 2026-06-13T18:11:43.214462+00:00
+agents: [architecture-consultant, docs-knowledge, facilitator, independent-perspective]
+total_turns: 6
+---
+
+# Discussion: DISC-20260613-175936-fable-model-hold-proceed-tradeoffs
+
+## Turn 1 — facilitator (evidence)
+*2026-06-13T18:00:05.520083+00:00 | confidence: 0.8*
+*tags: context-brief*
+
+## Request Context
+- **What was requested**: Assess how critical claude-fable-5 is to the remaining planned work (Runs 2–5) and what the tradeoffs are for proceeding with an alternative model (e.g. sonnet) instead
+- **Files/scope**: docs/handoff/OVERNIGHT-20260611-rolling.md (run plan + model tiers), BUILD_STATUS.md (current state), docs/sprints/PROMPT-20260611-overnight-phases2-6.md (mission). Runs remaining: Run 2 Pattern 2 (D2 backflow), Run 3 (D3 manifests), Run 4 (D7 /ask-brain), Run 5 (D4 journal deploy)
+- **Developer-stated motivation**: claude-fable-5 was taken offline by government action on 2026-06-12. Timeline for restoration is unknown and may be indefinite. Developer needs to decide whether to wait or re-tier the remaining runs
+- **Explicit constraints**: Never push, never merge to main, never skip /review or Steward gates, education gates deferred, lean-dispatch skill binding
+
+---
+
+## Turn 2 — architecture-consultant (proposal)
+*2026-06-13T18:07:41.383192+00:00 | confidence: 0.82*
+*tags: model-tiering, run-analysis, substitution-risk*
+
+## Architecture Assessment: Fable Dependency Across Remaining Runs
+
+**Confidence: 0.82**
+
+### Core Structural Insight
+
+The substitution degrades only the orchestration/synthesis/judgment layer, not the review or gate layers. The framework's independence guarantees (Principle #4, the Steward gate, the B1 floor) are model-redundant by construction.
+
+- Steward gate always opus (invariant — the highest-judgment gate is model-invariant by design)
+- Security-on-hook-wiring = opus (invariant)
+- All specialists already sonnet — the independent-evaluation layer is unchanged by the substitution
+- The substitution does NOT touch the Steward, who ratifies framework evolution on Runs 2, 4, and the fork-brief path of Run 5
+
+### Boundary Analysis
+
+The mission prompt already draws the exact boundary this question asks about (lines 32–35): "Well-specified mechanical implementation → sonnet; anything subtle (hook logic, capture-path code) you implement yourself in the main loop." The question "can Sonnet run the main loop" reduces to: for each run, how much of the main-loop work falls on the subtle side of that line?
+
+### Run-by-Run Findings
+
+**Run 3 (D3 manifests): No meaningful degradation. Re-tier freely.**
+Explicitly "behavior-neutral satellite commits," "single-file edits per satellite" — by the developer's own framing. This is precisely the work the prompt already routes to a sonnet subagent with Fable verifying diffs. Elevating Sonnet to the main loop here changes nothing structurally. The wiki schema-1.0 repair has one real constraint (PRESERVE graft/back_flow ledger + accepts_distribution: false), but that is a stated invariant to check, not a judgment to originate.
+Recommendation: Proceed on Sonnet with no mitigation beyond the existing "preserve these exact fields" checklist.
+
+**Run 2 (D2 Pattern 2): Low-moderate risk, well-mitigated by ADR-0023 precedent.**
+The genuinely judgment-dense work is the *adaptation set* — recognizing that the wiki's patterns may violate template invariants the source doesn't share (the exact trap Pattern 1's raw-reply injection was). This risk is heavily backstopped: (a) the opus Steward gate, (b) opus security review if pattern 2 touches hook wiring, (c) the sonnet specialist panel, (d) ADR-0023 as a worked template for "adaptations are load-bearing, enumerate them."
+Mitigation: Explicitly instruct the main loop to produce an enumerated "template adaptations / deliberate deviations from the wiki version" section in the ADR *before* implementation, mirroring ADR-0023's structure, and to name which CLAUDE.md Always-On Invariants the pattern touches. This converts the most-likely failure mode (silent invariant miss) into an explicit checklist the Steward and security reviewers can verify.
+
+**Run 4 (D7 /ask-brain): Moderate risk concentrated in interface design.**
+Building a new command is judgment-dense in exactly one place — the *interface design*. Sonnet's risk here is designing an interface that is locally reasonable but inconsistent with established command patterns or over-built (premature abstraction). Contained blast radius; faces full review panel.
+Mitigation: Require the main loop to first inventory 2–3 existing .claude/commands/ for established interface/structure patterns and state explicitly how /ask-brain conforms. Constrain it to the simplest viable interface; defer any "modes/flags just in case" to a follow-on.
+
+**Run 5 (D4 journal Batch 1 deploy + possible design fork): Materially highest risk. Hold for Fable or escalate safeguards.**
+Three compounding factors:
+1. The judgment is irreducible, not packageable. /apply-framework ASSESS produces a value/risk narrative, then a scope trim, then potentially a fork brief. ADR-0021 Decision 7: "interpretation explains; it never decides what to flag" — the quality of the interpretation and trim recommendation is exactly the synthesis-grade judgment the tiering rationale reserves for Fable.
+2. Sits on the partial/APPLY-adjacent route — ADR-0021 names this the weakest-consent, widest-blast-radius route.
+3. The design-fork branch (write a fork brief instead of deploying) is pure authorship under Principle #9 — no mechanical gate catches a weakly-reasoned fork brief.
+
+Recommendations if proceeding on Sonnet for Run 5:
+- Split the run at the natural seam: ASSESS is read-only (ADR-0021 Decision 2). Run ASSESS on Sonnet to produce a draft for developer review; make the scope-trim STOP a genuine human gate.
+- Route the assessment synthesis through an extra specialist turn before it goes to the developer's trim decision.
+- If the fork triggers, do NOT let Sonnet author the fork brief solo — treat it as a hard STOP for either Fable or the developer.
+
+### Strengths of Current Framework Structure
+
+- The framework's independence layers are model-redundant by design — the Steward (opus), security-on-hooks (opus), and specialist panel (sonnet) all sit downstream of the main loop. A weaker main-loop model degrades the first draft of judgment, not the gates that ratify it.
+- The tiering boundary was already drawn at task granularity (not session granularity), so re-tiering the main loop applies the same subtle-vs-mechanical test the prompt already encodes.
+- ADR-0023 is a reusable worked example of what good judgment-dense porting looks like — can be handed to a Sonnet main loop on Run 2 as a structural template, converting tacit judgment into an explicit reviewable format.
+
+---
+
+## Turn 3 — docs-knowledge (proposal)
+*2026-06-13T18:07:46.018148+00:00 | confidence: 0.91*
+*tags: documentation-audit, model-tiering, fallback-gap*
+
+## Documentation Knowledge Audit: Fable Requirement Traceability
+
+**Confidence: 0.91**
+
+### Summary
+
+The Fable model requirement is well-documented across four interlocking artifacts. The hold notice is already properly recorded. There is no ADR gap, no orphaned rationale, and no stale documentation.
+
+### Where the Fable Requirement Is Documented
+
+**Primary source: docs/sprints/PROMPT-20260611-satellite-uplift-implementation.md (lines 22–36)**
+Fable's role defined as: orchestration, risk-tier calls, design forks, synthesis events, REV reports, verifying cheap-model diffs, subtle implementation (hook logic, capture-path code) that cheaper tiers get wrong. Rationale: "token discipline — this is load-bearing."
+
+**Secondary source: .claude/skills/orchestrating-lean-dispatch/SKILL.md (Steward APPROVE 0.86)**
+Formalizes the dispatch ladder. Rung 5 (Fable): orchestration, risk-tier calls, design forks, synthesis events, REV reports, verifying cheap-model diffs, subtle implementation. States: "the top-tier model's value is judgment — decomposition, risk calls, synthesis, final verification. Everything else is delegable."
+
+Steward condition 2 (commit c1040dc) explicitly states: "the MODEL: handoff line tiers the orchestrator only and has no authority over the quality floor." This is the key documented distinction — the quality floor is identical regardless of orchestrator tier.
+
+**Third source: memory/project_model_tiering_dispatch_policy.md**
+Developer-level rationale: "developer explicitly doesn't want to burn Fable tokens on work lower tiers handle; orchestration quality is where Fable pays."
+
+**Documentation gap to flag**: None of these documents states *why Sonnet cannot orchestrate* beyond "cheaper tiers get wrong" for subtle implementation. The requirement is a deliberate developer choice, not a hard technical constraint proven by failure. A future reader cannot determine from documentation alone whether "requires Fable" means "Sonnet would produce wrong output" or "Sonnet is a cost/quality trade-off the developer chose not to make."
+
+### Per-Run Tier Assignments Per Documentation
+
+| Run | Phase | Assigned Tier | Classification |
+|-----|-------|--------------|----------------|
+| 2 (current) | D2 pattern 2 | claude-fable-5 | "judgment-dense" (implied) |
+| 3 | D3 manifests | sonnet | "behavior-neutral satellite commits" (explicit) |
+| 4 | D7 /ask-brain | claude-fable-5 | (no explicit classification stated) |
+| 5 | D4 journal Batch 1 deploy | claude-fable-5 | "per mission; design fork may be LIVE" |
+
+The rolling handoff (OVERNIGHT-20260611-rolling.md line 8) adds: "Use sonnet as a placeholder if needed for mechanical pre-work, but the pattern-2 implementation + Steward gate require Fable." This is the only document that differentiates what specifically requires Fable vs. tolerates Sonnet for current branch work.
+
+### Documented Fallback Tier Guidance
+
+No document defines a fallback tier for Fable unavailability. The rolling handoff's "Use sonnet as a placeholder for mechanical pre-work" is the only guidance, scoped to pre-work only — not to implementation + Steward gate.
+
+AGENT_ARCHITECTURE.md lists facilitator default as opus, but the mission prompt overrides to Fable for SPEC-20260610-205507. No fallback guidance exists for model unavailability scenarios.
+
+### Findings
+
+**Finding 1 (Medium) — Rationale gap in rolling handoff**: Pattern-2 "requires Fable" is stated without justification of *why* pattern-2 specifically (as distinct from the general category). A future session cannot distinguish firm capability requirement from conservative tier preference. Recommendation: When hold resolves and handoff is rewritten, add a one-line justification.
+
+**Finding 2 (Low) — Config gap**: claude-fable-5 absent from config/model_context_profiles.yaml. Unmapped models fall back to haiku_200k (most conservative), meaning a Fable session would receive aggressive wrap-up nudges prematurely. Recommendation: Add claude-fable-5 entry mirroring opus_1m profile.
+
+**Finding 3 (Low) — AGENT_ARCHITECTURE.md currency**: Facilitator listed as opus in roster table; SPEC-20260610-205507 uses Fable as main-loop orchestrator by deliberate override. No cross-reference. Recommendation: Brief note in Model Override section clarifying this is a per-session override, not a default change.
+
+---
+
+## Turn 4 — independent-perspective (proposal)
+*2026-06-13T18:10:42.364254+00:00 | confidence: 0.8*
+*tags: anti-groupthink, resequencing, opus-fallback, hold-cost*
+
+## Independent Perspective: Anti-Groupthink Analysis
+
+**Confidence: 0.80**
+
+### The Reframe Both Specialists Missed
+
+Both specialists answered "how risky is the substitution?" with rigor — but neither questioned whether "substitute the model" is the right move to be evaluating. The hidden frame they share is that this is a *model-selection* decision. It is actually a *queue-sequencing* decision that has been mislabeled.
+
+**The runs are not equally Fable-dependent AND not equally blocked.** Run 3 (D3 manifests) is Sonnet-safe by unanimous agreement AND is a prerequisite for Run 5. The highest-leverage move isn't "substitute Sonnet into Run 2" — it's pull the non-Fable work forward and do it now on Sonnet, leaving genuinely Fable-dense judgment queued for restoration. Neither specialist proposed reordering. They both implicitly accepted "Run 2 is next because the handoff says NEXT RUN: Run 2."
+
+### The Load-Bearing Flaw in "Model-Redundant Gates"
+
+The architecture-consultant's central claim is true but contains a quiet assumption: **gates catch what they can see.** A Sonnet main loop's most dangerous output is not a *visibly* wrong synthesis. It is a *plausible, well-formed, confidently-wrong* synthesis. The Steward and specialists review the *artifact*, not re-derive the judgment from scratch. A confident omission by the main loop becomes the frame reviewers work inside.
+
+The arch mitigation ("enumerate adaptations explicitly") is good, but it asks the weaker model to enumerate its own blind spots — which is the one thing a weaker model is weakest at. The mitigation should land on a *different layer* than the degraded one: have an independent specialist (not the main loop) derive the touched-invariant list from CLAUDE.md.
+
+### "Wait for Fable" Is Not the Safe Default
+
+Both specialists treated "hold" as the conservative, costless option. The government-action framing inverts this. "Wait for Fable" is a bet that Fable returns on a useful horizon. If it doesn't, the cost is the compounding debt of a frozen pipeline: `stash@{0}`, `stash@{1}`, three unmerged branches, an 18-candidate /promote queue, and a deferred education cohort. A held queue is not a paused queue; it is an accreting-debt queue. Nobody priced the cost of the hold.
+
+### The Hidden Alternative: Opus as Fallback Tier
+
+The entire panel framed this as Fable-vs-Sonnet. But **opus** is already the framework's most-trusted tier (Steward, enforcement security) and the *documented* facilitator default in AGENT_ARCHITECTURE.md. For genuinely judgment-dense main-loop work (Run 2 Pattern 2, Run 4 interface design), running the main loop on opus during the hold preserves synthesis quality far better than Sonnet. docs-knowledge confirmed no fallback tier is documented anywhere — opus is the obvious one and nobody named it. The developer's "don't burn Fable tokens" rationale is about Fable tokens specifically; opus is already being burned on every Steward gate.
+
+### Run 5 Split Relocates, Not Reduces, Judgment
+
+The arch suggestion to split ASSESS from deploy doesn't reduce the judgment risk — it moves it. Sonnet authors the ASSESS narrative; the developer makes the trim decision *based on that narrative*. If the narrative is subtly miscalibrated, the developer's gate is anchored to a weak synthesis. ADR-0021 Decision 7 says "interpretation explains; it never decides" — but a miscalibrated explanation steers the human who decides. Run 5 is the one run to genuinely hold for Fable/opus. The split structure is fine; the ASSESS synthesis itself needs the top tier.
+
+### Three Alternatives Not On the Board
+
+1. **Re-sequence instead of re-tier.** Do Run 3 (D3 manifests) now on Sonnet — unanimously safe, no Fable content, shortens critical path for when Fable returns. Highest-value, lowest-risk move available.
+
+2. **Use opus as the fallback tier, not Sonnet, for judgment-dense runs.** Preserves synthesis quality, already trusted for the framework's highest-judgment gate, and the rationale for avoiding it (don't burn Fable tokens) doesn't apply to opus.
+
+3. **Force the hold-horizon decision.** Rather than open-ended "resume when restored," set an explicit trigger: "If Fable is not back by [date], do we (a) re-tier to opus, (b) drive Run 2 interactively, or (c) keep holding?" Converts silent accreting cost into an owned decision.
+
+### Consensus Gap
+
+Both specialists accepted the problem statement as given and neither stepped outside it to question the sequence, the fallback-tier choice, or the cost of the hold. They are not in a shallow confirmation loop — their methods differ — but they converge on *not looking in the same direction.* The facilitator's framing questions ("is wait-for-Fable coherent?" and "does the Run 5 split relocate rather than reduce judgment?") were sharper than either specialist addressed.
+
+### Pre-Mortem: Frozen-Queue Rot (Medium likelihood, Medium-High impact)
+
+Fable doesn't return for 6 weeks. The rolling handoff goes stale, a stash gets dropped, an unmerged branch drifts, and the eventual restart spends more effort on reconciliation than the runs would have taken. Root cause: "wait" treated as costless. Mitigation: Pull Run 3 forward now; set an explicit hold-horizon trigger date.
+
+---
+
+## Turn 5 — facilitator (synthesis)
+*2026-06-13T18:11:30.722713+00:00 | confidence: 0.84*
+
+## Request Context
+- **What was requested**: Assess how critical claude-fable-5 is to remaining Runs 2–5 and what the tradeoffs are for proceeding without it
+- **Files/scope**: Overnight mission plan (PROMPT-20260611-overnight-phases2-6.md), rolling handoff (OVERNIGHT-20260611-rolling.md), BUILD_STATUS.md, lean-dispatch skill, ADR-0021, ADR-0023
+- **Developer-stated motivation**: claude-fable-5 taken offline by government action 2026-06-12; timeline for restoration unknown and possibly indefinite
+- **Explicit constraints**: Never push, never merge to main, never skip /review or Steward gates (Steward always opus), education gates deferred, lean-dispatch skill binding
+
+## Synthesis
+
+### The Frame Correction
+
+The deliberation's most important finding is a reframe: this is not primarily a model-selection decision — it is a queue-sequencing decision. The three specialists converge on a picture where the runs are not equally Fable-dependent AND not equally urgent, which means the right move is not "wait for all" or "proceed with all on Sonnet" but to re-sequence the unblocked work.
+
+### What Is Actually Blocked vs. Unblocked
+
+**Unblocked (Sonnet-safe, unanimous agreement):**
+Run 3 — D3 manifests (VP opt-in, journal bootstrap manifest, wiki schema repair). Explicitly designated Sonnet in the rolling handoff. Behavior-neutral satellite commits, single-file edits. No judgment-dense main-loop work. Already a prerequisite for Run 5. This should be pulled forward and executed now.
+
+**Blocked but proceeding on opus is viable:**
+Run 2 Pattern 2 — D2 backflow pattern 2. Judgment-dense at the adaptation layer (identifying which CLAUDE.md Always-On Invariants the pattern touches and documenting deliberate deviations from the wiki source). Low-moderate risk on Sonnet with mitigations; but opus is the better fallback — already trusted for the framework's highest-judgment gate, already burning for every Steward turn, and the developer's "don't burn Fable tokens" rationale is Fable-specific. Key mitigation regardless of tier: have an *independent specialist* (not the main loop) derive the touched-invariant list from CLAUDE.md, rather than asking the main loop to self-enumerate its blind spots.
+
+Run 4 — D7 /ask-brain. Command interface design is the judgment-dense piece; implementation behind a well-specified interface is mechanical. Opus as main loop for the design/synthesis turn; proceed.
+
+**Genuinely hold for Fable or developer-driven:**
+Run 5 — D4 journal Batch 1 deploy. Three compounding factors make this the one run to hold: (1) the ASSESS synthesis/trim judgment is irreducible — no diff-verification backstop; (2) widest consent blast radius in the plan (ADR-0021 Decision 4 context); (3) if the design fork triggers, the fork brief is pure authorship with no mechanical gate. The "split ASSESS from deploy" structural mitigation relocates the judgment rather than reducing it — Sonnet authoring the ASSESS narrative still anchors the developer's decision to a weaker synthesis. This run waits.
+
+### The Structural Advantage That Bounds the Risk
+
+All three specialists identify the same load-bearing fact: the framework's review and gate layers are model-redundant by design. The Steward (always opus), enforcement-security (always opus), and the specialist panel (always sonnet) all sit *downstream* of the main loop. Substituting the main loop degrades the first draft of judgment, not the gates that evaluate it. This is Steward-ratified and structurally enforced (commit c1040dc, Steward condition 2). This makes Runs 2, 3, and 4 survivable under a downtiered main loop with appropriate mitigations.
+
+The independent-perspective correctly adds a nuance: gates review artifacts, not unenumerated blind spots. A confidently-wrong synthesis doesn't present as visibly wrong — it sets the frame reviewers operate inside. This is why (a) Run 5's ASSESS synthesis needs the top tier regardless, and (b) for Run 2, the invariant enumeration should be owned by an independent specialist rather than the main loop.
+
+### The Hold-Cost Problem
+
+"Wait for Fable" is not the safe default it appears. The queue is already carrying: stash@{0}, stash@{1}, three unmerged branches (feat/lean-dispatch-skill, feat/t4a-knowledge-loop, feat/d2-backflow-patterns), an 18-candidate /promote queue, and a deferred education cohort. An indefinite hold turns a paused queue into an accreting-debt queue. The practical fix is two-part: (1) pull Run 3 forward immediately to make concrete progress, and (2) set an explicit hold-horizon trigger rather than leaving the hold open-ended.
+
+### The Opus Gap
+
+No specialist was asked "what about opus?" — the entire deliberation framed this as Fable-vs-Sonnet. All three specialists identified the framework already runs opus for its highest-judgment gates. docs-knowledge confirmed no fallback tier is documented anywhere. The obvious fallback for judgment-dense orchestration (Runs 2 and 4 main loops) is opus, not Sonnet. It preserves synthesis quality far better, it is already trusted for Steward-level judgment, and the developer's rationale for model economy was stated as "don't burn Fable tokens" — not "don't burn top-tier tokens."
+
+## Points of Agreement Across Specialists
+
+1. Run 3 is safe on Sonnet — proceed with no mitigation beyond the existing preserve-these-fields checklist.
+2. The framework's gate layers are model-redundant — substitution affects the main-loop synthesis tier, not the review and gate tier.
+3. Run 5 carries the highest risk and the Run 5 synthesis/ASSESS authorship should stay at the top tier (Fable or, if unavailable, drive interactively or hold).
+4. Mitigations that depend on the degraded layer to self-enumerate their blind spots are weaker than mitigations that land on an independent layer.
+
+## Points of Genuine Dissent or Tension
+
+1. **Re-sequencing vs. proceeding in order**: The rolling handoff says NEXT RUN = Run 2. The independent-perspective says re-sequence and do Run 3 first. The architecture and docs specialists implicitly accepted the stated order. This is a live sequencing decision for the developer — the framework doesn't prohibit reordering (there is no hard dependency of Run 3 on Run 2).
+2. **Opus as fallback vs. Sonnet as fallback**: The specialists evaluated Sonnet as the fallback. Independent-perspective proposes opus for judgment-dense runs. These are genuinely different cost/quality tradeoffs the developer should own.
+3. **Hold horizon**: No specialist defined when "wait" becomes untenable. This is a developer decision, not a technical one.
+
+---
+
+## Turn 6 — facilitator (decision)
+*2026-06-13T18:11:43.214462+00:00 | confidence: 0.84*
+*tags: run-sequencing, opus-fallback, hold-horizon*
+
+Re-sequence and tier the work rather than binary wait/proceed:
+
+1. PROCEED NOW (Sonnet): Run 3 (D3 manifests) — unanimously Sonnet-safe, already designated sonnet in the rolling handoff, prerequisite for Run 5. No mitigation required beyond the preserve-these-fields checklist.
+
+2. PROCEED when ready (opus as main loop, not Sonnet): Run 2 Pattern 2 and Run 4 (/ask-brain) — judgment-dense at the synthesis/design layer. Use opus as the fallback tier (already trusted for Steward-level judgment; developer rationale was Fable-token-specific). Key mitigation: have an independent specialist (not the main loop) enumerate which CLAUDE.md Always-On Invariants the pattern touches before implementation.
+
+3. HOLD (Fable or developer-driven): Run 5 (D4 journal Batch 1 deploy) — the ASSESS synthesis and any triggered fork brief require the top tier. The run-split mitigation relocates rather than reduces the judgment risk. Wait for Fable, or developer drives it interactively.
+
+4. FORCE A HOLD-HORIZON DECISION: Set an explicit trigger (a date or external signal) for re-evaluating the hold — 'if not restored by X, re-tier Run 5 to developer-driven or defer indefinitely.' Do not leave the hold open-ended with no trip wire.
+
+Confidence: 0.84. Dissent preserved on: (a) re-sequencing vs. stated order — developer decides; (b) opus-vs-Sonnet for Runs 2/4 — developer owns this cost/quality tradeoff; (c) hold-horizon date — developer's call.
+
+---

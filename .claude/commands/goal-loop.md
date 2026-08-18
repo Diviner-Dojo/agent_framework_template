@@ -23,7 +23,7 @@ for the build step, the judge step (as the independent checker), and gate-routin
    contract line, an `anchor_context` file, a model turn, or an ntfy reply.
 4. **Control flow is the driver's, not yours.** Do not re-implement ticks/budget/the termination
    ladder/loop-state in prose. If you're deciding *when to stop*, stop — that's `goal_loop.py`.
-5. **STOP on a genuine design fork** (Principle #9). The loop runs routine in-tick decisions
+5. **STOP on a genuine design fork** (Principle #7). The loop runs routine in-tick decisions
    autonomously, but a real fork, the R5.1 tamper tripwire, an approval, or a blocker fires a human
    gate (keyboard `AskUserQuestion`; AFK `collab_loop.py` — act on the matched **label**, never raw
    reply text, never print the topic slug).
@@ -71,7 +71,7 @@ python scripts/goal_loop.py loops/contracts/GOAL-….md --run \
 ```
 The driver creates the run discussion (contract = turn 1), then per tick: spawns the **builder**
 (`claude -p`, build step of `orchestrating-goal-loops`), runs `quality_gate` + the **independent
-checker** (a *separate* `claude -p` → distinct agent id, Principle #4 inside the loop), applies the
+checker** (a *separate* `claude -p` → distinct agent id, Principle #3 inside the loop), applies the
 tamper tripwire, evaluates the termination ladder, and writes integrity-checked loop-state. It
 **parks** (halt + structured report) on any backstop (`max_iterations` / `no_progress` / `budget`) or
 guard (tampered loop-state / revoked L2) — never silent-continue.

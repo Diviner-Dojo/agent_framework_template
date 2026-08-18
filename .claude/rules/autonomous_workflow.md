@@ -3,7 +3,7 @@
 > Prevents protocol skipping under autonomous execution authorization.
 > Root cause: Derived project experienced a 7-workstream implementation that bypassed /plan,
 > /build_module, /review, and BUILD_STATUS.md updates. All code was written without
-> independent evaluation (Principle #4 violation).
+> independent evaluation (Principle #3 violation).
 
 ## Mandatory Workflow for Code Changes
 
@@ -42,7 +42,7 @@ The authorization removes the need to ask "may I commit?" or "may I push?" — i
 
 ## Violations
 
-If you are about to commit without having run `/review`, **STOP**. Run `/review` first. There is no time pressure that justifies skipping independent evaluation (Principle #4).
+If you are about to commit without having run `/review`, **STOP**. Run `/review` first. There is no time pressure that justifies skipping independent evaluation (Principle #3).
 
 If you are about to implement a multi-file feature without `/plan`, **STOP**. The cost of catching a bad design after implementation is far higher than catching it at spec review time.
 
@@ -64,7 +64,7 @@ closes that loop, a back-flow pattern from `dan_research_karpathy_wiki` (SPEC-20
   not instruction files. Tightening a classifier surface (`scripts/extract_findings.py` patterns
   → full `/review`; `.claude/skills/severity-calibration/SKILL.md` → Steward gate) is a
   **developer action**. The agent must **never** edit a classifier surface off a proposal — that
-  would be self-modification (Principle #7; Prime Objective human-mediated enforcement). The
+  would be self-modification (Principle #6; Prime Objective human-mediated enforcement). The
   `confidence_calibration` metric is a rough proxy; treat single-signal proposals as low-confidence.
 
 ## Relationship to Other Rules

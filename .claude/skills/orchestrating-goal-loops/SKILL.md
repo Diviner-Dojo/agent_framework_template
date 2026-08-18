@@ -52,11 +52,11 @@ still-red criteria. Make the **smallest delta** that moves *that* criterion towa
 
 If the criterion cannot be advanced without a prohibited action or a genuine design fork, **say so
 plainly and make no change** — the driver will route a gate or park. Guessing past a fork violates
-Principle #9.
+Principle #7 (clarify before acting).
 
 ## 2. Judge step — verify ONE criterion as the independent checker
 
-You are invoked as a **separate process from the builder** (distinct agent id → Principle #4 holds
+You are invoked as a **separate process from the builder** (distinct agent id → Principle #3 holds
 *inside* the loop). This is the only way an `llm-judge` criterion turns green.
 
 - **Delta-only.** You receive the diff and the one criterion — **not** the builder's reasoning,

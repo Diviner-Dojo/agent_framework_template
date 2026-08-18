@@ -80,6 +80,6 @@ After committing, update BUILD_STATUS.md with:
 ## What NOT to Do
 - Do NOT `git add -A` / `git add .` with an entangled working tree — stage your own paths explicitly (Step 1.8)
 - Do NOT commit with `--no-verify` unless the developer explicitly requests it and explains why
-- Do NOT skip the review for code changes — Principle #4 requires independent evaluation
+- Do NOT skip the review for code changes — Principle #3 requires independent evaluation
 - Do NOT commit files that contain secrets (.env, credentials, API keys)
 - Do NOT amend previous commits unless the developer explicitly requests it

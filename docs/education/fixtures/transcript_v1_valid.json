@@ -1,0 +1,62 @@
+{
+  "contract_version": 1,
+  "session_id": "GATE-20260715-conformance",
+  "gate_id": "EDU-20260610-unit-4-1",
+  "repo_slug": "owner/agent_framework_template",
+  "mode": "gate",
+  "started_at": "2026-07-15T14:00:00+00:00",
+  "completed_at": "2026-07-15T14:42:00+00:00",
+  "events": [
+    {
+      "type": "narration",
+      "chapter_id": "ch01",
+      "chapter_title": "The education-gate registry",
+      "text": "Chapter 1 walked: the registry schema, atomic save, and idempotent clear."
+    },
+    {
+      "type": "qa_exchange",
+      "question": "What does clear_gate return?",
+      "answer": "A (gate, changed) tuple; changed is False when the gate was already cleared."
+    },
+    {
+      "type": "quiz_item",
+      "item_id": "q1",
+      "question": "Why is the ingest idempotent?",
+      "answer": "I am not sure.",
+      "score": 0.3,
+      "bloom": "understand",
+      "question_type": "recall",
+      "variant_of": null,
+      "rubric": "Mentions the session_id guard: existing cleared_by, education rows, or discussion slug short-circuit the run."
+    },
+    {
+      "type": "quiz_item",
+      "item_id": "q1v1",
+      "question": "Re-teach variant: what makes re-running the same transcript safe?",
+      "answer": "Existing rows or the session's discussion slug short-circuit it into a no-op.",
+      "score": 0.9,
+      "bloom": "understand",
+      "question_type": "recall",
+      "variant_of": "q1"
+    },
+    {
+      "type": "deferral",
+      "scope": "item",
+      "reason": "save q2 for later"
+    },
+    {
+      "type": "explain_back",
+      "prompt": "Explain the ingest write sequence in your own words.",
+      "answer": "Validate everything first with zero writes, then discussion, then events, then education rows in one transaction, then the registry flip last.",
+      "score": 0.85
+    },
+    {
+      "type": "completion",
+      "summary": "Session complete: walked, quiz passed via variant, explain-back passed."
+    }
+  ],
+  "outcome": {
+    "status": "completed",
+    "summary": "All clearing conditions met."
+  }
+}

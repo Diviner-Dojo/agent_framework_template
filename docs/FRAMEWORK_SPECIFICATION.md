@@ -1,9 +1,9 @@
 ---
 title: "AI-Native Agentic Development Framework — Full Specification"
-version: "3.5"
+version: "3.6"
 status: living-document
 created: "2026-02-18"
-last_updated: "2026-07-09"
+last_updated: "2026-08-16"
 origin: AI_Native_Agentic_Development_Framework_FULL.txt
 total_files: ~130
 total_lines: ~11,500
@@ -12,7 +12,7 @@ patterns_evaluated: 165
 patterns_adopted: 62
 ---
 
-# AI-Native Agentic Development Framework v3.5
+# AI-Native Agentic Development Framework v3.6
 
 ## Full Specification
 
@@ -89,9 +89,25 @@ Full provenance details are in [Appendix A](#appendix-a--external-project-proven
 
 ## 2. Foundational Principles
 
-Above the nine principles sits a **Prime Objective** (added in ADR-0015, 2026-05-16): the framework must serve contributors and users and never accumulate value at their expense. Each of the nine principles below is an operational expression of this objective — capture, independence, education, immutability, simplicity are not arbitrary engineering preferences but specific structural refusals of extraction patterns. The Prime Objective's three-part test (attribution preservation, consent of labor, consent of evolution) is the named instrument specialists apply to designs that touch value-flow questions. Enforcement is human-mediated at every gate; the framework provides the gates, the human provides the verdict.
+Above the seven principles sits a **Prime Objective** (added in ADR-0015, 2026-05-16): the framework must serve contributors and users and never accumulate value at their expense. Each of the seven principles below is an operational expression of this objective — capture, independence, education, immutability are not arbitrary engineering preferences but specific structural refusals of extraction patterns. The Prime Objective's three-part test (attribution preservation, consent of labor, consent of evolution) is the named instrument specialists apply to designs that touch value-flow questions. Enforcement is human-mediated at every gate; the framework provides the gates, the human provides the verdict.
 
-The framework is governed by 9 non-negotiable principles, codified in [`CLAUDE.md`](../CLAUDE.md). The original research defined principles 1–7; Principle 8 was adopted from external analysis; Principle 9 (the 95% clarify gate) was added later.
+The framework is governed by **seven** non-negotiable principles, codified in [`CLAUDE.md`](../CLAUDE.md), which is authoritative. **This numbering changed in v3.6** (ADR-0031 Decision 6, ratified per-principle by the developer 2026-08-05/06): the constitution went from nine principles to seven. Cite principles by the seven-numbering only.
+
+> #### Renumbering map — so a stale citation can be re-pointed without guessing
+>
+> Principles are not silently dropped, for the same reason ADRs are not (Principle #4): a
+> retirement is recorded with a reference to where the value went.
+>
+> | Old | New | Disposition |
+> |---|---|---|
+> | 1, 2 | 1, 2 | unchanged |
+> | 3 — *Collaboration precedes adversarial rigor* | — | **Retired in part.** The *posture* half is retired as model-facing scaffolding. The **plurality** half is NOT retired — "several independent contexts for a critical-risk change, not one" became a **dispatch** concern. The panel-size floors live in [`selecting-review-gates`](../.claude/skills/selecting-review-gates/SKILL.md) § *Panel size — review plurality* and are restated in [`/review`](../.claude/commands/review.md); [`PHILOSOPHY.md`](../PHILOSOPHY.md) § *Growth has a brake* records why the floor exists. New Principle #3 requires only *a* separate context, so plurality had to be carried there or it would have been lost. |
+> | 4 | **3** | *The generator is never the sole evaluator* |
+> | 5 | **4** | *ADRs are never deleted* |
+> | 6 | **5** | *Understanding before merge* — and the framing changed materially: **offered, not withheld** |
+> | 7 | **6** | *Curated memory needs human approval* |
+> | 8 — *Least-complex intervention first* | — | **Moved, not deleted** — to [`PHILOSOPHY.md`](../PHILOSOPHY.md) § *Growth has a brake*, as the growth-side constraint on how new complexity enters. It is philosophy, not a numbered principle; cite the section, not a number. *Originally adopted from* ***self-improving-coding-agent*** *(MaximeRobeyns, Score: 22/25,* [*ANALYSIS-20260219-043657*](reviews/ANALYSIS-20260219-043657-self-improving-coding-agent.md)*) — attribution preserved through the move.* |
+> | 9 | **7** | *Clarify before acting (the 95% rule)* |
 
 ### Principle 1: Reasoning is the Primary Artifact
 > Code is output. Deliberation, trade-offs, and decision lineage are the durable assets. Every significant decision must be traceable to the discussion that produced it.
@@ -103,37 +119,43 @@ The framework is governed by 9 non-negotiable principles, codified in [`CLAUDE.m
 
 **Implementation**: All slash commands (see [Section 6](#6-command-reference)) invoke capture pipeline scripts automatically. The model cannot opt out of logging. Enforced at the command/tooling layer via [`scripts/create_discussion.py`](../scripts/create_discussion.py), [`scripts/write_event.py`](../scripts/write_event.py), and [`scripts/close_discussion.py`](../scripts/close_discussion.py).
 
-### Principle 3: Collaboration Precedes Adversarial Rigor
-> Multi-perspective analysis is the default. Adversarial modes are scoped exclusively to: security review (red-teaming), fault injection/stress testing, anti-groupthink checks.
+### Principle 3: The Generator Is Never the Sole Evaluator
+> The agent that generates code must not be the sole evaluator. Independent review means a *separate context* that did not see the reasoning behind the code — an **information property, not a personality**.
 
-**Implementation**: The [Collaboration Model](#4-collaboration-model) uses a 5-mode spectrum where adversarial mode is the last resort. The [`independent-perspective`](../.claude/agents/independent-perspective.md) agent provides anti-groupthink checks within the collaborative frame.
+**Implementation**: The [`/review`](../.claude/commands/review.md) command assembles a specialist panel where no single agent both proposes and evaluates. The [`facilitator`](../.claude/agents/facilitator.md) orchestrates but does not render specialist verdicts. The [`independent-perspective`](../.claude/agents/independent-perspective.md) agent carries the **isolation contract** — the property this principle is defined by; it is not interchangeable with an agent merely told to disagree.
 
-### Principle 4: Independence Prevents Confirmation Loops
-> The agent that generates code must not be the sole evaluator. At minimum, one specialist who did not participate in generation must perform independent review.
+> **Plurality is a dispatch concern, not a clause here.** This principle requires only *a* separate context. The requirement for *several* is the surviving half of retired old-Principle 3, and its single normative home is [`selecting-review-gates`](../.claude/skills/selecting-review-gates/SKILL.md) § *Panel size — review plurality*, restated in [`/review`](../.claude/commands/review.md). Restated below **verbatim**, because a paraphrase of a floor is a second floor. Do not thin one copy expecting the other to hold it.
 
-**Implementation**: The [`/review`](../.claude/commands/review.md) command assembles a specialist panel where no single agent both proposes and evaluates. The [`facilitator`](../.claude/agents/facilitator.md) orchestrates but does not render specialist verdicts.
+### Panel size — review plurality
 
-### Principle 5: ADRs Are Never Deleted
+- **Critical risk: at least 3 independent specialists**, each dispatched in a separate context,
+  none of which sees another's findings before submitting its own.
+- **High risk: at least 2.**
+- **Medium / Low risk: 1 is sufficient.**
+
+Why the floor exists: this framework's two most serious findings — a wrong merge base, and a
+constitution being silently rewritten — were each caught by exactly **one** reviewer out of four.
+A single reviewer's blind spot becomes the project's. "Prefer one agent over several" governs
+ordinary delegation; it does not govern review panels.
+
+### Principle 4: ADRs Are Never Deleted
 > Only superseded with references to the replacing decision. This creates an immutable decision history.
 
 **Implementation**: ADRs in `docs/adr/` follow the `ADR-NNNN` format. The `decisions` table in SQLite tracks `supersedes` references. The [`quality_gate.py`](../scripts/quality_gate.py) `check_adrs()` function validates ADR completeness. *ADR completeness validation adopted from* ***AgenticAKM*** *(Score: 20/25,* [*ANALYSIS-20260219-043753*](reviews/ANALYSIS-20260219-043753-agenticakm.md)*).*
 
-### Principle 6: Education Gates Before Merge
-> Walkthrough, quiz, explain-back, then merge. Proportional to complexity and risk.
+### Principle 5: Understanding Before Merge — Offered, Not Withheld
+> Briefing depth is sized to risk and **may be declined**, and the decline is recorded rather than judged. **Skip is unavailable for exactly two classes**: changes to the framework's own governance or safety mechanisms, and distribution to derived projects.
 
-**Implementation**: The [`/quiz`](../.claude/commands/quiz.md) and [`/walkthrough`](../.claude/commands/walkthrough.md) commands invoke the [`educator`](../.claude/agents/educator.md) agent. Results are recorded to SQLite via [`scripts/record_education.py`](../scripts/record_education.py). See [Section 11](#11-education-gate) for details.
+**Implementation**: The [`/walkthrough`](../.claude/commands/walkthrough.md) and [`/quiz`](../.claude/commands/quiz.md) commands invoke the [`educator`](../.claude/agents/educator.md) agent. Results are recorded to SQLite via [`scripts/record_education.py`](../scripts/record_education.py). See [Section 11](#11-education-gate) for details.
 
-### Principle 7: Layer 3 Promotion Requires Human Approval
-> No discussion insight is promoted automatically.
+> **The framing changed in v3.6 and the direction matters.** The old wording was *"walkthrough, quiz, explain-back, then merge"* — a hard gate. The current principle is **offered, not withheld**: the gate teaches, and a machine-checkable condition may not make a **human's** briefing non-completable. Friction that falls on the *agent* is preserved unchanged; only friction falling on the human was removed. Two consequences are load-bearing: `exactly two` non-declinable classes is a **limit on** gating rather than an instance of it, so a third class may not be invented locally (one was, in [`/review`](../.claude/commands/review.md), and was struck); and under ADR-0035 **only the developer runs the clear** — no agent surface instructs it.
+
+### Principle 6: Curated Memory Needs Human Approval
+> No discussion insight reaches `memory/` automatically.
 
 **Implementation**: The [`/promote`](../.claude/commands/promote.md) command requires 2+ independent confirmations plus explicit human approval. Promoted artifacts have a 90-day forgetting curve (must be reconfirmed or archived).
 
-### Principle 8: Least-Complex Intervention First
-> When improving the framework, prefer prompt changes before command/tool changes before agent definition changes before architectural changes. Lower-complexity interventions are cheaper, more reversible, and faster to validate.
-
-**Implementation**: Codified in [`CLAUDE.md`](../CLAUDE.md) Principle #8 and referenced in [`architecture-consultant`](../.claude/agents/architecture-consultant.md) anti-patterns. *Adopted from* ***self-improving-coding-agent*** *(MaximeRobeyns, Score: 22/25,* [*ANALYSIS-20260219-043657*](reviews/ANALYSIS-20260219-043657-self-improving-coding-agent.md)*).*
-
-### Principle 9: Clarify Before Acting (the 95% Rule)
+### Principle 7: Clarify Before Acting (the 95% Rule)
 > Before producing a plan, writing code, or taking any substantive action, ask until ≥95% confident of both intent *and* scope. A wrong assumption acted on costs far more than the question that would have prevented it.
 
 **Implementation**: Mandatory unless the developer explicitly overrides ("proceed" / "just do it"); micro-fixes are exempt (see the [`handling-micro-fixes`](../.claude/skills/handling-micro-fixes/SKILL.md) skill). A formal confidence check also runs inside [`/plan`](../.claude/commands/plan.md) and [`/build_module`](../.claude/commands/build_module.md); when the developer is AFK the question routes to their phone via the [`notifying-the-developer`](../.claude/skills/notifying-the-developer/SKILL.md) skill.
@@ -423,7 +445,7 @@ Changes to agent definitions, rules, or framework philosophy follow a gated path
 1. **Observation**: Facilitator identifies a pattern across multiple reviews
 2. **Proposal**: Development note with evidence, diagnosis, and proposed change
 3. **Steward Gate**: Steward evaluates alignment with `PHILOSOPHY.md` and principles — verdicts: APPROVE / REVISE / DEFER / DECLINE
-4. **Developer Approval**: Human gate preserved (Principle #7)
+4. **Developer Approval**: Human gate preserved (Principle #6)
 5. **Review**: Change goes through `/review` like any code change
 6. **Documentation Sync**: Verify downstream documentation artifacts are updated per the `syncing-framework-docs` skill
 
@@ -556,7 +578,7 @@ Invokes the educator agent for step-by-step code explanation.
 #### `/goal-loop` — Goal-Driven Iteration
 **File**: [`.claude/commands/goal-loop.md`](../.claude/commands/goal-loop.md) (ADR-0026, hardened by ADR-0028)
 
-Pursues a developer-authored **goal contract** by iterating build → verify → refine until its verifiable criteria are met, then halts for `/review` + a required education walkthrough. Control flow is owned by the deterministic driver [`scripts/goal_loop.py`](../scripts/goal_loop.py); the model is invoked only for build / judge / gate steps, and the **builder is never its own judge** (Principle #4 extended to autonomous iteration). Never pushes, never auto-merges. Contract authoring and loop-shape gatekeeping run through the [`authoring-goal-contracts`](../.claude/skills/authoring-goal-contracts/SKILL.md) skill; per-tick craft lives in [`orchestrating-goal-loops`](../.claude/skills/orchestrating-goal-loops/SKILL.md).
+Pursues a developer-authored **goal contract** by iterating build → verify → refine until its verifiable criteria are met, then halts for `/review` + a required education walkthrough. Control flow is owned by the deterministic driver [`scripts/goal_loop.py`](../scripts/goal_loop.py); the model is invoked only for build / judge / gate steps, and the **builder is never its own judge** (Principle #3 extended to autonomous iteration). Never pushes, never auto-merges. Contract authoring and loop-shape gatekeeping run through the [`authoring-goal-contracts`](../.claude/skills/authoring-goal-contracts/SKILL.md) skill; per-tick craft lives in [`orchestrating-goal-loops`](../.claude/skills/orchestrating-goal-loops/SKILL.md).
 
 #### `/handoff` — Session Wrap-Up & Handoff
 **File**: [`.claude/commands/handoff.md`](../.claude/commands/handoff.md) (ADR-0018)
@@ -599,7 +621,7 @@ Three protections in a single validator:
 | Protection | Description |
 |-----------|-------------|
 | **File Locking** | Atomic lock via `mkdir`, 120s auto-expiry, session-based ownership. Prevents concurrent agent edits. |
-| **Secret Detection** | Scans content for 12 secret patterns (API keys, AWS keys, JWT, GitHub PATs, private keys, exported secrets, Slack tokens, Bearer tokens, Anthropic keys, OpenAI keys, GCP API keys, GCP OAuth tokens). Test files are exempt. |
+| **Secret Detection** | Scans content for 12 secret patterns (API keys, AWS keys, JWT, GitHub PATs, private keys, exported secrets, Slack tokens, Bearer tokens, Anthropic keys, OpenAI keys, GCP API keys, GCP OAuth tokens). **Emits `ask`, not `deny` — it prompts, it does not block; and it never sees a commit (wired on `Write\|Edit`, not `Bash`).** Test files are exempt outright. See § *It does not block. It asks.* for all four limits. |
 | **Protected Files** | Blocks edits to `.env`, `.git/`, `evaluation.db`, `.claude/settings.json`. |
 
 - *File locking adopted from* ***claude-agentic-framework*** *(Score: 22/25,* [*ANALYSIS-20260219-035210*](reviews/ANALYSIS-20260219-035210-claude-agentic-framework.md)*).*
@@ -692,7 +714,34 @@ The framework implements a **dual-layer secret protection model** plus additiona
 | 11 | GCP API Keys | `AIza[A-Za-z0-9_-]{35}` |
 | 12 | GCP OAuth Tokens | `ya29\.[A-Za-z0-9_-]{50,}` |
 
-Test files (`test_`, `conftest.py`, `fixture`) are exempt from scanning.
+> ### ⚠ It does not block. It asks. — and three further limits
+>
+> This section previously described *what is scanned* and never stated what the hook **decides**,
+> which is the half of the claim that misleads. Synced from
+> [`.claude/rules/security_baseline.md`](../.claude/rules/security_baseline.md) (corrected
+> 2026-08-08; this spec was not synced at the time, though `syncing-framework-docs` fires on
+> `.claude/rules/` edits). Measured by feeding the hook real payloads; re-runnable against
+> `main()` in that file. **State all four limits whenever this mechanism is cited.**
+>
+> 1. **It emits `permissionDecision: "ask"`, not `"deny"`** — a prompt to a human, not a refusal.
+>    `ask` is also the *weaker* decision under `--permission-mode bypassPermissions`, which this
+>    framework's own `scripts/session_supervisor.py` runs. Treat it as "probably pauses".
+> 2. **It never sees a commit.** It is wired on the `Write|Edit` matcher, so it inspects content
+>    *as a file is written*. `git commit` is the `Bash` tool, whose matcher runs
+>    `pre-commit-gate.sh` and `pre-push-main-blocker.sh` — neither reads file contents. A secret
+>    written by any other route (a shell heredoc, a generated file, an existing file staged later)
+>    reaches the commit with nothing having looked at it.
+> 3. **Test files are exempt outright.** `is_test_file()` returns before the scan for anything
+>    matching `TEST_FILE_PATTERNS`, which is exactly `test_*.py`, `*_test.py`, `*/tests/*.py`,
+>    `*.test.[tj]s(x)`, `*.spec.[tj]s(x)`. Note the third is `.py`-only — a
+>    `tests/fixtures/creds.json` is **not** exempt and is still scanned. Cite the regex, not a
+>    gloss of it.
+> 4. **12 regexes are a list, and lists end.** A base64 blob, a split string, an unlisted vendor
+>    format, or a secret read from a file at runtime is invisible.
+>
+> **This is defence-in-depth against typing a key into a source file by accident. It is not a
+> secret-scanning gate.** If you need one, `git secrets`/`gitleaks` in the pre-commit hook is the
+> mechanism, and it does not exist here yet.
 
 *Adopted from* ***claude-agentic-framework*** *(Score: 23/25,* [*ANALYSIS-20260219-035210*](reviews/ANALYSIS-20260219-035210-claude-agentic-framework.md)*).*
 
@@ -1036,7 +1085,7 @@ When you build your first module with `/build_module`, the framework will guide 
 ### Project Constitution
 
 **[`CLAUDE.md`](../CLAUDE.md)** serves as the project constitution, loaded by all agents. Contains:
-- 8 non-negotiable principles
+- Seven non-negotiable principles
 - Architectural boundaries
 - ID format conventions
 - Directory layout
@@ -1124,7 +1173,7 @@ The framework supports two-way async communication with the developer via ntfy.s
 | 12 agent definitions with model tiers | `.claude/agents/*.md` | All include activation triggers + anti-patterns + Values + Domain Lens |
 | 25 slash commands | `.claude/commands/*.md` | Pre-flight checks, state persistence |
 | 8 hooks (13 files) | `.claude/hooks/*` | File locking, secret detection, auto-format, session continuity, context-guard |
-| Quality gate (5 checks) | `scripts/quality_gate.py` + pre-commit hook | Runs on every commit |
+| Quality gate (8 checks, stack-aware profiles + debt baseline) | `scripts/quality_gate.py` + pre-commit hook + `config/gate_profiles.yaml` | Runs on every commit; profiles python-fastapi / flutter-dart / markdown-corpus (SPEC-20260716-233400) |
 | Application source directory (`src/`) | `src/__init__.py` | Empty in template — add your code here |
 | Dual-layer secret detection (write-time + read-time) | `validate_tool_use.py` + `redact_secrets.py` | 12 + 15 patterns, tested |
 | File locking system | `validate_tool_use.py` + `release_lock.py` | Atomic mkdir, 120s expiry |
@@ -1137,7 +1186,7 @@ The framework supports two-way async communication with the developer via ntfy.s
 | 9 artifact templates | `docs/templates/*.md` | ADR, event, analysis, reflection, review, project profile, and others |
 | Steward agent + lineage tracking | `.claude/agents/steward.md`, `scripts/lineage/`, `framework-lineage.yaml`, `.claude/custodian/` | ADR-0002 accepted, Phase 1 operational |
 | UX evaluator agent | `.claude/agents/ux-evaluator.md` | Interaction flow, accessibility, platform conventions |
-| Build review protocol | `.claude/skills/running-build-checkpoints/SKILL.md` | Mid-build checkpoint reviews, Principle #4 |
+| Build review protocol | `.claude/skills/running-build-checkpoints/SKILL.md` | Mid-build checkpoint reviews, Principle #3 |
 | 4 new commands (batch-evaluate, knowledge-health, lineage, ship) | `.claude/commands/*.md` | Lineage, release, knowledge pipeline, adoption evaluation |
 | Lineage test suite | `tests/test_lineage.py` | Manifest parsing, drift detection |
 | Education gate workflow | `.claude/commands/walkthrough.md`, `.claude/commands/quiz.md` | Generated per-session by educator agent |
@@ -1215,7 +1264,7 @@ Record of the **seed cohort** — the first 77 patterns evaluated across the ori
 | Custom Exception Hierarchy with HTTP Status Mapping | 23/25 | **ADOPTED** (PENDING) | `src/exceptions.py`, `src/error_handlers.py` |
 | Quality Gate Script | 22/25 | **ADOPTED** (PENDING) | `scripts/quality_gate.py`, pre-commit hook |
 | Session Initialization Protocol | 18/25 | SUPERSEDED | Superseded by "Session Continuity Hooks" |
-| Four-Phase Implementation Protocol with Self-Grading | 17/25 | DEFERRED | Overlaps education gates; self-grading conflicts with Principle #4 |
+| Four-Phase Implementation Protocol with Self-Grading | 17/25 | DEFERRED | Overlaps education gates; self-grading conflicts with Principle #3 |
 | Config-Driven Pydantic SelectorSpec | 16/25 | REJECTED | Domain-specific; no resource location problem |
 | Stuck Record Recovery at Startup | 16/25 | REJECTED | No long-running operations |
 | AI-Powered Config Auto-Repair | 15/25 | REJECTED | No configs to degrade |
@@ -1285,7 +1334,7 @@ Record of the **seed cohort** — the first 77 patterns evaluated across the ori
 | Pattern | Score | Status | Implementing File(s) |
 |---------|-------|--------|---------------------|
 | LLM-Gated Test Markers | 24/25 | **ADOPTED** (PENDING) | `tests/conftest.py`, `pyproject.toml` |
-| Intervention Complexity Hierarchy | 22/25 | **ADOPTED** (PENDING) | `CLAUDE.md` — Principle #8 |
+| Intervention Complexity Hierarchy | 22/25 | **ADOPTED** (PENDING) | `PHILOSOPHY.md` — *Growth has a brake* (was CLAUDE.md Principle 8 under the old numbering, until v3.6; retired as a numbered principle, retained as philosophy) |
 | Embedded Anti-Patterns in Agent Specializations | 20/25 | **ADOPTED** (PENDING) | All 9 `.claude/agents/*.md` files |
 | Adoption Audit Feedback Loop | 20/25 | **ADOPTED** (PENDING) | `memory/lessons/adoption-log.md` |
 | Capture Pipeline Roundtrip Tests | 19/25 | DEFERRED | One point below; no bugs observed yet |
@@ -1554,4 +1603,5 @@ agent_framework_template/
 | 2026-05-12 | Sourced-assertion memory substrate (ADR-0014, Phase 4) — `assertion_store/Substrate` class + `mcp_server/` FastMCP transport. Three primitives: `assert_fact`, `search_semantic`, `get_source`. SQLite + sqlite-vec + sentence-transformers. Suchness preservation as first-class architectural action (get_source returns the original passage at a project:// URI line range). Substrate is transport-agnostic; MCP is one transport. Phase 4 mods: per-assertion project_id, portable `project://<id>/<path>#L<a>-L<b>` URI, scope parameter reserved for future cross-project layer (local-only this round). |
 | 2026-05-16 | v3.5: Prime Objective above the eight principles (ADR-0015) — the framework's first principle is named as serving contributors and users and refusing extraction patterns. The eight Non-Negotiable Principles are recast as operational expressions of the Prime Objective. Three-part test (attribution preservation, consent of labor, consent of evolution) named as a specialist instrument. PHILOSOPHY.md extended with positive moral frame and the model-provider limit acknowledged. REVIEW.md cues specialists to apply the test on designs touching attribution, consent of labor, value flow, or framework evolution. Cross-instance propagation via `~/.claude/shared-memory/FRAMEWORK_CHANGELOG.md`. |
 | 2026-05-26 | ADR-0019: Async human-in-the-loop collaboration loop — `scripts/collab_loop.py` (ask/poll/check/say, two-topic ntfy model), `ask_developer.py` refactored as thin shim, `notify.py` ASCII-safe titles, `collaborating-async` on-demand skill. Skill count: 17 → 18. Untrusted-reply allow-list and never-print-topic promoted to CLAUDE.md always-on invariants. |
+| 2026-08-16 | **v3.6: the instruments-first line.** The constitution is reduced to **seven** Non-Negotiable Principles (ADR-0031 Decision 6, ratified per-principle) — retired *collaboration precedes adversarial rigor* keeping its plurality half as a dispatch concern, and *least-complex intervention first* moved to `PHILOSOPHY.md`; cite principles by the seven-numbering only. The v4 reconciliation is **retired** (ADR-0032) after its wrong-merge-base failure; work continues as vertical slices on `main`, each blind-reviewed by a critic that never saw the builder's reasoning. Education gate rebuilt as a **tutor** — a 21-day-live inverted Bloom's ratio fixed (the dispatching command had been ordering the inverse of the educator's own charter), grade-centric assessment replaced by a re-teach loop, and **"I clear it"** (ADR-0035): no agent surface instructs running `clear`; only the developer closes a gate. **Paths not taken** (ADR-0034): builders record the alternative at the moment of the choice, a briefing agent verifies each claim against the diff, and `scripts/verify_paths_not_taken.py` prints `MECHANICALLY-CLEAR` rather than `VERIFIED` because a fabricated record passes a string search exactly as a true one does. Wrap-up cap recalibration (ADR-0033). Deferred education gates surfaced at session start. Version named v3.6 rather than v4 — v4 was retired by ADR-0032, and the branch name `feat/framework-v4-instruments-first` is historical, not a version claim. |
 | 2026-07-09 | Targeted delta refresh for the ADR-0018..0028 era (counts + new features; not a rewrite). Added Principle 9 (95% clarify gate); commands 17→25 (`/goal-loop`, `/handoff`, `/apply-framework` + `/distribute` alias, `/conversation`, `/status`, `/evaluate-repo-security`, `/seed`, `/spawn-project`); hooks 7→8 logical / 10→13 files (UserPromptSubmit context-guard, ADR-0018); skills 19→25 (goal-loop, grill-me/grill-yourself, wrapping-up-sessions, severity-calibration, orchestrating-lean-dispatch); templates 6→9. New "Post-May 2026 Additions" table: Telemetry & Oversight (ADR-0020), apply-framework unification (ADR-0021), findings.is_noise + severity reclassification (ADR-0022), designed-but-parked one-shot Stop hook (ADR-0023), confidence-calibration loop (ADR-0024), corpus-respects-gitignore (ADR-0025), goal-driven loop + hardening (ADR-0026/0028), suchness invariant (ADR-0027). Adoption stats refreshed to 18 analyses / 165 patterns / 62 adopted (as of May 2026); Appendix A reframed as the seed cohort. |

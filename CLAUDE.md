@@ -4,22 +4,29 @@
 > on-demand skills (see Rules Index), and the docs/ pointers at the end.
 
 ## Project Identity
-- **Framework**: AI-Native Agentic Development Framework v3.5
+- **Framework**: AI-Native Agentic Development Framework v3.6
 - **Stack**: Python 3.11+, FastAPI, SQLite, pytest · **Formatting**: ruff · **Typing**: strict (public functions annotated) · **Coverage target**: ≥80% · **Deps**: pyproject.toml + requirements.txt
 
 ## Prime Objective
 The framework exists to serve contributors and users; its reasoning, memory, capability, and evolution must never accumulate value at their expense. A design **refuses extraction** iff: **(a)** every contributor retains attribution; **(b)** no actor performs labor whose benefit accrues primarily to a third party without consent; **(c)** evolution does not accumulate value from derivatives without human-authored, per-instance assent. Any "no" to (a) or "yes" to (b)/(c) = extraction. Enforcement is **human-mediated** at every gate (/review, /plan, /build_module, /promote, commit, /ship), not mechanical. This objective is operationally limited by the model provider; users needing stronger guarantees should run on infrastructure they control.
 
 ## Non-Negotiable Principles
-1. **Reasoning is the primary artifact** — code is output; every significant decision traces to the discussion that produced it.
-2. **Capture must be automatic** — enforced at the command/tooling layer; the model cannot opt out of logging.
-3. **Collaboration precedes adversarial rigor** — multi-perspective is default; adversarial modes scoped to security / fault-injection / anti-groupthink only.
-4. **Independence prevents confirmation loops** — the agent that generates code is never its sole evaluator; ≥1 non-participating specialist reviews.
-5. **ADRs are never deleted** — only superseded, with references to the replacement.
-6. **Education gates before merge** — walkthrough → quiz → explain-back → merge; deferrals logged and completed before the next phase.
-7. **Layer 3 promotion requires human approval** — no discussion insight is promoted automatically.
-8. **Least-complex intervention first** — prompt < command/tool < agent-definition < architectural change.
-9. **Clarify before acting (95% rule)** — before producing a plan, writing code, or any substantive action, ask until ≥95% confident on intent **and** scope; a wrong assumption costs far more than a question. Mandatory unless the developer explicitly overrides ("proceed" / "just do it" / "risk it"). Exempt: micro-fixes.
+There are **seven**. This numbering is authoritative — ADR-0031 Decision 6, ratified per-principle
+by the developer 2026-08-05/06. Cite principles by this numbering only.
+
+1. **Reasoning is the primary artifact.** Code is output; every significant decision traces to the discussion that produced it.
+2. **Capture is automatic.** Enforced by scripts and hooks, not by instruction. A decision that exists only in a context window did not happen.
+3. **The generator is never the sole evaluator.** Independent review means a *separate context* that did not see the reasoning behind the code — an information property, not a personality.
+4. **ADRs are never deleted.** Superseded, with a reference to the replacement.
+5. **Understanding before merge — offered, not withheld.** Briefing depth is sized to risk and may be declined, and the decline is recorded rather than judged. **Skip is unavailable for two classes: changes to the framework's own governance or safety mechanisms, and distribution to derived projects.**
+6. **Curated memory needs human approval.** Nothing reaches `memory/` automatically.
+7. **Clarify before acting (95% rule).** Reach ≥95% confidence on intent **and** scope before a plan, code, or any substantive action. **Close the gap from accumulated knowledge of the developer and the project record first; ask only when the remaining uncertainty is a genuine fork evidence cannot resolve. When extrapolating rather than asking, name what you are extrapolating from.** Mandatory unless the developer explicitly overrides ("proceed" / "just do it"). Micro-fixes exempt.
+
+**Retired, and where the value went** (ADR-0031 Decision 6 — so a reader of an older artifact can
+re-point a stale citation without guessing):
+- *Collaboration precedes adversarial rigor* (was #3) — the **posture** half is retired as model-facing scaffolding. The **plurality** half is NOT retired: several independent contexts for a critical-risk change, not one. It is now a **dispatch** concern, and the panel-size floors are specified in `.claude/skills/selecting-review-gates/SKILL.md` and restated verbatim in `/review`, the command that dispatches the panel (§ *Panel size — review plurality* in both); `PHILOSOPHY.md` (§ *Growth has a brake*) records why the floor exists. Principle #3 above requires only *a* separate context, so plurality has to be carried there or it is lost.
+- *Least-complex intervention first* (was #8) — moved, not deleted, to `PHILOSOPHY.md` ("Growth has a brake") as the growth-side constraint on how new complexity enters.
+- Old #1–#2 keep their numbers; old #4→#3, #5→#4, #6→#5, #7→#6, #9→#7.
 
 ## Always-On Invariants
 - **Sanitize at every trust boundary** — including data interpolated into LLM prompts, action triggers, or cross-process channels; never assume internal-origin data is safe.
@@ -32,11 +39,12 @@ The framework exists to serve contributors and users; its reasoning, memory, cap
 - **Multi-file change** (3+ files, or 2+ new files under `src/`): `/plan` → `/build_module` → quality gate → `/review` → commit.
 - **Small change** (1-2 files): implement → quality gate → `/review` → commit. Skip `/review` only for docs/config-only changes.
 - **"Proceed without asking" ≠ "proceed without reviewing."** Autonomous authorization runs the full workflow without pausing for per-step permission — it NEVER authorizes skipping `/plan`, `/review`, or capture. Detail: `.claude/rules/autonomous_workflow.md`.
-- **Confidence gate** — Principle #9 (clarify to ≥95% before acting) applied to building: if unsure on intent **and** scope, STOP and ask in-conversation (`AskUserQuestion`), or via the `notifying-the-developer` skill if the developer is AFK. Exemptions/overrides per Principle #9 (micro-fixes proceed — `handling-micro-fixes` skill). A formal confidence check also runs inside `/plan` and `/build_module`.
+- **Confidence gate** — Principle #7 (clarify to ≥95% before acting) applied to building: close the gap from the project record first; if a genuine fork remains on intent **and** scope, STOP and ask in-conversation (`AskUserQuestion`), or via the `notifying-the-developer` skill if the developer is AFK. When you extrapolate instead of asking, name what you extrapolated from. Exemptions/overrides per Principle #7 (micro-fixes proceed — `handling-micro-fixes` skill). A formal confidence check also runs inside `/plan` and `/build_module`.
 - **Suggest `/goal-loop` when a task is loop-shaped** — it has (1) a verifiable done-state, (2) expected iterative build→verify→refine convergence, and (3) is not a micro-fix. **Suggest, never impose**; it never auto-starts, control flow is the deterministic `scripts/goal_loop.py`, and a human still approves the merge after `/review` + a required education walkthrough (ADR-0026; `authoring-goal-contracts` skill). A task that is **not** loop-shaped — subjective, exploratory, or verifiable only via a prohibited/irreversible action — routes to grill-me / `/plan` / `/deliberate` instead.
 
 ## Quality & Commit Gates
 - `python scripts/quality_gate.py` checks: formatting (ruff), lint, tests (pytest), coverage ≥80%, ADR completeness, review existence (code changes), regression ledger, BUILD_STATUS freshness (advisory). `--fix` auto-remediates; `--skip-*` bypasses a check. Each run logs to `metrics/quality_gate_log.jsonl`.
+- **Stack profiles + debt baseline** (SPEC-20260716-233400): `config/gate_profiles.yaml` selects stack checks per profile (`python-fastapi`/`flutter-dart`/`markdown-corpus`; integrity checks run in every profile); `config/gate_baseline.json` tracks pre-existing debt as fingerprints — baselined findings WARN, NEW findings fail RED. The baseline only shrinks automatically (`--shrink-baseline`); **`--rebaseline` is developer-consent only — the agent must NEVER run it autonomously** (reward-function surface, Principle #6). Both config files are review-gated. `--fast` = sampled mid-build run, never a commit gate.
 - Every commit passes the pre-commit quality-gate hook **and** a `/review` for any code change. Framework-only changes (`.claude/`, `scripts/`, `docs/`) touching >5 files require `/review`. Full sequence: `committing-changes` skill.
 
 ## Conventions
@@ -79,7 +87,7 @@ Structured scoping for autonomous execution (derived projects customize). Enabli
 **Status**: ACTIVE   **Branch scope**: `fix/c-gate-log-integrity` + telemetry feature branches created off it; **never `main`**.   **Effective**: 2026-06-07, until revoked.
 **Authorized Actions**: run `pytest` / `scripts/quality_gate.py` / `ruff` / `init_db` / knowledge & telemetry scripts; create feature branches off the in-scope branch; stage and commit **after completing the full workflow** (`/plan` → `/build_module` → quality gate → `/review` for code; capture is never bypassed).
 **Prohibited Actions**: push to ANY remote (origin included — pushing always needs explicit per-instance developer confirmation); destructive git (`reset --hard` on shared history, `push --force`, `clean -f`, `branch -D`); modifying `.claude/settings.json` **beyond the single `ALLOW_AUTO_LAUNCH_SESSION` opt-in below** (a developer-applied manual edit); deleting anything outside `memory/archive/`; auto-merging; production-affecting ops.
-**Invariant (does NOT change under this authorization)**: the full workflow runs without per-step permission, but it NEVER skips `/plan`, `/review`, or capture, NEVER pushes, NEVER auto-merges, and STILL STOPS to ask on a genuine design fork (Principle #9). "Proceed without asking" ≠ "proceed without reviewing."
+**Invariant (does NOT change under this authorization)**: the full workflow runs without per-step permission, but it NEVER skips `/plan`, `/review`, or capture, NEVER pushes, NEVER auto-merges, and STILL STOPS to ask on a genuine design fork (Principle #7). "Proceed without asking" ≠ "proceed without reviewing."
 
 Opt-in (separate, ADR-0018): **`ALLOW_AUTO_LAUNCH_SESSION` — CONSENTED 2026-06-07** (developer, gates preserved). Authorizes the wrap-up protocol to spawn a headless continuation. Required IN ADDITION to this block; it is the value the `wrapping-up-sessions` skill passes as `build_launch_command(..., allow_launch=...)`. The durable signal lives in the `.claude/settings.json` `"env"` block (`ALLOW_AUTO_LAUNCH_SESSION=1`), which is a **protected file → developer applies the one-line edit manually** (the PreToolUse validator denies agent edits by design; ADR-0018 specifies it as a manual edit). Never set by `/distribute`. Auto-launch still inherits every Prohibited Action above (no push, no auto-merge, no skipped `/review`) and is depth-capped at `MAX_AUTO_LAUNCH_DEPTH=1`.
 
@@ -87,12 +95,12 @@ Opt-in (separate, ADR-0018): **`ALLOW_AUTO_LAUNCH_SESSION` — CONSENTED 2026-06
 <!-- Declare domain constraints (medical / financial / privacy / accessibility) that review specialists must treat as BLOCKING findings. Specialists read CLAUDE.md as context, so constraints here are enforced at blocking severity. -->
 
 ## Framework Evolution
-Agent/rule/philosophy changes follow: facilitator observation → proposal → **Steward gate** (APPROVE / REVISE / DEFER / DECLINE vs `PHILOSOPHY.md`) → developer approval (Principle #7) → `/review` → doc sync (`syncing-framework-docs` skill). The Steward is activated only for framework evolution + lineage. Lineage: `/lineage`, `framework-lineage.yaml`, `docs/STEWARD_ARCHITECTURE.md` (ADR-0002).
+Agent/rule/philosophy changes follow: facilitator observation → proposal → **Steward gate** (APPROVE / REVISE / DEFER / DECLINE vs `PHILOSOPHY.md`) → developer approval (Principle #6) → `/review` → doc sync (`syncing-framework-docs` skill). The Steward is activated only for framework evolution + lineage. Lineage: `/lineage`, `framework-lineage.yaml`, `docs/STEWARD_ARCHITECTURE.md` (ADR-0002).
 
 ## Rules Index (load on demand)
 **Always-loaded**: `autonomous_workflow` (workflow sequencing, above). **Path-scoped** (load only on matching files): `coding_standards` (`**/*.py`), `testing_requirements` (`tests/**`), `security_baseline` (`src/**`, `scripts/**`). **On-demand skills** (`.claude/skills/<name>/`, loaded when relevant):
 - **recovering-from-failures** — the 8 named failure classes + recovery paths; consult on any hook block, gate/commit/push block, capture-pipeline error, or lost session state.
-- **selecting-review-gates** — risk tiers (low/med/high/critical), specialist-selection matrix, quality thresholds, advisory lifecycle; used by `/review`, `/ship`, `/retro`.
+- **selecting-review-gates** — risk tiers (low/med/high/critical), specialist-selection matrix, **review plurality floors** (§ *Panel size — review plurality*: critical risk at least 3 independent specialists, high risk at least 2 — the retained half of retired main #3), quality thresholds, advisory lifecycle; used by `/review`, `/ship`, `/retro`.
 - **running-build-checkpoints** — mid-build checkpoint triggers + 2-specialist dispatch; used by `/build_module`.
 - **authoring-goal-contracts** — grill-flavored interview that emits a valid `GOAL-…` contract and gatekeeps non-loop-shaped goals FIRST; used by `/goal-loop` (and `/plan` when emitting a `derived_from` contract). ADR-0026.
 - **orchestrating-goal-loops** — the model-facing per-tick craft (build a delta / judge as the independent checker / phrase a gate) that `scripts/goal_loop.py` invokes; holds NO control flow. ADR-0026.
