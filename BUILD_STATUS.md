@@ -25,7 +25,23 @@
 
 ## ⮕ NEXT SESSION
 
-> **START AT `docs/handoff/HANDOFF-20260818-b2-committed-promotion-next.md`**, then
+> **DECK PROMOTION THREAD (2026-08-18) — ✅ COMPLETE THROUGH PUSH (developer-ordered).**
+> Adopter-first rewrite of both public decks promoted onto the live paths (17+20 slides),
+> reviewed and pushed to PR #110. `/review` DISC-20260818-200843 (ensemble, 2 specialists):
+> ux-evaluator 0.83 + docs-knowledge 0.88, both approve-with-changes → **verdict
+> approve-with-changes, `docs/reviews/REV-20260818-131919.md`**. Both HIGHs (expand-panel
+> clipping at 200% zoom; risk-table floor-vs-target inversion on the Critical row), all 3
+> docs MEDIUMs (quiz Bloom weighting; slide-6→7 ref; gate-before-review flow order) + INFO
+> pointer FIXED pre-commit; guard 23/23 after fixes; gate green. **OPEN ADVISORIES (6, ux
+> polish batch):** keyboard access on expand widgets; --text-muted contrast <4.5:1 at small
+> sizes; emoji aria-hidden; nav boundary feedback; scrollTop reset on revisit; how-to
+> closing return-CTA. Hooks denominator still the developer's open decision (decks state no
+> count). **Developer merges PR #110 himself:**
+> https://github.com/Diviner-Dojo/agent_framework_template/pull/110
+>
+> **If resuming the PROMOTION thread instead:** start at
+> `docs/handoff/HANDOFF-20260818-promotion-branch-ready-awaiting-push.md` (newest for that
+> thread; the prior `…b2-committed-promotion-next.md` still exists beside it), then
 > `docs/reviews/REV-20260818-004500.md` and `docs/adr/ADR-0036-retire-framework-md-one-constitution.md`.
 > **B2 IS DONE AND COMMITTED (`8033191`)** — `FRAMEWORK.md` deleted, `/seed` inlines the seven,
 > ADR-0036 written, reviewed by a 3-specialist panel at approve-with-changes with all three
